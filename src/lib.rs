@@ -1,4 +1,4 @@
-use ndarray::{Array1, Array2, ArrayD};
+use ndarray::{s, concatenate, Axis, Array1, Array2, ArrayD};
 use std::collections::HashMap;
 
 pub struct PointCloud {
@@ -53,6 +53,72 @@ impl PointCloud {
         self.node_groups.insert(grpname, node_ids);
     }
 
+    pub fn insert(
+        &mut self,
+        i: usize,
+        coord: Array1<f64>,
+        fam: usize,
+        // node_data: Option<HashMap<String, ArrayD<f64>>>,
+    ) {
+        // --- Insert into coords ---
+        let coord_row = coord.insert_axis(Axis(0));
+        let before = self.coords.slice(s![..i, ..]).to_owned();
+        let after = self.coords.slice(s![i.., ..]).to_owned();
+        self.coords = concatenate![Axis(0), before, coord_row, after];
+
+        // --- Insert into node_families ---
+        let mut families = self.node_families.to_vec();
+        families.insert(i, fam);
+        self.node_families = Array1::from(families);
+
+        // --- Insert into node_data ---
+        // for (name, data) in &mut self.node_data {
+        //     let shape = data.shape();
+        //     let mut slices: Vec<_> = (0..shape.len()).map(|_| s![..]).collect();
+
+        //     // Extract before and after slices
+        //     let before = data.slice(&slices[..]).slice_axis(Axis(0), s![..i]);
+        //     let after = data.slice(&slices[..]).slice_axis(Axis(0), s![i..]);
+
+        //     // Determine what to insert: user data or zeros
+        //     let insert_value = if let Some(new_data) = &node_data {
+        //         if let Some(val) = new_data.get(name) {
+        //             val.clone().into_dyn()
+        //         } else {
+        //             ArrayD::zeros(IxDyn(&shape[1..]))
+        //         }
+        //     } else {
+        //         ArrayD::zeros(IxDyn(&shape[1..]))
+        //     };
+
+        //     // Expand insert_value to have shape [1, D1, D2, ...]
+        //     let insert_value = insert_value.insert_axis(Axis(0));
+
+        //     // Re-stack along axis 0
+        //     let new_data = stack(Axis(0), &[before, insert_value.view(), after]).unwrap();
+        //     *data = new_data;
+        // }
+
+        // // --- If new keys exist in user input, add them ---
+        // if let Some(new_fields) = node_data {
+        //     for (name, new_val) in new_fields {
+        //         if !self.node_data.contains_key(&name) {
+        //             // Insert default 0s for existing nodes
+        //             let shape = new_val.shape();
+        //             let mut full_shape = vec![self.coords.nrows() - 1];
+        //             full_shape.extend_from_slice(&shape[1..]);
+        //             let mut new_array = ArrayD::zeros(full_shape.into());
+
+        //             // Insert the given value at index i
+        //             let insert_val = new_val.insert_axis(Axis(0));
+        //             let before = new_array.slice_axis(Axis(0), s![..i]);
+        //             let after = new_array.slice_axis(Axis(0), s![i..]);
+        //             let stacked = stack(Axis(0), &[before, insert_val.view(), after]).unwrap();
+        //             self.node_data.insert(name, stacked);
+        //         }
+        //     }
+        // }
+    }
 
     pub fn append(&mut self, coord: Array1<f64>, fam: usize, node_data: Option<HashMap<String, ArrayD<f64>>>) {
         self.coords.append(ndarray::Axis(0), coord.insert_axis(ndarray::Axis(0)).view()).unwrap();
