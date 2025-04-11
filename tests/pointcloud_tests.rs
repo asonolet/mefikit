@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ndarray::{array, Array1, Array2};
+    
+    use ndarray::{array};
     use mefikit::PointCloud;
 
     #[test]
