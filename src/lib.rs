@@ -53,16 +53,16 @@ pub enum RegularCellType {
     HEX21,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Eq, Hash, Copy, Clone, PartialEq)]
 pub enum MeshCompoType {
     // 0d
-    VERTICES,
+    VERTEX,
 
     // 1d
     SEG2,
     SEG3,
     SEG4,
-    SPLINES,
+    SPLINE,
 
     // 2d
     TRI3,
@@ -71,22 +71,22 @@ pub enum MeshCompoType {
     QUAD4,
     QUAD8,
     QUAD9,
-    PGONS,
+    PGON,
 
     // 3d
     TET4,
     TET10,
     HEX8,
     HEX21,
-    PHEDS,
+    PHED,
 }
 
 impl From<PolyCellType> for MeshCompoType {
     fn from(cell: PolyCellType) -> Self {
         match cell {
-            PolyCellType::SPLINE => MeshCompoType::SPLINES,
-            PolyCellType::PGON => MeshCompoType::PGONS,
-            PolyCellType::PHED => MeshCompoType::PHEDS,
+            PolyCellType::SPLINE => MeshCompoType::SPLINE,
+            PolyCellType::PGON => MeshCompoType::PGON,
+            PolyCellType::PHED => MeshCompoType::PHED,
         }
     }
 }
@@ -111,7 +111,7 @@ impl From<RegularCellType> for MeshCompoType {
     }
 }
 
-struct Vertices {
+pub struct Vertices {
     params: HashMap<String, f64>,
     fields: HashMap<String, ArrayD<f64>>,
     families: Array1<usize>,
@@ -119,8 +119,8 @@ struct Vertices {
     len: usize,
 }
 
-struct RegularCells {
-    element_type: RegularCellType,
+pub struct RegularCells {
+    cell_type: RegularCellType,
     connectivity: Array2<usize>,
     params: HashMap<String, f64>,
     fields: HashMap<String, ArrayD<f64>>,
@@ -129,8 +129,8 @@ struct RegularCells {
     len: usize,
 }
 
-struct PolyCells {
-    elem_type: PolyCellType,
+pub struct PolyCells {
+    cell_type: PolyCellType,
     connectivity: Array1<usize>,
     offsets: Array1<usize>,
     params: HashMap<String, f64>,
@@ -140,13 +140,21 @@ struct PolyCells {
     len: usize,
 }
 
-enum MeshCompo {
+pub struct Elem {
+    cell_type: MeshCompoType,
+    connectivity: Array1<usize>,
+    fields: HashMap<String, ArrayD<f64>>,
+    family: usize,
+    groups: HashMap<String, Array1<usize>>,
+}
+
+pub enum MeshCompo {
     Vertices(Vertices),
     RegularCells(RegularCells),
     PolyCells(PolyCells),
 }
 
-struct UMesh {
+pub struct UMesh {
     coords: Array2<f64>,
     components: HashMap<MeshCompoType, MeshCompo>,
 }
@@ -179,7 +187,7 @@ impl Vertices {
 
 impl RegularCells {
     pub fn new(
-        element_type: RegularCellType,
+        cell_type: RegularCellType,
         connectivity: Array2<usize>,
         params: HashMap<String, f64>,
         fields: HashMap<String, ArrayD<f64>>,
@@ -188,7 +196,7 @@ impl RegularCells {
     ) -> Self {
         let len = families.len();
         Self {
-            element_type,
+            cell_type,
             connectivity,
             params,
             fields,
@@ -201,7 +209,7 @@ impl RegularCells {
 
 impl PolyCells {
     pub fn new(
-        elem_type: PolyCellType,
+        cell_type: PolyCellType,
         connectivity: Array1<usize>,
         offsets: Array1<usize>,
         params: HashMap<String, f64>,
@@ -211,7 +219,7 @@ impl PolyCells {
     ) -> Self {
         let len = families.len();
         Self {
-            elem_type,
+            cell_type,
             connectivity,
             offsets,
             params,
@@ -326,19 +334,19 @@ pub trait IntoMeshCompo {
 
 impl IntoMeshCompo for Vertices {
     fn into_mesh_compo(self) -> (MeshCompoType, MeshCompo) {
-        (MeshCompoType::VERTICES, MeshCompo::Vertices(self))
+        (MeshCompoType::VERTEX, MeshCompo::Vertices(self))
     }
 }
 
 impl IntoMeshCompo for RegularCells {
     fn into_mesh_compo(self) -> (MeshCompoType, MeshCompo) {
-        (self.element_type.into(), MeshCompo::RegularCells(self))
+        (self.cell_type.into(), MeshCompo::RegularCells(self))
     }
 }
 
 impl IntoMeshCompo for PolyCells {
     fn into_mesh_compo(self) -> (MeshCompoType, MeshCompo) {
-        (self.elem_type.into(), MeshCompo::PolyCells(self))
+        (self.cell_type.into(), MeshCompo::PolyCells(self))
     }
 }
 
