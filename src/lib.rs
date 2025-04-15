@@ -1,151 +1,351 @@
-use ndarray::{s, concatenate, Axis, Array1, Array2, ArrayD};
+use ndarray::{concatenate, s, Array1, Array2, ArrayD, Axis};
 use std::collections::HashMap;
 
-pub struct PointCloud {
-    coords: Array2<f64>, // 2D array for coordinates (n_nodes x dim)
-    node_families: Array1<usize>, // 1D array for families per node
-    node_groups: HashMap<String, Array1<usize>>, // group name to node indices
-    node_data: HashMap<String, ArrayD<f64>>, // node metadata
+#[derive(Copy, Clone)]
+pub enum EdgeType {
+    SEG2,
+    SEG3,
+    SEG4,
+    SPLINES,
 }
 
-impl PointCloud {
+#[derive(Copy, Clone)]
+pub enum FaceType {
+    TRI3,
+    TRI6,
+    TRI7,
+    QUAD4,
+    QUAD8,
+    QUAD9,
+    PGON,
+}
+
+#[derive(Copy, Clone)]
+pub enum VolumeType {
+    TET4,
+    TET10,
+    HEX8,
+    HEX21,
+    PHDRON,
+}
+
+#[derive(Copy, Clone)]
+pub enum PolyCellType {
+    SPLINE,
+    PGON,
+    PHED,
+}
+
+#[derive(Copy, Clone)]
+pub enum RegularCellType {
+    SEG2,
+    SEG3,
+    SEG4,
+    TRI3,
+    TRI6,
+    TRI7,
+    QUAD4,
+    QUAD8,
+    QUAD9,
+    TET4,
+    TET10,
+    HEX8,
+    HEX21,
+}
+
+#[derive(Copy, Clone)]
+pub enum MeshCompoType {
+    // 0d
+    VERTICES,
+
+    // 1d
+    SEG2,
+    SEG3,
+    SEG4,
+    SPLINES,
+
+    // 2d
+    TRI3,
+    TRI6,
+    TRI7,
+    QUAD4,
+    QUAD8,
+    QUAD9,
+    PGONS,
+
+    // 3d
+    TET4,
+    TET10,
+    HEX8,
+    HEX21,
+    PHEDS,
+}
+
+impl From<PolyCellType> for MeshCompoType {
+    fn from(cell: PolyCellType) -> Self {
+        match cell {
+            PolyCellType::SPLINE => MeshCompoType::SPLINES,
+            PolyCellType::PGON => MeshCompoType::PGONS,
+            PolyCellType::PHED => MeshCompoType::PHEDS,
+        }
+    }
+}
+
+impl From<RegularCellType> for MeshCompoType {
+    fn from(cell: RegularCellType) -> Self {
+        match cell {
+            RegularCellType::SEG2 => MeshCompoType::SEG2,
+            RegularCellType::SEG3 => MeshCompoType::SEG3,
+            RegularCellType::SEG4 => MeshCompoType::SEG4,
+            RegularCellType::TRI3 => MeshCompoType::TRI3,
+            RegularCellType::TRI6 => MeshCompoType::TRI6,
+            RegularCellType::TRI7 => MeshCompoType::TRI7,
+            RegularCellType::QUAD4 => MeshCompoType::QUAD4,
+            RegularCellType::QUAD8 => MeshCompoType::QUAD8,
+            RegularCellType::QUAD9 => MeshCompoType::QUAD9,
+            RegularCellType::TET4 => MeshCompoType::TET4,
+            RegularCellType::TET10 => MeshCompoType::TET10,
+            RegularCellType::HEX8 => MeshCompoType::HEX8,
+            RegularCellType::HEX21 => MeshCompoType::HEX21,
+        }
+    }
+}
+
+struct Vertices {
+    params: HashMap<String, f64>,
+    fields: HashMap<String, ArrayD<f64>>,
+    families: Array1<usize>,
+    groups: HashMap<String, Array1<usize>>,
+    len: usize,
+}
+
+struct RegularCells {
+    element_type: RegularCellType,
+    connectivity: Array2<usize>,
+    params: HashMap<String, f64>,
+    fields: HashMap<String, ArrayD<f64>>,
+    families: Array1<usize>,
+    groups: HashMap<String, Array1<usize>>,
+    len: usize,
+}
+
+struct PolyCells {
+    elem_type: PolyCellType,
+    connectivity: Array1<usize>,
+    offsets: Array1<usize>,
+    params: HashMap<String, f64>,
+    fields: HashMap<String, ArrayD<f64>>,
+    families: Array1<usize>,
+    groups: HashMap<String, Array1<usize>>,
+    len: usize,
+}
+
+enum MeshCompo {
+    Vertices(Vertices),
+    RegularCells(RegularCells),
+    PolyCells(PolyCells),
+}
+
+struct UMesh {
+    coords: Array2<f64>,
+    components: HashMap<MeshCompoType, MeshCompo>,
+}
+
+trait MeshComponent {
+    fn len(&self) -> usize;
+    fn params(&self) -> &HashMap<String, f64>;
+    fn fields(&self) -> &HashMap<String, ArrayD<f64>>;
+    fn families(&self) -> &Array1<usize>;
+    fn groups(&self) -> &HashMap<String, Array1<usize>>;
+}
+
+impl Vertices {
     pub fn new(
-        coords: Array2<f64>,
-        node_groups: Option<HashMap<String, Array1<usize>>>,
-        node_data: Option<HashMap<String, ArrayD<f64>>>,
+        params: HashMap<String, f64>,
+        fields: HashMap<String, ArrayD<f64>>,
+        families: Array1<usize>,
+        groups: HashMap<String, Array1<usize>>,
     ) -> Self {
-        let n_nodes = coords.nrows();
-        let mut pc = Self {
-            coords,
-            node_families: Array1::zeros(n_nodes),
-            node_groups: HashMap::new(),
-            node_data: node_data.unwrap_or_default(),
-        };
-
-        if let Some(groups) = node_groups {
-            for (name, node_ids) in groups {
-                pc.add_group(name, node_ids);
-            }
+        let len = families.len();
+        Self {
+            params,
+            fields,
+            families,
+            groups,
+            len,
         }
-
-        pc
-    }
-
-
-    // Getter methods for private fields
-    pub fn coords(&self) -> &Array2<f64> {
-        &self.coords
-    }
-
-    pub fn node_families(&self) -> &Array1<usize> {
-        &self.node_families
-    }
-
-    pub fn node_groups(&self) -> &HashMap<String, Array1<usize>> {
-        &self.node_groups
-    }
-
-    pub fn node_data(&self) -> &HashMap<String, ArrayD<f64>> {
-        &self.node_data
-    }
-
-    pub fn add_group(&mut self, grpname: String, node_ids: Array1<usize>) {
-        self.node_groups.insert(grpname, node_ids);
-    }
-
-    pub fn insert(
-        &mut self,
-        i: usize,
-        coord: Array1<f64>,
-        fam: usize,
-        // node_data: Option<HashMap<String, ArrayD<f64>>>,
-    ) {
-        // --- Insert into coords ---
-        let coord_row = coord.insert_axis(Axis(0));
-        let before = self.coords.slice(s![..i, ..]).to_owned();
-        let after = self.coords.slice(s![i.., ..]).to_owned();
-        self.coords = concatenate![Axis(0), before, coord_row, after];
-
-        // --- Insert into node_families ---
-        let mut families = self.node_families.to_vec();
-        families.insert(i, fam);
-        self.node_families = Array1::from(families);
-
-        // --- Insert into node_data ---
-        // for (name, data) in &mut self.node_data {
-        //     let shape = data.shape();
-        //     let mut slices: Vec<_> = (0..shape.len()).map(|_| s![..]).collect();
-
-        //     // Extract before and after slices
-        //     let before = data.slice(&slices[..]).slice_axis(Axis(0), s![..i]);
-        //     let after = data.slice(&slices[..]).slice_axis(Axis(0), s![i..]);
-
-        //     // Determine what to insert: user data or zeros
-        //     let insert_value = if let Some(new_data) = &node_data {
-        //         if let Some(val) = new_data.get(name) {
-        //             val.clone().into_dyn()
-        //         } else {
-        //             ArrayD::zeros(IxDyn(&shape[1..]))
-        //         }
-        //     } else {
-        //         ArrayD::zeros(IxDyn(&shape[1..]))
-        //     };
-
-        //     // Expand insert_value to have shape [1, D1, D2, ...]
-        //     let insert_value = insert_value.insert_axis(Axis(0));
-
-        //     // Re-stack along axis 0
-        //     let new_data = stack(Axis(0), &[before, insert_value.view(), after]).unwrap();
-        //     *data = new_data;
-        // }
-
-        // // --- If new keys exist in user input, add them ---
-        // if let Some(new_fields) = node_data {
-        //     for (name, new_val) in new_fields {
-        //         if !self.node_data.contains_key(&name) {
-        //             // Insert default 0s for existing nodes
-        //             let shape = new_val.shape();
-        //             let mut full_shape = vec![self.coords.nrows() - 1];
-        //             full_shape.extend_from_slice(&shape[1..]);
-        //             let mut new_array = ArrayD::zeros(full_shape.into());
-
-        //             // Insert the given value at index i
-        //             let insert_val = new_val.insert_axis(Axis(0));
-        //             let before = new_array.slice_axis(Axis(0), s![..i]);
-        //             let after = new_array.slice_axis(Axis(0), s![i..]);
-        //             let stacked = stack(Axis(0), &[before, insert_val.view(), after]).unwrap();
-        //             self.node_data.insert(name, stacked);
-        //         }
-        //     }
-        // }
-    }
-
-    pub fn append(&mut self, coord: Array1<f64>, fam: usize, node_data: Option<HashMap<String, ArrayD<f64>>>) {
-        self.coords.append(ndarray::Axis(0), coord.insert_axis(ndarray::Axis(0)).view()).unwrap();
-        self.node_families.append(ndarray::Axis(0), Array1::from(vec![fam]).view()).unwrap();
-        if let Some(data) = node_data {
-            for (k, v) in data {
-                self.node_data.insert(k, v);
-            }
-        }
-    }
-
-    pub fn pop(&mut self, i: usize, get_info: bool) -> (Array1<f64>, Option<usize>, Option<HashMap<String, ArrayD<f64>>>) {
-        let node = self.coords.row(i).to_owned();
-        let fam = self.node_families[i];
-
-        // Note: real removal not implemented, only demonstration
-        let node_info = if get_info {
-            Some(
-                self.node_data
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect(),
-            )
-        } else {
-            None
-        };
-
-        (node, Some(fam), node_info)
     }
 }
+
+impl RegularCells {
+    pub fn new(
+        element_type: RegularCellType,
+        connectivity: Array2<usize>,
+        params: HashMap<String, f64>,
+        fields: HashMap<String, ArrayD<f64>>,
+        families: Array1<usize>,
+        groups: HashMap<String, Array1<usize>>,
+    ) -> Self {
+        let len = families.len();
+        Self {
+            element_type,
+            connectivity,
+            params,
+            fields,
+            families,
+            groups,
+            len,
+        }
+    }
+}
+
+impl PolyCells {
+    pub fn new(
+        elem_type: PolyCellType,
+        connectivity: Array1<usize>,
+        offsets: Array1<usize>,
+        params: HashMap<String, f64>,
+        fields: HashMap<String, ArrayD<f64>>,
+        families: Array1<usize>,
+        groups: HashMap<String, Array1<usize>>,
+    ) -> Self {
+        let len = families.len();
+        Self {
+            elem_type,
+            connectivity,
+            offsets,
+            params,
+            fields,
+            families,
+            groups,
+            len,
+        }
+    }
+}
+
+impl MeshComponent for Vertices {
+    fn len(&self) -> usize {
+        self.len
+    }
+    fn params(&self) -> &HashMap<String, f64> {
+        &self.params
+    }
+    fn fields(&self) -> &HashMap<String, ArrayD<f64>> {
+        &self.fields
+    }
+    fn families(&self) -> &Array1<usize> {
+        &self.families
+    }
+    fn groups(&self) -> &HashMap<String, Array1<usize>> {
+        &self.groups
+    }
+}
+
+impl MeshComponent for RegularCells {
+    fn len(&self) -> usize {
+        self.len
+    }
+    fn params(&self) -> &HashMap<String, f64> {
+        &self.params
+    }
+    fn fields(&self) -> &HashMap<String, ArrayD<f64>> {
+        &self.fields
+    }
+    fn families(&self) -> &Array1<usize> {
+        &self.families
+    }
+    fn groups(&self) -> &HashMap<String, Array1<usize>> {
+        &self.groups
+    }
+}
+
+impl MeshComponent for PolyCells {
+    fn len(&self) -> usize {
+        self.len
+    }
+    fn params(&self) -> &HashMap<String, f64> {
+        &self.params
+    }
+    fn fields(&self) -> &HashMap<String, ArrayD<f64>> {
+        &self.fields
+    }
+    fn families(&self) -> &Array1<usize> {
+        &self.families
+    }
+    fn groups(&self) -> &HashMap<String, Array1<usize>> {
+        &self.groups
+    }
+}
+
+impl MeshComponent for MeshCompo {
+    fn len(&self) -> usize {
+        match self {
+            MeshCompo::Vertices(v) => v.len(),
+            MeshCompo::RegularCells(c) => c.len(),
+            MeshCompo::PolyCells(p) => p.len(),
+        }
+    }
+
+    fn params(&self) -> &HashMap<String, f64> {
+        match self {
+            MeshCompo::Vertices(v) => v.params(),
+            MeshCompo::RegularCells(c) => c.params(),
+            MeshCompo::PolyCells(p) => p.params(),
+        }
+    }
+
+    fn fields(&self) -> &HashMap<String, ArrayD<f64>> {
+        match self {
+            MeshCompo::Vertices(v) => v.fields(),
+            MeshCompo::RegularCells(c) => c.fields(),
+            MeshCompo::PolyCells(p) => p.fields(),
+        }
+    }
+
+    fn families(&self) -> &Array1<usize> {
+        match self {
+            MeshCompo::Vertices(v) => v.families(),
+            MeshCompo::RegularCells(c) => c.families(),
+            MeshCompo::PolyCells(p) => p.families(),
+        }
+    }
+
+    fn groups(&self) -> &HashMap<String, Array1<usize>> {
+        match self {
+            MeshCompo::Vertices(v) => v.groups(),
+            MeshCompo::RegularCells(c) => c.groups(),
+            MeshCompo::PolyCells(p) => p.groups(),
+        }
+    }
+}
+
+
+pub trait IntoMeshCompo {
+    fn into_mesh_compo(self) -> (MeshCompoType, MeshCompo);
+}
+
+impl IntoMeshCompo for Vertices {
+    fn into_mesh_compo(self) -> (MeshCompoType, MeshCompo) {
+        (MeshCompoType::VERTICES, MeshCompo::Vertices(self))
+    }
+}
+
+impl IntoMeshCompo for RegularCells {
+    fn into_mesh_compo(self) -> (MeshCompoType, MeshCompo) {
+        (self.element_type.into(), MeshCompo::RegularCells(self))
+    }
+}
+
+impl IntoMeshCompo for PolyCells {
+    fn into_mesh_compo(self) -> (MeshCompoType, MeshCompo) {
+        (self.elem_type.into(), MeshCompo::PolyCells(self))
+    }
+}
+
+impl UMesh {
+    pub fn add_compo<T: IntoMeshCompo>(&mut self, compo: T) {
+        let (key, wrapped) = compo.into_mesh_compo();
+        self.components.insert(key, wrapped);
+    }
+}
+

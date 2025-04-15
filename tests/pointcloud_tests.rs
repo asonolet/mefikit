@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    
-    use ndarray::{array};
+
     use mefikit::PointCloud;
+    use ndarray::array;
 
     #[test]
     fn test_new_pointcloud() {
@@ -49,6 +49,4 @@ mod tests {
         assert_eq!(popped, array![3.0, 4.0]);
         assert_eq!(fam, Some(0)); // default family
     }
-
 }
-
