@@ -1,5 +1,6 @@
-use ndarray::{concatenate, s, Array1, Array2, ArrayD, Axis};
+use ndarray::{s, Array1, Array2, ArrayD, ArrayView1, ArrayViewD, Axis};
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 #[derive(Copy, Clone)]
 pub enum EdgeType {
@@ -112,10 +113,11 @@ impl From<RegularCellType> for MeshCompoType {
 }
 
 pub struct Vertices {
+    connectivity: Array1<usize>,
     params: HashMap<String, f64>,
     fields: HashMap<String, ArrayD<f64>>,
     families: Array1<usize>,
-    groups: HashMap<String, Array1<usize>>,
+    groups: HashMap<String, HashSet<usize>>,
     len: usize,
 }
 
@@ -125,7 +127,7 @@ pub struct RegularCells {
     params: HashMap<String, f64>,
     fields: HashMap<String, ArrayD<f64>>,
     families: Array1<usize>,
-    groups: HashMap<String, Array1<usize>>,
+    groups: HashMap<String, HashSet<usize>>,
     len: usize,
 }
 
@@ -136,16 +138,16 @@ pub struct PolyCells {
     params: HashMap<String, f64>,
     fields: HashMap<String, ArrayD<f64>>,
     families: Array1<usize>,
-    groups: HashMap<String, Array1<usize>>,
+    groups: HashMap<String, HashSet<usize>>,
     len: usize,
 }
 
-pub struct Elem {
-    cell_type: MeshCompoType,
-    connectivity: Array1<usize>,
-    fields: HashMap<String, ArrayD<f64>>,
-    family: usize,
-    groups: HashMap<String, Array1<usize>>,
+pub struct MeshElementView<'a> {
+    pub fields: HashMap<String, ArrayViewD<'a, f64>>,
+    pub family: usize,
+    pub groups: HashSet<String>,
+    pub connectivity: ArrayView1<'a, usize>,
+    pub compo_type: MeshCompoType,
 }
 
 pub enum MeshCompo {
@@ -164,7 +166,33 @@ trait MeshComponent {
     fn params(&self) -> &HashMap<String, f64>;
     fn fields(&self) -> &HashMap<String, ArrayD<f64>>;
     fn families(&self) -> &Array1<usize>;
-    fn groups(&self) -> &HashMap<String, Array1<usize>>;
+    fn groups(&self) -> &HashMap<String, HashSet<usize>>;
+    fn iter_elements(&self) -> Box<dyn Iterator<Item = MeshElementView> + '_>;
+    fn compo_type(&self) -> MeshCompoType;
+    fn element_fields(&self, i: usize) -> HashMap<String, ArrayViewD<f64>> {
+        self.fields()
+            .iter()
+            .map(|(k, v)| (k.clone(), v.index_axis(Axis(0), i)))
+            .collect()
+    }
+    fn element_family_and_groups(&self, i: usize) -> (usize, HashSet<String>) {
+        let families = self.families();
+        let groups = self.groups();
+
+        let family = families[i];
+        let group_names = groups
+            .iter()
+            .filter_map(|(name, fset)| {
+                if fset.contains(&family) {
+                    Some(name.clone())
+                } else {
+                    None
+                }
+            })
+        .collect();
+
+        (family, group_names)
+    }
 }
 
 impl Vertices {
@@ -172,10 +200,12 @@ impl Vertices {
         params: HashMap<String, f64>,
         fields: HashMap<String, ArrayD<f64>>,
         families: Array1<usize>,
-        groups: HashMap<String, Array1<usize>>,
+        groups: HashMap<String, HashSet<usize>>,
     ) -> Self {
         let len = families.len();
+        let connectivity = Array1::from_shape_fn(len, |i| i);
         Self {
+            connectivity,
             params,
             fields,
             families,
@@ -192,7 +222,7 @@ impl RegularCells {
         params: HashMap<String, f64>,
         fields: HashMap<String, ArrayD<f64>>,
         families: Array1<usize>,
-        groups: HashMap<String, Array1<usize>>,
+        groups: HashMap<String, HashSet<usize>>,
     ) -> Self {
         let len = families.len();
         Self {
@@ -215,7 +245,7 @@ impl PolyCells {
         params: HashMap<String, f64>,
         fields: HashMap<String, ArrayD<f64>>,
         families: Array1<usize>,
-        groups: HashMap<String, Array1<usize>>,
+        groups: HashMap<String, HashSet<usize>>,
     ) -> Self {
         let len = families.len();
         Self {
@@ -244,8 +274,28 @@ impl MeshComponent for Vertices {
     fn families(&self) -> &Array1<usize> {
         &self.families
     }
-    fn groups(&self) -> &HashMap<String, Array1<usize>> {
+    fn groups(&self) -> &HashMap<String, HashSet<usize>> {
         &self.groups
+    }
+    fn iter_elements(&self) -> Box<dyn Iterator<Item = MeshElementView> + '_> {
+        Box::new((0..self.len).map(move |i| {
+            let fields = self.element_fields(i);
+
+            let (family, groups) = self.element_family_and_groups(i);
+
+            let connectivity = self.connectivity.slice(s![i..=i]);
+
+            MeshElementView {
+                fields,
+                family,
+                groups,
+                connectivity,
+                compo_type: MeshCompoType::VERTEX,
+            }
+        }))
+    }
+    fn compo_type(&self) -> MeshCompoType {
+        MeshCompoType::VERTEX
     }
 }
 
@@ -262,8 +312,31 @@ impl MeshComponent for RegularCells {
     fn families(&self) -> &Array1<usize> {
         &self.families
     }
-    fn groups(&self) -> &HashMap<String, Array1<usize>> {
+    fn groups(&self) -> &HashMap<String, HashSet<usize>> {
         &self.groups
+    }
+    fn iter_elements(&self) -> Box<dyn Iterator<Item = MeshElementView> + '_> {
+        Box::new((0..self.len).map(move |i| {
+            // 1. Extract element fields
+            let fields = self.element_fields(i);
+
+            let (family, groups) = self.element_family_and_groups(i);
+
+            // 4. Extract connectivity
+            let connectivity = self.connectivity.row(i);
+
+            // 5. Compose MeshElementView
+            MeshElementView {
+                fields,
+                family,
+                groups,
+                connectivity,
+                compo_type: self.cell_type.into(), // assuming From<RegularCellType> for MeshCompoType
+            }
+        }))
+    }
+    fn compo_type(&self) -> MeshCompoType {
+        self.cell_type.into()
     }
 }
 
@@ -280,9 +353,32 @@ impl MeshComponent for PolyCells {
     fn families(&self) -> &Array1<usize> {
         &self.families
     }
-    fn groups(&self) -> &HashMap<String, Array1<usize>> {
+    fn groups(&self) -> &HashMap<String, HashSet<usize>> {
         &self.groups
     }
+    fn iter_elements(&self) -> Box<dyn Iterator<Item = MeshElementView> + '_> {
+        Box::new((0..self.len).map(move |i| {
+            let fields = self.element_fields(i);
+
+            let (family, groups) = self.element_family_and_groups(i);
+
+            let start = self.offsets[i];
+            let end = self.offsets[i + 1];
+            let connectivity = self.connectivity.slice(ndarray::s![start..end]);
+
+            MeshElementView {
+                fields,
+                family,
+                groups,
+                connectivity,
+                compo_type: self.cell_type.into(), // assumes From<PolyCellType> for MeshCompoType
+            }
+        }))
+    }
+    fn compo_type(&self) -> MeshCompoType {
+        self.cell_type.into()
+    }
+
 }
 
 impl MeshComponent for MeshCompo {
@@ -318,14 +414,29 @@ impl MeshComponent for MeshCompo {
         }
     }
 
-    fn groups(&self) -> &HashMap<String, Array1<usize>> {
+    fn groups(&self) -> &HashMap<String, HashSet<usize>> {
         match self {
             MeshCompo::Vertices(v) => v.groups(),
             MeshCompo::RegularCells(c) => c.groups(),
             MeshCompo::PolyCells(p) => p.groups(),
         }
     }
+    fn iter_elements(&self) -> Box<dyn Iterator<Item = MeshElementView> + '_> {
+        match self {
+            MeshCompo::Vertices(v) => v.iter_elements(),
+            MeshCompo::RegularCells(c) => c.iter_elements(),
+            MeshCompo::PolyCells(p) => p.iter_elements(),
+        }
+    }
+    fn compo_type(&self) -> MeshCompoType {
+        match self {
+            MeshCompo::Vertices(v) => v.compo_type(),
+            MeshCompo::RegularCells(c) => c.compo_type(),
+            MeshCompo::PolyCells(p) => p.compo_type(),
+        }
+    }
 }
+
 
 
 pub trait IntoMeshCompo {
@@ -356,4 +467,3 @@ impl UMesh {
         self.components.insert(key, wrapped);
     }
 }
-
