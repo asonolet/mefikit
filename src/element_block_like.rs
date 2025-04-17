@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use crate::mesh_element::ElementType;
 
-trait ElementBlockLike {
+pub trait ElementBlockLike {
     fn len(&self) -> usize;
     fn params(&self) -> &HashMap<String, f64>;
     fn fields(&self) -> &HashMap<String, ArrayD<f64>>;

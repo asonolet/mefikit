@@ -1,4 +1,4 @@
-use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD};
+use ndarray::{Array1, Array2, ArrayD};
 use std::collections::HashMap;
 use std::collections::HashSet;
 

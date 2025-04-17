@@ -1,6 +1,6 @@
-pub mod mesh_element;
-pub mod element_block;
-pub mod element_block_like;
+mod mesh_element;
+mod element_block;
+mod element_block_like;
 
 pub mod umesh {
 
@@ -8,9 +8,9 @@ pub mod umesh {
     use std::collections::HashMap;
     use std::collections::HashSet;
     
-    use crate::mesh_element::ElementType;
-    use crate::element_block::{ElementBlock, IntoElementBlockEntry, RegularCells, PolyCells};
-    use crate::element_block_like::ElementBlockLike;
+    pub use crate::mesh_element::ElementType;
+    pub use crate::element_block::{ElementBlock, IntoElementBlockEntry, RegularCells, PolyCells};
+    pub use crate::element_block_like::ElementBlockLike;
 
     pub struct UMesh {
         coords: Array2<f64>,
