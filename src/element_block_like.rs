@@ -1,7 +1,8 @@
-use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD, Axis};
+use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis};
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::mesh_element::ElementType;
 
 trait ElementBlockLike {
     fn len(&self) -> usize;

@@ -1,11 +1,16 @@
-use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD, Axis};
-use std::collections::HashMap;
-use std::collections::HashSet;
-
+pub mod mesh_element;
 pub mod element_block;
 pub mod element_block_like;
 
 pub mod umesh {
+
+    use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD, Axis};
+    use std::collections::HashMap;
+    use std::collections::HashSet;
+    
+    use crate::mesh_element::ElementType;
+    use crate::element_block::{ElementBlock, IntoElementBlockEntry, RegularCells, PolyCells};
+    use crate::element_block_like::ElementBlockLike;
 
     pub struct UMesh {
         coords: Array2<f64>,
