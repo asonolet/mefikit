@@ -1,6 +1,6 @@
 mod umesh {
 
-    use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayViewD, Axis};
+    use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD, Axis};
     use std::collections::HashMap;
     use std::collections::HashSet;
 
@@ -57,7 +57,7 @@ mod umesh {
         HEX21,
     }
 
-    #[derive(Eq, Hash, Copy, Clone, PartialEq)]
+    #[derive(Debug, Eq, Hash, Copy, Clone, PartialEq)]
     pub enum ElementType {
         // 0d
         VERTEX,
@@ -136,6 +136,7 @@ mod umesh {
     }
 
     pub struct MeshElementView<'a> {
+        pub coords: ArrayView2<'a, f64>,
         pub fields: HashMap<String, ArrayViewD<'a, f64>>,
         pub family: usize,
         pub groups: HashSet<String>,
@@ -153,13 +154,58 @@ mod umesh {
         element_blocks: HashMap<ElementType, ElementBlock>,
     }
 
+    pub struct UMeshView<'a> {
+        pub coords: &'a Array2<f64>,
+        pub elements: HashMap<ElementType, ElementBlockView<'a>>,
+    }
+    pub enum ElementBlockView<'a> {
+        RegularCells(&'a RegularCells),
+        PolyCells(&'a PolyCells),
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct CellId {
+        pub element_type: ElementType,
+        pub local_index: usize,
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub enum TopologicalDimension {
+        D0,
+        D1,
+        D2,
+        D3,
+    }
+
+    impl ElementType {
+        pub fn topological_dimension(&self) -> TopologicalDimension {
+            use ElementType::*;
+            match self {
+                // 0D
+                VERTEX => TopologicalDimension::D0,
+
+                // 1D
+                SEG2 | SEG3 | SEG4 | SPLINE => TopologicalDimension::D1,
+
+                // 2D
+                TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 | PGON => TopologicalDimension::D2,
+
+                // 3D
+                TET4 | TET10 | HEX8 | HEX21 | PHED => TopologicalDimension::D3,
+            }
+        }
+    }
+
     trait ElementBlockLike {
         fn len(&self) -> usize;
         fn params(&self) -> &HashMap<String, f64>;
         fn fields(&self) -> &HashMap<String, ArrayD<f64>>;
         fn families(&self) -> &Array1<usize>;
         fn groups(&self) -> &HashMap<String, HashSet<usize>>;
-        fn iter_elements(&self) -> Box<dyn Iterator<Item = MeshElementView> + '_>;
+        fn iter_elements<'a>(
+            &'a self,
+            coords: &'a Array2<f64>,
+        ) -> Box<dyn Iterator<Item = MeshElementView<'a>> + 'a>;
         fn compo_type(&self) -> ElementType;
         fn element_fields(&self, i: usize) -> HashMap<String, ArrayViewD<f64>> {
             self.fields()
@@ -245,26 +291,53 @@ mod umesh {
         fn groups(&self) -> &HashMap<String, HashSet<usize>> {
             &self.groups
         }
-        fn iter_elements(&self) -> Box<dyn Iterator<Item = MeshElementView> + '_> {
-            Box::new((0..self.len()).map(move |i| {
+        fn iter_elements<'a>(
+            &'a self,
+            coords: &'a Array2<f64>,
+        ) -> Box<dyn Iterator<Item = MeshElementView<'a>> + 'a> {
+            let iter = (0..self.len()).map(move |i| {
                 // 1. Extract element fields
                 let fields = self.element_fields(i);
 
+                // 2. 3. Extract and copy family and groups
                 let (family, groups) = self.element_family_and_groups(i);
 
                 // 4. Extract connectivity
                 let connectivity = self.connectivity.row(i);
 
-                // 5. Compose MeshElementView
                 MeshElementView {
                     fields,
                     family,
                     groups,
                     connectivity,
-                    compo_type: self.cell_type.into(), // assuming From<RegularCellType> for ElementType
+                    compo_type: self.cell_type.into(),
+                    coords: coords.view(), // pass full view
                 }
-            }))
+            });
+
+            Box::new(iter)
         }
+        // fn iter_elements(&self, coords: ArrayView2<'a, f64>) -> Box<dyn Iterator<Item = MeshElementView> + '_> {
+        //     Box::new((0..self.len()).map(move |i| {
+        //         // 1. Extract element fields
+        //         let fields = self.element_fields(i);
+
+        //         let (family, groups) = self.element_family_and_groups(i);
+
+        //         // 4. Extract connectivity
+        //         let connectivity = self.connectivity.row(i);
+
+        //         // 5. Compose MeshElementView
+        //         MeshElementView {
+        //             coords,
+        //             fields,
+        //             family,
+        //             groups,
+        //             connectivity,
+        //             compo_type: self.cell_type.into(), // assuming From<RegularCellType> for ElementType
+        //         }
+        //     }))
+        // }
         fn compo_type(&self) -> ElementType {
             self.cell_type.into()
         }
@@ -286,12 +359,18 @@ mod umesh {
         fn groups(&self) -> &HashMap<String, HashSet<usize>> {
             &self.groups
         }
-        fn iter_elements(&self) -> Box<dyn Iterator<Item = MeshElementView> + '_> {
-            Box::new((0..self.len()).map(move |i| {
+        fn iter_elements<'a>(
+            &'a self,
+            coords: &'a Array2<f64>,
+        ) -> Box<dyn Iterator<Item = MeshElementView<'a>> + 'a> {
+            let iter = (0..self.len()).map(move |i| {
+                // 1. Extract element fields
                 let fields = self.element_fields(i);
 
+                // 2. 3. Extract and copy family and groups
                 let (family, groups) = self.element_family_and_groups(i);
 
+                // 4. Get the connectivity slice for element `i`
                 let start = self.offsets[i];
                 let end = self.offsets[i + 1];
                 let connectivity = self.connectivity.slice(ndarray::s![start..end]);
@@ -301,10 +380,32 @@ mod umesh {
                     family,
                     groups,
                     connectivity,
-                    compo_type: self.cell_type.into(), // assumes From<PolyCellType> for ElementType
+                    compo_type: self.cell_type.into(),
+                    coords: coords.view(), // full view of the coordinates
                 }
-            }))
+            });
+
+            Box::new(iter)
         }
+        // fn iter_elements(&self) -> Box<dyn Iterator<Item = MeshElementView> + '_> {
+        //     Box::new((0..self.len()).map(move |i| {
+        //         let fields = self.element_fields(i);
+
+        //         let (family, groups) = self.element_family_and_groups(i);
+
+        //         let start = self.offsets[i];
+        //         let end = self.offsets[i + 1];
+        //         let connectivity = self.connectivity.slice(ndarray::s![start..end]);
+
+        //         MeshElementView {
+        //             fields,
+        //             family,
+        //             groups,
+        //             connectivity,
+        //             compo_type: self.cell_type.into(), // assumes From<PolyCellType> for ElementType
+        //         }
+        //     }))
+        // }
         fn compo_type(&self) -> ElementType {
             self.cell_type.into()
         }
@@ -345,10 +446,13 @@ mod umesh {
                 ElementBlock::PolyCells(p) => p.groups(),
             }
         }
-        fn iter_elements(&self) -> Box<dyn Iterator<Item = MeshElementView> + '_> {
+        fn iter_elements<'a>(
+            &'a self,
+            coords: &'a Array2<f64>,
+        ) -> Box<dyn Iterator<Item = MeshElementView<'a>> + 'a> {
             match self {
-                ElementBlock::RegularCells(c) => c.iter_elements(),
-                ElementBlock::PolyCells(p) => p.iter_elements(),
+                ElementBlock::RegularCells(c) => c.iter_elements(coords),
+                ElementBlock::PolyCells(p) => p.iter_elements(coords),
             }
         }
         fn compo_type(&self) -> ElementType {
