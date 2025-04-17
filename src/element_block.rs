@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 
-pub use crate::mesh_element::{ElementType, MeshElementView};
+use crate::mesh_element::{ElementType, MeshElementView};
+use crate::element_block_like::ElementBlockLike;
 
 
 #[derive(Copy, Clone)]

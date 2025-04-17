@@ -2,7 +2,7 @@ use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis};
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::mesh_element::ElementType;
+use crate::mesh_element::{ElementType, MeshElementView};
 
 pub trait ElementBlockLike {
     fn len(&self) -> usize;

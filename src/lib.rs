@@ -2,6 +2,10 @@ mod mesh_element;
 mod element_block;
 mod element_block_like;
 
+pub use crate::mesh_element::ElementType;
+pub use crate::element_block::{ElementBlock, IntoElementBlockEntry, RegularCells, PolyCells};
+pub use crate::element_block_like::ElementBlockLike;
+
 pub mod umesh {
 
     use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD, Axis};
