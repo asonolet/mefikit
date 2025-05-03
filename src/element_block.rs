@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 
-use crate::mesh_element::{ElementType, MeshElementView};
+use crate::mesh_element::{ElementType, ElementView};
 use crate::element_block_like::ElementBlockLike;
 
 
@@ -178,7 +178,7 @@ impl ElementBlockLike for RegularCells {
     fn iter_elements<'a>(
         &'a self,
         coords: &'a Array2<f64>,
-    ) -> Box<dyn Iterator<Item = MeshElementView<'a>> + 'a> {
+    ) -> Box<dyn Iterator<Item = ElementView<'a>> + 'a> {
         let iter = (0..self.len()).map(move |i| {
             // 1. Extract element fields
             let fields = self.element_fields(i);
@@ -189,7 +189,7 @@ impl ElementBlockLike for RegularCells {
             // 4. Extract connectivity
             let connectivity = self.connectivity.row(i);
 
-            MeshElementView {
+            ElementView {
                 fields,
                 family,
                 groups,
@@ -225,7 +225,7 @@ impl ElementBlockLike for PolyCells {
     fn iter_elements<'a>(
         &'a self,
         coords: &'a Array2<f64>,
-    ) -> Box<dyn Iterator<Item = MeshElementView<'a>> + 'a> {
+    ) -> Box<dyn Iterator<Item = ElementView<'a>> + 'a> {
         let iter = (0..self.len()).map(move |i| {
             // 1. Extract element fields
             let fields = self.element_fields(i);
@@ -238,7 +238,7 @@ impl ElementBlockLike for PolyCells {
             let end = self.offsets[i + 1];
             let connectivity = self.connectivity.slice(ndarray::s![start..end]);
 
-            MeshElementView {
+            ElementView {
                 fields,
                 family,
                 groups,
@@ -293,7 +293,7 @@ impl ElementBlockLike for ElementBlock {
     fn iter_elements<'a>(
         &'a self,
         coords: &'a Array2<f64>,
-    ) -> Box<dyn Iterator<Item = MeshElementView<'a>> + 'a> {
+    ) -> Box<dyn Iterator<Item = ElementView<'a>> + 'a> {
         match self {
             ElementBlock::RegularCells(c) => c.iter_elements(coords),
             ElementBlock::PolyCells(p) => p.iter_elements(coords),

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 
-pub struct MeshElementView<'a> {
+pub struct ElementView<'a> {
     pub coords: ArrayView2<'a, f64>,
     pub fields: HashMap<String, ArrayViewD<'a, f64>>,
     pub family: usize,

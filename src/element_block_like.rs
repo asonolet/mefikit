@@ -2,7 +2,7 @@ use ndarray::{Array1, Array2, ArrayD, ArrayViewD, Axis};
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::mesh_element::{ElementType, MeshElementView};
+use crate::mesh_element::{ElementType, ElementView};
 
 pub trait ElementBlockLike {
     fn len(&self) -> usize;
@@ -13,7 +13,7 @@ pub trait ElementBlockLike {
     fn iter_elements<'a>(
         &'a self,
         coords: &'a Array2<f64>,
-    ) -> Box<dyn Iterator<Item = MeshElementView<'a>> + 'a>;
+    ) -> Box<dyn Iterator<Item = ElementView<'a>> + 'a>;
     fn compo_type(&self) -> ElementType;
     fn element_fields(&self, i: usize) -> HashMap<String, ArrayViewD<f64>> {
         self.fields()
