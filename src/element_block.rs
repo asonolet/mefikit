@@ -1,9 +1,9 @@
-use ndarray::{Array1, Array2, ArrayD, ArrayView1, Axis, s};
+use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, ArrayViewMutD, Axis, s};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use rayon::prelude::*;
 
-use crate::element::{ElementType, Element};
+use crate::element::{ElementType, Element, ElementMut};
 
 
 pub enum Connectivity {
@@ -32,18 +32,16 @@ impl Connectivity {
             }
         }
     }
-
-    // pub fn element_connectivity_mut<'a>(& mut self, index: usize) -> ArrayViewMut1<'a, usize> {
-    //     match self {
-    //         Connectivity::Regular(conn) => conn.row_mut(index),
-    //         Connectivity::Poly { data, offsets } => {
-    //             let start = offsets[index];
-    //             let end = offsets[index + 1];
-    //             // data.slice_mut<'a>(s![start..end])
-    //             data.slice_mut<s![start..end]>()
-    //         }
-    //     }
-    // }
+    pub fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<'_, usize> {
+        match self {
+            Connectivity::Regular(conn) => conn.row_mut(index),
+            Connectivity::Poly { data, offsets } => {
+                let start = offsets[index];
+                let end = offsets[index + 1];
+                data.slice_mut(s![start..end])
+            }
+        }
+    }
 }
 
 pub struct ElementBlock {
@@ -55,53 +53,37 @@ pub struct ElementBlock {
     pub groups: HashMap<String, HashSet<usize>>,
 }
 
-impl ElementBlock {
+impl<'a> ElementBlock {
     fn len(&self) -> usize {
         self.connectivity.len()
     }
-    fn params(&self) -> &HashMap<String, f64> {
-        &self.params
-    }
-    fn fields(&self) -> &HashMap<String, ArrayD<f64>> {
-        &self.fields
-    }
-    fn families(&self) -> &Array1<usize> {
-        &self.families
-    }
-    fn groups(&self) -> &HashMap<String, HashSet<usize>> {
-        &self.groups
-    }
-    fn compo_type(&self) -> ElementType {
-        self.cell_type.into()
-    }
-    fn element_connectivity<'a>(&'a self, index: usize) -> ArrayView1<'a, usize> {
+    fn element_connectivity(&'a self, index: usize) -> ArrayView1<'a, usize> {
         self.connectivity.element_connectivity(index)
     }
-    fn iter<'a>(&'a self, coords: &'a Array2<f64>) -> Box<dyn Iterator<Item = Element<'a>> + 'a> {
+    fn iter(&'a self, coords: &'a Array2<f64>) -> Box<dyn Iterator<Item = Element<'a>> + 'a> {
         Box::new((0..self.len()).map(move |i| {
             let connectivity = self.element_connectivity(i);
-            let family = &self.families()[i];
-            let fields = self.fields().iter()
+            let fields = self.fields.iter()
                 .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
                 .collect();
             Element {
                 global_index: i,
                 coords,
                 fields,
-                family,
-                groups: self.groups(),
+                family: &self.families[i],
+                groups: &self.groups,
                 connectivity,
-                compo_type: self.compo_type(),
+                compo_type: self.cell_type,
             }
         }))
     }
-    fn par_iter<'a>(
+    fn par_iter(
         &'a self,
         coords: &'a Array2<f64>,
     ) -> impl ParallelIterator<Item = Element<'a>> + 'a {
         (0..self.len()).into_par_iter().map(move |i| {
             let connectivity = self.element_connectivity(i);
-            let fields = self.fields()
+            let fields = self.fields
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
                 .collect();
@@ -110,29 +92,71 @@ impl ElementBlock {
                 global_index: i,
                 coords,
                 fields,
-                family: &self.families()[i],
-                groups: self.groups(),
+                family: &self.families[i],
+                groups: &self.groups,
                 connectivity,
-                compo_type: self.compo_type(),
+                compo_type: self.cell_type,
             }
         })
     }
-    // fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize> {
-    //     self.connectivity.element_connectivity_mut(index)
-    // }
+    fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize> {
+        self.connectivity.element_connectivity_mut(index)
+    }
 
-    // fn iter_mut<'a>(
+    pub fn iter_mut<'a>(
+        &'a mut self,
+        coords: &'a Array2<f64>,
+    ) -> impl Iterator<Item = ElementMut<'a>> + 'a {
+        let ElementBlock {
+            cell_type,
+            connectivity,
+            params: _,
+            fields,
+            families,
+            groups,
+        } = self;
+
+        let num_elems = connectivity.len();
+
+        (0..num_elems).map(move |i| {
+            let connectivity_view = connectivity.element_connectivity_mut(i);
+
+            let family_ref = &mut families[i];
+
+            let field_views: HashMap<&'a str, ArrayViewMutD<'a, f64>> = fields
+                .iter_mut()
+                .map(|(k, v)| (k.as_str(), v.index_axis_mut(Axis(0), i)))
+                .collect();
+
+            ElementMut {
+                global_index: i,
+                coords,
+                connectivity: connectivity_view,
+                family: family_ref,
+                fields: field_views,
+                groups,
+                element_type: *cell_type,
+            }
+        })
+    }
+
+    // pub fn par_iter_mut<'a>(
     //     &'a mut self,
     //     coords: &'a Array2<f64>,
-    // ) -> impl Iterator<Item = ElementMut<'a>> + 'a {
-    //     (0..self.len()).map(move |i| {
-    //         let connectivity = self.element_connectivity_mut(i);
-    //         let family = &mut self.families_mut()[i]; // Access mutable family
+    // ) -> impl ParallelIterator<Item = ElementMut<'a>> {
+    //     let num_elems = self.connectivity.len();
 
-    //         let fields = self
-    //             .fields_mut()
+    //     // SAFETY: We split interior mutability manually into chunks
+    //     // and make sure each index `i` is accessed only once.
+    //     (0..num_elems).into_par_iter().map(move |i| {
+    //         let connectivity = self.connectivity.element_connectivity_mut(i);
+
+    //         let family = &mut self.families[i];
+
+    //         let fields: HashMap<&'a str, ArrayViewMutD<'a, f64>> = self
+    //             .fields
     //             .iter_mut()
-    //             .map(|(k, v)| (k.as_str(), v.index_axis_mut(Axis(0), i)))
+    //             .map(|(k, v)| (k.as_str(), v.index_axis_mut(ndarray::Axis(0), i)))
     //             .collect();
 
     //         ElementMut {
@@ -141,38 +165,8 @@ impl ElementBlock {
     //             connectivity,
     //             family,
     //             fields,
-    //             groups: self.groups(),
-    //             element_type: self.compo_type(),
-    //         }
-    //     })
-    // }
-
-    // fn par_iter_mut<'a>(
-    //     &'a mut self,
-    //     coords: &'a Array2<f64>,
-    // ) -> impl ParallelIterator<Item = ElementMut<'a>> + 'a {
-    //     let len = self.len();
-    //     let families_ptr = self.families_mut() as *mut Array1<usize>;
-    //     let fields_ptr = self.fields_mut() as *mut HashMap<String, ArrayD<f64>>;
-
-    //     (0..len).into_par_iter().map(move |i| {
-    //         let connectivity = unsafe { self.element_connectivity_mut(i) };
-    //         let family = unsafe { &mut (*families_ptr)[i] };
-    //         let fields = unsafe {
-    //             (*fields_ptr)
-    //                 .iter_mut()
-    //                 .map(|(k, v)| (k.as_str(), v.index_axis_mut(Axis(0), i)))
-    //                 .collect()
-    //         };
-
-    //         ElementMut {
-    //             global_index: i,
-    //             coords,
-    //             connectivity,
-    //             family,
-    //             fields,
-    //             groups: self.groups(),
-    //             element_type: self.compo_type(),
+    //             groups: &self.groups,
+    //             element_type: self.cell_type,
     //         }
     //     })
     // }
