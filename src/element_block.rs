@@ -92,76 +92,46 @@ impl From<RegularCellType> for ElementType {
     }
 }
 
-pub struct RegularCells {
-    cell_type: RegularCellType,
-    connectivity: Array2<usize>,
-    params: HashMap<String, f64>,
-    fields: HashMap<String, ArrayD<f64>>,
-    families: Array1<usize>,
-    groups: HashMap<String, HashSet<usize>>,
-}
-
-pub struct PolyCells {
-    cell_type: PolyCellType,
-    connectivity: Array1<usize>,
-    offsets: Array1<usize>,
-    params: HashMap<String, f64>,
-    fields: HashMap<String, ArrayD<f64>>,
-    families: Array1<usize>,
-    groups: HashMap<String, HashSet<usize>>,
-}
-
-pub enum ElementBlock {
-    RegularCells(RegularCells),
-    PolyCells(PolyCells),
-}
-
-
-impl RegularCells {
-    pub fn new(
-        cell_type: RegularCellType,
-        connectivity: Array2<usize>,
-        params: HashMap<String, f64>,
-        fields: HashMap<String, ArrayD<f64>>,
-        families: Array1<usize>,
-        groups: HashMap<String, HashSet<usize>>,
-    ) -> Self {
-        Self {
-            cell_type,
-            connectivity,
-            params,
-            fields,
-            families,
-            groups,
-        }
-    }
-}
-
-impl PolyCells {
-    pub fn new(
-        cell_type: PolyCellType,
-        connectivity: Array1<usize>,
+pub enum Connectivity {
+    Regular(Array2<usize>),
+    Poly {
+        data: Array1<usize>,
         offsets: Array1<usize>,
-        params: HashMap<String, f64>,
-        fields: HashMap<String, ArrayD<f64>>,
-        families: Array1<usize>,
-        groups: HashMap<String, HashSet<usize>>,
-    ) -> Self {
-        Self {
-            cell_type,
-            connectivity,
-            offsets,
-            params,
-            fields,
-            families,
-            groups,
+    },
+}
+
+impl Connectivity {
+    pub fn len(&self) -> usize {
+        match self {
+            Connectivity::Regular(conn) => conn.nrows(),
+            Connectivity::Poly {offsets, ..} => offsets.len() - 1,
+        }
+    }
+
+    pub fn element_connectivity(&self, index: usize) -> ArrayView1<'_, usize> {
+        match self {
+            Connectivity::Regular(conn) => conn.row(index),
+            Connectivity::Poly { data, offsets } => {
+                let start = offsets[index];
+                let end = offsets[index + 1];
+                data.slice(s![start..end])
+            }
         }
     }
 }
 
-impl ElementBlockLike for RegularCells {
+pub struct ElementBlock {
+    cell_type: ElementType,
+    connectivity: Connectivity,
+    params: HashMap<String, f64>,
+    fields: HashMap<String, ArrayD<f64>>,
+    families: Array1<usize>,
+    groups: HashMap<String, HashSet<usize>>,
+}
+
+impl ElementBlock {
     fn len(&self) -> usize {
-        self.families.len()
+        self.connectivity.len()
     }
     fn params(&self) -> &HashMap<String, f64> {
         &self.params
@@ -175,135 +145,51 @@ impl ElementBlockLike for RegularCells {
     fn groups(&self) -> &HashMap<String, HashSet<usize>> {
         &self.groups
     }
-    fn iter_elements<'a>(
-        &'a self,
-        coords: &'a Array2<f64>,
-    ) -> Box<dyn Iterator<Item = ElementView<'a>> + 'a> {
-        let iter = (0..self.len()).map(move |i| {
-            // 1. Extract element fields
-            let fields = self.element_fields(i);
-
-            // 2. 3. Extract and copy family and groups
-            let (family, groups) = self.element_family_and_groups(i);
-
-            // 4. Extract connectivity
-            let connectivity = self.connectivity.row(i);
-
-            ElementView {
-                fields,
-                family,
-                groups,
-                connectivity,
-                compo_type: self.cell_type.into(),
-                coords: coords.view(), // pass full view
-            }
-        });
-
-        Box::new(iter)
-    }
     fn compo_type(&self) -> ElementType {
         self.cell_type.into()
     }
-}
-
-impl ElementBlockLike for PolyCells {
-    fn len(&self) -> usize {
-        self.families.len()
+    fn element_connectivity<'a>(&'a self, index: usize) -> ArrayView1<'a, usize> {
+        self.connectivity.element_connectivity(index)
     }
-    fn params(&self) -> &HashMap<String, f64> {
-        &self.params
-    }
-    fn fields(&self) -> &HashMap<String, ArrayD<f64>> {
-        &self.fields
-    }
-    fn families(&self) -> &Array1<usize> {
-        &self.families
-    }
-    fn groups(&self) -> &HashMap<String, HashSet<usize>> {
-        &self.groups
-    }
-    fn iter_elements<'a>(
-        &'a self,
-        coords: &'a Array2<f64>,
-    ) -> Box<dyn Iterator<Item = ElementView<'a>> + 'a> {
-        let iter = (0..self.len()).map(move |i| {
-            // 1. Extract element fields
-            let fields = self.element_fields(i);
-
-            // 2. 3. Extract and copy family and groups
-            let (family, groups) = self.element_family_and_groups(i);
-
-            // 4. Get the connectivity slice for element `i`
-            let start = self.offsets[i];
-            let end = self.offsets[i + 1];
-            let connectivity = self.connectivity.slice(ndarray::s![start..end]);
-
-            ElementView {
+    fn iter<'a>(&'a self, coords: &'a Array2<f64>) -> Box<dyn Iterator<Item = Element<'a>> + 'a> {
+        Box::new((0..self.len()).map(move |i| {
+            let connectivity = self.element_connectivity(i);
+            let family = &self.families()[i];
+            let fields = self.fields().iter()
+                .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
+                .collect();
+            Element {
+                global_index: i,
+                coords,
                 fields,
                 family,
-                groups,
+                groups: self.groups(),
                 connectivity,
-                compo_type: self.cell_type.into(),
-                coords: coords.view(), // full view of the coordinates
+                compo_type: self.compo_type(),
             }
-        });
-
-        Box::new(iter)
+        }))
     }
-    fn compo_type(&self) -> ElementType {
-        self.cell_type.into()
-    }
-}
-
-impl ElementBlockLike for ElementBlock {
-    fn len(&self) -> usize {
-        match self {
-            ElementBlock::RegularCells(c) => c.len(),
-            ElementBlock::PolyCells(p) => p.len(),
-        }
-    }
-
-    fn params(&self) -> &HashMap<String, f64> {
-        match self {
-            ElementBlock::RegularCells(c) => c.params(),
-            ElementBlock::PolyCells(p) => p.params(),
-        }
-    }
-
-    fn fields(&self) -> &HashMap<String, ArrayD<f64>> {
-        match self {
-            ElementBlock::RegularCells(c) => c.fields(),
-            ElementBlock::PolyCells(p) => p.fields(),
-        }
-    }
-
-    fn families(&self) -> &Array1<usize> {
-        match self {
-            ElementBlock::RegularCells(c) => c.families(),
-            ElementBlock::PolyCells(p) => p.families(),
-        }
-    }
-
-    fn groups(&self) -> &HashMap<String, HashSet<usize>> {
-        match self {
-            ElementBlock::RegularCells(c) => c.groups(),
-            ElementBlock::PolyCells(p) => p.groups(),
-        }
-    }
-    fn iter_elements<'a>(
+    fn par_iter<'a>(
         &'a self,
         coords: &'a Array2<f64>,
-    ) -> Box<dyn Iterator<Item = ElementView<'a>> + 'a> {
-        match self {
-            ElementBlock::RegularCells(c) => c.iter_elements(coords),
-            ElementBlock::PolyCells(p) => p.iter_elements(coords),
-        }
-    }
-    fn compo_type(&self) -> ElementType {
-        match self {
-            ElementBlock::RegularCells(c) => c.compo_type(),
-            ElementBlock::PolyCells(p) => p.compo_type(),
-        }
+    ) -> impl ParallelIterator<Item = Element<'a>> + 'a {
+        (0..self.len()).into_par_iter().map(move |i| {
+            let connectivity = self.element_connectivity(i);
+            let fields = self.fields()
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
+                .collect();
+
+            Element {
+                global_index: i,
+                coords,
+                fields,
+                family: &self.families()[i],
+                groups: self.groups(),
+                connectivity,
+                compo_type: self.compo_type(),
+            }
+        })
     }
 }
 
@@ -347,6 +233,49 @@ impl ElementType {
 
             // 3D
             TET4 | TET10 | HEX8 | HEX21 | PHED => TopologicalDimension::D3,
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ndarray::{array, Array1, Array2};
+    use std::collections::{HashMap, HashSet};
+
+    fn dummy_regular_cells() -> RegularCells {
+        let connectivity = array![[0, 1, 2], [2, 3, 0]];
+        let families = Array1::from(vec![0, 1]);
+
+        let mut groups = HashMap::new();
+        groups.insert("groupA".into(), HashSet::from([0]));
+        groups.insert("groupB".into(), HashSet::from([1]));
+
+        RegularCells {
+            cell_type: ElementType::TRI3,
+            connectivity,
+            params: HashMap::new(),
+            fields: HashMap::new(),
+            families,
+            groups,
+        }
+    }
+
+    #[test]
+    fn test_regular_cells_len() {
+        let rc = dummy_regular_cells();
+        assert_eq!(rc.len(), 2);
+    }
+
+    #[test]
+    fn test_element_block_variant() {
+        let rc = dummy_regular_cells();
+        let eb = ElementBlock::RegularCells(rc);
+        if let ElementBlock::RegularCells(inner) = eb {
+            assert_eq!(inner.connectivity.nrows(), 2);
+        } else {
+            panic!("Expected RegularCells variant");
         }
     }
 }

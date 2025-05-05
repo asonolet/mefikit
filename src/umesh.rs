@@ -35,3 +35,40 @@ impl UMesh {
         self.element_blocks.entry(key).or_insert(wrapped);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::element_block::{ElementBlock, RegularCells, RegularCellType};
+    use ndarray::{array, Array2, Array1};
+    use std::collections::{HashMap, HashSet};
+    use std::sync::Arc;
+
+    fn dummy_regular_cells() -> RegularCells {
+        let connectivity = array![[0, 1, 2]];
+        let families = Array1::from(vec![0]);
+
+        RegularCells {
+            cell_type: RegularCellType::TRI3,
+            connectivity,
+            params: HashMap::new(),
+            fields: HashMap::new(),
+            families,
+            groups: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_umesh_insert_and_retrieve() {
+        let coords = Arc::new(array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]);
+        let mut mesh = UMesh {
+            coords: coords.clone(),
+            element_blocks: HashMap::new(),
+        };
+
+        let rc = dummy_regular_cells();
+        mesh.element_blocks.insert(ElementType::TRI3, ElementBlock::RegularCells(rc));
+
+        assert!(mesh.element_blocks.contains_key(&ElementType::TRI3));
+    }
+}
