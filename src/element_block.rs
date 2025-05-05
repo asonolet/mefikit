@@ -192,41 +192,56 @@ impl IntoElementBlockEntry for ElementBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::{array, Array1, Array2};
-    use std::collections::{HashMap, HashSet};
+    use ndarray::{array, Array1};
+    use std::collections::HashMap;
 
-    fn dummy_regular_cells() -> RegularCells {
-        let connectivity = array![[0, 1, 2], [2, 3, 0]];
-        let families = Array1::from(vec![0, 1]);
+    use crate::element::ElementType;
+    use crate::element::Element;
 
-        let mut groups = HashMap::new();
-        groups.insert("groupA".into(), HashSet::from([0]));
-        groups.insert("groupB".into(), HashSet::from([1]));
+    #[test]
+    fn test_element_block() {
+        let connectivity = Connectivity::Regular(array![[0, 1], [1, 2], [2, 3]]);
+        let params = HashMap::new();
+        let fields = HashMap::new();
+        let families = Array1::from_vec(vec![0, 1, 2]);
+        let groups = HashMap::new();
 
-        RegularCells {
+        let element_block = ElementBlock {
             cell_type: ElementType::TRI3,
             connectivity,
-            params: HashMap::new(),
-            fields: HashMap::new(),
+            params,
+            fields,
             families,
             groups,
-        }
+        };
+
+        assert_eq!(element_block.len(), 3);
+        assert_eq!(element_block.params().len(), 0);
+        assert_eq!(element_block.fields().len(), 0);
+        assert_eq!(element_block.families().len(), 3);
+        assert_eq!(element_block.groups().len(), 0);
     }
 
     #[test]
-    fn test_regular_cells_len() {
-        let rc = dummy_regular_cells();
-        assert_eq!(rc.len(), 2);
-    }
+    fn test_element_block_iter() {
+        let connectivity = Connectivity::Regular(array![[0, 1], [1, 2], [2, 3]]);
+        let params = HashMap::new();
+        let fields = HashMap::new();
+        let families = Array1::from_vec(vec![0, 1, 2]);
+        let groups = HashMap::new();
 
-    #[test]
-    fn test_element_block_variant() {
-        let rc = dummy_regular_cells();
-        let eb = ElementBlock::RegularCells(rc);
-        if let ElementBlock::RegularCells(inner) = eb {
-            assert_eq!(inner.connectivity.nrows(), 2);
-        } else {
-            panic!("Expected RegularCells variant");
-        }
+        let element_block = ElementBlock {
+            cell_type: ElementType::TRI3,
+            connectivity,
+            params,
+            fields,
+            families,
+            groups,
+        };
+
+        let coords = array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+        let elements: Vec<Element> = element_block.iter(&coords).collect();
+
+        assert_eq!(elements.len(), 3);
     }
 }
