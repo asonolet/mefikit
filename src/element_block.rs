@@ -1,48 +1,11 @@
-use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, ArrayViewMutD, Axis, s};
+use ndarray::{s, Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, ArrayViewMutD, Axis};
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use rayon::prelude::*;
 
-use crate::element::{ElementType, Element, ElementMut};
+use crate::element::{Element, ElementMut, ElementType};
+use crate::connectivity::Connectivity;
 
-
-pub enum Connectivity {
-    Regular(Array2<usize>),
-    Poly {
-        data: Array1<usize>,
-        offsets: Array1<usize>,
-    },
-}
-
-impl Connectivity {
-    pub fn len(&self) -> usize {
-        match self {
-            Connectivity::Regular(conn) => conn.nrows(),
-            Connectivity::Poly {offsets, ..} => offsets.len() - 1,
-        }
-    }
-
-    pub fn element_connectivity(&self, index: usize) -> ArrayView1<'_, usize> {
-        match self {
-            Connectivity::Regular(conn) => conn.row(index),
-            Connectivity::Poly { data, offsets } => {
-                let start = offsets[index];
-                let end = offsets[index + 1];
-                data.slice(s![start..end])
-            }
-        }
-    }
-    pub fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<'_, usize> {
-        match self {
-            Connectivity::Regular(conn) => conn.row_mut(index),
-            Connectivity::Poly { data, offsets } => {
-                let start = offsets[index];
-                let end = offsets[index + 1];
-                data.slice_mut(s![start..end])
-            }
-        }
-    }
-}
 
 pub struct ElementBlock {
     pub cell_type: ElementType,
@@ -58,12 +21,14 @@ impl<'a> ElementBlock {
         self.connectivity.len()
     }
     fn element_connectivity(&'a self, index: usize) -> ArrayView1<'a, usize> {
-        self.connectivity.element_connectivity(index)
+        self.connectivity.get(index)
     }
     fn iter(&'a self, coords: &'a Array2<f64>) -> Box<dyn Iterator<Item = Element<'a>> + 'a> {
         Box::new((0..self.len()).map(move |i| {
             let connectivity = self.element_connectivity(i);
-            let fields = self.fields.iter()
+            let fields = self
+                .fields
+                .iter()
                 .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
                 .collect();
             Element {
@@ -83,7 +48,8 @@ impl<'a> ElementBlock {
     ) -> impl ParallelIterator<Item = Element<'a>> + 'a {
         (0..self.len()).into_par_iter().map(move |i| {
             let connectivity = self.element_connectivity(i);
-            let fields = self.fields
+            let fields = self
+                .fields
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
                 .collect();
@@ -99,46 +65,72 @@ impl<'a> ElementBlock {
             }
         })
     }
+
     fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize> {
-        self.connectivity.element_connectivity_mut(index)
+        self.connectivity.get_mut(index)
     }
 
-    pub fn iter_mut<'a>(
-        &'a mut self,
-        coords: &'a Array2<f64>,
-    ) -> impl Iterator<Item = ElementMut<'a>> + 'a {
-        let ElementBlock {
-            cell_type,
-            connectivity,
-            params: _,
-            fields,
-            families,
-            groups,
-        } = self;
+    // pub fn iter_mut(
+    //     &'a mut self,
+    //     coords: &'a Array2<f64>,
+    // ) -> impl Iterator<Item = ElementMut<'a>> + 'a {
+    //     let ElementBlock {
+    //         cell_type,
+    //         connectivity,
+    //         params: _,
+    //         fields,
+    //         families,
+    //         groups,
+    //     } = self;
 
-        let num_elems = connectivity.len();
+    //     let num_elems = connectivity.len();
 
-        (0..num_elems).map(move |i| {
-            let connectivity_view = connectivity.element_connectivity_mut(i);
+    //     // Step 1: Prepare a Vec of empty HashMaps
+    //     let mut per_element_field_views: Vec<HashMap<&'a str, ArrayViewMutD<'a, f64>>> =
+    //         Vec::with_capacity(num_elems);
+    //     for _ in 0..num_elems {
+    //         per_element_field_views.push(HashMap::new());
+    //     }
 
-            let family_ref = &mut families[i];
+    //     // Step 2: Fill each element's field map with views
+    //     for (key, array) in fields.iter_mut() {
+    //         let key_str: &'a str = key.as_str();
+    //         let views = array.axis_iter_mut(Axis(0));
+    //         let mut i = 0;
+    //         for view in views {
+    //             per_element_field_views[i].insert(key_str, view);
+    //             i += 1;
+    //         }
+    //     }
 
-            let field_views: HashMap<&'a str, ArrayViewMutD<'a, f64>> = fields
-                .iter_mut()
-                .map(|(k, v)| (k.as_str(), v.index_axis_mut(Axis(0), i)))
-                .collect();
+    //     families
+    //         .iter_mut()
+    //         .zip(per_element_field_views.into_iter())
+    //         .zip(connectivity.iter_mut())
+    //         .enumerate()
+    //         .map(|(i, ((fam, per_elem_fields), conn))| ElementMut {
+    //             global_index: i,
+    //             coords,
+    //             connectivity: conn,
+    //             family: fam,
+    //             fields: per_elem_fields,
+    //             groups: &*groups,
+    //             element_type: *cell_type,
+    //         })
 
-            ElementMut {
-                global_index: i,
-                coords,
-                connectivity: connectivity_view,
-                family: family_ref,
-                fields: field_views,
-                groups,
-                element_type: *cell_type,
-            }
-        })
-    }
+    //     // Step 3: Preconstruct all ElementMut values and return iterator over them
+    //     for i in 0..num_elems {
+    //         elements.push(ElementMut {
+    //             global_index: i,
+    //             coords,
+    //             connectivity: connectivity.element_connectivity_mut(i),
+    //             family: std::mem::take(&mut families_mut_view[i]),
+    //             fields: per_element_field_views.remove(0), // always remove first
+    //             groups,
+    //             element_type: *cell_type,
+    //         });
+    //     }
+    // }
 
     // pub fn par_iter_mut<'a>(
     //     &'a mut self,
@@ -182,15 +174,14 @@ impl IntoElementBlockEntry for ElementBlock {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use ndarray::{array, Array1};
     use std::collections::HashMap;
 
-    use crate::element::ElementType;
     use crate::element::Element;
+    use crate::element::ElementType;
 
     #[test]
     fn test_element_block() {
@@ -210,10 +201,10 @@ mod tests {
         };
 
         assert_eq!(element_block.len(), 3);
-        assert_eq!(element_block.params().len(), 0);
-        assert_eq!(element_block.fields().len(), 0);
-        assert_eq!(element_block.families().len(), 3);
-        assert_eq!(element_block.groups().len(), 0);
+        assert_eq!(element_block.params.len(), 0);
+        assert_eq!(element_block.fields.len(), 0);
+        assert_eq!(element_block.families.len(), 3);
+        assert_eq!(element_block.groups.len(), 0);
     }
 
     #[test]

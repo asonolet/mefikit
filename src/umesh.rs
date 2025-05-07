@@ -1,4 +1,4 @@
-use ndarray::Array2;
+use ndarray::ArcArray2;
 use std::collections::HashMap;
 
 use crate::element::ElementType;
@@ -6,7 +6,7 @@ use crate::element_block::{ElementBlock, IntoElementBlockEntry};
 
 
 pub struct UMesh {
-    pub coords: Array2<f64>,
+    pub coords: ArcArray2<f64>,
     pub element_blocks: HashMap<ElementType, ElementBlock>,
 }
 

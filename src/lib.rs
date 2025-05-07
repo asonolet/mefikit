@@ -1,4 +1,5 @@
 mod element;
+mod connectivity;
 mod element_block;
 mod umesh;
 
