@@ -6,7 +6,11 @@ use std::collections::HashSet;
 use crate::element::{Element, ElementMut, ElementType};
 use crate::connectivity::Connectivity;
 
-
+/// The part of a mesh constituted by one kind of element.
+///
+/// The element block is the base structure to hold connectivity, fields, groups and params.
+/// It is used to hold all cell information and allows cell iteration.
+/// The only data not included for an element block to be standalone is the coordinates array.
 pub struct ElementBlock {
     pub cell_type: ElementType,
     pub connectivity: Connectivity,
@@ -23,8 +27,8 @@ impl<'a> ElementBlock {
     fn element_connectivity(&'a self, index: usize) -> ArrayView1<'a, usize> {
         self.connectivity.get(index)
     }
-    fn iter(&'a self, coords: &'a Array2<f64>) -> Box<dyn Iterator<Item = Element<'a>> + 'a> {
-        Box::new((0..self.len()).map(move |i| {
+    fn iter(&'a self, coords: &'a Array2<f64>) -> impl Iterator<Item = Element<'a>> + 'a {
+        (0..self.len()).map(move |i| {
             let connectivity = self.element_connectivity(i);
             let fields = self
                 .fields
@@ -40,7 +44,7 @@ impl<'a> ElementBlock {
                 connectivity,
                 compo_type: self.cell_type,
             }
-        }))
+        })
     }
     fn par_iter(
         &'a self,

@@ -31,14 +31,20 @@ pub enum VolumeType {
 }
 
 #[derive(Copy, Clone)]
-pub enum PolyCellType {
+pub enum Regularity {
+    Regular,
+    Poly,
+}
+
+#[derive(Copy, Clone)]
+pub enum PolyElemType {
     SPLINE,
     PGON,
     PHED,
 }
 
 #[derive(Copy, Clone)]
-pub enum RegularCellType {
+pub enum RegularElemType {
     VERTEX,
     SEG2,
     SEG3,
@@ -55,6 +61,14 @@ pub enum RegularCellType {
     HEX21,
 }
 
+/// All kinds of elements supported in mefikit.
+///
+/// An element consists of a list of nodes (indices refering to a coordinates table) and can hold metadata (fields, family).
+/// Those elements can be 0D, 1D, 2D or 3D. Points (VERTEX) are considered as elements.
+/// A mesh will hold VERTEX elements if it needs to store node groups or node fields for example. This can also be used to store nodes order, or duplicated nodes, etc.
+/// Some elements are not linear but of higher order such as SEG3, HEX21.
+/// The elements node connecivity follows a convention.
+/// Three kinds of elements can hold an abitrary number of nodes and are specials : SPLINE, PGON (Polygon), and PHED (Polyhedron).
 #[derive(Debug, Eq, Hash, Copy, Clone, PartialEq)]
 pub enum ElementType {
     // 0d
@@ -84,7 +98,7 @@ pub enum ElementType {
 }
 
 
-impl From<PolyCellType> for ElementType {
+impl From<PolyElemType> for ElementType {
     fn from(cell: PolyCellType) -> Self {
         match cell {
             PolyCellType::SPLINE => ElementType::SPLINE,
@@ -94,7 +108,7 @@ impl From<PolyCellType> for ElementType {
     }
 }
 
-impl From<RegularCellType> for ElementType {
+impl From<RegularElemType> for ElementType {
     fn from(cell: RegularCellType) -> Self {
         match cell {
             RegularCellType::VERTEX => ElementType::VERTEX,
@@ -116,7 +130,7 @@ impl From<RegularCellType> for ElementType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TopologicalDimension {
+pub enum Dimension {
     D0,
     D1,
     D2,
@@ -125,41 +139,58 @@ pub enum TopologicalDimension {
 
 
 impl ElementType {
-    pub fn topological_dimension(&self) -> TopologicalDimension {
+    pub fn dimension(&self) -> Dimension {
         use ElementType::*;
         match self {
             // 0D
-            VERTEX => TopologicalDimension::D0,
+            VERTEX => Dimension::D0,
 
             // 1D
-            SEG2 | SEG3 | SEG4 | SPLINE => TopologicalDimension::D1,
+            SEG2 | SEG3 | SEG4 | SPLINE => Dimension::D1,
 
             // 2D
-            TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 | PGON => TopologicalDimension::D2,
+            TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 | PGON => Dimension::D2,
 
             // 3D
-            TET4 | TET10 | HEX8 | HEX21 | PHED => TopologicalDimension::D3,
+            TET4 | TET10 | HEX8 | HEX21 | PHED => Dimension::D3,
+        }
+    }
+
+    pub fn regularity(&self) -> Regularity {
+        use ElementType::*;
+        match self {
+            // poly
+            SPLINE | PGON | PHED => Regularity::Poly,
+            // regular
+            _ => Regularity::Regular,
         }
     }
 }
 
+/// Imutable Item of an ElementBlock.
+///
+/// This struct is used to read data on an element in an element block. Note that is is only a view. It holds references to this element family, fields and connectivity (local data). This view still has access to the whole coordinates array and the whole groups hashmap (but not publicly).
 pub struct Element<'a> {
     pub global_index: usize,
-    pub coords: &'a Array2<f64>,
+    coords: &'a Array2<f64>,
     pub fields: HashMap<&'a str, ArrayViewD<'a, f64>>,
     pub family: &'a usize,
-    pub groups: &'a HashMap<String, HashSet<usize>>,
+    groups: &'a HashMap<String, HashSet<usize>>,
     pub connectivity: ArrayView1<'a, usize>,
     pub compo_type: ElementType,
 }
 
+/// Mutable Item of an ElementBlock.
+///
+/// This struct is used to read and write data on an element in an element block. Note that is is only a view. It holds mut references to this element family, fields and connectivity (local data). This view still has read access to the whole coordinates array and the whole groups hashmap (but not publicly).
+/// This iterator is thread safe and does not allow to change an element nature or the number of nodes in this element.
 pub struct ElementMut<'a> {
     pub global_index: usize,
-    pub coords: &'a Array2<f64>,
+    coords: &'a Array2<f64>,
     pub connectivity: ArrayViewMut1<'a, usize>,
     pub family: &'a mut usize,
     pub fields: HashMap<&'a str, ArrayViewMutD<'a, f64>>,
-    pub groups: &'a HashMap<String, HashSet<usize>>, // safely shared across threads
+    groups: &'a HashMap<String, HashSet<usize>>, // safely shared across threads
     pub element_type: ElementType,
 }
 
