@@ -4,7 +4,9 @@ use std::collections::HashMap;
 use crate::element::ElementType;
 use crate::element_block::{ElementBlock, IntoElementBlockEntry};
 
-
+/// An unstrustured mesh.
+///
+/// The most general mesh format in mefikit. Can describe any kind on mesh, with multiple elements kinds and fields associated.
 pub struct UMesh {
     pub coords: ArcArray2<f64>,
     pub element_blocks: HashMap<ElementType, ElementBlock>,

@@ -35,15 +35,15 @@ impl<'a> ElementBlock {
                 .iter()
                 .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
                 .collect();
-            Element {
-                global_index: i,
+            Element::new(
+                i,
                 coords,
                 fields,
-                family: &self.families[i],
-                groups: &self.groups,
+                &self.families[i],
+                &self.groups,
                 connectivity,
-                compo_type: self.cell_type,
-            }
+                self.cell_type,
+            )
         })
     }
     fn par_iter(
@@ -58,15 +58,15 @@ impl<'a> ElementBlock {
                 .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
                 .collect();
 
-            Element {
-                global_index: i,
+            Element::new(
+                i,
                 coords,
                 fields,
-                family: &self.families[i],
-                groups: &self.groups,
+                &self.families[i],
+                &self.groups,
                 connectivity,
-                compo_type: self.cell_type,
-            }
+                self.cell_type,
+            )
         })
     }
 

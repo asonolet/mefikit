@@ -99,32 +99,32 @@ pub enum ElementType {
 
 
 impl From<PolyElemType> for ElementType {
-    fn from(cell: PolyCellType) -> Self {
+    fn from(cell: PolyElemType) -> Self {
         match cell {
-            PolyCellType::SPLINE => ElementType::SPLINE,
-            PolyCellType::PGON => ElementType::PGON,
-            PolyCellType::PHED => ElementType::PHED,
+            PolyElemType::SPLINE => ElementType::SPLINE,
+            PolyElemType::PGON => ElementType::PGON,
+            PolyElemType::PHED => ElementType::PHED,
         }
     }
 }
 
 impl From<RegularElemType> for ElementType {
-    fn from(cell: RegularCellType) -> Self {
+    fn from(cell: RegularElemType) -> Self {
         match cell {
-            RegularCellType::VERTEX => ElementType::VERTEX,
-            RegularCellType::SEG2 => ElementType::SEG2,
-            RegularCellType::SEG3 => ElementType::SEG3,
-            RegularCellType::SEG4 => ElementType::SEG4,
-            RegularCellType::TRI3 => ElementType::TRI3,
-            RegularCellType::TRI6 => ElementType::TRI6,
-            RegularCellType::TRI7 => ElementType::TRI7,
-            RegularCellType::QUAD4 => ElementType::QUAD4,
-            RegularCellType::QUAD8 => ElementType::QUAD8,
-            RegularCellType::QUAD9 => ElementType::QUAD9,
-            RegularCellType::TET4 => ElementType::TET4,
-            RegularCellType::TET10 => ElementType::TET10,
-            RegularCellType::HEX8 => ElementType::HEX8,
-            RegularCellType::HEX21 => ElementType::HEX21,
+            RegularElemType::VERTEX => ElementType::VERTEX,
+            RegularElemType::SEG2 => ElementType::SEG2,
+            RegularElemType::SEG3 => ElementType::SEG3,
+            RegularElemType::SEG4 => ElementType::SEG4,
+            RegularElemType::TRI3 => ElementType::TRI3,
+            RegularElemType::TRI6 => ElementType::TRI6,
+            RegularElemType::TRI7 => ElementType::TRI7,
+            RegularElemType::QUAD4 => ElementType::QUAD4,
+            RegularElemType::QUAD8 => ElementType::QUAD8,
+            RegularElemType::QUAD9 => ElementType::QUAD9,
+            RegularElemType::TET4 => ElementType::TET4,
+            RegularElemType::TET10 => ElementType::TET10,
+            RegularElemType::HEX8 => ElementType::HEX8,
+            RegularElemType::HEX21 => ElementType::HEX21,
         }
     }
 }
@@ -178,6 +178,20 @@ pub struct Element<'a> {
     groups: &'a HashMap<String, HashSet<usize>>,
     pub connectivity: ArrayView1<'a, usize>,
     pub compo_type: ElementType,
+}
+
+impl<'a> Element<'a> {
+    pub fn new(global_index: usize, coords: &'a Array2<f64>, fields: HashMap<&'a str, ArrayViewD<'a, f64>>, family: &'a usize, groups: &'a HashMap<String, HashSet<usize>>, connectivity: ArrayView1<'a, usize>, compo_type: ElementType) -> Element<'a> {
+        Element {
+            global_index,
+            coords,
+            fields,
+            family,
+            groups,
+            connectivity,
+            compo_type,
+        }
+    }
 }
 
 /// Mutable Item of an ElementBlock.
