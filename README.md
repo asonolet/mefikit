@@ -2,9 +2,14 @@
 
 *Meshes and Fields Kit* is a library implementing:
 
-- a convenient meshfields format (mesh with data)
-- medfile input/output
-- cgns input/output
+- a convenient mesh format (mesh with data) with:
+    - different kind of elements in the same mesh
+    - named fields of double over any element
+    - params (named double) attached to element kinds
+    - groups and families (named group of element) attached to any element
+- various input output formats
+    - medfile
+    - cgns
 - base structured / extruded / unstructured mesh construction abilities
 - descending meshes computation
 - aggregation of meshes
@@ -28,8 +33,10 @@ of the library.
 The library is structured the following way:
 
 - mefikit_core
-    - mesh
-    - fields
+    - umesh
+    - element_block
+    - element
+    - connectivity
 - io
     - med
     - cgns
@@ -44,3 +51,4 @@ The library is structured the following way:
 - performance
 - clarity (medcoupling ~= medfile, but mefikit != medfile)
 - rust pilot project in the DM2S
+- ease of use (one main clear data structure and not many, many algorithms)
