@@ -1,9 +1,9 @@
-use ndarray::{s, Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, ArrayViewMutD, Axis};
+use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, Axis};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::element::{Element, ElementMut, ElementType};
+use crate::element::{Element, ElementType};
 use crate::connectivity::Connectivity;
 
 /// The part of a mesh constituted by one kind of element.
