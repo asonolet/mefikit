@@ -98,6 +98,11 @@ impl<'a> Iterator for PolyConnIteratorMut<'a> {
         // and the rest is the remaining data
         Some(ArrayViewMut1::from(chunk))
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.offsets.len() - 1;
+        (len, Some(len))
+    }
 }
 
 
@@ -193,4 +198,76 @@ impl Connectivity {
         }
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ndarray::{arr1, arr2};
+
+    #[test]
+    fn test_connectivity() {
+        let conn = arr2(&[[0, 1], [1, 2], [2, 3]]);
+        let connectivity = Connectivity::new_regular(conn);
+        assert_eq!(connectivity.len(), 3);
+        assert_eq!(connectivity.get(0).to_vec(), vec![0, 1]);
+        assert_eq!(connectivity.get(1).to_vec(), vec![1, 2]);
+        assert_eq!(connectivity.get(2).to_vec(), vec![2, 3]);
+    }
+    #[test]
+    fn test_poly_connectivity() {
+        let data = arr1(&[0, 1, 2, 3, 4, 5]);
+        let offsets = arr1(&[0, 2, 5, 6]);
+        let connectivity = Connectivity::new_poly(data, offsets);
+        assert_eq!(connectivity.len(), 3);
+        assert_eq!(connectivity.get(0).to_vec(), vec![0, 1]);
+        assert_eq!(connectivity.get(1).to_vec(), vec![2, 3, 4]);
+        assert_eq!(connectivity.get(2).to_vec(), vec![5]);
+    }
+    #[test]
+    fn test_poly_connectivity_mut() {
+        let data = arr1(&[0, 1, 2, 3, 4, 5]);
+        let offsets = arr1(&[0, 2, 5, 6]);
+        let mut connectivity = Connectivity::new_poly(data.clone(), offsets.clone());
+        assert_eq!(connectivity.get_mut(0).to_vec(), vec![0, 1]);
+        connectivity.get_mut(1)[0] = 10;
+        assert_eq!(connectivity.get_mut(1).to_vec(), vec![10, 3, 4]);
+        assert_eq!(connectivity.get_mut(2).to_vec(), vec![5]);
+    }
+    #[test]
+    fn test_poly_connectivity_iter() {
+        let data = arr1(&[0, 1, 2, 3, 4, 5]);
+        let offsets = arr1(&[0, 2, 5, 6]);
+        let connectivity = Connectivity::new_poly(data, offsets);
+        let mut iter = connectivity.iter();
+        assert_eq!(iter.next().unwrap().to_vec(), vec![0, 1]);
+        assert_eq!(iter.next().unwrap().to_vec(), vec![2, 3, 4]);
+        assert_eq!(iter.next().unwrap().to_vec(), vec![5]);
+    }
+    #[test]
+    fn test_poly_connectivity_iter_mut() {
+        let data = arr1(&[0, 1, 2, 3, 4, 5]);
+        let offsets = arr1(&[0, 2, 5, 6]);
+        let mut connectivity = Connectivity::new_poly(data.clone(), offsets.clone());
+        let mut iter = connectivity.iter_mut();
+        assert_eq!(iter.next().unwrap().to_vec(), vec![0, 1]);
+        assert_eq!(iter.next().unwrap().to_vec(), vec![2, 3, 4]);
+        assert_eq!(iter.next().unwrap().to_vec(), vec![5]);
+    }
+    #[test]
+    fn test_poly_connectivity_iter_size_hint() {
+        let data = arr1(&[0, 1, 2, 3, 4, 5]);
+        let offsets = arr1(&[0, 2, 5, 6]);
+        let connectivity = Connectivity::new_poly(data, offsets);
+        let iter = connectivity.iter();
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+    }
+    #[test]
+    fn test_poly_connectivity_iter_mut_size_hint() {
+        let data = arr1(&[0, 1, 2, 3, 4, 5]);
+        let offsets = arr1(&[0, 2, 5, 6]);
+        let mut connectivity = Connectivity::new_poly(data.clone(), offsets.clone());
+        let iter = connectivity.iter_mut();
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+    }
 }
