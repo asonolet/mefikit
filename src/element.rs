@@ -208,6 +208,20 @@ pub struct ElementMut<'a> {
     pub element_type: ElementType,
 }
 
+impl<'a> ElementMut<'a> {
+    pub fn new(global_index: usize, coords: &'a Array2<f64>, connectivity: ArrayViewMut1<'a, usize>, family: &'a mut usize, fields: HashMap<&'a str, ArrayViewMutD<'a, f64>>, groups: &'a HashMap<String, HashSet<usize>>, element_type: ElementType) -> ElementMut<'a> {
+        ElementMut {
+            global_index,
+            coords,
+            connectivity,
+            family,
+            fields,
+            groups,
+            element_type,
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
