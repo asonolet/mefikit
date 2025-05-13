@@ -1,9 +1,9 @@
-use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, Axis};
+use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, ArrayViewMutD, Axis};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::element::{Element, ElementType};
+use crate::element::{Element, ElementMut, ElementType};
 use crate::connectivity::Connectivity;
 
 /// The part of a mesh constituted by one kind of element.
@@ -78,63 +78,28 @@ impl<'a> ElementBlock {
     //     &'a mut self,
     //     coords: &'a Array2<f64>,
     // ) -> impl Iterator<Item = ElementMut<'a>> + 'a {
-    //     let ElementBlock {
-    //         cell_type,
-    //         connectivity,
-    //         params: _,
-    //         fields,
-    //         families,
-    //         groups,
-    //     } = self;
-
-    //     let num_elems = connectivity.len();
-
-    //     // Step 1: Prepare a Vec of empty HashMaps
-    //     let mut per_element_field_views: Vec<HashMap<&'a str, ArrayViewMutD<'a, f64>>> =
-    //         Vec::with_capacity(num_elems);
-    //     for _ in 0..num_elems {
-    //         per_element_field_views.push(HashMap::new());
-    //     }
-
-    //     // Step 2: Fill each element's field map with views
-    //     for (key, array) in fields.iter_mut() {
-    //         let key_str: &'a str = key.as_str();
-    //         let views = array.axis_iter_mut(Axis(0));
-    //         let mut i = 0;
-    //         for view in views {
-    //             per_element_field_views[i].insert(key_str, view);
-    //             i += 1;
-    //         }
-    //     }
-
-    //     families
+    //     let fields: Vec<HashMap<&'a str, ArrayViewMutD<'a, f64>>> = (0..self.len()).map(|i| {
+    //         self
+    //         .fields
     //         .iter_mut()
-    //         .zip(per_element_field_views.into_iter())
-    //         .zip(connectivity.iter_mut())
-    //         .enumerate()
-    //         .map(|(i, ((fam, per_elem_fields), conn))| ElementMut {
-    //             global_index: i,
-    //             coords,
-    //             connectivity: conn,
-    //             family: fam,
-    //             fields: per_elem_fields,
-    //             groups: &*groups,
-    //             element_type: *cell_type,
-    //         })
+    //         .map(|(k, v)| (k.as_str(), v.index_axis_mut(Axis(0), i)))
+    //         .collect()
+    //     }).collect();
 
-    //     // Step 3: Preconstruct all ElementMut values and return iterator over them
-    //     for i in 0..num_elems {
-    //         elements.push(ElementMut {
-    //             global_index: i,
+    //     self.connectivity.iter_mut().zip(self.families.iter_mut()).zip(fields.iter()).enumerate().map(|(i, ((conn, fam), fields))| {
+
+    //         ElementMut::new(
+    //             i,
     //             coords,
-    //             connectivity: connectivity.element_connectivity_mut(i),
-    //             family: std::mem::take(&mut families_mut_view[i]),
-    //             fields: per_element_field_views.remove(0), // always remove first
-    //             groups,
-    //             element_type: *cell_type,
-    //         });
-    //     }
+    //             conn,
+    //             fam,
+    //             *fields,
+    //             &self.groups,
+    //             self.cell_type,
+    //         )
+    //     })
     // }
+
 
     // pub fn par_iter_mut<'a>(
     //     &'a mut self,
