@@ -1,23 +1,22 @@
 use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, ArrayViewMutD, Axis};
 use rayon::prelude::*;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
-use crate::element::{Element, ElementMut, ElementType};
-use crate::connectivity::Connectivity;
+use crate::umesh::element::{Element, ElementMut, ElementType};
+use crate::umesh::connectivity::Connectivity;
 
 /// The part of a mesh constituted by one kind of element.
 ///
-/// The element block is the base structure to hold connectivity, fields, groups and params.
+/// The element block is the base structure to hold connectivity, fields, groups.
 /// It is used to hold all cell information and allows cell iteration.
 /// The only data not included for an element block to be standalone is the coordinates array.
 pub struct ElementBlock {
     pub cell_type: ElementType,
     pub connectivity: Connectivity,
-    pub params: HashMap<String, f64>,
-    pub fields: HashMap<String, ArrayD<f64>>,
+    pub fields: BTreeMap<String, ArrayD<f64>>,
     pub families: Array1<usize>,
-    pub groups: HashMap<String, HashSet<usize>>,
+    pub groups: BTreeMap<String, BTreeSet<usize>>,
 }
 
 impl<'a> ElementBlock {
@@ -78,7 +77,7 @@ impl<'a> ElementBlock {
     //     &'a mut self,
     //     coords: &'a Array2<f64>,
     // ) -> impl Iterator<Item = ElementMut<'a>> + 'a {
-    //     let fields: Vec<HashMap<&'a str, ArrayViewMutD<'a, f64>>> = (0..self.len()).map(|i| {
+    //     let fields: Vec<BTreeMap<&'a str, ArrayViewMutD<'a, f64>>> = (0..self.len()).map(|i| {
     //         self
     //         .fields
     //         .iter_mut()
@@ -114,7 +113,7 @@ impl<'a> ElementBlock {
 
     //         let family = &mut self.families[i];
 
-    //         let fields: HashMap<&'a str, ArrayViewMutD<'a, f64>> = self
+    //         let fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>> = self
     //             .fields
     //             .iter_mut()
     //             .map(|(k, v)| (k.as_str(), v.index_axis_mut(ndarray::Axis(0), i)))
@@ -147,30 +146,27 @@ impl IntoElementBlockEntry for ElementBlock {
 mod tests {
     use super::*;
     use ndarray::{array, Array1};
-    use std::collections::HashMap;
+    use std::collections::BTreeMap;
 
-    use crate::element::Element;
-    use crate::element::ElementType;
+    use crate::umesh::element::Element;
+    use crate::umesh::element::ElementType;
 
     #[test]
     fn test_element_block() {
         let connectivity = Connectivity::Regular(array![[0, 1], [1, 2], [2, 3]]);
-        let params = HashMap::new();
-        let fields = HashMap::new();
+        let fields = BTreeMap::new();
         let families = Array1::from_vec(vec![0, 1, 2]);
-        let groups = HashMap::new();
+        let groups = BTreeMap::new();
 
         let element_block = ElementBlock {
             cell_type: ElementType::TRI3,
             connectivity,
-            params,
             fields,
             families,
             groups,
         };
 
         assert_eq!(element_block.len(), 3);
-        assert_eq!(element_block.params.len(), 0);
         assert_eq!(element_block.fields.len(), 0);
         assert_eq!(element_block.families.len(), 3);
         assert_eq!(element_block.groups.len(), 0);
@@ -179,15 +175,13 @@ mod tests {
     #[test]
     fn test_element_block_iter() {
         let connectivity = Connectivity::Regular(array![[0, 1], [1, 2], [2, 3]]);
-        let params = HashMap::new();
-        let fields = HashMap::new();
+        let fields = BTreeMap::new();
         let families = Array1::from_vec(vec![0, 1, 2]);
-        let groups = HashMap::new();
+        let groups = BTreeMap::new();
 
         let element_block = ElementBlock {
             cell_type: ElementType::TRI3,
             connectivity,
-            params,
             fields,
             families,
             groups,

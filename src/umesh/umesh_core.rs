@@ -1,15 +1,15 @@
 use ndarray::ArcArray2;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
-use crate::element::ElementType;
-use crate::element_block::{ElementBlock, IntoElementBlockEntry};
+use crate::umesh::element::ElementType;
+use crate::umesh::element_block::{ElementBlock, IntoElementBlockEntry};
 
 /// An unstrustured mesh.
 ///
 /// The most general mesh format in mefikit. Can describe any kind on mesh, with multiple elements kinds and fields associated.
 pub struct UMesh {
     pub coords: ArcArray2<f64>,
-    pub element_blocks: HashMap<ElementType, ElementBlock>,
+    pub element_blocks: BTreeMap<ElementType, ElementBlock>,
 }
 
 // pub struct UMeshView<'a> {

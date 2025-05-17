@@ -3,12 +3,10 @@ use ndarray::{s, Array1, Array2, ArrayView1, ArrayViewMut1, Axis};
 
 /// Connectivity structure to represent the connectivity of a mesh.
 ///
-/// It can be either regular or polygonal.
-/// Regular connectivity is represented as a 2D array,
-/// while polygonal connectivity is represented as a 1D array
-/// with offsets.
-/// The offsets array indicates the start and end of each polygon in the data array.
-/// The data array contains the indices of the vertices of the polygons.
+/// It can be either regular or polygonal. Regular connectivity is represented as a 2D array,
+/// while polygonal connectivity is represented as a 1D array with offsets. The offsets array
+/// indicates the start and end of each polygon in the data array. The data array contains the
+/// indices of the vertices of the polygons.
 pub enum Connectivity {
     Regular(Array2<usize>),
     Poly {
@@ -166,38 +164,31 @@ impl Connectivity {
         }
     }
 
-    pub fn iter(& self) -> impl Iterator<Item = ArrayView1<'_, usize>> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = ArrayView1<'_, usize>> + '_ {
         match self {
-            Connectivity::Regular(conn) => {
-                ConnectivityIterator::Regular(conn.axis_iter(Axis(0)))
-            }
-            Connectivity::Poly { data, offsets } => {
-                ConnectivityIterator::Poly(PolyConnIterator {
-                    data,
-                    offsets,
-                    index: 0,
-                })
-            }
+            Connectivity::Regular(conn) => ConnectivityIterator::Regular(conn.axis_iter(Axis(0))),
+            Connectivity::Poly { data, offsets } => ConnectivityIterator::Poly(PolyConnIterator {
+                data,
+                offsets,
+                index: 0,
+            }),
         }
     }
 
-    pub fn iter_mut(& mut self) -> impl Iterator<Item = ArrayViewMut1<'_, usize>> + '_ {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = ArrayViewMut1<'_, usize>> + '_ {
         match self {
             Connectivity::Regular(conn) => {
                 ConnectivityIteratorMut::Regular(conn.axis_iter_mut(Axis(0)))
             }
             Connectivity::Poly { data, offsets } => {
-                ConnectivityIteratorMut::Poly(
-                    PolyConnIteratorMut {
+                ConnectivityIteratorMut::Poly(PolyConnIteratorMut {
                     data: data.as_slice_mut().unwrap(),
                     offsets: offsets.as_slice().unwrap(),
                     index: 0,
-                    }
-                )
+                })
             }
         }
     }
-
 }
 
 #[cfg(test)]

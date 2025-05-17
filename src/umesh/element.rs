@@ -1,6 +1,6 @@
 use ndarray::{Array2, ArrayView1, ArrayViewD, ArrayViewMut1, ArrayViewMutD};
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 #[derive(Copy, Clone)]
 pub enum EdgeType {
@@ -63,13 +63,14 @@ pub enum RegularElemType {
 
 /// All kinds of elements supported in mefikit.
 ///
-/// An element consists of a list of nodes (indices refering to a coordinates table) and can hold metadata (fields, family).
-/// Those elements can be 0D, 1D, 2D or 3D. Points (VERTEX) are considered as elements.
-/// A mesh will hold VERTEX elements if it needs to store node groups or node fields for example. This can also be used to store nodes order, or duplicated nodes, etc.
-/// Some elements are not linear but of higher order such as SEG3, HEX21.
-/// The elements node connecivity follows a convention.
-/// Three kinds of elements can hold an abitrary number of nodes and are specials : SPLINE, PGON (Polygon), and PHED (Polyhedron).
-#[derive(Debug, Eq, Hash, Copy, Clone, PartialEq)]
+/// An element consists of a list of nodes (indices refering to a coordinates table) and can hold
+/// metadata (fields, family). Those elements can be 0D, 1D, 2D or 3D. Points (VERTEX) are
+/// considered as elements. A mesh will hold VERTEX elements if it needs to store node groups or
+/// node fields for example. This can also be used to store nodes order, or duplicated nodes, etc.
+/// Some elements are not linear but of higher order such as SEG3, HEX21. The elements node
+/// connecivity follows a convention. Three kinds of elements can hold an abitrary number of nodes
+/// and are specials: SPLINE, PGON (Polygon), and PHED (Polyhedron).
+#[derive(Debug, Eq, Hash, Copy, Clone, PartialEq, PartialOrd, Ord)]
 pub enum ElementType {
     // 0d
     VERTEX,
@@ -96,7 +97,6 @@ pub enum ElementType {
     HEX21,
     PHED,
 }
-
 
 impl From<PolyElemType> for ElementType {
     fn from(cell: PolyElemType) -> Self {
@@ -137,7 +137,6 @@ pub enum Dimension {
     D3,
 }
 
-
 impl ElementType {
     pub fn dimension(&self) -> Dimension {
         use ElementType::*;
@@ -169,19 +168,30 @@ impl ElementType {
 
 /// Imutable Item of an ElementBlock.
 ///
-/// This struct is used to read data on an element in an element block. Note that is is only a view. It holds references to this element family, fields and connectivity (local data). This view still has access to the whole coordinates array and the whole groups hashmap (but not publicly).
+/// This struct is used to read data on an element in an element block. Note that is is only a
+/// view. It holds references to this element family, fields and connectivity (local data). This
+/// view still has access to the whole coordinates array and the whole groups hashmap (but not
+/// publicly).
 pub struct Element<'a> {
     pub global_index: usize,
     coords: &'a Array2<f64>,
-    pub fields: HashMap<&'a str, ArrayViewD<'a, f64>>,
+    pub fields: BTreeMap<&'a str, ArrayViewD<'a, f64>>,
     pub family: &'a usize,
-    groups: &'a HashMap<String, HashSet<usize>>,
+    groups: &'a BTreeMap<String, BTreeSet<usize>>,
     pub connectivity: ArrayView1<'a, usize>,
     pub compo_type: ElementType,
 }
 
 impl<'a> Element<'a> {
-    pub fn new(global_index: usize, coords: &'a Array2<f64>, fields: HashMap<&'a str, ArrayViewD<'a, f64>>, family: &'a usize, groups: &'a HashMap<String, HashSet<usize>>, connectivity: ArrayView1<'a, usize>, compo_type: ElementType) -> Element<'a> {
+    pub fn new(
+        global_index: usize,
+        coords: &'a Array2<f64>,
+        fields: BTreeMap<&'a str, ArrayViewD<'a, f64>>,
+        family: &'a usize,
+        groups: &'a BTreeMap<String, BTreeSet<usize>>,
+        connectivity: ArrayView1<'a, usize>,
+        compo_type: ElementType,
+    ) -> Element<'a> {
         Element {
             global_index,
             coords,
@@ -196,20 +206,32 @@ impl<'a> Element<'a> {
 
 /// Mutable Item of an ElementBlock.
 ///
-/// This struct is used to read and write data on an element in an element block. Note that is is only a view. It holds mut references to this element family, fields and connectivity (local data). This view still has read access to the whole coordinates array and the whole groups hashmap (but not publicly).
-/// This iterator is thread safe and does not allow to change an element nature or the number of nodes in this element.
+/// This struct is used to read and write data on an element in an element block. Note that is is
+/// only a view. It holds mut references to this element family, fields and connectivity (local
+/// data). This view still has read access to the whole coordinates array and the whole groups
+/// hashmap (but not publicly).
+/// This iterator is thread safe and does not allow to change an element nature or the number of
+/// nodes in this element.
 pub struct ElementMut<'a> {
     pub global_index: usize,
     coords: &'a Array2<f64>,
     pub connectivity: ArrayViewMut1<'a, usize>,
     pub family: &'a mut usize,
-    pub fields: HashMap<&'a str, ArrayViewMutD<'a, f64>>,
-    groups: &'a HashMap<String, HashSet<usize>>, // safely shared across threads
+    pub fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>>,
+    groups: &'a BTreeMap<String, BTreeSet<usize>>, // safely shared across threads
     pub element_type: ElementType,
 }
 
 impl<'a> ElementMut<'a> {
-    pub fn new(global_index: usize, coords: &'a Array2<f64>, connectivity: ArrayViewMut1<'a, usize>, family: &'a mut usize, fields: HashMap<&'a str, ArrayViewMutD<'a, f64>>, groups: &'a HashMap<String, HashSet<usize>>, element_type: ElementType) -> ElementMut<'a> {
+    pub fn new(
+        global_index: usize,
+        coords: &'a Array2<f64>,
+        connectivity: ArrayViewMut1<'a, usize>,
+        family: &'a mut usize,
+        fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>>,
+        groups: &'a BTreeMap<String, BTreeSet<usize>>,
+        element_type: ElementType,
+    ) -> ElementMut<'a> {
         ElementMut {
             global_index,
             coords,
@@ -222,7 +244,6 @@ impl<'a> ElementMut<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,8 +253,8 @@ mod tests {
     fn test_element_struct_basics() {
         let coords = array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
         let conn = array![0, 1, 2];
-        let fields = HashMap::new();
-        let groups = HashMap::new();
+        let fields = BTreeMap::new();
+        let groups = BTreeMap::new();
         let family = 0;
 
         let element = Element {
