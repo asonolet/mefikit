@@ -1,10 +1,10 @@
-use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, ArrayViewMutD, Axis};
+use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, Axis};
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use crate::umesh::element::{Element, ElementMut, ElementType};
 use crate::umesh::connectivity::Connectivity;
+use crate::umesh::element::{Element, ElementType};
 
 /// The part of a mesh constituted by one kind of element.
 ///
@@ -99,7 +99,6 @@ impl<'a> ElementBlock {
     //     })
     // }
 
-
     // pub fn par_iter_mut<'a>(
     //     &'a mut self,
     //     coords: &'a Array2<f64>,
@@ -138,7 +137,7 @@ pub trait IntoElementBlockEntry {
 
 impl IntoElementBlockEntry for ElementBlock {
     fn into_entry(self) -> (ElementType, ElementBlock) {
-        (self.cell_type.into(), self)
+        (self.cell_type, self)
     }
 }
 

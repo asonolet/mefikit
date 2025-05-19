@@ -103,7 +103,6 @@ impl<'a> Iterator for PolyConnIteratorMut<'a> {
     }
 }
 
-
 enum ConnectivityIteratorMut<'a> {
     Regular(ndarray::iter::AxisIterMut<'a, usize, ndarray::Dim<[usize; 1]>>),
     Poly(PolyConnIteratorMut<'a>),

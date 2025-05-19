@@ -17,7 +17,6 @@ pub struct UMesh {
 //     pub elements: HashMap<ElementType, ElementBlockView<'a>>,
 // }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CellId {
     pub element_type: ElementType,
@@ -32,5 +31,4 @@ impl UMesh {
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}
