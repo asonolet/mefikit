@@ -1,174 +1,165 @@
 # MeFiKit
 
-*Meshes and Fields Kit* is a library implementing:
-
-- a convenient unstructured mesh format (mesh with data) with:
-    - different kind of elements in the same mesh
-    - named fields of double over elements
-    - groups of elements
-- various input output formats
-    - medcoupling
-    - medfile
-    - cgns
-    - serde
-- builders for meshes:
-    - structured
-    - extruded
-    - unstructured
-- topological toolbox:
-    - descending meshes
-    - aggregation of meshes
-    - iterators over neighbours
-    - equivalence classes of elements
-    - connected components
-    - tetrahedization
-    - polyhedrization / unpolyhedrization
-- geometric toolbox:
-    - bounding box tree computation
-    - intersection of elements
-    - merge close nodes
-    - compute normals, orientations
-    - compute barycenters
-    - compute volumes
-- high level algorithms:
-    - split by another mesh (computing intersections on first mesh)
-    - conformize with itself (face conforming optional)
-    - geometric fusion of meshes, also serves as a "conforming" mesh generator
-      (boolean union, face conforming optional)
-    - intersection of meshes (boolean intersection)
-    - subtraction of meshes (boolean subtraction)
-    - cracking of a mesh from a descending mesh
-    - intersection_map building for interpolation of fields
-- python bindings
-
-The "convenient unstructured mesh format" will be close to the file storage
-format for performance and simplicity reasons, **unlike** medcoupling core
-format. This alone is a good argument in favour of the reimplementation of the
-medcoupling library (let alone the huge part of the medcoupling lib which is
-suboptimal, fragile and bogus).
-
-In mefikit those features are supposed to be performant and implemented using
-a clear necessary and minimal interface. This allows a better maintainability
-of the library.
-
-## Advantages over the current medcoupling
-
-- performance
-- ease of use (one main clear data structure and not many, many algorithms)
-- clarity (medcoupling ~=? medfile, but mefikit != medfile), modern tools
-- rust pilot project in the DM2S
-
-## Mesh Tools Overview
-
-This section describes key mesh operations available in the MEDCoupling library
-for combining and manipulating meshes and their spatial domains.
+**MeFiKit** (*Meshes and Fields Kit*) is a modern, high-performance library for
+manipulating unstructured meshes and associated fields. It is designed with a
+minimal, clear, and efficient interface, focusing on flexibility, correctness,
+and integration in multi-physics simulations and mesh-based data processing
+pipelines.
 
 ---
 
-### `aggregate_meshes`
+## ✨ Key Features
 
-The `aggregate_meshes` operation **concatenates multiple meshes** into a single
-mesh without modifying element topology or geometry. Nodes and elements from
-all input meshes are combined, but no merging or intersection computations are
-performed.
+### 🧩 Mesh and Field Core
+- Unified, ergonomic mesh format:
+  - Supports **mixed element types** in the same mesh
+  - Named **fields of doubles** over elements or nodes
+  - **Element groups** for flexible subdomain handling
 
-- **Result:**
-  A composite mesh containing all input elements, which may include overlapping
-  or duplicated nodes and elements at interfaces.
-- **Use case:**
-  Quickly combine disconnected or independent meshes for batch processing or
-  grouping.
+### 🔄 Input/Output Support
+- Built-in support for major file formats:
+  - `medcoupling`
+  - `medfile`
+  - `CGNS`
+  - Custom formats with `serde`
 
----
+### 🏗️ Mesh Builders
+- Construct meshes programmatically:
+  - Structured meshes (grid-like)
+  - Extruded meshes (2D to 3D)
+  - Fully unstructured meshes (manually)
 
-### `fuse_meshes`
+### 🧠 Topological Toolbox
+- Utilities for advanced topological operations:
+  - **Descending meshes** (edges/faces of volumes, etc.)
+  - **Mesh aggregation** (grouping meshes)
+  - **Neighbor iterators**
+  - **Equivalence classes** of elements
+  - **Connected components**
+  - **Tetrahedrization**, **polyhedrization**, and reverse operations
 
-The `fuse_meshes` operation performs an advanced **fusion of two meshes by
-computing intersections between their elements** and reconstructing a unified
-conforming mesh.
+### 📐 Geometric Toolbox
+- Geometric computation tools:
+  - Bounding box trees
+  - Element intersections
+  - Close node merging
+  - Normal and orientation computation
+  - Barycenter and volume evaluation
 
-- **Key behaviors:**
-  - Detects and computes overlapping/intersecting element volumes.
-  - Introduces new nodes along intersection boundaries.
-  - Splits and merges touching faces, potentially creating polyhedral or cut elements.
-  - Produces a mesh free of overlaps or gaps, fully conforming across the combined domain.
+### 🧮 High-Level Algorithms
+- High-level, composable mesh operations:
+  - `split_by(mesh_a, mesh_b)` – topological split of mesh A by mesh B
+  - `conformize(mesh)` – resolve internal inconsistencies in a mesh
+  - `fuse_meshes(mesh_a, mesh_b)` – boolean union + conformization
+  - `intersect_meshes(mesh_a, mesh_b)` – boolean intersection
+  - `substract_with(mesh_a, mesh_b)` – boolean subtraction
+  - `build_intersection_map()` – for **field interpolation** and remapping
+  - `crack_from_descending(mesh)` – internal face cracking
 
-- **Result:**
-  A single, topologically consistent mesh representing the union of the input
-  meshes, with intersection geometry fully accounted for.
-
-- **Use case:**
-  Multi-domain simulations requiring conforming interfaces or combined meshes
-  with overlapping regions.
-
----
-
-### `intersect_meshes`
-
-The `intersect_meshes` operation computes the **geometric intersection of the
-spatial domains** represented by two input meshes.
-
-- **Key behaviors:**
-  - Determines the volume (or area) common to both input meshes.
-  - Extracts the mesh elements that lie strictly within this intersection
-    region.
-  - Resulting mesh represents the shared space only.
-
-- **Result:**
-  A mesh corresponding exactly to the overlapping spatial region of the two
-  inputs.
-
-- **Use case:**
-  Extracting common subdomains, performing Boolean intersection operations, or
-  limiting analysis to shared regions.
+### 🐍 Python Bindings
+- All functionality is exposed via clean Python bindings for rapid prototyping
+  and integration in data pipelines.
 
 ---
 
-Each of these operations provides powerful tools for mesh manipulation,
-enabling complex workflows involving mesh union, intersection, and domain
-partitioning in scientific computing and simulation.
+## 💡 Why MeFiKit?
 
-## Developer Notes
+The internal mesh representation is designed for **simplicity and
+performance**, closely matching the file format layout. Unlike MEDCoupling’s
+complex (when mixed with MEDFile) and sometimes inefficient structure, MeFiKit
+provides:
 
-The library is structured the following way:
+- 🚀 Better **runtime performance**
+- 🧼 Clearer and **simpler interfaces**
+- ⚙️ Easier integration and debugging
+- 📦 Modern tools and clean build system (Rust/Cargo)
+- 🧪 Robust testing & benchmarking suite
+- 🧪 Pilot usage of rust in CEA’s **DM2S** simulations
 
-- umesh
-    - umesh_core
-    - element_block
-    - element
-    - connectivity
-- io
-    - medcoupling
-    - med
-    - cgns
-- topology
-    - neighbour_iterators
-    - connex_components
-    - mesh_aggregator
-    - descending_mesh
-    - tetrahedrizer
-    - polyzer
-    - unpolyzer
-- geometry
-    - BHV (bounding box hierarchy)
-    - intersection
-    - merge_close_nodes
-    - normals
-    - barycenters
-    - volumes
-- tools
-    - fuser
-    - domain_intersecter
-    - domain_clipper
-    - connex_decomposer
-    - cracker
-    - fields_remapper
-    - renumberer
-    - cutter
-- tests
-    - integration tests
-    - performance tests
-    - regression tests
+---
+
+## 🔧 Core API Overview
+
+### `aggregate_meshes(meshes: &[Mesh]) -> Mesh`
+Concatenates meshes without modifying their topology or geometry.
+- May result in **overlaps** or **duplicates**
+- Fast, non-conforming operation
+
+### `fuse_meshes(a: Mesh, b: Mesh) -> Mesh`
+Computes the **boolean union** of two meshes, producing a **conforming**
+result.
+- Intersects overlapping elements
+- Inserts new faces/nodes
+- Suitable for meshing multi-body domains
+
+### `intersect_meshes(a: Mesh, b: Mesh) -> Mesh`
+Computes the **boolean intersection** of the two spatial domains.
+- Returns only the overlapping region
+- Meshes are intersected topologically and geometrically
+
+### `substract_with(a: Mesh, b: Mesh) -> Mesh`
+Subtracts mesh B from A (`A \ B`), computing topological intersections where
+needed.
+- Useful for holes, notches, or subtractive modeling
+
+### `split_by(a: Mesh, b: Mesh) -> Mesh`
+Splits mesh A into sub-elements along the boundaries defined by mesh B.
+- Mesh B acts as a "cutter"
+- Preserves A’s domain while increasing resolution/conformity
+
+### `conformize(mesh: Mesh) -> Mesh`
+Cleans and re-meshes a single mesh to make it internally **conforming**.
+- Merges internal duplicates
+- Optionally splits internal faces to improve element consistency
+
+---
+
+## 🧪 Developer Notes
+
+### 📁 Project Structure
+
+```text
+umesh/
+  ├── umesh_core.rs
+  ├── element_block.rs
+  ├── element.rs
+  ├── connectivity.rs
+
+io/
+  ├── medcoupling.rs
+  ├── med.rs
+  ├── cgns.rs
+
+topology/
+  ├── neighbour_iterators.rs
+  ├── connex_components.rs
+  ├── mesh_aggregator.rs
+  ├── descending_mesh.rs
+  ├── tetrahedrizer.rs
+  ├── polyzer.rs
+  ├── unpolyzer.rs
+
+geometry/
+  ├── bhv.rs
+  ├── intersection.rs
+  ├── merge_close_nodes.rs
+  ├── normals.rs
+  ├── barycenters.rs
+  ├── volumes.rs
+
+tools/
+  ├── fuser.rs
+  ├── domain_intersecter.rs
+  ├── connex_decomposer.rs
+  ├── cracker.rs
+  ├── fields_remapper.rs
+  ├── cutter.rs
+  ├── renumberer.rs
+
+tests/
+  ├── integration/
+  ├── performance/
+```
 
 ### Build Instructions
 
@@ -258,12 +249,12 @@ This will format the code according to the coding style and conventions used
 in the library. Please make sure to run this command before submitting your
 pull request.
 
-### License
+## License
 
 This library is licensed under the MIT License. See the `LICENSE` file for
 more information.
 
-### Acknowledgements
+## Acknowledgements
 
 This library is developed as part of the DM2S project at CEA. We would like
 to thank the contributors and maintainers of the MEDCoupling library for their
