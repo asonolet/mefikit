@@ -1,7 +1,6 @@
-use ndarray::{ArcArray2, Array2};
+use ndarray::ArcArray2;
 use std::collections::BTreeMap;
 
-use crate::umesh::connectivity::Connectivity;
 use crate::umesh::element::ElementType;
 use crate::umesh::element_block::{ElementBlock, IntoElementBlockEntry};
 
