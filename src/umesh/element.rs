@@ -180,7 +180,7 @@ pub struct Element<'a> {
     pub family: &'a usize,
     groups: &'a BTreeMap<String, BTreeSet<usize>>,
     pub connectivity: ArrayView1<'a, usize>,
-    pub compo_type: ElementType,
+    pub element_type: ElementType,
 }
 
 impl<'a> Element<'a> {
@@ -191,7 +191,7 @@ impl<'a> Element<'a> {
         family: &'a usize,
         groups: &'a BTreeMap<String, BTreeSet<usize>>,
         connectivity: ArrayView1<'a, usize>,
-        compo_type: ElementType,
+        element_type: ElementType,
     ) -> Element<'a> {
         Element {
             global_index,
@@ -200,7 +200,7 @@ impl<'a> Element<'a> {
             family,
             groups,
             connectivity,
-            compo_type,
+            element_type,
         }
     }
 }
@@ -260,12 +260,12 @@ mod tests {
 
         let element = Element {
             global_index: 0,
-            coords: &coords,
+            coords: coords.view(),
             fields,
             family: &family,
             groups: &groups,
             connectivity: conn.view(),
-            compo_type: ElementType::TRI3,
+            element_type: ElementType::TRI3,
         };
 
         assert_eq!(element.connectivity.len(), 3);

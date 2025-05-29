@@ -217,7 +217,7 @@ mod tests {
         };
 
         let coords = array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
-        let elements: Vec<Element> = element_block.iter(&coords).collect();
+        let elements: Vec<Element> = element_block.iter(coords.view()).collect();
 
         assert_eq!(elements.len(), 3);
     }

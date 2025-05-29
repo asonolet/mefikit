@@ -1,4 +1,4 @@
-use ndarray::{s, Array1, Array2, ArrayView1, ArrayViewMut1, Axis};
+use ndarray as nd;
 use serde::{Deserialize, Serialize};
 // use rayon::prelude::*;
 
@@ -10,21 +10,21 @@ use serde::{Deserialize, Serialize};
 /// indicates the start and end of each polygon in the data array. The data array contains the
 /// indices of the vertices of the polygons.
 pub enum Connectivity {
-    Regular(Array2<usize>),
+    Regular(nd::Array2<usize>),
     Poly {
-        data: Array1<usize>,
-        offsets: Array1<usize>,
+        data: nd::Array1<usize>,
+        offsets: nd::Array1<usize>,
     },
 }
 
 pub struct PolyConnIterator<'a> {
-    data: &'a Array1<usize>,
-    offsets: &'a Array1<usize>,
+    data: &'a nd::Array1<usize>,
+    offsets: &'a nd::Array1<usize>,
     index: usize,
 }
 
 impl<'a> Iterator for PolyConnIterator<'a> {
-    type Item = ArrayView1<'a, usize>;
+    type Item = nd::ArrayView1<'a, usize>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.offsets.len() - 1 {
@@ -32,7 +32,7 @@ impl<'a> Iterator for PolyConnIterator<'a> {
         }
         let start = self.offsets[self.index];
         let end = self.offsets[self.index + 1];
-        let result = self.data.slice(s![start..end]);
+        let result = self.data.slice(nd::s![start..end]);
         self.index += 1;
         Some(result)
     }
@@ -49,7 +49,7 @@ enum ConnectivityIterator<'a> {
 }
 
 impl<'a> Iterator for ConnectivityIterator<'a> {
-    type Item = ArrayView1<'a, usize>;
+    type Item = nd::ArrayView1<'a, usize>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
@@ -73,7 +73,7 @@ pub struct PolyConnIteratorMut<'a> {
 }
 
 impl<'a> Iterator for PolyConnIteratorMut<'a> {
-    type Item = ArrayViewMut1<'a, usize>;
+    type Item = nd::ArrayViewMut1<'a, usize>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.offsets.len() - 1 {
@@ -96,7 +96,7 @@ impl<'a> Iterator for PolyConnIteratorMut<'a> {
         // Return the chunk
         // The chunk is a mutable slice of the original data
         // and the rest is the remaining data
-        Some(ArrayViewMut1::from(chunk))
+        Some(nd::ArrayViewMut1::from(chunk))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -111,7 +111,7 @@ enum ConnectivityIteratorMut<'a> {
 }
 
 impl<'a> Iterator for ConnectivityIteratorMut<'a> {
-    type Item = ArrayViewMut1<'a, usize>;
+    type Item = nd::ArrayViewMut1<'a, usize>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
@@ -129,11 +129,11 @@ impl<'a> Iterator for ConnectivityIteratorMut<'a> {
 }
 
 impl Connectivity {
-    pub fn new_regular(conn: Array2<usize>) -> Self {
+    pub fn new_regular(conn: nd::Array2<usize>) -> Self {
         Connectivity::Regular(conn)
     }
 
-    pub fn new_poly(data: Array1<usize>, offsets: Array1<usize>) -> Self {
+    pub fn new_poly(data: nd::Array1<usize>, offsets: nd::Array1<usize>) -> Self {
         Connectivity::Poly { data, offsets }
     }
 
@@ -144,30 +144,30 @@ impl Connectivity {
         }
     }
 
-    pub fn get(&self, index: usize) -> ArrayView1<'_, usize> {
+    pub fn get(&self, index: usize) -> nd::ArrayView1<'_, usize> {
         match self {
             Connectivity::Regular(conn) => conn.row(index),
             Connectivity::Poly { data, offsets } => {
                 let start = offsets[index];
                 let end = offsets[index + 1];
-                data.slice(s![start..end])
+                data.slice(nd::s![start..end])
             }
         }
     }
-    pub fn get_mut(&mut self, index: usize) -> ArrayViewMut1<'_, usize> {
+    pub fn get_mut(&mut self, index: usize) -> nd::ArrayViewMut1<'_, usize> {
         match self {
             Connectivity::Regular(conn) => conn.row_mut(index),
             Connectivity::Poly { data, offsets } => {
                 let start = offsets[index];
                 let end = offsets[index + 1];
-                data.slice_mut(s![start..end])
+                data.slice_mut(nd::s![start..end])
             }
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = ArrayView1<'_, usize>> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = nd::ArrayView1<'_, usize>> + '_ {
         match self {
-            Connectivity::Regular(conn) => ConnectivityIterator::Regular(conn.axis_iter(Axis(0))),
+            Connectivity::Regular(conn) => ConnectivityIterator::Regular(conn.axis_iter(nd::Axis(0))),
             Connectivity::Poly { data, offsets } => ConnectivityIterator::Poly(PolyConnIterator {
                 data,
                 offsets,
@@ -176,10 +176,10 @@ impl Connectivity {
         }
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = ArrayViewMut1<'_, usize>> + '_ {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = nd::ArrayViewMut1<'_, usize>> + '_ {
         match self {
             Connectivity::Regular(conn) => {
-                ConnectivityIteratorMut::Regular(conn.axis_iter_mut(Axis(0)))
+                ConnectivityIteratorMut::Regular(conn.axis_iter_mut(nd::Axis(0)))
             }
             Connectivity::Poly { data, offsets } => {
                 ConnectivityIteratorMut::Poly(PolyConnIteratorMut {
@@ -191,6 +191,7 @@ impl Connectivity {
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {
