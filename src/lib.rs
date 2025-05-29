@@ -1,6 +1,7 @@
-mod umesh;
+pub mod umesh;
 mod topology;
 mod builders;
+pub mod io;
 
 // pub use crate::mesh_element::ElementType;
 // pub use crate::element_block::{ElementBlock, IntoElementBlockEntry, RegularCells, PolyCells};

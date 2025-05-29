@@ -1,6 +1,8 @@
 use ndarray::{s, Array1, Array2, ArrayView1, ArrayViewMut1, Axis};
+use serde::{Deserialize, Serialize};
 // use rayon::prelude::*;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Connectivity structure to represent the connectivity of a mesh.
 ///
 /// It can be either regular or polygonal. Regular connectivity is represented as a 2D array,

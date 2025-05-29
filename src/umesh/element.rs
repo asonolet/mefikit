@@ -1,4 +1,5 @@
-use ndarray::{Array2, ArrayView1, ArrayViewD, ArrayViewMut1, ArrayViewMutD};
+use ndarray::{ArrayView1, ArrayView2, ArrayViewD, ArrayViewMut1, ArrayViewMutD};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
@@ -70,7 +71,7 @@ pub enum RegularElemType {
 /// Some elements are not linear but of higher order such as SEG3, HEX21. The elements node
 /// connecivity follows a convention. Three kinds of elements can hold an abitrary number of nodes
 /// and are specials: SPLINE, PGON (Polygon), and PHED (Polyhedron).
-#[derive(Debug, Eq, Hash, Copy, Clone, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Eq, Hash, Copy, Clone, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ElementType {
     // 0d
     VERTEX,
@@ -174,7 +175,7 @@ impl ElementType {
 /// publicly).
 pub struct Element<'a> {
     pub global_index: usize,
-    coords: &'a Array2<f64>,
+    coords: ArrayView2<'a, f64>,
     pub fields: BTreeMap<&'a str, ArrayViewD<'a, f64>>,
     pub family: &'a usize,
     groups: &'a BTreeMap<String, BTreeSet<usize>>,
@@ -185,7 +186,7 @@ pub struct Element<'a> {
 impl<'a> Element<'a> {
     pub fn new(
         global_index: usize,
-        coords: &'a Array2<f64>,
+        coords: ArrayView2<'a, f64>,
         fields: BTreeMap<&'a str, ArrayViewD<'a, f64>>,
         family: &'a usize,
         groups: &'a BTreeMap<String, BTreeSet<usize>>,
@@ -214,7 +215,7 @@ impl<'a> Element<'a> {
 /// nodes in this element.
 pub struct ElementMut<'a> {
     pub global_index: usize,
-    coords: &'a Array2<f64>,
+    coords: ArrayView2<'a, f64>,
     pub connectivity: ArrayViewMut1<'a, usize>,
     pub family: &'a mut usize,
     pub fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>>,
@@ -225,7 +226,7 @@ pub struct ElementMut<'a> {
 impl<'a> ElementMut<'a> {
     pub fn new(
         global_index: usize,
-        coords: &'a Array2<f64>,
+        coords: ArrayView2<'a, f64>,
         connectivity: ArrayViewMut1<'a, usize>,
         family: &'a mut usize,
         fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>>,

@@ -1,11 +1,14 @@
-use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayViewMut1, Axis};
+use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewMut1, Axis};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use crate::umesh::connectivity::Connectivity;
 use crate::umesh::element::{Element, ElementType};
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// The part of a mesh constituted by one kind of element.
 ///
 /// The element block is the base structure to hold connectivity, fields, groups.
@@ -44,13 +47,15 @@ impl<'a> ElementBlock {
         }
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.connectivity.len()
     }
-    fn element_connectivity(&'a self, index: usize) -> ArrayView1<'a, usize> {
+
+    pub fn element_connectivity(&'a self, index: usize) -> ArrayView1<'a, usize> {
         self.connectivity.get(index)
     }
-    fn iter(&'a self, coords: &'a Array2<f64>) -> impl Iterator<Item = Element<'a>> + 'a {
+
+    pub fn iter(&'a self, coords: ArrayView2<'a, f64>) -> impl Iterator<Item = Element<'a>> + 'a {
         (0..self.len()).map(move |i| {
             let connectivity = self.element_connectivity(i);
             let fields = self
@@ -69,7 +74,8 @@ impl<'a> ElementBlock {
             )
         })
     }
-    fn par_iter(
+
+    pub fn par_iter(
         &'a self,
         coords: &'a Array2<f64>,
     ) -> impl ParallelIterator<Item = Element<'a>> + 'a {
@@ -83,7 +89,7 @@ impl<'a> ElementBlock {
 
             Element::new(
                 i,
-                coords,
+                coords.view(),
                 fields,
                 &self.families[i],
                 &self.groups,
@@ -93,7 +99,7 @@ impl<'a> ElementBlock {
         })
     }
 
-    fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize> {
+    pub fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize> {
         self.connectivity.get_mut(index)
     }
 

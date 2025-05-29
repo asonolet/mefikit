@@ -1,7 +1,5 @@
-use std::collections::BTreeMap;
-use crate::umesh::{UMesh, Connectivity, ElementType, ElementBlock};
-use ndarray::{Array2, ArcArray2};
-
+use crate::umesh::{Connectivity, ElementBlock, ElementType, UMesh};
+use ndarray::{ArcArray2, Array2};
 
 /// Regular umesh builder (1d, 2d or 3d).
 ///
@@ -52,7 +50,7 @@ impl RegularUMeshBuilder {
         }
     }
 
-    pub fn add_axis(&mut self, axis: Vec<f64>) -> &mut Self {
+    pub fn add_axis(mut self, axis: Vec<f64>) -> Self {
         if self.coords_grid.len() < 3 {
             self.coords_grid.push(axis);
         } else {
@@ -164,64 +162,61 @@ impl RegularUMeshBuilder {
 
     pub fn build(self) -> UMesh {
         let coords = self.compute_coords();
+        let coords_dim = coords.shape()[1];
         let connectivity = self.compute_connectivity();
 
-        let mut element_blocks = BTreeMap::new();
-        if coords.shape()[1] == 1 {
+        let mut umesh = UMesh::new(ArcArray2::from(coords));
+        if coords_dim == 1 {
             // 1D mesh
-            element_blocks.insert(
+            umesh.add_block(ElementBlock::new(
                 ElementType::SEG2,
-                ElementBlock::new(ElementType::SEG2, Connectivity::new_regular(connectivity)),
-            );
-        } else if coords.shape()[1] == 2 {
+                Connectivity::new_regular(connectivity),
+            ));
+        } else if coords_dim == 2 {
             // 2D mesh
-            element_blocks.insert(
+            umesh.add_block(ElementBlock::new(
                 ElementType::QUAD4,
-                ElementBlock::new(ElementType::QUAD4, Connectivity::new_regular(connectivity)),
-            );
-        } else if coords.shape()[1] == 3 {
+                Connectivity::new_regular(connectivity),
+            ));
+        } else if coords_dim == 3 {
             // 3D mesh
-            element_blocks.insert(
+            umesh.add_block(ElementBlock::new(
                 ElementType::HEX8,
-                ElementBlock::new(ElementType::HEX8, Connectivity::new_regular(connectivity)),
-            );
+                Connectivity::new_regular(connectivity),
+            ));
         } else {
             panic!("Unsupported number of dimensions for regular mesh");
         }
-
-        UMesh {
-            coords: ArcArray2::from(coords),
-            element_blocks,
-        }
+        umesh
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::umesh::element::ElementType;
+    use crate::umesh::ElementType;
 
     #[test]
     fn test_regular_mesh_builder_1d() {
-        let mut builder = RegularUMeshBuilder::new();
-        builder.add_axis(vec![0.0, 1.0, 2.0]);
+        let builder = RegularUMeshBuilder::new()
+            .add_axis(vec![0.0, 1.0, 2.0]);
         let mesh = builder.build();
-        assert_eq!(mesh.coords.shape(), &[3, 1]);
-        assert_eq!(mesh.element_blocks.len(), 1);
-        assert!(mesh.element_blocks.contains_key(&ElementType::SEG2));
+        assert_eq!(mesh.coords().shape(), &[3, 1]);
+        assert_eq!(mesh.element_blocks().len(), 1);
+        assert!(mesh.element_blocks().contains_key(&ElementType::SEG2));
     }
 
     #[test]
     fn test_regular_mesh_builder_2d() {
-        let mut builder = RegularUMeshBuilder::new();
-        builder.add_axis(vec![0.0, 1.0, 2.0]);
-        builder.add_axis(vec![0.0, 1.0]);
+        let builder = RegularUMeshBuilder::new()
+            .add_axis(vec![0.0, 1.0, 2.0])
+            .add_axis(vec![0.0, 1.0]);
         let mesh = builder.build();
-        assert_eq!(mesh.coords.shape(), &[6, 2]);
-        assert_eq!(mesh.element_blocks.len(), 1);
-        assert!(mesh.element_blocks.contains_key(&ElementType::QUAD4));
+        assert_eq!(mesh.coords().shape(), &[6, 2]);
+        assert_eq!(mesh.element_blocks().len(), 1);
+        assert!(mesh.element_blocks().contains_key(&ElementType::QUAD4));
         assert_eq!(
-            match &mesh.element_blocks[&ElementType::QUAD4].connectivity {
+            match &mesh.element_block(ElementType::QUAD4).unwrap().connectivity {
                 Connectivity::Regular(conn) => conn.shape(),
                 _ => panic!("Expected regular connectivity"),
             },
@@ -231,16 +226,16 @@ mod tests {
 
     #[test]
     fn test_regular_mesh_builder_3d() {
-        let mut builder = RegularUMeshBuilder::new();
-        builder.add_axis(vec![0.0, 1.0, 2.0]);
-        builder.add_axis(vec![0.0, 1.0]);
-        builder.add_axis(vec![0.0, 1.0, 2.0]);
+        let builder = RegularUMeshBuilder::new()
+            .add_axis(vec![0.0, 1.0, 2.0])
+            .add_axis(vec![0.0, 1.0])
+            .add_axis(vec![0.0, 1.0, 2.0]);
         let mesh = builder.build();
-        assert_eq!(mesh.coords.shape(), &[18, 3]);
-        assert_eq!(mesh.element_blocks.len(), 1);
-        assert!(mesh.element_blocks.contains_key(&ElementType::HEX8));
+        assert_eq!(mesh.coords().shape(), &[18, 3]);
+        assert_eq!(mesh.element_blocks().len(), 1);
+        assert!(mesh.element_blocks().contains_key(&ElementType::HEX8));
         assert_eq!(
-            match &mesh.element_blocks[&ElementType::HEX8].connectivity {
+            match &mesh.element_blocks()[&ElementType::HEX8].connectivity {
                 Connectivity::Regular(conn) => conn.shape(),
                 _ => panic!("Expected regular connectivity"),
             },
