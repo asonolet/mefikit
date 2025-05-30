@@ -11,3 +11,4 @@ rayon = "1.10.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
 serde_yaml = "0.9.34"
+todo = "0.3.0"

@@ -86,6 +86,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "todo",
 ]
 
 [[package]]
@@ -240,6 +241,12 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "todo"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "728445e4f419151230da8206285868aab4f4ef1842a024227d6636e5d9394ce3"
 
 [[package]]
 name = "unicode-ident"

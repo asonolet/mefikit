@@ -1,7 +1,8 @@
-use ndarray::{ArrayView1, ArrayView2, ArrayViewD, ArrayViewMut1, ArrayViewMutD};
+use ndarray::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+
 
 #[derive(Copy, Clone)]
 pub enum EdgeType {
@@ -130,14 +131,6 @@ impl From<RegularElemType> for ElementType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Dimension {
-    D0,
-    D1,
-    D2,
-    D3,
-}
-
 impl ElementType {
     pub fn dimension(&self) -> Dimension {
         use ElementType::*;
@@ -167,6 +160,31 @@ impl ElementType {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Dimension {
+    D0,
+    D1,
+    D2,
+    D3,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
+pub struct ElementId (ElementType, usize);
+
+impl ElementId {
+    pub fn new(element_type: ElementType, index: usize) -> Self {
+        ElementId(element_type, index)
+    }
+
+    pub fn element_type(&self) -> ElementType {
+        self.0
+    }
+
+    pub fn index(&self) -> usize {
+        self.1
+    }
+}
+
 /// Imutable Item of an ElementBlock.
 ///
 /// This struct is used to read data on an element in an element block. Note that is is only a
@@ -174,7 +192,7 @@ impl ElementType {
 /// view still has access to the whole coordinates array and the whole groups hashmap (but not
 /// publicly).
 pub struct Element<'a> {
-    pub global_index: usize,
+    pub index: usize,
     coords: ArrayView2<'a, f64>,
     pub fields: BTreeMap<&'a str, ArrayViewD<'a, f64>>,
     pub family: &'a usize,
@@ -185,7 +203,7 @@ pub struct Element<'a> {
 
 impl<'a> Element<'a> {
     pub fn new(
-        global_index: usize,
+        index: usize,
         coords: ArrayView2<'a, f64>,
         fields: BTreeMap<&'a str, ArrayViewD<'a, f64>>,
         family: &'a usize,
@@ -194,13 +212,94 @@ impl<'a> Element<'a> {
         element_type: ElementType,
     ) -> Element<'a> {
         Element {
-            global_index,
+            index,
             coords,
             fields,
             family,
             groups,
             connectivity,
             element_type,
+        }
+    }
+
+    /// Returns the global index of the element.
+    pub fn id(&self) -> (ElementType, usize) {
+        (self.element_type, self.index)
+    }
+
+    // This function should return the subentities of the element based on the codimension.
+    pub fn subentities(&self, codim: Option<Dimension>) -> Option<Vec<(ElementType, Vec<usize>)>> {
+        use ElementType::*;
+        let codim = match codim {
+            None => Dimension::D1,
+            Some(c) => c,
+        };
+        let co = self.connectivity;
+        match self.element_type {
+            SEG2 | SEG3 | SEG4 => {
+                // 1D elements have edges as subentities
+                if codim == Dimension::D1 {
+                    Some(vec![
+                        (VERTEX, vec![co[0]]),
+                        (VERTEX, vec![co[1]]),
+                    ])
+                } else {
+                    None
+                }
+            }
+            TRI3 => {
+                // 2D elements have edges as subentities
+                if codim == Dimension::D1 {
+                    Some(vec![
+                        (SEG2, vec![co[0], co[1]]),
+                        (SEG2, vec![co[1], co[2]]),
+                        (SEG2, vec![co[2], co[0]]),
+                    ])
+                } else {
+                    None
+                }
+            }
+            TRI6 | TRI7 => {
+                // 2D Quad elements have edges3 as subentities
+                if codim == Dimension::D1 {
+                    Some(vec![
+                        (SEG3, vec![co[0], co[1], co[3]]),
+                        (SEG3, vec![co[1], co[2], co[4]]),
+                        (SEG3, vec![co[2], co[0], co[5]]),
+                    ])
+                } else {
+                    None
+                }
+            }
+            QUAD4 => {
+                // 2D elements have edges as subentities
+                if codim == Dimension::D1 {
+                    Some(vec![
+                        (SEG2, vec![co[0], co[1]]),
+                        (SEG2, vec![co[1], co[2]]),
+                        (SEG2, vec![co[2], co[3]]),
+                        (SEG2, vec![co[3], co[0]]),
+                    ])
+                } else {
+                    None
+                }
+            }
+            TET4 => {
+                // 3D elements have faces as subentities
+                if codim == Dimension::D1 {
+                    Some(vec![
+                        (TRI3, vec![co[0], co[1], co[2]]),
+                        (TRI3, vec![co[1], co[2], co[3]]),
+                        (TRI3, vec![co[2], co[3], co[0]]),
+                        (TRI3, vec![co[3], co[0], co[1]]),
+                    ])
+                } else if codim == Dimension::D2 {
+                    todo!()
+                } else {
+                    None
+                }
+            }
+            _ => todo!(), // For other types, return empty vector
         }
     }
 }

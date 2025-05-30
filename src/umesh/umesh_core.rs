@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use crate::umesh::element::Element;
-use crate::umesh::ElementType;
 use crate::umesh::element_block::{ElementBlock, IntoElementBlockEntry};
+use crate::umesh::ElementType;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// An unstrustured mesh.
@@ -33,21 +33,26 @@ impl UMesh {
             element_blocks: BTreeMap::new(),
         }
     }
+
     pub fn add_block<T: IntoElementBlockEntry>(&mut self, compo: T) {
         let (key, wrapped) = compo.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
+
     pub fn coords(&self) -> &ArcArray2<f64> {
         &self.coords
     }
+
     pub fn elements(&self) -> impl Iterator<Item = Element> {
         self.element_blocks
             .values()
             .flat_map(|block| block.iter(self.coords.view()))
     }
+
     pub fn element_blocks(&self) -> &BTreeMap<ElementType, ElementBlock> {
         &self.element_blocks
     }
+
     pub fn element_block(&self, element_type: ElementType) -> Option<&ElementBlock> {
         self.element_blocks.get(&element_type)
     }
@@ -56,12 +61,14 @@ impl UMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::umesh::ElementType;
     use crate::umesh::Connectivity;
+    use crate::umesh::ElementType;
     use ndarray as nd;
 
     fn make_test_2d_mesh() -> UMesh {
-        let coords = ArcArray2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
+        let coords =
+            ArcArray2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])
+                .unwrap();
         let mut mesh = UMesh::new(coords);
         mesh.add_block(ElementBlock::new(
             ElementType::QUAD4,
