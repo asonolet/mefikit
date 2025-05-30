@@ -1,3 +1,4 @@
+use ndarray::prelude::*;
 use ndarray::ArcArray2;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -61,7 +62,6 @@ impl UMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::umesh::Connectivity;
     use crate::umesh::ElementType;
     use ndarray as nd;
 
@@ -70,9 +70,9 @@ mod tests {
             ArcArray2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])
                 .unwrap();
         let mut mesh = UMesh::new(coords);
-        mesh.add_block(ElementBlock::new(
+        mesh.add_block(ElementBlock::new_regular(
             ElementType::QUAD4,
-            Connectivity::new_regular(nd::arr2(&[[0, 1, 3, 2]])),
+            nd::arr2(&[[0, 1, 3, 2]]),
         ));
         mesh
     }
@@ -81,9 +81,9 @@ mod tests {
     fn test_umesh_creation() {
         let coords = ArcArray2::from_shape_vec((3, 1), vec![0.0, 1.0, 2.0]).unwrap();
         let mut mesh = UMesh::new(coords);
-        mesh.add_block(ElementBlock::new(
+        mesh.add_block(ElementBlock::new_regular(
             ElementType::SEG2,
-            Connectivity::new_regular(nd::arr2(&[[0, 1], [1, 2]])),
+            nd::arr2(&[[0, 1], [1, 2]]),
         ));
         assert_eq!(mesh.coords().shape(), &[3, 1]);
         assert_eq!(mesh.element_blocks().len(), 1);

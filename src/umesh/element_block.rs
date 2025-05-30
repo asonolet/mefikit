@@ -23,7 +23,7 @@ pub struct ElementBlock {
 }
 
 impl<'a> ElementBlock {
-    /// Create a new element block.
+    /// Create a new regular element block.
     ///
     /// # Arguments
     /// * `cell_type` - The type of the elements in this block.
@@ -33,14 +33,39 @@ impl<'a> ElementBlock {
     /// * `groups` - A map of group names to sets of element indices.
     /// # Returns
     /// A new `ElementBlock` instance.
-    pub fn new(
+    pub fn new_regular(
         cell_type: ElementType,
-        connectivity: Connectivity,
+        connectivity: Array2<usize>,
     ) -> Self {
         let conn_len = connectivity.len();
         Self {
             cell_type,
-            connectivity,
+            connectivity: Connectivity::Regular(connectivity),
+            fields: BTreeMap::new(),
+            families: Array1::from_elem(conn_len, 0),
+            groups: BTreeMap::new(),
+        }
+    }
+
+    /// Create a new poly element block.
+    ///
+    /// # Arguments
+    /// * `cell_type` - The type of the elements in this block.
+    /// * `connectivity` - The connectivity of the elements in this block.
+    /// * `fields` - A map of field names to their values for each element.
+    /// * `families` - An array of family indices for each element.
+    /// * `groups` - A map of group names to sets of element indices.
+    /// # Returns
+    /// A new `ElementBlock` instance.
+    pub fn new_poly(
+        cell_type: ElementType,
+        connectivity: Array1<usize>,
+        offsets: Array1<usize>,
+    ) -> Self {
+        let conn_len = connectivity.len();
+        Self {
+            cell_type,
+            connectivity: Connectivity::new_poly(connectivity, offsets),
             fields: BTreeMap::new(),
             families: Array1::from_elem(conn_len, 0),
             groups: BTreeMap::new(),

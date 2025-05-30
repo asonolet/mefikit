@@ -1,4 +1,4 @@
-use crate::umesh::{Connectivity, ElementBlock, ElementType, UMesh};
+use crate::umesh::{ElementBlock, ElementType, UMesh};
 use ndarray::{ArcArray2, Array2};
 
 /// Regular umesh builder (1d, 2d or 3d).
@@ -168,21 +168,21 @@ impl RegularUMeshBuilder {
         let mut umesh = UMesh::new(ArcArray2::from(coords));
         if coords_dim == 1 {
             // 1D mesh
-            umesh.add_block(ElementBlock::new(
+            umesh.add_block(ElementBlock::new_regular(
                 ElementType::SEG2,
-                Connectivity::new_regular(connectivity),
+                connectivity,
             ));
         } else if coords_dim == 2 {
             // 2D mesh
-            umesh.add_block(ElementBlock::new(
+            umesh.add_block(ElementBlock::new_regular(
                 ElementType::QUAD4,
-                Connectivity::new_regular(connectivity),
+                connectivity,
             ));
         } else if coords_dim == 3 {
             // 3D mesh
-            umesh.add_block(ElementBlock::new(
+            umesh.add_block(ElementBlock::new_regular(
                 ElementType::HEX8,
-                Connectivity::new_regular(connectivity),
+                connectivity,
             ));
         } else {
             panic!("Unsupported number of dimensions for regular mesh");
