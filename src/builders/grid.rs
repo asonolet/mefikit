@@ -194,7 +194,7 @@ impl RegularUMeshBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::umesh::ElementType;
+    use crate::umesh::{Connectivity, ElementType};
 
     #[test]
     fn test_regular_mesh_builder_1d() {

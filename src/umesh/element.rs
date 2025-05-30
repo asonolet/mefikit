@@ -381,7 +381,7 @@ mod tests {
         let family = 0;
 
         let element = Element {
-            global_index: 0,
+            index: 0,
             coords: coords.view(),
             fields,
             family: &family,
@@ -391,6 +391,6 @@ mod tests {
         };
 
         assert_eq!(element.connectivity.len(), 3);
-        assert_eq!(element.global_index, 0);
+        assert_eq!(element.index, 0);
     }
 }

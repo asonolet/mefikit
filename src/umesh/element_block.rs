@@ -217,7 +217,7 @@ impl IntoElementBlockEntry for ElementBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::{array, Array1};
+    use ndarray::array;
     use std::collections::BTreeMap;
 
     use crate::umesh::element::Element;
@@ -227,7 +227,7 @@ mod tests {
     fn test_element_block() {
         let connectivity = Connectivity::Regular(array![[0, 1], [1, 2], [2, 3]]);
         let fields = BTreeMap::new();
-        let families = Array1::from_vec(vec![0, 1, 2]);
+        let families = vec![0, 1, 2];
         let groups = BTreeMap::new();
 
         let element_block = ElementBlock {
@@ -248,7 +248,7 @@ mod tests {
     fn test_element_block_iter() {
         let connectivity = Connectivity::Regular(array![[0, 1], [1, 2], [2, 3]]);
         let fields = BTreeMap::new();
-        let families = Array1::from_vec(vec![0, 1, 2]);
+        let families = vec![0, 1, 2];
         let groups = BTreeMap::new();
 
         let element_block = ElementBlock {

@@ -48,7 +48,7 @@ impl UMesh {
                 }
                 self.element_blocks
                     .entry(element_type)
-                    .or_insert_with(|| ElementBlock::new_regular(element_type, arr2(&[[]])));
+                    .or_insert_with(|| ElementBlock::new_regular(element_type, Array2::zeros((0, element_type.num_nodes().unwrap()))));
             }
             Regularity::Poly => {
                 self.element_blocks
