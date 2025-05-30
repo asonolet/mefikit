@@ -3,7 +3,7 @@ use ndarray::ArcArray2;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use crate::umesh::element::Element;
+use crate::umesh::element::{Element, Regularity};
 use crate::umesh::element_block::{ElementBlock, IntoElementBlockEntry};
 use crate::umesh::ElementType;
 
@@ -21,12 +21,6 @@ pub struct UMesh {
 //     pub elements: HashMap<ElementType, ElementBlockView<'a>>,
 // }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CellId {
-    pub element_type: ElementType,
-    pub local_index: usize,
-}
-
 impl UMesh {
     pub fn new(coords: ArcArray2<f64>) -> Self {
         Self {
@@ -35,9 +29,38 @@ impl UMesh {
         }
     }
 
-    pub fn add_block<T: IntoElementBlockEntry>(&mut self, compo: T) {
-        let (key, wrapped) = compo.into_entry();
+    pub fn add_block<T: IntoElementBlockEntry>(&mut self, block: T) {
+        let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
+    }
+
+    pub fn add_element(
+        &mut self,
+        element_type: ElementType,
+        connectivity: &[usize],
+        family: Option<usize>,
+        fields: Option<BTreeMap<String, ArrayViewD<f64>>>,
+    ) {
+        match element_type.regularity() {
+            Regularity::Regular => {
+                if connectivity.len() != element_type.num_nodes().unwrap() {
+                    panic!("Connectivity length does not match the number of nodes for element type {:?}", element_type);
+                }
+                self.element_blocks
+                    .entry(element_type)
+                    .or_insert_with(|| ElementBlock::new_regular(element_type, arr2(&[[]])));
+            }
+            Regularity::Poly => {
+                self.element_blocks
+                    .entry(element_type)
+                    .or_insert_with(|| ElementBlock::new_poly(element_type, arr1(&[]), arr1(&[])));
+            }
+        }
+
+        self.element_blocks
+            .get_mut(&element_type)
+            .unwrap()  // This unwrap is safe because we just inserted the element type
+            .add_element(ArrayView1::from(connectivity), family, fields);
     }
 
     pub fn coords(&self) -> &ArcArray2<f64> {

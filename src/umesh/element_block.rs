@@ -1,4 +1,4 @@
-use ndarray::{Array1, Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewMut1, Axis};
+use ndarray::prelude::*;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -18,7 +18,7 @@ pub struct ElementBlock {
     pub cell_type: ElementType,
     pub connectivity: Connectivity,
     pub fields: BTreeMap<String, ArrayD<f64>>,
-    pub families: Array1<usize>,
+    pub families: Vec<usize>,
     pub groups: BTreeMap<String, BTreeSet<usize>>,
 }
 
@@ -42,7 +42,7 @@ impl<'a> ElementBlock {
             cell_type,
             connectivity: Connectivity::Regular(connectivity),
             fields: BTreeMap::new(),
-            families: Array1::from_elem(conn_len, 0),
+            families: vec![0; conn_len],
             groups: BTreeMap::new(),
         }
     }
@@ -67,8 +67,26 @@ impl<'a> ElementBlock {
             cell_type,
             connectivity: Connectivity::new_poly(connectivity, offsets),
             fields: BTreeMap::new(),
-            families: Array1::from_elem(conn_len, 0),
+            families: vec![0; conn_len],
             groups: BTreeMap::new(),
+        }
+    }
+
+    pub fn add_element(
+        &mut self,
+        connectivity: ArrayView1<usize>,
+        family: Option<usize>,
+        fields: Option<BTreeMap<String, ArrayViewD<f64>>>,
+    ) {
+        self.connectivity.append(connectivity);
+        let family = match family {
+            Some(fam) => fam,
+            None => 0,
+        };
+        self.families.push(family);
+
+        if let Some(fields) = fields {
+            todo!();
         }
     }
 

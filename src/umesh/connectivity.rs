@@ -190,6 +190,17 @@ impl Connectivity {
             }
         }
     }
+    pub fn append(&mut self, connectivity: nd::ArrayView1<usize>) {
+        match self {
+            Connectivity::Regular(conn) => {
+                conn.push_row(connectivity);
+            }
+            Connectivity::Poly { data, offsets } => {
+                data.append(nd::Axis(0), connectivity).unwrap();
+                offsets.append(nd::Axis(0), nd::arr1(&[data.len()]).view());
+            }
+        }
+    }
 }
 
 
