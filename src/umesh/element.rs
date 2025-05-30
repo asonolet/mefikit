@@ -246,8 +246,8 @@ impl<'a> Element<'a> {
     }
 
     /// Returns the global index of the element.
-    pub fn id(&self) -> (ElementType, usize) {
-        (self.element_type, self.index)
+    pub fn id(&self) -> ElementId {
+        ElementId::new(self.element_type, self.index)
     }
 
     // This function should return the subentities of the element based on the codimension.
