@@ -158,6 +158,29 @@ impl ElementType {
             _ => Regularity::Regular,
         }
     }
+
+    pub fn num_nodes(&self) -> Option<usize> {
+        use ElementType::*;
+        match self {
+            VERTEX => Some(1),
+            SEG2 => Some(2),
+            SEG3 => Some(3),
+            SEG4 => Some(4),
+            SPLINE => None, // Spline can have arbitrary number of nodes
+            TRI3 => Some(3),
+            TRI6 => Some(6),
+            TRI7 => Some(7),
+            QUAD4 => Some(4),
+            QUAD8 => Some(8),
+            QUAD9 => Some(9),
+            PGON => None, // Polygon can have arbitrary number of nodes
+            TET4 => Some(4),
+            TET10 => Some(10),
+            HEX8 => Some(8),
+            HEX21 => Some(21),
+            PHED => None, // Polyhedron can have arbitrary number of nodes
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
