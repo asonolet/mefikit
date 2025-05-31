@@ -88,12 +88,49 @@ The `umesh` module provides building blocks for:
 
 ---
 
+## 🛠️ In-Place vs. Out-of-Place Operations in `UMesh`
+
+This document categorizes common mesh operations into two groups:
+
+- **In-Place Operations**: These can be applied directly to an existing `UMesh` or its view without reallocating major structures.
+- **Out-of-Place Operations**: These typically rewrite the mesh's core structures (e.g., connectivity, coordinates) and are better implemented as producing a new mesh.
+
+
+### ✅ In-Place Operations (mutate existing mesh, applied on UMeshViewMut)
+These operations can safely modify the mesh structure in-place, especially when
+done through a `UMeshViewMut`.
+
+| Operation                 | Description |
+|---------------------------|-------------|
+| `assign_field`            | Adds or replaces field data on a block or selection |
+| `set_family`              | Sets the family (zone/subdomain tag) of elements |
+| `set_group`               | Modifies or defines a group of element IDs under a name |
+| `renumber_nodes`          | In-place reordering of coordinates and node indices |
+| `merge_close_nodes`       | Mutates coordinates and connectivity to merge nearby points |
+| `set_coordinates`         | Mutate existing geometry without changing topology |
+| `transform_coordinates`   | Apply affine transformation to node coordinates |
+
+
+### 🧱 Out-of-Place Operations (produce new mesh, valid on UMeshView)
+These operations fundamentally change the mesh's topology, usually requiring
+reallocation of connectivity tables or geometry arrays.
+
+| Operation                  | Description |
+|----------------------------|-------------|
+| `renumber_cells()`         | In-place reordering of cells. Out-of-place because of Poly |
+| `build_submesh()`          | Returns a new mesh composed of subentities depending on codim |
+| `conformize(mesh)`         | Cleans internal inconsistencies, requires deep topology rewrite |
+| `split_by(mesh_a, mesh_b)` | Cuts mesh A using B's topology, creates new elements |
+| `fuse_meshes(a, b)`        | Boolean union with topological merging, produces a new mesh |
+| `intersect_meshes(a, b)`   | Keeps overlapping parts of two meshes, new geometry required |
+| `substract_with(a, b)`     | Subtracts domain of B from A, with new elements generated |
+
 ---
 
 ## 📚 Related Modules
 
 - `geometry`, `topology` — operation-specific logic
-- `io` — file import/export (MED, CGNS, etc.)
+- `io` — file import/export (serde_json, serde_yaml, MED, CGNS, etc.)
 
 ---
 

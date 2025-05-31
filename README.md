@@ -80,37 +80,103 @@ provides:
 
 ## 🔧 Core API Overview
 
-### `aggregate_meshes(meshes: &[Mesh]) -> Mesh`
+### `aggregate_meshes(meshes: &[UMeshView]) -> UMesh`
 Concatenates meshes without modifying their topology or geometry.
 - May result in **overlaps** or **duplicates**
 - Fast, non-conforming operation
 
-### `fuse_meshes(a: Mesh, b: Mesh) -> Mesh`
+### `fuse_meshes(a: UMeshView, b: UMeshView) -> UMesh`
 Computes the **boolean union** of two meshes, producing a **conforming**
 result.
 - Intersects overlapping elements
 - Inserts new faces/nodes
-- Suitable for meshing multi-body domains
 
-### `intersect_meshes(a: Mesh, b: Mesh) -> Mesh`
+### `intersect_meshes(a: UMeshView, b: UMeshView) -> UMesh`
 Computes the **boolean intersection** of the two spatial domains.
 - Returns only the overlapping region
-- Meshes are intersected topologically and geometrically
+- UMeshes are intersected topologically and geometrically
 
-### `substract_with(a: Mesh, b: Mesh) -> Mesh`
+### `substract_with(a: UMeshView, b: UMeshView) -> UMesh`
 Subtracts mesh B from A (`A \ B`), computing topological intersections where
 needed.
 - Useful for holes, notches, or subtractive modeling
 
-### `split_by(a: Mesh, b: Mesh) -> Mesh`
+### `split_by(a: UMeshView, b: UMeshView) -> UMesh`
 Splits mesh A into sub-elements along the boundaries defined by mesh B.
-- Mesh B acts as a "cutter"
+- UMesh B acts as a "cutter"
 - Preserves A’s domain while increasing resolution/conformity
 
-### `conformize(mesh: Mesh) -> Mesh`
+### `conformize(mesh: UMeshView) -> UMesh`
 Cleans and re-meshes a single mesh to make it internally **conforming**.
 - Merges internal duplicates
 - Optionally splits internal faces to improve element consistency
+
+---
+
+## 🔄 Mesh Ownership and Views: `UMesh`, `UMeshView`, and `UMeshViewMut`
+
+MeFiKit uses a clear ownership model to distinguish between owned meshes and
+views over mesh data. This makes integration with other systems (e.g., C or
+Python) efficient and safe, while also enabling high-performance zero-copy
+operations.
+
+### 📦 `UMesh` – Owned Mesh
+
+`UMesh` owns its data:
+- Coordinate array (`ArcArray2<f64>`)
+- Element blocks with connectivities, fields, families, groups
+
+This type is used for:
+- Internal mesh manipulation in Rust
+- Persistent mesh storage
+- File I/O
+- Long-term computation or modification
+
+It is constructed by cloning or transferring ownership of arrays.
+
+---
+
+### 👁️ `UMeshView<'a>` – Read-Only Mesh View
+
+`UMeshView` is a **zero-copy, non-owning** view over existing mesh data. It
+holds references (slices or `ndarray::ArrayView`) to memory that is managed
+elsewhere (e.g., passed from a C/C++/Python array).
+
+This is ideal for:
+- Temporary views
+- Foreign function interface (FFI)
+- Avoiding unnecessary copies when no modification is needed
+
+⚠️ Lifetimes must be respected — `UMeshView` is only valid as long as the
+referenced data lives.
+
+---
+
+### 🛠️ `UMeshViewMut<'a>` – Mutable Mesh View
+
+`UMeshViewMut` extends `UMeshView` to allow **in-place** modifications of:
+- Connectivities (e.g., node merging or renumbering, but no pruning)
+- Fields (e.g., updating values)
+- Families and groups
+
+This is used for:
+- High-performance, localized updates
+- In-place mesh transformations
+- Efficient mesh modification during simulation
+
+⚠️ Safe only when no aliasing or concurrency violations occur.
+
+---
+
+### 🔄 Summary
+
+| Type           | Ownership | Mutable | Use Case                                 | Copies |
+|----------------|-----------|---------|------------------------------------------|--------|
+| `UMesh`        | Yes       | Yes     | Full ownership, long-term usage          | Yes    |
+| `UMeshView`    | No        | No      | Read-only access to foreign/borrowed data| No     |
+| `UMeshViewMut` | No        | Yes     | In-place modification of borrowed data   | No     |
+
+This model ensures performance, safety, and clear interoperability boundaries.
 
 ---
 
