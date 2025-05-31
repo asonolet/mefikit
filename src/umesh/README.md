@@ -88,12 +88,148 @@ The `umesh` module provides building blocks for:
 
 ---
 
+## 🔄 Mesh Ownership and Views: `UMesh`, `UMeshView`, and `UMeshViewMut`
+
+MeFiKit uses a clear ownership model to distinguish between owned meshes and
+views over mesh data. This makes integration with other systems (e.g., C or
+Python) efficient and safe, while also enabling high-performance zero-copy
+operations.
+
+### 📦 `UMesh` – Owned Mesh
+
+`UMesh` owns its data:
+- Coordinate array (`ArcArray2<f64>`)
+- Element blocks with connectivities, fields, families, groups
+
+This type is used for:
+- Internal mesh manipulation in Rust
+- Persistent mesh storage
+- File I/O
+- Long-term computation or modification
+
+It is constructed by cloning or transferring ownership of arrays.
+
+---
+
+### 👁️ `UMeshView<'a>` – Read-Only Mesh View
+
+`UMeshView` is a **zero-copy, non-owning** view over existing mesh data. It
+holds references (slices or `ndarray::ArrayView`) to memory that is managed
+elsewhere (e.g., passed from a C/C++/Python array).
+
+This is ideal for:
+- Temporary views
+- Foreign function interface (FFI)
+- Avoiding unnecessary copies when no modification is needed
+
+⚠️ Lifetimes must be respected — `UMeshView` is only valid as long as the
+referenced data lives.
+
+---
+
+### 🛠️ `UMeshViewMut<'a>` – Mutable Mesh View
+
+`UMeshViewMut` extends `UMeshView` to allow **in-place** modifications of:
+- Connectivities (e.g., node merging or renumbering, but no pruning)
+- Fields (e.g., updating values)
+- Families and groups
+
+This is used for:
+- High-performance, localized updates
+- In-place mesh transformations
+- Efficient mesh modification during simulation
+
+⚠️ Safe only when no aliasing or concurrency violations occur.
+
+---
+
+### 🔄 Summary
+
+| Type           | Ownership | Mutable | Use Case                                 | Copies |
+|----------------|-----------|---------|------------------------------------------|--------|
+| `UMesh`        | Yes       | Yes     | Full ownership, long-term usage          | Yes    |
+| `UMeshView`    | No        | No      | Read-only access to foreign/borrowed data| No     |
+| `UMeshViewMut` | No        | Yes     | In-place modification of borrowed data   | No     |
+
+This model ensures performance, safety, and clear interoperability boundaries.
+
+---
+
+## SharedCoords: Shared Mutable Coordinate Storage
+
+The `SharedCoords` type provides shared, mutable access to a coordinate array
+(`Array2<f64>`) used by multiple `UMesh` instances or views. It is designed to
+support:
+
+- ✅ Efficient cloning (for views or derived meshes)
+- ✅ Safe read/write access
+- ✅ Memory efficiency when sharing coordinate data
+
+### Design Motivation
+
+In unstructured mesh representations, it's common for multiple mesh objects or
+views to share the same set of node coordinates. However, some operations (like
+adding coordinates or shared coordinate transformations) can be done in-place,
+while others (like node pruning, reordering or unshared coordinate
+transformations) require the array to diverge.
+
+The `SharedCoords` abstraction solves this by wrapping the coordinate array in
+a reference-counted container with interior mutability.
+
+```rust
+use std::rc::Rc;
+use std::cell::RefCell;
+use ndarray::Array2;
+
+#[derive(Clone)]
+pub struct SharedCoords {
+    pub inner: Rc<RefCell<Array2<f64>>>,
+}
+```
+
+- Use `.borrow()` for read access.
+- Use `.borrow_mut()` for in-place mutations.
+
+### Copy-on-Write / Desynchronization
+
+To ensure safe mutation when multiple owners exist (e.g., during node
+reordering)a unique copy is forced:
+
+```rust
+impl SharedCoords {
+    pub fn ensure_unique(&mut self) {
+        if Rc::strong_count(&self.inner) > 1 {
+            let cloned = self.inner.borrow().clone();
+            self.inner = Rc::new(RefCell::new(cloned));
+        }
+    }
+}
+```
+
+This ensures that no other mesh or view is affected by destructive operations.
+
+### Integration with `UMesh`
+
+```rust
+pub struct UMesh {
+    pub coords: SharedCoords,
+    pub element_blocks: ...
+}
+```
+
+`SharedCoords` allows `UMesh` and its views to share coordinate data efficiently while preserving correctness and performance during mutations in single-threaded workflows.
+
+---
+
 ## 🛠️ In-Place vs. Out-of-Place Operations in `UMesh`
 
 This document categorizes common mesh operations into two groups:
 
-- **In-Place Operations**: These can be applied directly to an existing `UMesh` or its view without reallocating major structures.
-- **Out-of-Place Operations**: These typically rewrite the mesh's core structures (e.g., connectivity, coordinates) and are better implemented as producing a new mesh.
+- **In-Place Operations**: These can be applied directly to an existing `UMesh`
+  or its view without reallocating major structures.
+- **Out-of-Place Operations**: These typically rewrite the mesh's core
+  structures (e.g., connectivity, coordinates) and are better implemented as
+  producing a new mesh.
 
 
 ### ✅ In-Place Operations (mutate existing mesh, applied on UMeshViewMut)
@@ -126,6 +262,40 @@ reallocation of connectivity tables or geometry arrays.
 | `substract_with(a, b)`     | Subtracts domain of B from A, with new elements generated |
 
 ---
+
+## 🔧 Core API Overview
+
+### `aggregate_meshes(meshes: &[UMeshView]) -> UMesh`
+Concatenates meshes without modifying their topology or geometry.
+- May result in **overlaps** or **duplicates**
+- Fast, non-conforming operation
+
+### `fuse_meshes(a: UMeshView, b: UMeshView) -> UMesh`
+Computes the **boolean union** of two meshes, producing a **conforming**
+result.
+- Intersects overlapping elements faces
+- Inserts new faces/nodes
+
+### `intersect_meshes(a: UMeshView, b: UMeshView) -> UMesh`
+Computes the **boolean intersection** of the two spatial domains.
+- Returns only the overlapping region
+- UMeshes are intersected topologically and geometrically
+
+### `substract_with(a: UMeshView, b: UMeshView) -> UMesh`
+Subtracts mesh B from A (`A \ B`), computing topological intersections where
+needed.
+- Useful for holes, notches, or subtractive modeling
+
+### `split_by(a: UMeshView, b: UMeshView) -> UMesh`
+Splits mesh A into sub-elements along the boundaries defined by mesh B.
+- UMesh B acts as a "cutter"
+- Preserves A’s domain while increasing resolution/conformity
+
+### `conformize(mesh: UMeshView) -> UMesh`
+Cleans and re-meshes a single mesh to make it internally **conforming**.
+- Merges internal duplicates
+- Optionally splits internal faces to improve element consistency
+
 
 ## 📚 Related Modules
 

@@ -47,18 +47,45 @@ pipelines.
   - Barycenter and volume evaluation
 
 ### 🧮 High-Level Algorithms
-- High-level, composable mesh operations:
-  - `split_by(mesh_a, mesh_b)` – topological split of mesh A by mesh B
-  - `conformize(mesh)` – resolve internal inconsistencies in a mesh
-  - `fuse_meshes(mesh_a, mesh_b)` – boolean union + conformization
-  - `intersect_meshes(mesh_a, mesh_b)` – boolean intersection
-  - `substract_with(mesh_a, mesh_b)` – boolean subtraction
-  - `build_intersection_map()` – for **field interpolation** and remapping
-  - `crack_from_descending(mesh)` – internal face cracking
+- High-level, composable mesh operations (API not stable):
+  - `aggregate_meshes` – Build a coarse mesh from multiple cell groups.
+  - `build_intersection_map` – for **field interpolation** and remapping.
+  - `conformize` – Intersect shared faces, snap and merge near-nodes.
+  - `crack_from_descending` – Introduce topological cracks along internal faces.
+  - `fuse_meshes` – Merge two meshes into one.
+  - `intersect_meshes` – Compute boolean mesh intersection.
+  - `split_by` – Cut a mesh using another.
+  - `substract_with` – Subtract one mesh from another.
+
+### 🔄 Mesh Ownership, Views, and Shared Coordinates
+- MeFiKit distinguishes between mesh ownership and views for flexibility and
+  performance:
+  - `UMesh`: fully owns its data (coordinates, connectivity, fields, etc.),
+    suitable for storage, transformation, and I/O.
+  - `UMeshView<'a>`: read-only view into external or borrowed mesh data; ideal
+    for zero-copy FFI.
+  - `UMeshViewMut<'a>`: mutable view enabling in-place operations like node
+    updates or field assignment.
+- Mefikit supports shared coordinates across meshes for performance:
+  - `SharedCoords` wraps coordinates for safe mutability.
+  - Shared coordinate arrays can be modified in-place unless exclusive access is
+    required (`ensure_unique()` triggers a copy).
+
+### 🛠 In-place vs Out-of-place Operations
+- Clean mostly functionnal API:
+  - In-place for metadata and non destructive op (`UMeshViewMut`):
+    `assign_field`, `merge_close_nodes`, `add_group`, ...
+  - Out-of-place for heavy op (`UMeshView`): `build_submesh`, `fuse_meshes`,
+    `intersect_meshes`, ...
 
 ### 🐍 Python Bindings
-- All functionality is exposed via clean Python bindings for rapid prototyping
-  and integration in data pipelines.
+- mefikit-python:
+  - All functionality is exposed via clean Python bindings in this crate for
+    rapid prototyping and integration in data pipelines.
+
+### FFI
+- mefikit-ffi:
+  - All functionality is exposed via ffi bindings for C/C++ interoperability
 
 ---
 
@@ -75,108 +102,6 @@ provides:
 - 📦 Modern tools and clean build system (Rust/Cargo)
 - 🧪 Robust testing & benchmarking suite
 - 🧪 Pilot usage of rust in CEA’s **DM2S** simulations
-
----
-
-## 🔧 Core API Overview
-
-### `aggregate_meshes(meshes: &[UMeshView]) -> UMesh`
-Concatenates meshes without modifying their topology or geometry.
-- May result in **overlaps** or **duplicates**
-- Fast, non-conforming operation
-
-### `fuse_meshes(a: UMeshView, b: UMeshView) -> UMesh`
-Computes the **boolean union** of two meshes, producing a **conforming**
-result.
-- Intersects overlapping elements
-- Inserts new faces/nodes
-
-### `intersect_meshes(a: UMeshView, b: UMeshView) -> UMesh`
-Computes the **boolean intersection** of the two spatial domains.
-- Returns only the overlapping region
-- UMeshes are intersected topologically and geometrically
-
-### `substract_with(a: UMeshView, b: UMeshView) -> UMesh`
-Subtracts mesh B from A (`A \ B`), computing topological intersections where
-needed.
-- Useful for holes, notches, or subtractive modeling
-
-### `split_by(a: UMeshView, b: UMeshView) -> UMesh`
-Splits mesh A into sub-elements along the boundaries defined by mesh B.
-- UMesh B acts as a "cutter"
-- Preserves A’s domain while increasing resolution/conformity
-
-### `conformize(mesh: UMeshView) -> UMesh`
-Cleans and re-meshes a single mesh to make it internally **conforming**.
-- Merges internal duplicates
-- Optionally splits internal faces to improve element consistency
-
----
-
-## 🔄 Mesh Ownership and Views: `UMesh`, `UMeshView`, and `UMeshViewMut`
-
-MeFiKit uses a clear ownership model to distinguish between owned meshes and
-views over mesh data. This makes integration with other systems (e.g., C or
-Python) efficient and safe, while also enabling high-performance zero-copy
-operations.
-
-### 📦 `UMesh` – Owned Mesh
-
-`UMesh` owns its data:
-- Coordinate array (`ArcArray2<f64>`)
-- Element blocks with connectivities, fields, families, groups
-
-This type is used for:
-- Internal mesh manipulation in Rust
-- Persistent mesh storage
-- File I/O
-- Long-term computation or modification
-
-It is constructed by cloning or transferring ownership of arrays.
-
----
-
-### 👁️ `UMeshView<'a>` – Read-Only Mesh View
-
-`UMeshView` is a **zero-copy, non-owning** view over existing mesh data. It
-holds references (slices or `ndarray::ArrayView`) to memory that is managed
-elsewhere (e.g., passed from a C/C++/Python array).
-
-This is ideal for:
-- Temporary views
-- Foreign function interface (FFI)
-- Avoiding unnecessary copies when no modification is needed
-
-⚠️ Lifetimes must be respected — `UMeshView` is only valid as long as the
-referenced data lives.
-
----
-
-### 🛠️ `UMeshViewMut<'a>` – Mutable Mesh View
-
-`UMeshViewMut` extends `UMeshView` to allow **in-place** modifications of:
-- Connectivities (e.g., node merging or renumbering, but no pruning)
-- Fields (e.g., updating values)
-- Families and groups
-
-This is used for:
-- High-performance, localized updates
-- In-place mesh transformations
-- Efficient mesh modification during simulation
-
-⚠️ Safe only when no aliasing or concurrency violations occur.
-
----
-
-### 🔄 Summary
-
-| Type           | Ownership | Mutable | Use Case                                 | Copies |
-|----------------|-----------|---------|------------------------------------------|--------|
-| `UMesh`        | Yes       | Yes     | Full ownership, long-term usage          | Yes    |
-| `UMeshView`    | No        | No      | Read-only access to foreign/borrowed data| No     |
-| `UMeshViewMut` | No        | Yes     | In-place modification of borrowed data   | No     |
-
-This model ensures performance, safety, and clear interoperability boundaries.
 
 ---
 
@@ -206,7 +131,7 @@ topology/
   ├── unpolyzer.rs
 
 geometry/
-  ├── bhv.rs
+  ├── bvh.rs
   ├── intersection.rs
   ├── merge_close_nodes.rs
   ├── normals.rs

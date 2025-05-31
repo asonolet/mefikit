@@ -42,35 +42,13 @@
 
 ---
 
-## 📅 Day 3 – Gluing Structured Meshes
-
-**🎯 Goal:** Combine disjoint regular meshes into one valid mesh.
+## 📅 Day 3 – Consoliding UMesh ownership model
 
 ### ✅ Tasks:
-- Add:
-  - `glue_meshes(meshes: &[Mesh]) -> Mesh`
-    - Merge nodes, remap connectivity, combine element blocks
-- Write test:
-  - Create 2 adjacent structured meshes (e.g., 2×2 grids)
-  - Glue together
-  - Assert:
-    - Combined node/element count
-    - No duplicates
-    - Valid connectivity
-- Bonus:
-  - `MeshBuilder::grid(nx, ny)` to simplify testing
+- Implement:
+  - `UMeshView`
+  - `UMeshViewMut`
+  - `.view()`, `.view_mut()`, `to_owned()`
+  - `SharedCoords`
 
 ---
-
-## 📅 Day 4 – Cleanup and Documentation
-
-**🎯 Goal:** Finalize code quality, documentation, and examples.
-
-### ✅ Tasks:
-- Refactor:
-  - Ensure clean, idiomatic Rust code
-  - Remove unused code
-- Document:
-  - Add comments for public API
-  - Write examples in `README.md`
-
