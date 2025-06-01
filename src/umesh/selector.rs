@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use todo;
 use rayon::prelude::*;
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::umesh::{ElementBlock, ElementId, ElementType, UMesh};
 
@@ -23,7 +24,7 @@ pub struct NodeBasedSelector {
 }
 
 pub struct GroupBasedSelector {
-    pub families: HashSet<usize>,
+    pub families: HashMap<ElementType, BTreeSet<usize>>,
 }
 
 pub struct CentroidBasedSelector;
@@ -49,7 +50,7 @@ impl<'a> Selector<'a> {
     pub fn groups(self: Self) -> Selector<'a, GroupBasedSelector> {
         let collected = self.collect();
         let state = GroupBasedSelector {
-            families: HashSet::new(),
+            families: HashMap::new(),
         };
         Selector {
             umesh: collected.umesh,
@@ -128,5 +129,66 @@ impl<'a> Selector<'a, FieldBasedSelector> {
             index,
             state: self.state,
         }
+    }
+
+    pub fn lt(self: Self, val: f64) -> Self {
+        let index: HashMap<ElementType, Vec<usize>> = self
+            .index
+            .into_par_iter()
+            .map(|(k, v)| {
+                (
+                    k,
+                    v.into_iter()
+                        .filter(|&i| {
+                            self.umesh
+                                .element_block(k)
+                                .unwrap()
+                                .fields
+                                .get(self.state.field_name.as_str())
+                                .unwrap()[[i]]
+                                < val
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+        Self {
+            umesh: self.umesh,
+            index,
+            state: self.state,
+        }
+    }
+}
+
+impl<'a> Selector<'a, GroupBasedSelector> {
+    pub fn inside(self: Self, name: &str) -> Self {
+        let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
+            .umesh
+            .element_blocks()
+            .par_iter()
+            .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
+            .collect();
+        let intersection_fmies = self
+            .state
+            .families
+            .into_iter()
+            .map(|(et, fmies)| {
+                let inter = &fmies & grp_fmies.get(&et).unwrap_or(&BTreeSet::new());
+                (et, inter)
+            })
+            .collect();
+        let state = GroupBasedSelector {
+            families: intersection_fmies,
+        };
+        Self {
+            umesh: self.umesh,
+            index: self.index,
+            state,
+        }
+    }
+
+    /// I have a set of families per element_type, I can now select the real elements
+    fn collect(self: Self) -> Self {
+        todo!()
     }
 }
