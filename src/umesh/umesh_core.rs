@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use crate::umesh::element::{Element, Regularity};
 use crate::umesh::element_block::{ElementBlock, IntoElementBlockEntry};
 use crate::umesh::ElementType;
+use crate::umesh::selector::Selector;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// An unstrustured mesh.
@@ -79,6 +80,10 @@ impl UMesh {
 
     pub fn element_block(&self, element_type: ElementType) -> Option<&ElementBlock> {
         self.element_blocks.get(&element_type)
+    }
+
+    pub fn select(&self) -> Selector {
+        Selector::new(&self)
     }
 }
 

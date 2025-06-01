@@ -24,10 +24,15 @@ pipelines.
   - Custom formats with `serde`
 
 ### 🏗️ Mesh Builders
-- Construct meshes programmatically:
+- Construct meshes from scratch:
   - Structured meshes (grid-like)
   - Extruded meshes (2D to 3D)
   - Fully unstructured meshes (manually)
+- Powerfull selection builder:
+  - Based on element selection,
+  - geometrical criterion,
+  - field threshold,
+  - etc.
 
 ### 🧠 Topological Toolbox
 - Utilities for advanced topological operations:
