@@ -14,9 +14,7 @@ numerical operations built elsewhere in the library.
 
 ```rust
 pub struct UMesh {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub coords: ArcArray2<f64>,
+    pub coords: SharedCoords,
     pub element_blocks: BTreeMap<ElementType, ElementBlock>
 }
 ```
@@ -127,29 +125,12 @@ referenced data lives.
 
 ---
 
-### 🛠️ `UMeshViewMut<'a>` – Mutable Mesh View
-
-`UMeshViewMut` extends `UMeshView` to allow **in-place** modifications of:
-- Connectivities (e.g., node merging or renumbering, but no pruning)
-- Fields (e.g., updating values)
-- Families and groups
-
-This is used for:
-- High-performance, localized updates
-- In-place mesh transformations
-- Efficient mesh modification during simulation
-
-⚠️ Safe only when no aliasing or concurrency violations occur.
-
----
-
 ### 🔄 Summary
 
 | Type           | Ownership | Mutable | Use Case                                 | Copies |
 |----------------|-----------|---------|------------------------------------------|--------|
 | `UMesh`        | Yes       | Yes     | Full ownership, long-term usage          | Yes    |
 | `UMeshView`    | No        | No      | Read-only access to foreign/borrowed data| No     |
-| `UMeshViewMut` | No        | Yes     | In-place modification of borrowed data   | No     |
 
 This model ensures performance, safety, and clear interoperability boundaries.
 

@@ -60,12 +60,10 @@ pipelines.
 ### 🔄 Mesh Ownership, Views, and Shared Coordinates
 - MeFiKit distinguishes between mesh ownership and views for flexibility and
   performance:
-  - `UMesh`: fully owns its data (coordinates, connectivity, fields, etc.),
-    suitable for storage, transformation, and I/O.
-  - `UMeshView<'a>`: read-only view into external or borrowed mesh data; ideal
-    for zero-copy FFI.
-  - `UMeshViewMut<'a>`: mutable view enabling in-place operations like node
-    updates or field assignment.
+  - `UMesh`: fully owns its data (coordinates, connectivity, fields,
+    etc.), suitable for storage, transformation, and I/O.
+  - `UMeshView<'a>`: read-only view into external or borrowed mesh
+    data; ideal for zero-copy FFI.
 - Mefikit supports shared coordinates across meshes for performance:
   - `SharedCoords` wraps coordinates for safe mutability.
   - Shared coordinate arrays can be modified in-place unless exclusive access is
