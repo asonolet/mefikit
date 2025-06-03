@@ -113,46 +113,14 @@ provides:
 ### 📁 Project Structure
 
 ```text
-umesh/
-  ├── umesh_core.rs
-  ├── element_block.rs
-  ├── element.rs
-  ├── connectivity.rs
-
-io/
-  ├── medcoupling.rs
-  ├── med.rs
-  ├── cgns.rs
-
-topology/
-  ├── neighbour_iterators.rs
-  ├── connex_components.rs
-  ├── mesh_aggregator.rs
-  ├── descending_mesh.rs
-  ├── tetrahedrizer.rs
-  ├── polyzer.rs
-  ├── unpolyzer.rs
-
-geometry/
-  ├── bvh.rs
-  ├── intersection.rs
-  ├── merge_close_nodes.rs
-  ├── normals.rs
-  ├── barycenters.rs
-  ├── volumes.rs
-
-tools/
-  ├── fuser.rs
-  ├── domain_intersecter.rs
-  ├── connex_decomposer.rs
-  ├── cracker.rs
-  ├── fields_remapper.rs
-  ├── cutter.rs
-  ├── renumberer.rs
-
-tests/
-  ├── integration/
-  ├── performance/
+src/
+├── core/          # Mesh & field data model
+├── io/            # Format readers/writers
+├── topology/      # Descending/neighbor tools
+├── geometry/      # Volumes, bboxes, slicing
+├── tools/         # Mesh ops: fuse, cut, remap
+├── bindings/      # Python and FFI
+├── tests/
 ```
 
 ### Build Instructions
@@ -166,59 +134,6 @@ cargo build --release
 ```
 This will create a release build of the library in the `target/release`
 directory.
-
-### Running Tests
-
-To run the tests, you can use the following command:
-
-```bash
-cargo test --release
-```
-This will run all the tests in the library. You can also run specific tests
-by specifying the test name:
-
-```bash
-cargo test --release <test_name>
-```
-This will run only the specified test.
-
-### Running Benchmarks
-
-To run the benchmarks, you can use the following command:
-
-```bash
-cargo bench --release
-```
-This will run all the benchmarks in the library. You can also run specific
-benchmarks by specifying the benchmark name:
-
-```bash
-cargo bench --release <benchmark_name>
-```
-This will run only the specified benchmark.
-
-### Generating Documentation
-
-To generate the documentation for the library, you can use the following
-command:
-
-```bash
-cargo doc --release
-```
-
-This will generate the documentation in the `target/doc` directory. You can
-open the documentation in your web browser by opening the `index.html` file
-in the `target/doc` directory.
-You can also view the documentation online at [docs.rs](https://docs.rs/mefikit).
-You can publish the documentation to docs.rs using the following command:
-
-```bash
-cargo publish --release
-```
-
-This will publish the documentation to docs.rs, where it will be available for
-public access. You can view the published documentation at
-[docs.rs/mefikit](https://docs.rs/mefikit).
 
 ### Contributing
 
