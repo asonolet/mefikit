@@ -107,3 +107,4 @@
 | Thread-safe ops    | ✔️ (`Arc`, `Send`)  | ❌           | MEDCoupling not thread-safe in Python            |
 | WASM support       | ⏳                 | ❌           | MEDCoupling depends on HDF5, not WASM-compatible |
 | Parallel iteration | ⏳                 | ❌           |                                                  |
+

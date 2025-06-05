@@ -82,6 +82,14 @@ impl UMesh {
         self.element_blocks.get(&element_type)
     }
 
+    pub fn families(&self, element_type: ElementType) -> Option<&Vec<usize>> {
+        let eb = self.element_block(element_type);
+        match eb {
+            Some(eb) => Some(&eb.families),
+            None => None,
+        }
+    }
+
     pub fn select(&self) -> Selector {
         Selector::new(&self)
     }
