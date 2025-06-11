@@ -2,8 +2,9 @@ use ndarray::prelude::*;
 use ndarray::ArcArray2;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use todo;
 
-use crate::umesh::element::{Element, Regularity};
+use crate::umesh::element::{Element, ElementId, Regularity};
 use crate::umesh::element_block::{ElementBlock, IntoElementBlockEntry};
 use crate::umesh::ElementType;
 use crate::umesh::selector::Selector;
@@ -17,11 +18,6 @@ pub struct UMesh {
     element_blocks: BTreeMap<ElementType, ElementBlock>,
 }
 
-// pub struct UMeshView<'a> {
-//     pub coords: &'a Array2<f64>,
-//     pub elements: HashMap<ElementType, ElementBlockView<'a>>,
-// }
-
 impl UMesh {
     pub fn new(coords: ArcArray2<f64>) -> Self {
         Self {
@@ -30,7 +26,7 @@ impl UMesh {
         }
     }
 
-    pub fn add_block<T: IntoElementBlockEntry>(&mut self, block: T) {
+    pub fn add_block(&mut self, block: ElementBlock) {
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -82,16 +78,24 @@ impl UMesh {
         self.element_blocks.get(&element_type)
     }
 
-    pub fn families(&self, element_type: ElementType) -> Option<&Vec<usize>> {
-        let eb = self.element_block(element_type);
-        match eb {
-            Some(eb) => Some(&eb.families),
-            None => None,
-        }
+    // pub fn families(&self, element_type: ElementType) -> Option<&[usize]> {
+    //     let eb = self.element_block(element_type);
+    //     match eb {
+    //         Some(eb) => Some(&eb.families),
+    //         None => None,
+    //     }
+    // }
+
+    pub fn select_ids(&self) -> Selector {
+        Selector::new(&self)
     }
 
-    pub fn select(&self) -> Selector {
-        Selector::new(&self)
+    pub fn extract_mesh(&self, ids: &[ElementId]) -> UMesh {
+        todo!();
+    }
+
+    pub fn replace(&mut self, ids: &[ElementId]) {
+        todo!();
     }
 }
 
