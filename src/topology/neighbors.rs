@@ -23,7 +23,7 @@ impl SortedVecKey {
 /// If the codim asked for is too high, the function will panick.
 /// For performance reason, two subentities are considered the same if they have the same nodes,
 /// regardless of their order.
-pub fn compute_subentities(
+pub fn compute_submesh(
     mesh: &UMesh,
     codim: Option<Dimension>,
 ) -> (
