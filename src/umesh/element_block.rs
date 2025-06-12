@@ -1,26 +1,39 @@
+use ndarray as nd;
 use ndarray::prelude::*;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::fmt::Debug;
 
-use crate::umesh::connectivity::Connectivity;
+use crate::umesh::connectivity::ConnectivityBase;
 use crate::umesh::element::{Element, ElementType};
 
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 /// The part of a mesh constituted by one kind of element.
 ///
 /// The element block is the base structure to hold connectivity, fields, groups.
 /// It is used to hold all cell information and allows cell iteration.
 /// The only data not included for an element block to be standalone is the coordinates array.
-pub struct ElementBlock {
+pub struct ElementBlockBase<ConnData, FieldData, GroupData>
+where
+    ConnData: nd::RawDataClone,
+    FieldData: nd::RawDataClone,
+    GroupData: nd::RawDataClone,
+{
     pub cell_type: ElementType,
-    pub connectivity: Connectivity,
-    pub fields: BTreeMap<String, ArrayD<f64>>,
-    pub families: Vec<usize>,
+    pub connectivity: ConnectivityBase<ConnData>,
+    pub fields: BTreeMap<String, ArrayBase<FieldData, nd::IxDyn>>,
+    pub families: ArrayBase<GroupData, nd::Ix1>,
     pub groups: BTreeMap<String, BTreeSet<usize>>,
 }
+
+pub type ElementBlock =
+    ElementBlockBase<nd::OwnedRepr<usize>, nd::OwnedRepr<f64>, nd::OwnedRepr<usize>>;
+
+
+pub type ElementBlockView =
+    ElementBlockBase<nd::RawViewRepr<usize>, nd::RawViewRepr<f64>, nd::RawViewRepr<usize>>;
 
 impl<'a> ElementBlock {
     /// Create a new regular element block.
@@ -33,10 +46,7 @@ impl<'a> ElementBlock {
     /// * `groups` - A map of group names to sets of element indices.
     /// # Returns
     /// A new `ElementBlock` instance.
-    pub fn new_regular(
-        cell_type: ElementType,
-        connectivity: Array2<usize>,
-    ) -> Self {
+    pub fn new_regular(cell_type: ElementType, connectivity: Array2<usize>) -> Self {
         let conn_len = connectivity.len();
         Self {
             cell_type,

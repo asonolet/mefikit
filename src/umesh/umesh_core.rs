@@ -1,25 +1,45 @@
+use ndarray as nd;
 use ndarray::prelude::*;
-use ndarray::ArcArray2;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use todo;
 
 use crate::umesh::element::{Element, ElementId, Regularity};
-use crate::umesh::element_block::{ElementBlock, IntoElementBlockEntry};
-use crate::umesh::ElementType;
+use crate::umesh::element_block::{ElementBlock, ElementBlockBase, IntoElementBlockEntry};
 use crate::umesh::selector::Selector;
+use crate::umesh::ElementType;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 /// An unstrustured mesh.
 ///
 /// The most general mesh format in mefikit. Can describe any kind on mesh, with multiple elements kinds and fields associated.
-pub struct UMesh {
-    coords: ArcArray2<f64>,
-    element_blocks: BTreeMap<ElementType, ElementBlock>,
+pub struct UMeshBase<CooData, ConnData, FieldData, GroupData>
+where
+    CooData: nd::RawDataClone,
+    ConnData: nd::RawDataClone,
+    FieldData: nd::RawDataClone,
+    GroupData: nd::RawDataClone,
+{
+    coords: Arc<ArrayBase<CooData, Ix2>>,
+    element_blocks: BTreeMap<ElementType, ElementBlockBase<ConnData, FieldData, GroupData>>,
 }
 
+pub type UMeshView = UMeshBase<
+    nd::RawViewRepr<f64>,
+    nd::RawViewRepr<usize>,
+    nd::RawViewRepr<f64>,
+    nd::RawViewRepr<usize>,
+>;
+pub type UMesh = UMeshBase<
+    nd::OwnedRepr<f64>,
+    nd::OwnedRepr<usize>,
+    nd::OwnedRepr<f64>,
+    nd::OwnedRepr<usize>,
+>;
+
 impl UMesh {
-    pub fn new(coords: ArcArray2<f64>) -> Self {
+    pub fn new(coords: nd::ArcArray2<f64>) -> Self {
         Self {
             coords,
             element_blocks: BTreeMap::new(),
@@ -43,9 +63,12 @@ impl UMesh {
                 if connectivity.len() != element_type.num_nodes().unwrap() {
                     panic!("Connectivity length does not match the number of nodes for element type {:?}", element_type);
                 }
-                self.element_blocks
-                    .entry(element_type)
-                    .or_insert_with(|| ElementBlock::new_regular(element_type, Array2::zeros((0, element_type.num_nodes().unwrap()))));
+                self.element_blocks.entry(element_type).or_insert_with(|| {
+                    ElementBlock::new_regular(
+                        element_type,
+                        Array2::zeros((0, element_type.num_nodes().unwrap())),
+                    )
+                });
             }
             Regularity::Poly => {
                 self.element_blocks
@@ -56,11 +79,11 @@ impl UMesh {
 
         self.element_blocks
             .get_mut(&element_type)
-            .unwrap()  // This unwrap is safe because we just inserted the element type
+            .unwrap() // This unwrap is safe because we just inserted the element type
             .add_element(ArrayView1::from(connectivity), family, fields);
     }
 
-    pub fn coords(&self) -> &ArcArray2<f64> {
+    pub fn coords(&self) -> &nd::ArcArray2<f64> {
         &self.coords
     }
 

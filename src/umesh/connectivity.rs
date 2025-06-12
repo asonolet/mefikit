@@ -1,21 +1,28 @@
 use ndarray as nd;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 // use rayon::prelude::*;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 /// Connectivity structure to represent the connectivity of a mesh.
 ///
 /// It can be either regular or polygonal. Regular connectivity is represented as a 2D array,
 /// while polygonal connectivity is represented as a 1D array with offsets. The offsets array
 /// indicates the start and end of each polygon in the data array. The data array contains the
 /// indices of the vertices of the polygons.
-pub enum Connectivity {
-    Regular(nd::Array2<usize>),
+pub enum ConnectivityBase<ConnData>
+where
+    ConnData: nd::RawDataClone,
+{
+    Regular(nd::ArrayBase<ConnData, nd::Ix2>),
     Poly {
-        data: nd::Array1<usize>,
-        offsets: nd::Array1<usize>,
+        data: nd::ArrayBase<ConnData, nd::Ix1>,
+        offsets: nd::ArrayBase<ConnData, nd::Ix1>,
     },
 }
+
+pub type Connectivity = ConnectivityBase<nd::OwnedRepr<usize>>;
+pub type ConnectivityView = ConnectivityBase<nd::RawViewRepr<usize>>;
 
 pub struct PolyConnIterator<'a> {
     data: &'a nd::Array1<usize>,
@@ -167,7 +174,9 @@ impl Connectivity {
 
     pub fn iter(&self) -> impl Iterator<Item = nd::ArrayView1<'_, usize>> + '_ {
         match self {
-            Connectivity::Regular(conn) => ConnectivityIterator::Regular(conn.axis_iter(nd::Axis(0))),
+            Connectivity::Regular(conn) => {
+                ConnectivityIterator::Regular(conn.axis_iter(nd::Axis(0)))
+            }
             Connectivity::Poly { data, offsets } => ConnectivityIterator::Poly(PolyConnIterator {
                 data,
                 offsets,
@@ -198,12 +207,13 @@ impl Connectivity {
             }
             Connectivity::Poly { data, offsets } => {
                 data.append(nd::Axis(0), connectivity).unwrap();
-                offsets.append(nd::Axis(0), nd::arr1(&[data.len()]).view()).unwrap();
+                offsets
+                    .append(nd::Axis(0), nd::arr1(&[data.len()]).view())
+                    .unwrap();
             }
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
