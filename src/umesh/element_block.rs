@@ -6,10 +6,9 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 
-use crate::umesh::connectivity::ConnectivityBase;
+use crate::umesh::connectivity::{Connectivity, ConnectivityBase};
 use crate::umesh::element::{Element, ElementType};
 
-#[derive(Clone)]
 /// The part of a mesh constituted by one kind of element.
 ///
 /// The element block is the base structure to hold connectivity, fields, groups.
@@ -17,9 +16,9 @@ use crate::umesh::element::{Element, ElementType};
 /// The only data not included for an element block to be standalone is the coordinates array.
 pub struct ElementBlockBase<ConnData, FieldData, GroupData>
 where
-    ConnData: nd::RawDataClone,
-    FieldData: nd::RawDataClone,
-    GroupData: nd::RawDataClone,
+    ConnData: nd::RawData,
+    FieldData: nd::RawData,
+    GroupData: nd::RawData,
 {
     pub cell_type: ElementType,
     pub connectivity: ConnectivityBase<ConnData>,
@@ -31,9 +30,8 @@ where
 pub type ElementBlock =
     ElementBlockBase<nd::OwnedRepr<usize>, nd::OwnedRepr<f64>, nd::OwnedRepr<usize>>;
 
-
-pub type ElementBlockView =
-    ElementBlockBase<nd::RawViewRepr<usize>, nd::RawViewRepr<f64>, nd::RawViewRepr<usize>>;
+pub type ElementBlockView<'a> =
+    ElementBlockBase<nd::ViewRepr<&'a usize>, nd::ViewRepr<&'a f64>, nd::ViewRepr<&'a usize>>;
 
 impl<'a> ElementBlock {
     /// Create a new regular element block.

@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 // use rayon::prelude::*;
 
-#[derive(Clone)]
 /// Connectivity structure to represent the connectivity of a mesh.
 ///
 /// It can be either regular or polygonal. Regular connectivity is represented as a 2D array,
@@ -12,7 +11,7 @@ use std::fmt::Debug;
 /// indices of the vertices of the polygons.
 pub enum ConnectivityBase<ConnData>
 where
-    ConnData: nd::RawDataClone,
+    ConnData: nd::RawData,
 {
     Regular(nd::ArrayBase<ConnData, nd::Ix2>),
     Poly {
@@ -22,7 +21,7 @@ where
 }
 
 pub type Connectivity = ConnectivityBase<nd::OwnedRepr<usize>>;
-pub type ConnectivityView = ConnectivityBase<nd::RawViewRepr<usize>>;
+pub type ConnectivityView<'a> = ConnectivityBase<nd::ViewRepr<&'a usize>>;
 
 pub struct PolyConnIterator<'a> {
     data: &'a nd::Array1<usize>,

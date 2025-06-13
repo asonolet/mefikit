@@ -10,36 +10,33 @@ use crate::umesh::element_block::{ElementBlock, ElementBlockBase, IntoElementBlo
 use crate::umesh::selector::Selector;
 use crate::umesh::ElementType;
 
-#[derive(Clone)]
 /// An unstrustured mesh.
 ///
-/// The most general mesh format in mefikit. Can describe any kind on mesh, with multiple elements kinds and fields associated.
+/// The most general mesh format in mefikit. Can describe any kind on mesh, with multiple elements
+/// kinds and fields associated.
 pub struct UMeshBase<CooData, ConnData, FieldData, GroupData>
 where
-    CooData: nd::RawDataClone,
-    ConnData: nd::RawDataClone,
-    FieldData: nd::RawDataClone,
-    GroupData: nd::RawDataClone,
+    CooData: nd::RawData,
+    ConnData: nd::RawData,
+    FieldData: nd::RawData,
+    GroupData: nd::RawData,
 {
-    coords: Arc<ArrayBase<CooData, Ix2>>,
+    coords: ArrayBase<CooData, Ix2>, // TODO: Use ArcArray2 for shared ownership
     element_blocks: BTreeMap<ElementType, ElementBlockBase<ConnData, FieldData, GroupData>>,
 }
 
-pub type UMeshView = UMeshBase<
-    nd::RawViewRepr<f64>,
-    nd::RawViewRepr<usize>,
-    nd::RawViewRepr<f64>,
-    nd::RawViewRepr<usize>,
->;
-pub type UMesh = UMeshBase<
-    nd::OwnedRepr<f64>,
-    nd::OwnedRepr<usize>,
-    nd::OwnedRepr<f64>,
-    nd::OwnedRepr<usize>,
+pub type UMesh =
+    UMeshBase<nd::OwnedRepr<f64>, nd::OwnedRepr<usize>, nd::OwnedRepr<f64>, nd::OwnedRepr<usize>>;
+
+pub type UMeshView<'a> = UMeshBase<
+    nd::ViewRepr<&'a f64>,
+    nd::ViewRepr<&'a usize>,
+    nd::ViewRepr<&'a f64>,
+    nd::ViewRepr<&'a usize>,
 >;
 
 impl UMesh {
-    pub fn new(coords: nd::ArcArray2<f64>) -> Self {
+    pub fn new(coords: nd::Array2<f64>) -> Self {
         Self {
             coords,
             element_blocks: BTreeMap::new(),
@@ -83,7 +80,7 @@ impl UMesh {
             .add_element(ArrayView1::from(connectivity), family, fields);
     }
 
-    pub fn coords(&self) -> &nd::ArcArray2<f64> {
+    pub fn coords(&self) -> &nd::Array2<f64> {
         &self.coords
     }
 
@@ -130,8 +127,7 @@ mod tests {
 
     fn make_test_2d_mesh() -> UMesh {
         let coords =
-            ArcArray2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])
-                .unwrap();
+            Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
         let mut mesh = UMesh::new(coords);
         mesh.add_block(ElementBlock::new_regular(
             ElementType::QUAD4,
@@ -142,7 +138,7 @@ mod tests {
 
     #[test]
     fn test_umesh_creation() {
-        let coords = ArcArray2::from_shape_vec((3, 1), vec![0.0, 1.0, 2.0]).unwrap();
+        let coords = Array2::from_shape_vec((3, 1), vec![0.0, 1.0, 2.0]).unwrap();
         let mut mesh = UMesh::new(coords);
         mesh.add_block(ElementBlock::new_regular(
             ElementType::SEG2,
