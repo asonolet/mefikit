@@ -181,4 +181,3 @@ Adding `in_bounding_box`, `near_point`, `along_plane`, and `along_segment` to yo
 * Maps cleanly to Python with `pyo3`
 * Provides powerful filtering UX, especially for preprocessing and subdomain analysis
 * Helps you stand out vs. more rigid tools like MEDCoupling
-
