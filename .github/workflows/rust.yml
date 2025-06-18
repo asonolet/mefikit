@@ -25,14 +25,6 @@ jobs:
       - name: Install pre-commit
         run: pip install pre-commit
         
-      - name: Cache pre-commit hooks
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pre-commit
-          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
-          restore-keys: |
-            pre-commit-${{ runner.os }}-
-            
       - name: Run pre-commit
         run: pre-commit run --all-files
   
