@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-
 #[derive(Copy, Clone)]
 pub enum EdgeType {
     SEG2,
@@ -192,7 +191,7 @@ pub enum Dimension {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub struct ElementId (ElementType, usize);
+pub struct ElementId(ElementType, usize);
 
 impl ElementId {
     pub fn new(element_type: ElementType, index: usize) -> Self {
@@ -262,10 +261,7 @@ impl<'a> Element<'a> {
             SEG2 | SEG3 | SEG4 => {
                 // 1D elements have edges as subentities
                 if codim == Dimension::D1 {
-                    Some(vec![
-                        (VERTEX, vec![co[0]]),
-                        (VERTEX, vec![co[1]]),
-                    ])
+                    Some(vec![(VERTEX, vec![co[0]]), (VERTEX, vec![co[1]])])
                 } else {
                     None
                 }

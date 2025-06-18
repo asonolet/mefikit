@@ -1,5 +1,5 @@
+use mefikit::io::{load_mesh, save_mesh};
 use mefikit::RegularUMeshBuilder;
-use mefikit::io::{save_mesh, load_mesh};
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

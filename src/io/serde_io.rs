@@ -1,6 +1,6 @@
+use crate::UMesh;
 use std::fs::File;
 use std::path::Path;
-use crate::UMesh;
 
 pub fn read_json(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
     let file = File::open(path)?;
@@ -25,4 +25,3 @@ pub fn write_yaml(path: &Path, mesh: &UMesh) -> Result<(), Box<dyn std::error::E
     serde_yaml::to_writer(file, mesh)?;
     Ok(())
 }
-

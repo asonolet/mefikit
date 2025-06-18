@@ -168,22 +168,13 @@ impl RegularUMeshBuilder {
         let mut umesh = UMesh::new(ArcArray2::from(coords));
         if coords_dim == 1 {
             // 1D mesh
-            umesh.add_block(ElementBlock::new_regular(
-                ElementType::SEG2,
-                connectivity,
-            ));
+            umesh.add_block(ElementBlock::new_regular(ElementType::SEG2, connectivity));
         } else if coords_dim == 2 {
             // 2D mesh
-            umesh.add_block(ElementBlock::new_regular(
-                ElementType::QUAD4,
-                connectivity,
-            ));
+            umesh.add_block(ElementBlock::new_regular(ElementType::QUAD4, connectivity));
         } else if coords_dim == 3 {
             // 3D mesh
-            umesh.add_block(ElementBlock::new_regular(
-                ElementType::HEX8,
-                connectivity,
-            ));
+            umesh.add_block(ElementBlock::new_regular(ElementType::HEX8, connectivity));
         } else {
             panic!("Unsupported number of dimensions for regular mesh");
         }
@@ -198,8 +189,7 @@ mod tests {
 
     #[test]
     fn test_regular_mesh_builder_1d() {
-        let builder = RegularUMeshBuilder::new()
-            .add_axis(vec![0.0, 1.0, 2.0]);
+        let builder = RegularUMeshBuilder::new().add_axis(vec![0.0, 1.0, 2.0]);
         let mesh = builder.build();
         assert_eq!(mesh.coords().shape(), &[3, 1]);
         assert_eq!(mesh.element_blocks().len(), 1);
