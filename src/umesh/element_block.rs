@@ -1,10 +1,8 @@
 use ndarray as nd;
 use ndarray::prelude::*;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::fmt::Debug;
 
 use crate::umesh::connectivity::{Connectivity, ConnectivityBase};
 use crate::umesh::element::{Element, ElementType};
@@ -242,7 +240,7 @@ mod tests {
             cell_type: ElementType::TRI3,
             connectivity,
             fields,
-            families,
+            families: families.into(),
             groups,
         };
 
@@ -263,7 +261,7 @@ mod tests {
             cell_type: ElementType::TRI3,
             connectivity,
             fields,
-            families,
+            families: families.into(),
             groups,
         };
 

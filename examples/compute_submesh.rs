@@ -10,8 +10,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
     let (submesh, _, _) = compute_submesh(&mesh, None);
 
-    println!("{mesh:?}");
-    println!("{submesh:?}");
-
     Ok(())
 }
