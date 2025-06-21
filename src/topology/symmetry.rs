@@ -4,7 +4,6 @@ pub trait ElementSymmetry {
     const ROTATIONS: &'static [&'static [usize]];
 }
 
-
 // define_symmetries! {
 //     QUAD4 => {
 //         order: 4,
@@ -25,4 +24,3 @@ pub trait ElementSymmetry {
 //         ]
 //     }
 // }
-

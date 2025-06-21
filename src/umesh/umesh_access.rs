@@ -6,9 +6,9 @@ use todo;
 
 use crate::umesh::element::{Element, ElementId, Regularity};
 use crate::umesh::element_block::{ElementBlock, IntoElementBlockEntry};
-use crate::umesh::ElementType;
 use crate::umesh::selector::Selector;
 use crate::umesh::umesh_core::UMesh;
+use crate::umesh::ElementType;
 
 /// An unstructured mesh.
 ///

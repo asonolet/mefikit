@@ -48,10 +48,12 @@ pub fn compute_submesh(
                 None => 0,
             };
             let key = SortedVecKey::new(conn.clone());
-            if let Some(val) = subentities_hash.get(&key) { // The subentity already exists
+            if let Some(val) = subentities_hash.get(&key) {
+                // The subentity already exists
                 subentity_to_elem.insert(*val, elem.id());
                 elem_to_subentity.insert(elem.id(), *val);
-            } else { // The subentity is new
+            } else {
+                // The subentity is new
                 let new_id = ElementId::new(et, subentity_id);
                 subentities_hash.insert(key, new_id);
                 subentity_to_elem.insert(new_id, elem.id());

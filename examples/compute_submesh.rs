@@ -1,5 +1,5 @@
-use mefikit::RegularUMeshBuilder;
 use mefikit::compute_submesh;
+use mefikit::RegularUMeshBuilder;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Dummy mesh

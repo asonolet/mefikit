@@ -1,6 +1,6 @@
-use todo;
 use rayon::prelude::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use todo;
 
 use crate::umesh::{ElementBlock, ElementId, ElementType, UMesh};
 
@@ -29,9 +29,7 @@ pub struct GroupBasedSelector {
 
 pub struct CentroidBasedSelector;
 
-
 impl<'a, State> Selector<'a, State> {
-
     fn to_groups(self: Self) -> Selector<'a, GroupBasedSelector> {
         let state = GroupBasedSelector {
             families: HashMap::new(),
@@ -83,7 +81,6 @@ impl<'a, State> Selector<'a, State> {
 }
 
 impl<'a> Selector<'a, ElementTypeSelector> {
-
     pub fn new(umesh: &'a UMesh) -> Self {
         let index = umesh
             .element_blocks()
@@ -156,10 +153,18 @@ impl<'a> Selector<'a, FieldBasedSelector> {
         }
     }
 
-    pub fn groups(self) -> Selector<'a, GroupBasedSelector> {self.to_groups()}
-    pub fn elements(self) -> Selector<'a, ElementTypeSelector> {self.to_elements()}
-    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {self.to_nodes(all)}
-    pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {self.to_centroids()}
+    pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
+        self.to_groups()
+    }
+    pub fn elements(self) -> Selector<'a, ElementTypeSelector> {
+        self.to_elements()
+    }
+    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+        self.to_nodes(all)
+    }
+    pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
+        self.to_centroids()
+    }
 }
 
 impl<'a> Selector<'a, GroupBasedSelector> {
@@ -228,10 +233,18 @@ impl<'a> Selector<'a, GroupBasedSelector> {
         // }
     }
 
-    pub fn fields(self: Self, name: &str) -> Selector<'a, FieldBasedSelector> {self.to_field(name)}
-    pub fn elements(self) -> Selector<'a, ElementTypeSelector> {self.collect().to_elements()}
-    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {self.collect().to_nodes(all)}
-    pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {self.collect().to_centroids()}
+    pub fn fields(self: Self, name: &str) -> Selector<'a, FieldBasedSelector> {
+        self.to_field(name)
+    }
+    pub fn elements(self) -> Selector<'a, ElementTypeSelector> {
+        self.collect().to_elements()
+    }
+    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+        self.collect().to_nodes(all)
+    }
+    pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
+        self.collect().to_centroids()
+    }
 }
 
 impl<'a> Selector<'a, NodeBasedSelector> {
@@ -244,15 +257,31 @@ impl<'a> Selector<'a, NodeBasedSelector> {
         }
     }
 
-    pub fn elements(self: Self) -> Selector<'a, ElementTypeSelector> {self.to_elements()}
-    pub fn fields(self: Self, name: &str) -> Selector<'a, FieldBasedSelector> {self.to_field(name)}
-    pub fn groups(self: Self) -> Selector<'a, GroupBasedSelector> {self.to_groups()}
-    pub fn centroids(self: Self) -> Selector<'a, CentroidBasedSelector> {self.to_centroids()}
+    pub fn elements(self: Self) -> Selector<'a, ElementTypeSelector> {
+        self.to_elements()
+    }
+    pub fn fields(self: Self, name: &str) -> Selector<'a, FieldBasedSelector> {
+        self.to_field(name)
+    }
+    pub fn groups(self: Self) -> Selector<'a, GroupBasedSelector> {
+        self.to_groups()
+    }
+    pub fn centroids(self: Self) -> Selector<'a, CentroidBasedSelector> {
+        self.to_centroids()
+    }
 }
 
 impl<'a> Selector<'a, CentroidBasedSelector> {
-    pub fn elements(self: Self) -> Selector<'a, ElementTypeSelector> {self.to_elements()}
-    pub fn fields(self: Self, name: &str) -> Selector<'a, FieldBasedSelector> {self.to_field(name)}
-    pub fn groups(self: Self) -> Selector<'a, GroupBasedSelector> {self.to_groups()}
-    pub fn nodes(self: Self, all: bool) -> Selector<'a, NodeBasedSelector> {self.to_nodes(all)}
+    pub fn elements(self: Self) -> Selector<'a, ElementTypeSelector> {
+        self.to_elements()
+    }
+    pub fn fields(self: Self, name: &str) -> Selector<'a, FieldBasedSelector> {
+        self.to_field(name)
+    }
+    pub fn groups(self: Self) -> Selector<'a, GroupBasedSelector> {
+        self.to_groups()
+    }
+    pub fn nodes(self: Self, all: bool) -> Selector<'a, NodeBasedSelector> {
+        self.to_nodes(all)
+    }
 }
