@@ -165,7 +165,7 @@ impl RegularUMeshBuilder {
         let coords_dim = coords.shape()[1];
         let connectivity = self.compute_connectivity();
 
-        let mut umesh = UMesh::new(ArcArray2::from(coords));
+        let mut umesh = UMesh::new(Array2::from(coords));
         if coords_dim == 1 {
             // 1D mesh
             umesh.add_block(ElementBlock::new_regular(ElementType::SEG2, connectivity));

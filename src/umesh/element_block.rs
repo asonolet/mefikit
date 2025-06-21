@@ -50,7 +50,7 @@ impl<'a> ElementBlock {
             cell_type,
             connectivity: Connectivity::Regular(connectivity),
             fields: BTreeMap::new(),
-            families: vec![0; conn_len],
+            families: Array1::from(vec![0; conn_len]),
             groups: BTreeMap::new(),
         }
     }
@@ -75,7 +75,7 @@ impl<'a> ElementBlock {
             cell_type,
             connectivity: Connectivity::new_poly(connectivity, offsets),
             fields: BTreeMap::new(),
-            families: vec![0; conn_len],
+            families: Array1::from(vec![0; conn_len]),
             groups: BTreeMap::new(),
         }
     }
@@ -91,7 +91,7 @@ impl<'a> ElementBlock {
             Some(fam) => fam,
             None => 0,
         };
-        self.families.push(family);
+        self.families.append(Axis(0), array![family].view());
 
         if let Some(fields) = fields {
             todo!();
