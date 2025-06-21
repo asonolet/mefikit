@@ -14,7 +14,7 @@ use crate::umesh::element::{Element, ElementType};
 /// The only data not included for an element block to be standalone is the coordinates array.
 pub struct ElementBlockBase<ConnData, FieldData, GroupData>
 where
-    ConnData: nd::RawData,
+    ConnData: nd::RawData<Elem = usize>,
     FieldData: nd::RawData,
     GroupData: nd::RawData,
 {

@@ -16,8 +16,8 @@ use crate::umesh::ElementType;
 /// kinds and fields associated.
 pub struct UMeshBase<CooData, ConnData, FieldData, GroupData>
 where
-    CooData: nd::RawData,
-    ConnData: nd::RawData,
+    CooData: nd::RawData<Elem = f64>,
+    ConnData: nd::RawData<Elem = usize>,
     FieldData: nd::RawData,
     GroupData: nd::RawData,
 {

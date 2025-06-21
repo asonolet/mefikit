@@ -1,6 +1,4 @@
 use ndarray as nd;
-use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
 // use rayon::prelude::*;
 
 /// Connectivity structure to represent the connectivity of a mesh.
@@ -11,7 +9,7 @@ use std::fmt::Debug;
 /// indices of the vertices of the polygons.
 pub enum ConnectivityBase<ConnData>
 where
-    ConnData: nd::RawData,
+    ConnData: nd::RawData<Elem = usize>,
 {
     Regular(nd::ArrayBase<ConnData, nd::Ix2>),
     Poly {
@@ -24,8 +22,8 @@ pub type Connectivity = ConnectivityBase<nd::OwnedRepr<usize>>;
 pub type ConnectivityView<'a> = ConnectivityBase<nd::ViewRepr<&'a usize>>;
 
 pub struct PolyConnIterator<'a> {
-    data: &'a nd::Array1<usize>,
-    offsets: &'a nd::Array1<usize>,
+    data: &'a [usize],
+    offsets: &'a [usize],
     index: usize,
 }
 
@@ -38,9 +36,9 @@ impl<'a> Iterator for PolyConnIterator<'a> {
         }
         let start = self.offsets[self.index];
         let end = self.offsets[self.index + 1];
-        let result = self.data.slice(nd::s![start..end]);
         self.index += 1;
-        Some(result)
+        let result = &self.data[start..end];
+        Some(nd::ArrayView1::from(result))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -143,23 +141,6 @@ impl Connectivity {
         Connectivity::Poly { data, offsets }
     }
 
-    pub fn len(&self) -> usize {
-        match self {
-            Connectivity::Regular(conn) => conn.nrows(),
-            Connectivity::Poly { offsets, .. } => offsets.len() - 1,
-        }
-    }
-
-    pub fn get(&self, index: usize) -> nd::ArrayView1<'_, usize> {
-        match self {
-            Connectivity::Regular(conn) => conn.row(index),
-            Connectivity::Poly { data, offsets } => {
-                let start = offsets[index];
-                let end = offsets[index + 1];
-                data.slice(nd::s![start..end])
-            }
-        }
-    }
     pub fn get_mut(&mut self, index: usize) -> nd::ArrayViewMut1<'_, usize> {
         match self {
             Connectivity::Regular(conn) => conn.row_mut(index),
@@ -168,19 +149,6 @@ impl Connectivity {
                 let end = offsets[index + 1];
                 data.slice_mut(nd::s![start..end])
             }
-        }
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = nd::ArrayView1<'_, usize>> + '_ {
-        match self {
-            Connectivity::Regular(conn) => {
-                ConnectivityIterator::Regular(conn.axis_iter(nd::Axis(0)))
-            }
-            Connectivity::Poly { data, offsets } => ConnectivityIterator::Poly(PolyConnIterator {
-                data,
-                offsets,
-                index: 0,
-            }),
         }
     }
 
@@ -209,6 +177,43 @@ impl Connectivity {
                 offsets
                     .append(nd::Axis(0), nd::arr1(&[data.len()]).view())
                     .unwrap();
+            }
+        }
+    }
+}
+
+impl<D> ConnectivityBase<D>
+where
+    D: nd::RawData<Elem = usize> + nd::Data,
+{
+    pub fn len(&self) -> usize {
+        match self {
+            ConnectivityBase::Regular(conn) => conn.nrows(),
+            ConnectivityBase::Poly { offsets, .. } => offsets.len() - 1,
+        }
+    }
+
+    pub fn get(&self, index: usize) -> nd::ArrayView1<'_, usize> {
+        match self {
+            ConnectivityBase::Regular(conn) => conn.row(index),
+            ConnectivityBase::Poly { data, offsets } => {
+                let start = offsets[index];
+                let end = offsets[index + 1];
+                data.slice(nd::s![start..end])
+            }
+        }
+    }
+    pub fn iter(&self) -> impl Iterator<Item = nd::ArrayView1<'_, usize>> + '_ {
+        match self {
+            ConnectivityBase::Regular(conn) => {
+                ConnectivityIterator::Regular(conn.axis_iter(nd::Axis(0)))
+            }
+            ConnectivityBase::Poly { data, offsets } => {
+                ConnectivityIterator::Poly(PolyConnIterator {
+                    data: data.as_slice().unwrap(),
+                    offsets: offsets.as_slice().unwrap(),
+                    index: 0,
+                })
             }
         }
     }
