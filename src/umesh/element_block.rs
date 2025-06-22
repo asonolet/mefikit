@@ -14,9 +14,9 @@ use crate::umesh::element::{Element, ElementType};
 /// The only data not included for an element block to be standalone is the coordinates array.
 pub struct ElementBlockBase<ConnData, FieldData, GroupData>
 where
-    ConnData: nd::RawData<Elem = usize> + nd::Data + Sync,
-    FieldData: nd::RawData<Elem = f64> + nd::Data + Sync,
-    GroupData: nd::RawData<Elem = usize> + nd::Data + Sync,
+    ConnData: nd::RawData<Elem = usize>,
+    FieldData: nd::RawData<Elem = f64>,
+    GroupData: nd::RawData<Elem = usize>,
 {
     pub cell_type: ElementType,
     pub connectivity: ConnectivityBase<ConnData>,
@@ -33,22 +33,34 @@ pub type ElementBlockView<'a> =
 
 impl<ConnData, FieldData, GroupData> ElementBlockBase<ConnData, FieldData, GroupData>
 where
-    ConnData: nd::RawData<Elem = usize> + nd::Data + Sync,
-    FieldData: nd::RawData<Elem = f64> + nd::Data + Sync,
-    GroupData: nd::RawData<Elem = usize> + nd::Data + Sync,
+    ConnData: nd::RawData<Elem = usize>,
+    FieldData: nd::RawData<Elem = f64>,
+    GroupData: nd::RawData<Elem = usize>,
 {
     pub fn len(&self) -> usize {
         self.connectivity.len()
     }
 
-    pub fn element_connectivity(&self, index: usize) -> ArrayView1<'_, usize> {
+    pub fn element_connectivity(&self, index: usize) -> ArrayView1<'_, usize>
+    where
+        ConnData: nd::Data,
+    {
         self.connectivity.get(index)
     }
 
-    pub fn iter<'a>(
-        &'a self,
-        coords: ArrayView2<'a, f64>,
-    ) -> impl Iterator<Item = Element<'a>> + 'a {
+    pub fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize>
+    where
+        ConnData: nd::DataMut,
+    {
+        self.connectivity.get_mut(index)
+    }
+
+    pub fn iter<'a>(&'a self, coords: ArrayView2<'a, f64>) -> impl Iterator<Item = Element<'a>> + 'a
+    where
+        ConnData: nd::Data,
+        GroupData: nd::Data,
+        FieldData: nd::Data,
+    {
         (0..self.len()).map(move |i| {
             let connectivity = self.element_connectivity(i);
             let fields = self
@@ -71,7 +83,12 @@ where
     pub fn par_iter<'a>(
         &'a self,
         coords: &'a Array2<f64>,
-    ) -> impl ParallelIterator<Item = Element<'a>> + 'a {
+    ) -> impl ParallelIterator<Item = Element<'a>> + 'a
+    where
+        ConnData: nd::Data + Sync,
+        GroupData: nd::Data + Sync,
+        FieldData: nd::Data + Sync,
+    {
         (0..self.len()).into_par_iter().map(move |i| {
             let connectivity = self.element_connectivity(i);
             let fields = self
@@ -91,6 +108,63 @@ where
             )
         })
     }
+
+    // pub fn iter_mut(
+    //     &'a mut self,
+    //     coords: &'a Array2<f64>,
+    // ) -> impl Iterator<Item = ElementMut<'a>> + 'a {
+    //     let fields: Vec<BTreeMap<&'a str, ArrayViewMutD<'a, f64>>> = (0..self.len()).map(|i| {
+    //         self
+    //         .fields
+    //         .iter_mut()
+    //         .map(|(k, v)| (k.as_str(), v.index_axis_mut(Axis(0), i)))
+    //         .collect()
+    //     }).collect();
+
+    //     self.connectivity.iter_mut().zip(self.families.iter_mut()).zip(fields.iter()).enumerate().map(|(i, ((conn, fam), fields))| {
+
+    //         ElementMut::new(
+    //             i,
+    //             coords,
+    //             conn,
+    //             fam,
+    //             *fields,
+    //             &self.groups,
+    //             self.cell_type,
+    //         )
+    //     })
+    // }
+
+    // pub fn par_iter_mut<'a>(
+    //     &'a mut self,
+    //     coords: &'a Array2<f64>,
+    // ) -> impl ParallelIterator<Item = ElementMut<'a>> {
+    //     let num_elems = self.connectivity.len();
+
+    //     // SAFETY: We split interior mutability manually into chunks
+    //     // and make sure each index `i` is accessed only once.
+    //     (0..num_elems).into_par_iter().map(move |i| {
+    //         let connectivity = self.connectivity.element_connectivity_mut(i);
+
+    //         let family = &mut self.families[i];
+
+    //         let fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>> = self
+    //             .fields
+    //             .iter_mut()
+    //             .map(|(k, v)| (k.as_str(), v.index_axis_mut(ndarray::Axis(0), i)))
+    //             .collect();
+
+    //         ElementMut {
+    //             global_index: i,
+    //             coords,
+    //             connectivity,
+    //             family,
+    //             fields,
+    //             groups: &self.groups,
+    //             element_type: self.cell_type,
+    //         }
+    //     })
+    // }
 }
 
 impl<'a> ElementBlock {
@@ -157,67 +231,6 @@ impl<'a> ElementBlock {
             todo!();
         }
     }
-
-    pub fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize> {
-        self.connectivity.get_mut(index)
-    }
-
-    // pub fn iter_mut(
-    //     &'a mut self,
-    //     coords: &'a Array2<f64>,
-    // ) -> impl Iterator<Item = ElementMut<'a>> + 'a {
-    //     let fields: Vec<BTreeMap<&'a str, ArrayViewMutD<'a, f64>>> = (0..self.len()).map(|i| {
-    //         self
-    //         .fields
-    //         .iter_mut()
-    //         .map(|(k, v)| (k.as_str(), v.index_axis_mut(Axis(0), i)))
-    //         .collect()
-    //     }).collect();
-
-    //     self.connectivity.iter_mut().zip(self.families.iter_mut()).zip(fields.iter()).enumerate().map(|(i, ((conn, fam), fields))| {
-
-    //         ElementMut::new(
-    //             i,
-    //             coords,
-    //             conn,
-    //             fam,
-    //             *fields,
-    //             &self.groups,
-    //             self.cell_type,
-    //         )
-    //     })
-    // }
-
-    // pub fn par_iter_mut<'a>(
-    //     &'a mut self,
-    //     coords: &'a Array2<f64>,
-    // ) -> impl ParallelIterator<Item = ElementMut<'a>> {
-    //     let num_elems = self.connectivity.len();
-
-    //     // SAFETY: We split interior mutability manually into chunks
-    //     // and make sure each index `i` is accessed only once.
-    //     (0..num_elems).into_par_iter().map(move |i| {
-    //         let connectivity = self.connectivity.element_connectivity_mut(i);
-
-    //         let family = &mut self.families[i];
-
-    //         let fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>> = self
-    //             .fields
-    //             .iter_mut()
-    //             .map(|(k, v)| (k.as_str(), v.index_axis_mut(ndarray::Axis(0), i)))
-    //             .collect();
-
-    //         ElementMut {
-    //             global_index: i,
-    //             coords,
-    //             connectivity,
-    //             family,
-    //             fields,
-    //             groups: &self.groups,
-    //             element_type: self.cell_type,
-    //         }
-    //     })
-    // }
 }
 
 pub trait IntoElementBlockEntry {
