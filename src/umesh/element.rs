@@ -1,4 +1,5 @@
 use ndarray::prelude::*;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -223,17 +224,45 @@ pub struct Element<'a> {
     pub element_type: ElementType,
 }
 
+/// Panics if the coords array is empty or if the connectivity array is empty.
 pub trait ElementLike<'a> {
+    /// Topology queries
+
     fn element_type(&self) -> ElementType;
     fn index(&self) -> usize;
-    fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize>;
-
     /// Returns the global index of the element.
     fn id(&self) -> ElementId {
         ElementId::new(self.element_type(), self.index())
     }
+    fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize>;
 
-    // This function should return the subentities of the element based on the codimension.
+    /// Returns the regularity of the element.
+    ///
+    /// This is used to determine if the element is a regular element or a polyhedral element.
+    fn regularity(&self) -> Regularity {
+        self.element_type().regularity()
+    }
+
+    /// Returns the number of nodes in the element.
+    ///
+    /// This is used to determine the number of nodes in the element.
+    fn num_nodes(&self) -> usize {
+        self.connectivity().shape()[0]
+    }
+
+    /// Returns the topological dimension of the element.
+    fn dimension(&self) -> Dimension {
+        self.element_type().dimension()
+    }
+
+    fn connectivity_equals(&self, other: &Self) -> bool {
+        // Check if the connectivity arrays are equal
+        // self.connectivity().shape() == other.connectivity().shape()
+        //     && self.connectivity().iter().eq(other.connectivity().iter())
+        todo!()
+    }
+
+    /// This function returns the subentities of the element based on the codimension.
     fn subentities(&self, codim: Option<Dimension>) -> Option<Vec<(ElementType, Vec<usize>)>> {
         use ElementType::*;
         let codim = match codim {
@@ -305,6 +334,57 @@ pub trait ElementLike<'a> {
             _ => todo!(), // For other types, return empty vector
         }
     }
+
+    /// Geometric queries
+
+    fn coords(&self) -> Array2<f64>;
+
+    /// Returns the space dimension of the element
+    fn space_dimension(&self) -> usize;
+
+    fn bounding_box(&self) -> (Array1<f64>, Array1<f64>) {
+        // Returns the bounding box of the element
+        // let coords = self.coords();
+        // let min = coords.fold(Array1::from_elem(coords.shape()[1], f64::INFINITY), |a, b| a.zip_map(&b, f64::min));
+        // let max = coords.fold(Array1::from_elem(coords.shape()[1], f64::NEG_INFINITY), |a, b| a.zip_map(&b, f64::max));
+        // (min, max)
+        todo!()
+    }
+
+    fn centroid(&self) -> Array1<f64> {
+        self.coords().mean_axis(Axis(0)).unwrap()
+    }
+
+    fn measure(&self) -> f64 {
+        // Returns the measure of the element
+        // For 0D elements, return 0.0
+        // For 1D elements, return the length
+        // For 2D elements, return the area
+        // For 3D elements, return the volume
+        todo!()
+    }
+
+    fn is_point_inside(&self, point: &[f64]) -> bool {
+        // Returns true if the point is inside the element
+        // For 0D elements, return true if the point is equal to the element's coordinates
+        // For 1D elements, return true if the point is between the two nodes
+        // For 2D elements, return true if the point is inside the polygon
+        // For 3D elements, return true if the point is inside the polyhedron
+        todo!()
+    }
+
+    /// Groups queries
+
+    fn groups(&self) -> Vec<String>;
+    fn in_group(&self, group: &str) -> bool;
+
+    // TODO: fields queries
+    // fn fields(&self) -> BTreeMap<String, ArrayViewD<'a, f64>>;
+    // fn field(&self, field: &str) -> ArrayViewD<'a, f64>;
+    // fn fields_mut(&mut self) -> BTreeMap<String, ArrayViewMutD<'a, f64>>;
+    // fn field_mut(&mut self, field: &str) -> ArrayViewMutD<'a, f64>;
+    // fn field_names(&self) -> Vec<String>;
+    // fn has_field(&self, field: &str) -> bool;
 }
 
 impl<'a> Element<'a> {
@@ -339,6 +419,26 @@ impl<'a> ElementLike<'a> for Element<'a> {
     fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize> {
         self.connectivity.view()
     }
+    fn coords(&self) -> Array2<f64> {
+        // TODO: implement cache mechanism for this using once_cell or similar
+        self.coords
+            .select(Axis(0), self.connectivity.as_slice().unwrap())
+    }
+    fn groups(&self) -> Vec<String> {
+        // TODO: implement cache mechanism for this using once_cell or similar
+        self.groups
+            .par_iter()
+            .filter(|(_, v)| v.contains(self.family))
+            .map(|(k, _)| k)
+            .cloned()
+            .collect()
+    }
+    fn in_group(&self, group: &str) -> bool {
+        self.groups.contains_key(group) && self.groups[group].contains(self.family)
+    }
+    fn space_dimension(&self) -> usize {
+        self.coords.shape()[1]
+    }
 }
 
 /// Mutable Item of an ElementBlock.
@@ -368,6 +468,24 @@ impl<'a> ElementLike<'a> for ElementMut<'a> {
     }
     fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize> {
         self.connectivity.view()
+    }
+    fn coords(&self) -> Array2<f64> {
+        self.coords
+            .select(Axis(0), self.connectivity.as_slice().unwrap())
+    }
+    fn groups(&self) -> Vec<String> {
+        self.groups
+            .iter()
+            .filter(|(_, v)| v.contains(self.family))
+            .map(|(k, _)| k)
+            .cloned()
+            .collect()
+    }
+    fn in_group(&self, group: &str) -> bool {
+        self.groups.contains_key(group) && self.groups[group].contains(self.family)
+    }
+    fn space_dimension(&self) -> usize {
+        self.coords.shape()[1]
     }
 }
 
