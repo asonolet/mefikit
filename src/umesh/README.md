@@ -86,12 +86,14 @@ The `umesh` module provides building blocks for:
 
 ---
 
-## 🔄 Mesh Ownership and Views: `UMesh`, `UMeshView`, and `UMeshViewMut`
+## 🔄 Mesh Ownership and Views: `UMesh`, `UMeshView`, and `UMeshBase`
 
-MeFiKit uses a clear ownership model to distinguish between owned meshes and
-views over mesh data. This makes integration with other systems (e.g., C or
-Python) efficient and safe, while also enabling high-performance zero-copy
-operations.
+MeFiKit uses a very flexible ownership data model based on ndarray ownership
+model. Each array can be OwnedRepr or ViewRepr (for connectivity array,
+coordinates array, all fields and all groups). This makes integration with
+other systems (e.g., C or Python) efficient and safe, while also enabling
+high-performance zero-copy operations.
+This memory model brings a bit of complexity but allows for great flexibility.
 
 ### 📦 `UMesh` – Owned Mesh
 
@@ -112,11 +114,10 @@ It is constructed by cloning or transferring ownership of arrays.
 ### 👁️ `UMeshView<'a>` – Read-Only Mesh View
 
 `UMeshView` is a **zero-copy, non-owning** view over existing mesh data. It
-holds references (slices or `ndarray::ArrayView`) to memory that is managed
-elsewhere (e.g., passed from a C/C++/Python array).
+holds references (slices or `ndarray::ArrayView`) to continuous memory block
+that is managed elsewhere (e.g., passed from a C/C++/Python array).
 
 This is ideal for:
-- Temporary views
 - Foreign function interface (FFI)
 - Avoiding unnecessary copies when no modification is needed
 
@@ -171,6 +172,13 @@ pub struct SharedCoords {
 - Use `.borrow()` for read access.
 - Use `.borrow_mut()` for in-place mutations.
 
+The favored approach is to avoid unnecessary copies of the coordinate data.
+That means that the corrdinate array must be unique to all meshes and views
+that interacts in the same space level. Hower when writing, it would be useless
+to have unused nodes in the coordinate array. That is why, as write operation
+is either way limited by disk write speed, the useless coordinates are pruned
+before write.
+
 ### Copy-on-Write / Desynchronization
 
 To ensure safe mutation when multiple owners exist (e.g., during node
@@ -213,9 +221,8 @@ This document categorizes common mesh operations into two groups:
   producing a new mesh.
 
 
-### ✅ In-Place Operations (mutate existing mesh, applied on UMeshViewMut)
-These operations can safely modify the mesh structure in-place, especially when
-done through a `UMeshViewMut`.
+### ✅ In-Place Operations
+These operations can safely modify the owned mesh structure in-place.
 
 | Operation                 | Description |
 |---------------------------|-------------|
@@ -228,7 +235,7 @@ done through a `UMeshViewMut`.
 | `transform_coordinates`   | Apply affine transformation to node coordinates |
 
 
-### 🧱 Out-of-Place Operations (produce new mesh, valid on UMeshView)
+### 🧱 Out-of-Place Operations (produce new mesh, valid on UMeshBase)
 These operations fundamentally change the mesh's topology, usually requiring
 reallocation of connectivity tables or geometry arrays.
 
