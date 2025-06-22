@@ -2,8 +2,7 @@
 use std::collections::HashMap;
 
 use crate::umesh::Dimension;
-use crate::umesh::ElementId;
-use crate::umesh::UMesh;
+use crate::umesh::{ElementId, ElementLike, UMesh};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct SortedVecKey(Vec<usize>);

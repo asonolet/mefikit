@@ -3,33 +3,33 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-#[derive(Copy, Clone)]
-pub enum EdgeType {
-    SEG2,
-    SEG3,
-    SEG4,
-    SPLINES,
-}
-
-#[derive(Copy, Clone)]
-pub enum FaceType {
-    TRI3,
-    TRI6,
-    TRI7,
-    QUAD4,
-    QUAD8,
-    QUAD9,
-    PGON,
-}
-
-#[derive(Copy, Clone)]
-pub enum VolumeType {
-    TET4,
-    TET10,
-    HEX8,
-    HEX21,
-    PHDRON,
-}
+// #[derive(Copy, Clone)]
+// pub enum EdgeType {
+//     SEG2,
+//     SEG3,
+//     SEG4,
+//     SPLINES,
+// }
+//
+// #[derive(Copy, Clone)]
+// pub enum FaceType {
+//     TRI3,
+//     TRI6,
+//     TRI7,
+//     QUAD4,
+//     QUAD8,
+//     QUAD9,
+//     PGON,
+// }
+//
+// #[derive(Copy, Clone)]
+// pub enum VolumeType {
+//     TET4,
+//     TET10,
+//     HEX8,
+//     HEX21,
+//     PHDRON,
+// }
 
 #[derive(Copy, Clone)]
 pub enum Regularity {
@@ -223,41 +223,25 @@ pub struct Element<'a> {
     pub element_type: ElementType,
 }
 
-impl<'a> Element<'a> {
-    pub fn new(
-        index: usize,
-        coords: ArrayView2<'a, f64>,
-        fields: BTreeMap<&'a str, ArrayViewD<'a, f64>>,
-        family: &'a usize,
-        groups: &'a BTreeMap<String, BTreeSet<usize>>,
-        connectivity: ArrayView1<'a, usize>,
-        element_type: ElementType,
-    ) -> Element<'a> {
-        Element {
-            index,
-            coords,
-            fields,
-            family,
-            groups,
-            connectivity,
-            element_type,
-        }
-    }
+pub trait ElementLike<'a> {
+    fn element_type(&self) -> ElementType;
+    fn index(&self) -> usize;
+    fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize>;
 
     /// Returns the global index of the element.
-    pub fn id(&self) -> ElementId {
-        ElementId::new(self.element_type, self.index)
+    fn id(&self) -> ElementId {
+        ElementId::new(self.element_type(), self.index())
     }
 
     // This function should return the subentities of the element based on the codimension.
-    pub fn subentities(&self, codim: Option<Dimension>) -> Option<Vec<(ElementType, Vec<usize>)>> {
+    fn subentities(&self, codim: Option<Dimension>) -> Option<Vec<(ElementType, Vec<usize>)>> {
         use ElementType::*;
         let codim = match codim {
             None => Dimension::D1,
             Some(c) => c,
         };
-        let co = self.connectivity;
-        match self.element_type {
+        let co = self.connectivity();
+        match self.element_type() {
             SEG2 | SEG3 | SEG4 => {
                 // 1D elements have edges as subentities
                 if codim == Dimension::D1 {
@@ -323,6 +307,40 @@ impl<'a> Element<'a> {
     }
 }
 
+impl<'a> Element<'a> {
+    pub fn new(
+        index: usize,
+        coords: ArrayView2<'a, f64>,
+        fields: BTreeMap<&'a str, ArrayViewD<'a, f64>>,
+        family: &'a usize,
+        groups: &'a BTreeMap<String, BTreeSet<usize>>,
+        connectivity: ArrayView1<'a, usize>,
+        element_type: ElementType,
+    ) -> Element<'a> {
+        Element {
+            index,
+            coords,
+            fields,
+            family,
+            groups,
+            connectivity,
+            element_type,
+        }
+    }
+}
+
+impl<'a> ElementLike<'a> for Element<'a> {
+    fn element_type(&self) -> ElementType {
+        self.element_type
+    }
+    fn index(&self) -> usize {
+        self.index
+    }
+    fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize> {
+        self.connectivity.view()
+    }
+}
+
 /// Mutable Item of an ElementBlock.
 ///
 /// This struct is used to read and write data on an element in an element block. Note that is is
@@ -332,7 +350,7 @@ impl<'a> Element<'a> {
 /// This iterator is thread safe and does not allow to change an element nature or the number of
 /// nodes in this element.
 pub struct ElementMut<'a> {
-    pub global_index: usize,
+    pub index: usize,
     coords: ArrayView2<'a, f64>,
     pub connectivity: ArrayViewMut1<'a, usize>,
     pub family: &'a mut usize,
@@ -341,9 +359,21 @@ pub struct ElementMut<'a> {
     pub element_type: ElementType,
 }
 
+impl<'a> ElementLike<'a> for ElementMut<'a> {
+    fn element_type(&self) -> ElementType {
+        self.element_type
+    }
+    fn index(&self) -> usize {
+        self.index
+    }
+    fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize> {
+        self.connectivity.view()
+    }
+}
+
 impl<'a> ElementMut<'a> {
     pub fn new(
-        global_index: usize,
+        index: usize,
         coords: ArrayView2<'a, f64>,
         connectivity: ArrayViewMut1<'a, usize>,
         family: &'a mut usize,
@@ -352,7 +382,7 @@ impl<'a> ElementMut<'a> {
         element_type: ElementType,
     ) -> ElementMut<'a> {
         ElementMut {
-            global_index,
+            index,
             coords,
             connectivity,
             family,
