@@ -1,5 +1,5 @@
 use crate::umesh::{ElementBlock, ElementType, UMesh};
-use ndarray::{ArcArray2, Array2};
+use ndarray::Array2;
 
 /// Regular umesh builder (1d, 2d or 3d).
 ///

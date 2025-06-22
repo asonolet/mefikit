@@ -1,5 +1,3 @@
-use crate::umesh::ElementType;
-
 pub trait ElementSymmetry {
     const ROTATIONS: &'static [&'static [usize]];
 }
