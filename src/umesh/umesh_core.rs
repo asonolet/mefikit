@@ -14,10 +14,10 @@ use crate::umesh::ElementType;
 /// kinds and fields associated.
 pub struct UMeshBase<CooData, ConnData, FieldData, GroupData>
 where
-    CooData: nd::RawData<Elem = f64> + nd::Data + Sync,
-    ConnData: nd::RawData<Elem = usize> + nd::Data + Sync,
-    FieldData: nd::RawData<Elem = f64> + nd::Data + Sync,
-    GroupData: nd::RawData<Elem = usize> + nd::Data + Sync,
+    CooData: nd::RawData<Elem = f64>,
+    ConnData: nd::RawData<Elem = usize>,
+    FieldData: nd::RawData<Elem = f64>,
+    GroupData: nd::RawData<Elem = usize>,
 {
     coords: ArrayBase<CooData, Ix2>, // TODO: Use ArcArray2 for shared ownership
     element_blocks: BTreeMap<ElementType, ElementBlockBase<ConnData, FieldData, GroupData>>,
@@ -35,10 +35,10 @@ pub type UMeshView<'a> = UMeshBase<
 
 impl<CooData, ConnData, FieldData, GroupData> UMeshBase<CooData, ConnData, FieldData, GroupData>
 where
-    CooData: nd::RawData<Elem = f64> + nd::Data + Sync,
-    ConnData: nd::RawData<Elem = usize> + nd::Data + Sync,
-    FieldData: nd::RawData<Elem = f64> + nd::Data + Sync,
-    GroupData: nd::RawData<Elem = usize> + nd::Data + Sync,
+    CooData: nd::RawData<Elem = f64> + nd::Data,
+    ConnData: nd::RawData<Elem = usize> + nd::Data,
+    FieldData: nd::RawData<Elem = f64> + nd::Data,
+    GroupData: nd::RawData<Elem = usize> + nd::Data,
 {
     pub fn coords(&self) -> &ArrayBase<CooData, Ix2> {
         &self.coords
@@ -70,11 +70,37 @@ where
         self.element_blocks.get(&element_type)
     }
 
-    pub fn select_ids(&self) -> Selector<CooData, ConnData, FieldData, GroupData> {
+    /// Creates a new selector for this mesh.
+    ///
+    /// This allows for selecting elements (returning ElementIds) based on mutliple criteria at
+    /// once, such as element type, dimension, position and fields values.
+    pub fn select_ids(&self) -> Selector<CooData, ConnData, FieldData, GroupData>
+    where
+        ConnData: Sync,
+        CooData: Sync,
+        FieldData: Sync,
+        GroupData: Sync,
+    {
         Selector::new(&self)
     }
 
+    /// Extracts a sub-mesh from the current mesh based on the provided element IDs.
+    ///
+    /// This method creates a new `UMesh`, owning its data (with copy) containing only the elements
+    /// specified by the IDs.
     pub fn extract_mesh(&self, ids: &[ElementId]) -> UMesh {
+        todo!();
+    }
+
+    // pub fn families(&self, element_type: ElementType) -> Option<&[usize]> {
+    //     let eb = self.element_block(element_type);
+    //     match eb {
+    //         Some(eb) => Some(&eb.families),
+    //         None => None,
+    //     }
+    // }
+
+    pub fn replace(&mut self, ids: &[ElementId]) {
         todo!();
     }
 }
@@ -122,18 +148,6 @@ impl UMesh {
             .get_mut(&element_type)
             .unwrap() // This unwrap is safe because we just inserted the element type
             .add_element(ArrayView1::from(connectivity), family, fields);
-    }
-
-    // pub fn families(&self, element_type: ElementType) -> Option<&[usize]> {
-    //     let eb = self.element_block(element_type);
-    //     match eb {
-    //         Some(eb) => Some(&eb.families),
-    //         None => None,
-    //     }
-    // }
-
-    pub fn replace(&mut self, ids: &[ElementId]) {
-        todo!();
     }
 }
 
