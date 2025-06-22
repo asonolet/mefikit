@@ -9,7 +9,7 @@ use ndarray as nd;
 /// indices of the vertices of the polygons.
 pub enum ConnectivityBase<ConnData>
 where
-    ConnData: nd::RawData<Elem = usize>,
+    ConnData: nd::RawData<Elem = usize> + nd::Data,
 {
     Regular(nd::ArrayBase<ConnData, nd::Ix2>),
     Poly {

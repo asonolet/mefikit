@@ -1,14 +1,22 @@
+use ndarray as nd;
 use rayon::prelude::*;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use todo;
 
-use crate::umesh::{ElementBlock, ElementId, ElementType, UMesh};
+use crate::umesh::umesh_core::UMeshBase;
+use crate::umesh::ElementType;
 
 /// Here umesh should be replace with UMeshView, so that it can interact with non owned umesh
 /// struct.
 
-pub struct Selector<'a, State = ElementTypeSelector> {
-    pub umesh: &'a UMesh,
+pub struct Selector<'a, Coo, Conn, Field, Group, State = ElementTypeSelector>
+where
+    Coo: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Conn: nd::RawData<Elem = usize> + nd::Data + Sync,
+    Field: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Group: nd::RawData<Elem = usize> + nd::Data + Sync,
+{
+    pub umesh: &'a UMeshBase<Coo, Conn, Field, Group>,
     pub index: HashMap<ElementType, Vec<usize>>,
     pub state: State,
 }
@@ -29,8 +37,14 @@ pub struct GroupBasedSelector {
 
 pub struct CentroidBasedSelector;
 
-impl<'a, State> Selector<'a, State> {
-    fn to_groups(self: Self) -> Selector<'a, GroupBasedSelector> {
+impl<'a, Coo, Conn, Field, Group, State> Selector<'a, Coo, Conn, Field, Group, State>
+where
+    Coo: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Conn: nd::RawData<Elem = usize> + nd::Data + Sync,
+    Field: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Group: nd::RawData<Elem = usize> + nd::Data + Sync,
+{
+    fn to_groups(self: Self) -> Selector<'a, Coo, Conn, Field, Group, GroupBasedSelector> {
         let state = GroupBasedSelector {
             families: HashMap::new(),
         };
@@ -41,7 +55,10 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn to_field(self: Self, name: &str) -> Selector<'a, FieldBasedSelector> {
+    fn to_field(
+        self: Self,
+        name: &str,
+    ) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
         let state = FieldBasedSelector {
             field_name: name.to_owned(),
         };
@@ -52,7 +69,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn to_elements(self: Self) -> Selector<'a, ElementTypeSelector> {
+    fn to_elements(self: Self) -> Selector<'a, Coo, Conn, Field, Group, ElementTypeSelector> {
         let state = ElementTypeSelector {};
         Selector {
             umesh: self.umesh,
@@ -61,7 +78,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn to_centroids(self: Self) -> Selector<'a, CentroidBasedSelector> {
+    fn to_centroids(self: Self) -> Selector<'a, Coo, Conn, Field, Group, CentroidBasedSelector> {
         let state = CentroidBasedSelector {};
         Selector {
             umesh: self.umesh,
@@ -70,7 +87,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn to_nodes(self: Self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    fn to_nodes(self: Self, all: bool) -> Selector<'a, Coo, Conn, Field, Group, NodeBasedSelector> {
         let state = NodeBasedSelector { all_nodes: all };
         Selector {
             umesh: self.umesh,
@@ -80,8 +97,14 @@ impl<'a, State> Selector<'a, State> {
     }
 }
 
-impl<'a> Selector<'a, ElementTypeSelector> {
-    pub fn new(umesh: &'a UMesh) -> Self {
+impl<'a, Coo, Conn, Field, Group> Selector<'a, Coo, Conn, Field, Group, ElementTypeSelector>
+where
+    Coo: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Conn: nd::RawData<Elem = usize> + nd::Data + Sync,
+    Field: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Group: nd::RawData<Elem = usize> + nd::Data + Sync,
+{
+    pub fn new(umesh: &'a UMeshBase<Coo, Conn, Field, Group>) -> Self {
         let index = umesh
             .element_blocks()
             .iter()
@@ -96,7 +119,13 @@ impl<'a> Selector<'a, ElementTypeSelector> {
     }
 }
 
-impl<'a> Selector<'a, FieldBasedSelector> {
+impl<'a, Coo, Conn, Field, Group> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector>
+where
+    Coo: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Conn: nd::RawData<Elem = usize> + nd::Data + Sync,
+    Field: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Group: nd::RawData<Elem = usize> + nd::Data + Sync,
+{
     pub fn ge(self: Self, val: f64) -> Self {
         let index: HashMap<ElementType, Vec<usize>> = self
             .index
@@ -153,21 +182,27 @@ impl<'a> Selector<'a, FieldBasedSelector> {
         }
     }
 
-    pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
+    pub fn groups(self) -> Selector<'a, Coo, Conn, Field, Group, GroupBasedSelector> {
         self.to_groups()
     }
-    pub fn elements(self) -> Selector<'a, ElementTypeSelector> {
+    pub fn elements(self) -> Selector<'a, Coo, Conn, Field, Group, ElementTypeSelector> {
         self.to_elements()
     }
-    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    pub fn nodes(self, all: bool) -> Selector<'a, Coo, Conn, Field, Group, NodeBasedSelector> {
         self.to_nodes(all)
     }
-    pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
+    pub fn centroids(self) -> Selector<'a, Coo, Conn, Field, Group, CentroidBasedSelector> {
         self.to_centroids()
     }
 }
 
-impl<'a> Selector<'a, GroupBasedSelector> {
+impl<'a, Coo, Conn, Field, Group> Selector<'a, Coo, Conn, Field, Group, GroupBasedSelector>
+where
+    Coo: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Conn: nd::RawData<Elem = usize> + nd::Data + Sync,
+    Field: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Group: nd::RawData<Elem = usize> + nd::Data + Sync,
+{
     pub fn inside(self: Self, name: &str) -> Self {
         let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
             .umesh
@@ -222,7 +257,7 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     }
 
     /// I have a set of families per element_type, I can now select the real elements
-    fn collect(self: Self) -> Selector<'a, ElementTypeSelector> {
+    fn collect(self: Self) -> Selector<'a, Coo, Conn, Field, Group, ElementTypeSelector> {
         todo!();
         // let index = self.umesh.families(et);
         // let state = ElementTypeSelector{};
@@ -233,22 +268,31 @@ impl<'a> Selector<'a, GroupBasedSelector> {
         // }
     }
 
-    pub fn fields(self: Self, name: &str) -> Selector<'a, FieldBasedSelector> {
+    pub fn fields(
+        self: Self,
+        name: &str,
+    ) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
         self.to_field(name)
     }
-    pub fn elements(self) -> Selector<'a, ElementTypeSelector> {
+    pub fn elements(self) -> Selector<'a, Coo, Conn, Field, Group, ElementTypeSelector> {
         self.collect().to_elements()
     }
-    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    pub fn nodes(self, all: bool) -> Selector<'a, Coo, Conn, Field, Group, NodeBasedSelector> {
         self.collect().to_nodes(all)
     }
-    pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
+    pub fn centroids(self) -> Selector<'a, Coo, Conn, Field, Group, CentroidBasedSelector> {
         self.collect().to_centroids()
     }
 }
 
-impl<'a> Selector<'a, NodeBasedSelector> {
-    pub fn all(self: Self) -> Selector<'a, NodeBasedSelector> {
+impl<'a, Coo, Conn, Field, Group> Selector<'a, Coo, Conn, Field, Group, NodeBasedSelector>
+where
+    Coo: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Conn: nd::RawData<Elem = usize> + nd::Data + Sync,
+    Field: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Group: nd::RawData<Elem = usize> + nd::Data + Sync,
+{
+    pub fn all(self: Self) -> Selector<'a, Coo, Conn, Field, Group, NodeBasedSelector> {
         let state = NodeBasedSelector { all_nodes: true };
         Selector {
             umesh: self.umesh,
@@ -257,31 +301,46 @@ impl<'a> Selector<'a, NodeBasedSelector> {
         }
     }
 
-    pub fn elements(self: Self) -> Selector<'a, ElementTypeSelector> {
+    pub fn elements(self: Self) -> Selector<'a, Coo, Conn, Field, Group, ElementTypeSelector> {
         self.to_elements()
     }
-    pub fn fields(self: Self, name: &str) -> Selector<'a, FieldBasedSelector> {
+    pub fn fields(
+        self: Self,
+        name: &str,
+    ) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
         self.to_field(name)
     }
-    pub fn groups(self: Self) -> Selector<'a, GroupBasedSelector> {
+    pub fn groups(self: Self) -> Selector<'a, Coo, Conn, Field, Group, GroupBasedSelector> {
         self.to_groups()
     }
-    pub fn centroids(self: Self) -> Selector<'a, CentroidBasedSelector> {
+    pub fn centroids(self: Self) -> Selector<'a, Coo, Conn, Field, Group, CentroidBasedSelector> {
         self.to_centroids()
     }
 }
 
-impl<'a> Selector<'a, CentroidBasedSelector> {
-    pub fn elements(self: Self) -> Selector<'a, ElementTypeSelector> {
+impl<'a, Coo, Conn, Field, Group> Selector<'a, Coo, Conn, Field, Group, CentroidBasedSelector>
+where
+    Coo: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Conn: nd::RawData<Elem = usize> + nd::Data + Sync,
+    Field: nd::RawData<Elem = f64> + nd::Data + Sync,
+    Group: nd::RawData<Elem = usize> + nd::Data + Sync,
+{
+    pub fn elements(self: Self) -> Selector<'a, Coo, Conn, Field, Group, ElementTypeSelector> {
         self.to_elements()
     }
-    pub fn fields(self: Self, name: &str) -> Selector<'a, FieldBasedSelector> {
+    pub fn fields(
+        self: Self,
+        name: &str,
+    ) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
         self.to_field(name)
     }
-    pub fn groups(self: Self) -> Selector<'a, GroupBasedSelector> {
+    pub fn groups(self: Self) -> Selector<'a, Coo, Conn, Field, Group, GroupBasedSelector> {
         self.to_groups()
     }
-    pub fn nodes(self: Self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    pub fn nodes(
+        self: Self,
+        all: bool,
+    ) -> Selector<'a, Coo, Conn, Field, Group, NodeBasedSelector> {
         self.to_nodes(all)
     }
 }

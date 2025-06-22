@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use todo;
 
-use crate::umesh::element::{Element, ElementId, Regularity};
+use crate::umesh::element::{Dimension, Element, ElementId, Regularity};
 use crate::umesh::element_block::{ElementBlock, ElementBlockBase, IntoElementBlockEntry};
 use crate::umesh::selector::Selector;
 use crate::umesh::ElementType;
@@ -16,10 +16,10 @@ use crate::umesh::ElementType;
 /// kinds and fields associated.
 pub struct UMeshBase<CooData, ConnData, FieldData, GroupData>
 where
-    CooData: nd::RawData<Elem = f64>,
-    ConnData: nd::RawData<Elem = usize>,
-    FieldData: nd::RawData,
-    GroupData: nd::RawData,
+    CooData: nd::RawData<Elem = f64> + nd::Data + Sync,
+    ConnData: nd::RawData<Elem = usize> + nd::Data + Sync,
+    FieldData: nd::RawData<Elem = f64> + nd::Data + Sync,
+    GroupData: nd::RawData<Elem = usize> + nd::Data + Sync,
 {
     coords: ArrayBase<CooData, Ix2>, // TODO: Use ArcArray2 for shared ownership
     element_blocks: BTreeMap<ElementType, ElementBlockBase<ConnData, FieldData, GroupData>>,
@@ -34,6 +34,52 @@ pub type UMeshView<'a> = UMeshBase<
     nd::ViewRepr<&'a f64>,
     nd::ViewRepr<&'a usize>,
 >;
+
+impl<CooData, ConnData, FieldData, GroupData> UMeshBase<CooData, ConnData, FieldData, GroupData>
+where
+    CooData: nd::RawData<Elem = f64> + nd::Data + Sync,
+    ConnData: nd::RawData<Elem = usize> + nd::Data + Sync,
+    FieldData: nd::RawData<Elem = f64> + nd::Data + Sync,
+    GroupData: nd::RawData<Elem = usize> + nd::Data + Sync,
+{
+    pub fn coords(&self) -> &ArrayBase<CooData, Ix2> {
+        &self.coords
+    }
+
+    pub fn elements(&self) -> impl Iterator<Item = Element> {
+        self.element_blocks
+            .values()
+            .flat_map(|block| block.iter(self.coords.view()))
+    }
+
+    pub fn elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element> {
+        self.element_blocks
+            .iter()
+            .filter(move |(&k, _)| k.dimension() == dim)
+            .flat_map(|(_, block)| block.iter(self.coords.view()))
+    }
+
+    pub fn element_blocks(
+        &self,
+    ) -> &BTreeMap<ElementType, ElementBlockBase<ConnData, FieldData, GroupData>> {
+        &self.element_blocks
+    }
+
+    pub fn element_block(
+        &self,
+        element_type: ElementType,
+    ) -> Option<&ElementBlockBase<ConnData, FieldData, GroupData>> {
+        self.element_blocks.get(&element_type)
+    }
+
+    pub fn select_ids(&self) -> Selector<CooData, ConnData, FieldData, GroupData> {
+        Selector::new(&self)
+    }
+
+    pub fn extract_mesh(&self, ids: &[ElementId]) -> UMesh {
+        todo!();
+    }
+}
 
 impl UMesh {
     pub fn new(coords: nd::Array2<f64>) -> Self {
@@ -80,24 +126,6 @@ impl UMesh {
             .add_element(ArrayView1::from(connectivity), family, fields);
     }
 
-    pub fn coords(&self) -> &nd::Array2<f64> {
-        &self.coords
-    }
-
-    pub fn elements(&self) -> impl Iterator<Item = Element> {
-        self.element_blocks
-            .values()
-            .flat_map(|block| block.iter(self.coords.view()))
-    }
-
-    pub fn element_blocks(&self) -> &BTreeMap<ElementType, ElementBlock> {
-        &self.element_blocks
-    }
-
-    pub fn element_block(&self, element_type: ElementType) -> Option<&ElementBlock> {
-        self.element_blocks.get(&element_type)
-    }
-
     // pub fn families(&self, element_type: ElementType) -> Option<&[usize]> {
     //     let eb = self.element_block(element_type);
     //     match eb {
@@ -105,14 +133,6 @@ impl UMesh {
     //         None => None,
     //     }
     // }
-
-    pub fn select_ids(&self) -> Selector {
-        Selector::new(&self)
-    }
-
-    pub fn extract_mesh(&self, ids: &[ElementId]) -> UMesh {
-        todo!();
-    }
 
     pub fn replace(&mut self, ids: &[ElementId]) {
         todo!();

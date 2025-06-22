@@ -14,9 +14,9 @@ use crate::umesh::element::{Element, ElementType};
 /// The only data not included for an element block to be standalone is the coordinates array.
 pub struct ElementBlockBase<ConnData, FieldData, GroupData>
 where
-    ConnData: nd::RawData<Elem = usize>,
-    FieldData: nd::RawData,
-    GroupData: nd::RawData,
+    ConnData: nd::RawData<Elem = usize> + nd::Data + Sync,
+    FieldData: nd::RawData<Elem = f64> + nd::Data + Sync,
+    GroupData: nd::RawData<Elem = usize> + nd::Data + Sync,
 {
     pub cell_type: ElementType,
     pub connectivity: ConnectivityBase<ConnData>,
@@ -30,6 +30,68 @@ pub type ElementBlock =
 
 pub type ElementBlockView<'a> =
     ElementBlockBase<nd::ViewRepr<&'a usize>, nd::ViewRepr<&'a f64>, nd::ViewRepr<&'a usize>>;
+
+impl<ConnData, FieldData, GroupData> ElementBlockBase<ConnData, FieldData, GroupData>
+where
+    ConnData: nd::RawData<Elem = usize> + nd::Data + Sync,
+    FieldData: nd::RawData<Elem = f64> + nd::Data + Sync,
+    GroupData: nd::RawData<Elem = usize> + nd::Data + Sync,
+{
+    pub fn len(&self) -> usize {
+        self.connectivity.len()
+    }
+
+    pub fn element_connectivity(&self, index: usize) -> ArrayView1<'_, usize> {
+        self.connectivity.get(index)
+    }
+
+    pub fn iter<'a>(
+        &'a self,
+        coords: ArrayView2<'a, f64>,
+    ) -> impl Iterator<Item = Element<'a>> + 'a {
+        (0..self.len()).map(move |i| {
+            let connectivity = self.element_connectivity(i);
+            let fields = self
+                .fields
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
+                .collect();
+            Element::new(
+                i,
+                coords,
+                fields,
+                &self.families[i],
+                &self.groups,
+                connectivity,
+                self.cell_type,
+            )
+        })
+    }
+
+    pub fn par_iter<'a>(
+        &'a self,
+        coords: &'a Array2<f64>,
+    ) -> impl ParallelIterator<Item = Element<'a>> + 'a {
+        (0..self.len()).into_par_iter().map(move |i| {
+            let connectivity = self.element_connectivity(i);
+            let fields = self
+                .fields
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
+                .collect();
+
+            Element::new(
+                i,
+                coords.view(),
+                fields,
+                &self.families[i],
+                &self.groups,
+                connectivity,
+                self.cell_type,
+            )
+        })
+    }
+}
 
 impl<'a> ElementBlock {
     /// Create a new regular element block.
@@ -94,58 +156,6 @@ impl<'a> ElementBlock {
         if let Some(fields) = fields {
             todo!();
         }
-    }
-
-    pub fn len(&self) -> usize {
-        self.connectivity.len()
-    }
-
-    pub fn element_connectivity(&'a self, index: usize) -> ArrayView1<'a, usize> {
-        self.connectivity.get(index)
-    }
-
-    pub fn iter(&'a self, coords: ArrayView2<'a, f64>) -> impl Iterator<Item = Element<'a>> + 'a {
-        (0..self.len()).map(move |i| {
-            let connectivity = self.element_connectivity(i);
-            let fields = self
-                .fields
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
-                .collect();
-            Element::new(
-                i,
-                coords,
-                fields,
-                &self.families[i],
-                &self.groups,
-                connectivity,
-                self.cell_type,
-            )
-        })
-    }
-
-    pub fn par_iter(
-        &'a self,
-        coords: &'a Array2<f64>,
-    ) -> impl ParallelIterator<Item = Element<'a>> + 'a {
-        (0..self.len()).into_par_iter().map(move |i| {
-            let connectivity = self.element_connectivity(i);
-            let fields = self
-                .fields
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
-                .collect();
-
-            Element::new(
-                i,
-                coords.view(),
-                fields,
-                &self.families[i],
-                &self.groups,
-                connectivity,
-                self.cell_type,
-            )
-        })
     }
 
     pub fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize> {
