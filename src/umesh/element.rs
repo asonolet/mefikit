@@ -1,4 +1,5 @@
 use ndarray::prelude::*;
+use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -32,20 +33,20 @@ use std::collections::BTreeSet;
 //     PHDRON,
 // }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Regularity {
     Regular,
     Poly,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PolyElemType {
     SPLINE,
     PGON,
     PHED,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub enum RegularElemType {
     VERTEX,
     SEG2,
@@ -183,7 +184,7 @@ impl ElementType {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum Dimension {
     D0,
     D1,
@@ -222,6 +223,8 @@ pub struct Element<'a> {
     groups: &'a BTreeMap<String, BTreeSet<usize>>,
     pub connectivity: ArrayView1<'a, usize>,
     pub element_type: ElementType,
+    element_coords_cache: OnceCell<Array2<f64>>,
+    element_groups_cache: OnceCell<Vec<String>>,
 }
 
 /// Panics if the coords array is empty or if the connectivity array is empty.
@@ -337,7 +340,8 @@ pub trait ElementLike<'a> {
 
     /// Geometric queries
 
-    fn coords(&self) -> Array2<f64>;
+    /// Returns a reference to an owned
+    fn coords(&self) -> &Array2<f64>;
 
     /// Returns the space dimension of the element
     fn space_dimension(&self) -> usize;
@@ -375,7 +379,7 @@ pub trait ElementLike<'a> {
 
     /// Groups queries
 
-    fn groups(&self) -> Vec<String>;
+    fn groups(&self) -> &Vec<String>;
     fn in_group(&self, group: &str) -> bool;
 
     // TODO: fields queries
@@ -405,6 +409,8 @@ impl<'a> Element<'a> {
             groups,
             connectivity,
             element_type,
+            element_coords_cache: OnceCell::new(),
+            element_groups_cache: OnceCell::new(),
         }
     }
 }
@@ -419,19 +425,22 @@ impl<'a> ElementLike<'a> for Element<'a> {
     fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize> {
         self.connectivity.view()
     }
-    fn coords(&self) -> Array2<f64> {
+    fn coords(&self) -> &Array2<f64> {
         // TODO: implement cache mechanism for this using once_cell or similar
-        self.coords
-            .select(Axis(0), self.connectivity.as_slice().unwrap())
+        self.element_coords_cache.get_or_init(|| {
+            self.coords
+                .select(Axis(0), self.connectivity.as_slice().unwrap())
+        })
     }
-    fn groups(&self) -> Vec<String> {
-        // TODO: implement cache mechanism for this using once_cell or similar
-        self.groups
-            .par_iter()
-            .filter(|(_, v)| v.contains(self.family))
-            .map(|(k, _)| k)
-            .cloned()
-            .collect()
+    fn groups(&self) -> &Vec<String> {
+        self.element_groups_cache.get_or_init(|| {
+            self.groups
+                .par_iter()
+                .filter(|(_, v)| v.contains(self.family))
+                .map(|(k, _)| k)
+                .cloned()
+                .collect()
+        })
     }
     fn in_group(&self, group: &str) -> bool {
         self.groups.contains_key(group) && self.groups[group].contains(self.family)
@@ -457,6 +466,8 @@ pub struct ElementMut<'a> {
     pub fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>>,
     groups: &'a BTreeMap<String, BTreeSet<usize>>, // safely shared across threads
     pub element_type: ElementType,
+    element_coords_cache: OnceCell<Array2<f64>>,
+    element_groups_cache: OnceCell<Vec<String>>,
 }
 
 impl<'a> ElementLike<'a> for ElementMut<'a> {
@@ -469,17 +480,22 @@ impl<'a> ElementLike<'a> for ElementMut<'a> {
     fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize> {
         self.connectivity.view()
     }
-    fn coords(&self) -> Array2<f64> {
-        self.coords
-            .select(Axis(0), self.connectivity.as_slice().unwrap())
+    fn coords(&self) -> &Array2<f64> {
+        // TODO: implement cache mechanism for this using once_cell or similar
+        self.element_coords_cache.get_or_init(|| {
+            self.coords
+                .select(Axis(0), self.connectivity.as_slice().unwrap())
+        })
     }
-    fn groups(&self) -> Vec<String> {
-        self.groups
-            .iter()
-            .filter(|(_, v)| v.contains(self.family))
-            .map(|(k, _)| k)
-            .cloned()
-            .collect()
+    fn groups(&self) -> &Vec<String> {
+        self.element_groups_cache.get_or_init(|| {
+            self.groups
+                .par_iter()
+                .filter(|(_, v)| v.contains(self.family))
+                .map(|(k, _)| k)
+                .cloned()
+                .collect()
+        })
     }
     fn in_group(&self, group: &str) -> bool {
         self.groups.contains_key(group) && self.groups[group].contains(self.family)
@@ -507,6 +523,8 @@ impl<'a> ElementMut<'a> {
             fields,
             groups,
             element_type,
+            element_coords_cache: OnceCell::new(),
+            element_groups_cache: OnceCell::new(),
         }
     }
 }
@@ -518,23 +536,31 @@ mod tests {
 
     #[test]
     fn test_element_struct_basics() {
-        let coords = array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let coords = array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
         let conn = array![0, 1, 2];
         let fields = BTreeMap::new();
         let groups = BTreeMap::new();
         let family = 0;
 
-        let element = Element {
-            index: 0,
-            coords: coords.view(),
+        let element = Element::new(
+            0,
+            coords.view(),
             fields,
-            family: &family,
-            groups: &groups,
-            connectivity: conn.view(),
-            element_type: ElementType::TRI3,
-        };
+            &family,
+            &groups,
+            conn.view(),
+            ElementType::TRI3,
+        );
 
         assert_eq!(element.connectivity.len(), 3);
         assert_eq!(element.index, 0);
+        assert_eq!(element.element_type, ElementType::TRI3);
+        assert_eq!(element.coords().shape(), [3, 2]);
+        assert_eq!(element.dimension(), Dimension::D2);
+        assert_eq!(element.num_nodes(), 3);
+        assert_eq!(element.regularity(), Regularity::Regular);
+        assert_eq!(element.id(), ElementId::new(ElementType::TRI3, 0));
+        assert!(element.groups().is_empty());
+        assert!(element.in_group("nonexistent_group") == false);
     }
 }
