@@ -1,4 +1,5 @@
 use ndarray as nd;
+use ndarray::prelude::*;
 use rayon::prelude::*;
 use std::collections::{BTreeSet, HashMap};
 use todo;
@@ -116,6 +117,19 @@ where
             index,
             state,
         }
+    }
+
+    pub fn groups(self) -> Selector<'a, Coo, Conn, Field, Group, GroupBasedSelector> {
+        self.to_groups()
+    }
+    pub fn nodes(self, all: bool) -> Selector<'a, Coo, Conn, Field, Group, NodeBasedSelector> {
+        self.to_nodes(all)
+    }
+    pub fn centroids(self) -> Selector<'a, Coo, Conn, Field, Group, CentroidBasedSelector> {
+        self.to_centroids()
+    }
+    pub fn fields(self, name: &str) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
+        self.to_field(name)
     }
 }
 
@@ -268,10 +282,7 @@ where
         // }
     }
 
-    pub fn fields(
-        self: Self,
-        name: &str,
-    ) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
+    pub fn fields(self, name: &str) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
         self.to_field(name)
     }
     pub fn elements(self) -> Selector<'a, Coo, Conn, Field, Group, ElementTypeSelector> {
@@ -292,22 +303,10 @@ where
     Field: nd::RawData<Elem = f64> + nd::Data + Sync,
     Group: nd::RawData<Elem = usize> + nd::Data + Sync,
 {
-    pub fn all(self: Self) -> Selector<'a, Coo, Conn, Field, Group, NodeBasedSelector> {
-        let state = NodeBasedSelector { all_nodes: true };
-        Selector {
-            umesh: self.umesh,
-            index: self.index,
-            state,
-        }
-    }
-
     pub fn elements(self: Self) -> Selector<'a, Coo, Conn, Field, Group, ElementTypeSelector> {
         self.to_elements()
     }
-    pub fn fields(
-        self: Self,
-        name: &str,
-    ) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
+    pub fn fields(self, name: &str) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
         self.to_field(name)
     }
     pub fn groups(self: Self) -> Selector<'a, Coo, Conn, Field, Group, GroupBasedSelector> {
@@ -315,6 +314,12 @@ where
     }
     pub fn centroids(self: Self) -> Selector<'a, Coo, Conn, Field, Group, CentroidBasedSelector> {
         self.to_centroids()
+    }
+    pub fn nodes(
+        self: Self,
+        all: bool,
+    ) -> Selector<'a, Coo, Conn, Field, Group, NodeBasedSelector> {
+        self.to_nodes(all)
     }
 }
 
@@ -325,13 +330,49 @@ where
     Field: nd::RawData<Elem = f64> + nd::Data + Sync,
     Group: nd::RawData<Elem = usize> + nd::Data + Sync,
 {
+    pub fn is_in<F>(self, f: F) -> Selector<'a, Coo, Conn, Field, Group, NodeBasedSelector>
+    where
+        F: Fn(&[f64]) -> bool + Sync,
+    {
+        // let state = NodeBasedSelector { all_nodes: false };
+
+        // let index = self
+        //     .index
+        //     .into_par_iter()
+        //     .map(|(et, ids)| {
+        //         (
+        //             et,
+        //             ids.into_iter()
+        //                 .filter(|&i| f(&self.umesh.get_element(i).centroid().to_slice().unwrap()))
+        //                 .collect(),
+        //         )
+        //     })
+        //     .collect();
+
+        // Selector {
+        //     umesh: self.umesh,
+        //     index,
+        //     state,
+        // }
+        todo!()
+    }
+
+    fn in_sphere(x: &[f64], p0: &[f64], r: f64) -> bool {
+        let x = ArrayView1::from(x);
+        let p0 = ArrayView1::from(p0);
+        let d = &x + &p0;
+        let dist = d.dot(&d);
+        dist <= r * r
+    }
+
+    pub fn is_in_sphere(self, p0: &[f64], r: f64) -> Self {
+        todo!()
+    }
+
     pub fn elements(self: Self) -> Selector<'a, Coo, Conn, Field, Group, ElementTypeSelector> {
         self.to_elements()
     }
-    pub fn fields(
-        self: Self,
-        name: &str,
-    ) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
+    pub fn fields(self, name: &str) -> Selector<'a, Coo, Conn, Field, Group, FieldBasedSelector> {
         self.to_field(name)
     }
     pub fn groups(self: Self) -> Selector<'a, Coo, Conn, Field, Group, GroupBasedSelector> {
