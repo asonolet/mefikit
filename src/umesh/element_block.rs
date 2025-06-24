@@ -55,6 +55,29 @@ where
         self.connectivity.get_mut(index)
     }
 
+    pub fn get<'a>(&'a self, index: usize, coords: ArrayView2<'a, f64>) -> Element<'a>
+    where
+        ConnData: nd::Data,
+        GroupData: nd::Data,
+        FieldData: nd::Data,
+    {
+        let connectivity = self.element_connectivity(index);
+        let fields = self
+            .fields
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), index)))
+            .collect();
+        Element::new(
+            index,
+            coords,
+            fields,
+            &self.families[index],
+            &self.groups,
+            connectivity,
+            self.cell_type,
+        )
+    }
+
     pub fn iter<'a>(&'a self, coords: ArrayView2<'a, f64>) -> impl Iterator<Item = Element<'a>> + 'a
     where
         ConnData: nd::Data,

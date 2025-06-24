@@ -50,6 +50,11 @@ where
             .flat_map(|block| block.iter(self.coords.view()))
     }
 
+    pub fn get_element(&self, id: ElementId) -> Element {
+        let eb = self.element_blocks.get(&id.element_type()).unwrap();
+        eb.get(id.index(), self.coords.view())
+    }
+
     pub fn elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element> {
         self.element_blocks
             .iter()
