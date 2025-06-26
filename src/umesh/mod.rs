@@ -1,6 +1,7 @@
 mod connectivity;
 mod element;
 mod element_block;
+mod geometry;
 mod selector;
 mod umesh_core;
 
