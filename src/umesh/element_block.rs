@@ -12,16 +12,16 @@ use crate::umesh::element::{Element, ElementType};
 /// The element block is the base structure to hold connectivity, fields, groups.
 /// It is used to hold all cell information and allows cell iteration.
 /// The only data not included for an element block to be standalone is the coordinates array.
-pub struct ElementBlockBase<ConnData, FieldData, GroupData>
+pub struct ElementBlockBase<C, F, G>
 where
-    ConnData: nd::RawData<Elem = usize>,
-    FieldData: nd::RawData<Elem = f64>,
-    GroupData: nd::RawData<Elem = usize>,
+    C: nd::RawData<Elem = usize>,
+    F: nd::RawData<Elem = f64>,
+    G: nd::RawData<Elem = usize>,
 {
     pub cell_type: ElementType,
-    pub connectivity: ConnectivityBase<ConnData>,
-    pub fields: BTreeMap<String, ArrayBase<FieldData, nd::IxDyn>>,
-    pub families: ArrayBase<GroupData, nd::Ix1>,
+    pub connectivity: ConnectivityBase<C>,
+    pub fields: BTreeMap<String, ArrayBase<F, nd::IxDyn>>,
+    pub families: ArrayBase<G, nd::Ix1>,
     pub groups: BTreeMap<String, BTreeSet<usize>>,
 }
 
@@ -31,11 +31,11 @@ pub type ElementBlock =
 pub type ElementBlockView<'a> =
     ElementBlockBase<nd::ViewRepr<&'a usize>, nd::ViewRepr<&'a f64>, nd::ViewRepr<&'a usize>>;
 
-impl<ConnData, FieldData, GroupData> ElementBlockBase<ConnData, FieldData, GroupData>
+impl<C, F, G> ElementBlockBase<C, F, G>
 where
-    ConnData: nd::RawData<Elem = usize>,
-    FieldData: nd::RawData<Elem = f64>,
-    GroupData: nd::RawData<Elem = usize>,
+    C: nd::RawData<Elem = usize>,
+    F: nd::RawData<Elem = f64>,
+    G: nd::RawData<Elem = usize>,
 {
     pub fn len(&self) -> usize {
         self.connectivity.len()
@@ -43,23 +43,23 @@ where
 
     pub fn element_connectivity(&self, index: usize) -> ArrayView1<'_, usize>
     where
-        ConnData: nd::Data,
+        C: nd::Data,
     {
         self.connectivity.get(index)
     }
 
     pub fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize>
     where
-        ConnData: nd::DataMut,
+        C: nd::DataMut,
     {
         self.connectivity.get_mut(index)
     }
 
     pub fn get<'a>(&'a self, index: usize, coords: ArrayView2<'a, f64>) -> Element<'a>
     where
-        ConnData: nd::Data,
-        GroupData: nd::Data,
-        FieldData: nd::Data,
+        C: nd::Data,
+        G: nd::Data,
+        F: nd::Data,
     {
         let connectivity = self.element_connectivity(index);
         let fields = self
@@ -80,9 +80,9 @@ where
 
     pub fn iter<'a>(&'a self, coords: ArrayView2<'a, f64>) -> impl Iterator<Item = Element<'a>> + 'a
     where
-        ConnData: nd::Data,
-        GroupData: nd::Data,
-        FieldData: nd::Data,
+        C: nd::Data,
+        G: nd::Data,
+        F: nd::Data,
     {
         (0..self.len()).map(move |i| {
             let connectivity = self.element_connectivity(i);
@@ -108,9 +108,9 @@ where
         coords: &'a Array2<f64>,
     ) -> impl ParallelIterator<Item = Element<'a>> + 'a
     where
-        ConnData: nd::Data + Sync,
-        GroupData: nd::Data + Sync,
-        FieldData: nd::Data + Sync,
+        C: nd::Data + Sync,
+        G: nd::Data + Sync,
+        F: nd::Data + Sync,
     {
         (0..self.len()).into_par_iter().map(move |i| {
             let connectivity = self.element_connectivity(i);

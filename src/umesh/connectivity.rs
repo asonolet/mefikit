@@ -7,14 +7,14 @@ use ndarray as nd;
 /// while polygonal connectivity is represented as a 1D array with offsets. The offsets array
 /// indicates the start and end of each polygon in the data array. The data array contains the
 /// indices of the vertices of the polygons.
-pub enum ConnectivityBase<ConnData>
+pub enum ConnectivityBase<C>
 where
-    ConnData: nd::RawData<Elem = usize>,
+    C: nd::RawData<Elem = usize>,
 {
-    Regular(nd::ArrayBase<ConnData, nd::Ix2>),
+    Regular(nd::ArrayBase<C, nd::Ix2>),
     Poly {
-        data: nd::ArrayBase<ConnData, nd::Ix1>,
-        offsets: nd::ArrayBase<ConnData, nd::Ix1>,
+        data: nd::ArrayBase<C, nd::Ix1>,
+        offsets: nd::ArrayBase<C, nd::Ix1>,
     },
 }
 
@@ -156,9 +156,9 @@ impl Connectivity {
     }
 }
 
-impl<D> ConnectivityBase<D>
+impl<C> ConnectivityBase<C>
 where
-    D: nd::RawData<Elem = usize>,
+    C: nd::RawData<Elem = usize>,
 {
     pub fn len(&self) -> usize {
         match self {
@@ -169,7 +169,7 @@ where
 
     pub fn get(&self, index: usize) -> nd::ArrayView1<'_, usize>
     where
-        D: nd::Data,
+        C: nd::Data,
     {
         match self {
             ConnectivityBase::Regular(conn) => conn.row(index),
@@ -182,7 +182,7 @@ where
     }
     pub fn iter(&self) -> impl Iterator<Item = nd::ArrayView1<'_, usize>> + '_
     where
-        D: nd::Data,
+        C: nd::Data,
     {
         match self {
             ConnectivityBase::Regular(conn) => {
@@ -200,7 +200,7 @@ where
 
     pub fn get_mut(&mut self, index: usize) -> nd::ArrayViewMut1<'_, usize>
     where
-        D: nd::DataMut,
+        C: nd::DataMut,
     {
         match self {
             ConnectivityBase::Regular(conn) => conn.row_mut(index),
@@ -214,7 +214,7 @@ where
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = nd::ArrayViewMut1<'_, usize>> + '_
     where
-        D: nd::DataMut,
+        C: nd::DataMut,
     {
         match self {
             ConnectivityBase::Regular(conn) => {

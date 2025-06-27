@@ -12,15 +12,15 @@ use crate::umesh::ElementType;
 ///
 /// The most general mesh format in mefikit. Can describe any kind on mesh, with multiple elements
 /// kinds and fields associated.
-pub struct UMeshBase<CooData, ConnData, FieldData, GroupData>
+pub struct UMeshBase<N, C, F, G>
 where
-    CooData: nd::RawData<Elem = f64>,
-    ConnData: nd::RawData<Elem = usize>,
-    FieldData: nd::RawData<Elem = f64>,
-    GroupData: nd::RawData<Elem = usize>,
+    N: nd::RawData<Elem = f64>,   // Nodes (Coords) data
+    C: nd::RawData<Elem = usize>, // Connectivity data
+    F: nd::RawData<Elem = f64>,   // Fields data
+    G: nd::RawData<Elem = usize>, // Groups data
 {
-    coords: ArrayBase<CooData, Ix2>, // TODO: Use ArcArray2 for shared ownership
-    element_blocks: BTreeMap<ElementType, ElementBlockBase<ConnData, FieldData, GroupData>>,
+    coords: ArrayBase<N, Ix2>, // TODO: Use ArcArray2 for shared ownership
+    element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
 }
 
 pub type UMesh =
@@ -33,14 +33,14 @@ pub type UMeshView<'a> = UMeshBase<
     nd::ViewRepr<&'a usize>,
 >;
 
-impl<CooData, ConnData, FieldData, GroupData> UMeshBase<CooData, ConnData, FieldData, GroupData>
+impl<N, C, F, G> UMeshBase<N, C, F, G>
 where
-    CooData: nd::RawData<Elem = f64> + nd::Data,
-    ConnData: nd::RawData<Elem = usize> + nd::Data,
-    FieldData: nd::RawData<Elem = f64> + nd::Data,
-    GroupData: nd::RawData<Elem = usize> + nd::Data,
+    N: nd::RawData<Elem = f64> + nd::Data,
+    C: nd::RawData<Elem = usize> + nd::Data,
+    F: nd::RawData<Elem = f64> + nd::Data,
+    G: nd::RawData<Elem = usize> + nd::Data,
 {
-    pub fn coords(&self) -> &ArrayBase<CooData, Ix2> {
+    pub fn coords(&self) -> &ArrayBase<N, Ix2> {
         &self.coords
     }
 
@@ -62,16 +62,11 @@ where
             .flat_map(|(_, block)| block.iter(self.coords.view()))
     }
 
-    pub fn element_blocks(
-        &self,
-    ) -> &BTreeMap<ElementType, ElementBlockBase<ConnData, FieldData, GroupData>> {
+    pub fn element_blocks(&self) -> &BTreeMap<ElementType, ElementBlockBase<C, F, G>> {
         &self.element_blocks
     }
 
-    pub fn element_block(
-        &self,
-        element_type: ElementType,
-    ) -> Option<&ElementBlockBase<ConnData, FieldData, GroupData>> {
+    pub fn element_block(&self, element_type: ElementType) -> Option<&ElementBlockBase<C, F, G>> {
         self.element_blocks.get(&element_type)
     }
 
@@ -79,12 +74,12 @@ where
     ///
     /// This allows for selecting elements (returning ElementIds) based on mutliple criteria at
     /// once, such as element type, dimension, position and fields values.
-    pub fn select_ids(&self) -> Selector<CooData, ConnData, FieldData, GroupData>
+    pub fn select_ids(&self) -> Selector<N, C, F, G>
     where
-        ConnData: Sync,
-        CooData: Sync,
-        FieldData: Sync,
-        GroupData: Sync,
+        C: Sync,
+        N: Sync,
+        F: Sync,
+        G: Sync,
     {
         Selector::new(&self)
     }
