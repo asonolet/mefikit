@@ -1,21 +1,21 @@
 use nalgebra as na;
 use todo;
 
-fn in_sphere(x: &[f64], center: &[f64], r: f64) -> bool {
+pub fn in_sphere(x: &[f64], center: &[f64], r: f64) -> bool {
     let x = na::Point3::from_slice(x);
     let c = na::Point3::from_slice(center);
     let d2: f64 = na::distance_squared(&x, &c);
     d2 <= r * r
 }
 
-fn in_circle(x: &[f64], center: &[f64], r: f64) -> bool {
+pub fn in_circle(x: &[f64], center: &[f64], r: f64) -> bool {
     let x = na::Point2::from_slice(x);
     let c = na::Point2::from_slice(center);
     let d2: f64 = na::distance_squared(&x, &c);
     d2 <= r * r
 }
 
-fn _dist_proj_along(
+fn dist_proj_along(
     x: &na::Point3<f64>,
     center: &na::Point3<f64>,
     vec: &na::Unit<na::Vector3<f64>>,
@@ -24,7 +24,7 @@ fn _dist_proj_along(
     vec.dot(&v)
 }
 
-fn _dist_to_line(
+fn dist_to_line(
     x: &na::Point3<f64>,
     center: &na::Point3<f64>,
     vec: &na::Unit<na::Vector3<f64>>,
@@ -32,7 +32,7 @@ fn _dist_to_line(
     todo!()
 }
 
-fn _project_plane(
+fn project_plane(
     x: &na::Point3<f64>,
     center: &na::Point3<f64>,
     vec: &na::Vector3<f64>,
@@ -40,17 +40,17 @@ fn _project_plane(
     todo!()
 }
 
-fn in_tube(x: &[f64], center: &[f64], vec: &[f64], r: f64) -> bool {
+pub fn in_tube(x: &[f64], center: &[f64], vec: &[f64], r: f64) -> bool {
     let x = na::Point3::from_slice(x);
     let vec = na::Vector3::from_row_slice(vec);
     let center = na::Point3::from_slice(center);
-    let xp = _project_plane(&x, &center, &vec);
+    let xp = project_plane(&x, &center, &vec);
     let d2: f64 = na::distance_squared(&xp, &xp);
     d2 <= r * r
 }
 
 ///  p0 is lower min bound and p1 higher max
-fn in_aa_bbox(x: &[f64], p0: &[f64], p1: &[f64]) -> bool {
+pub fn in_aa_bbox(x: &[f64], p0: &[f64], p1: &[f64]) -> bool {
     let x = na::Point3::from_slice(x);
     let p0 = na::Point3::from_slice(p0);
     let p1 = na::Point3::from_slice(p1);
@@ -68,7 +68,7 @@ fn in_aa_bbox(x: &[f64], p0: &[f64], p1: &[f64]) -> bool {
 }
 
 ///  p0 is lower min bound and p1 higher max
-fn in_aa_rectangle(x: &[f64], p0: &[f64], p1: &[f64]) -> bool {
+pub fn in_aa_rectangle(x: &[f64], p0: &[f64], p1: &[f64]) -> bool {
     let x = na::Point2::from_slice(x);
     let p0 = na::Point2::from_slice(p0);
     let p1 = na::Point2::from_slice(p1);

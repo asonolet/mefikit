@@ -4,8 +4,9 @@ use rayon::prelude::*;
 use std::collections::{BTreeSet, HashMap};
 use todo;
 
+use crate::umesh::geometry as geo;
 use crate::umesh::umesh_core::UMeshBase;
-use crate::umesh::ElementType;
+use crate::umesh::{ElementId, ElementLike, ElementType};
 
 /// Here umesh should be replace with UMeshView, so that it can interact with non owned umesh
 /// struct.
@@ -280,7 +281,7 @@ where
     }
 
     pub fn fields(self, name: &str) -> Selector<'a, N, C, F, G, FieldBasedSelector> {
-        self.to_field(name)
+        self.collect().to_field(name)
     }
     pub fn elements(self) -> Selector<'a, N, C, F, G, ElementTypeSelector> {
         self.collect().to_elements()
@@ -324,43 +325,45 @@ where
     F: nd::RawData<Elem = f64> + nd::Data + Sync,
     G: nd::RawData<Elem = usize> + nd::Data + Sync,
 {
-    pub fn is_in<F0>(self, f: F0) -> Selector<'a, N, C, F, G, NodeBasedSelector>
+    pub fn is_in<F0>(self, f: F0) -> Selector<'a, N, C, F, G, CentroidBasedSelector>
     where
         F0: Fn(&[f64]) -> bool + Sync,
     {
-        // let state = NodeBasedSelector { all_nodes: false };
+        let index = self
+            .index
+            .into_par_iter()
+            .map(|(et, ids)| {
+                (
+                    et,
+                    ids.into_par_iter()
+                        .filter(|&i| {
+                            f(&self
+                                .umesh
+                                .get_element(ElementId::new(et, i))
+                                .centroid()
+                                .as_slice()
+                                .unwrap())
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
 
-        // let index = self
-        //     .index
-        //     .into_par_iter()
-        //     .map(|(et, ids)| {
-        //         (
-        //             et,
-        //             ids.into_iter()
-        //                 .filter(|&i| f(&self.umesh.get_element(i).centroid().to_slice().unwrap()))
-        //                 .collect(),
-        //         )
-        //     })
-        //     .collect();
+        let state = self.state;
 
-        // Selector {
-        //     umesh: self.umesh,
-        //     index,
-        //     state,
-        // }
-        todo!()
+        Selector {
+            umesh: self.umesh,
+            index,
+            state,
+        }
     }
 
-    fn in_sphere(x: &[f64], p0: &[f64], r: f64) -> bool {
-        let x = ArrayView1::from(x);
-        let p0 = ArrayView1::from(p0);
-        let d = &x + &p0;
-        let dist = d.dot(&d);
-        dist <= r * r
+    pub fn in_sphere(self, p0: &[f64], r: f64) -> Self {
+        self.is_in(|x| geo::in_sphere(x, p0, r))
     }
 
-    pub fn is_in_sphere(self, p0: &[f64], r: f64) -> Self {
-        todo!()
+    pub fn in_bbox(self, p0: &[f64], p1: &[f64]) -> Self {
+        self.is_in(|x| geo::in_aa_bbox(x, p0, p1))
     }
 
     pub fn elements(self: Self) -> Selector<'a, N, C, F, G, ElementTypeSelector> {
