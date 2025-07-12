@@ -357,16 +357,34 @@ where
         }
     }
 
-    pub fn in_sphere(self, p0: &[f64;3], r: f64) -> Self {
-        self.is_in(|x| geo::in_sphere(x.try_into().expect("Coords should have 3 components."), p0, r))
+    pub fn in_sphere(self, p0: &[f64; 3], r: f64) -> Self {
+        self.is_in(|x| {
+            geo::in_sphere(
+                x.try_into().expect("Coords should have 3 components."),
+                p0,
+                r,
+            )
+        })
     }
 
     pub fn in_bbox(self, p0: &[f64; 3], p1: &[f64; 3]) -> Self {
-        self.is_in(|x| geo::in_aa_bbox(x.try_into().expect("Coords should have 3 components."), p0, p1))
+        self.is_in(|x| {
+            geo::in_aa_bbox(
+                x.try_into().expect("Coords should have 3 components."),
+                p0,
+                p1,
+            )
+        })
     }
 
     pub fn in_rectangle(self, p0: &[f64; 2], p1: &[f64; 2]) -> Self {
-        self.is_in(|x| geo::in_aa_rectangle(x.try_into().expect("Coords should have 2 components."), p0, p1))
+        self.is_in(|x| {
+            geo::in_aa_rectangle(
+                x.try_into().expect("Coords should have 2 components."),
+                p0,
+                p1,
+            )
+        })
     }
 
     pub fn elements(self) -> Selector<'a, N, C, F, G, ElementTypeSelector> {
