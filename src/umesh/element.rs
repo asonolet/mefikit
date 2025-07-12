@@ -561,6 +561,6 @@ mod tests {
         assert_eq!(element.regularity(), Regularity::Regular);
         assert_eq!(element.id(), ElementId::new(ElementType::TRI3, 0));
         assert!(element.groups().is_empty());
-        assert!(element.in_group("nonexistent_group") == false);
+        assert!(!element.in_group("nonexistent_group"));
     }
 }

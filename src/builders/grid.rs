@@ -43,6 +43,12 @@ pub struct RegularUMeshBuilder {
     coords_grid: Vec<Vec<f64>>,
 }
 
+impl Default for RegularUMeshBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RegularUMeshBuilder {
     pub fn new() -> Self {
         Self {

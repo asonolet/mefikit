@@ -1,5 +1,4 @@
 use robust as ro;
-use todo;
 
 pub fn in_sphere(x: &[f64; 3], center: &[f64; 3], r: f64) -> bool {
     let x = ro::Coord3D {x: x[0], y: x[1], z: x[2]};
@@ -54,24 +53,14 @@ pub fn in_circle(x: &[f64; 2], center: &[f64; 2], r: f64) -> bool {
 
 ///  p0 is lower min bound and p1 higher max
 pub fn in_aa_bbox(x: &[f64; 3], p0: &[f64; 3], p1: &[f64; 3]) -> bool {
-    if (x[0] < p0[0])
+    !((x[0] < p0[0])
         || (x[0] >= p1[0])
         || (x[1] < p0[1])
         || (x[1] >= p1[1])
-        || (x[2] < p0[2])
-        || (x[2] >= p1[2])
-    {
-        false
-    } else {
-        true
-    }
+        || (x[2] < p0[2]) || (x[2] >= p1[2]))
 }
 
 ///  p0 is lower min bound and p1 higher max
 pub fn in_aa_rectangle(x: &[f64; 2], p0: &[f64; 2], p1: &[f64;2]) -> bool {
-    if (x[0] < p0[0]) || (x[0] >= p1[0]) || (x[1] < p0[1]) || (x[1] >= p1[1]) {
-        false
-    } else {
-        true
-    }
+    !((x[0] < p0[0]) || (x[0] >= p1[0]) || (x[1] < p0[1]) || (x[1] >= p1[1]))
 }

@@ -244,10 +244,7 @@ impl<'a> ElementBlock {
         fields: Option<BTreeMap<String, ArrayViewD<f64>>>,
     ) {
         self.connectivity.append(connectivity);
-        let family = match family {
-            Some(fam) => fam,
-            None => 0,
-        };
+        let family = family.unwrap_or_default();
         self.families.append(Axis(0), array![family].view());
 
         if let Some(fields) = fields {

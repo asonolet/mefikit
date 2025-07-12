@@ -81,7 +81,7 @@ where
         F: Sync,
         G: Sync,
     {
-        Selector::new(&self)
+        Selector::new(self)
     }
 
     /// Extracts a sub-mesh from the current mesh based on the provided element IDs.
