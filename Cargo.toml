@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 hdf5 = { version = "0.8.1", optional = true }
-nalgebra = "0.33.2"
 ndarray = { version = "0.15", features = ["serde"] }
 once_cell = "1.21.3"
 rayon = "1.10.0"
