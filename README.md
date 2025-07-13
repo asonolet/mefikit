@@ -158,6 +158,45 @@ This will format the code according to the coding style and conventions used
 in the library. Please make sure to run this command before submitting your
 pull request.
 
+### Benchmarks
+
+The `benches/` directory contains Mefikit benchmarks. They use the
+[Criterion](https://bheisler.github.io/criterion.rs/book/getting_started.html)
+framework.
+
+To launch the benchmarks, run:
+
+```sh
+cargo bench
+```
+
+To view results as a static and local website:
+
+```sh
+firefox ./target/criterion/report/index.html
+```
+
+A convenient CLI tool to visualize a summary of the results is `critcmp`:
+
+```sh
+cargo install critcmp
+critcmp --list
+```
+
+If a new benchmark source file `filename.rs` is added inside `benches/`,
+**`Cargo.toml` must be adapted accordingly**:
+
+
+```toml
+[[bench]]
+name = "filename"
+harness = false
+```
+
+Note that `filename`, in `Cargo.toml`, is written without the `.rs` extension.
+More information in the [Criterion
+documentation](https://bheisler.github.io/criterion.rs/book/getting_started.html#step-1---add-dependency-to-cargotoml)
+
 ## License
 
 This library is licensed under the MIT License. See the `LICENSE` file for
