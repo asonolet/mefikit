@@ -19,3 +19,8 @@ todo = "0.3.0"
 
 [features]
 hdf5 = ["dep:hdf5"]
+
+# ref: https://bheisler.github.io/criterion.rs/book/getting_started.html#step-1---add-dependency-to-cargotoml
+[[bench]]
+name = "submesh"
+harness = false
