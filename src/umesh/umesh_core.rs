@@ -40,7 +40,7 @@ where
     F: nd::RawData<Elem = f64> + nd::Data,
     G: nd::RawData<Elem = usize> + nd::Data,
 {
-    pub fn coords(&self) -> &ArrayBase<N, Ix2> {
+    pub(crate) fn coords(&self) -> &ArrayBase<N, Ix2> {
         &self.coords
     }
 
@@ -48,6 +48,10 @@ where
         self.element_blocks
             .values()
             .flat_map(|block| block.iter(self.coords.view()))
+    }
+
+    pub fn num_elements(&self) -> usize {
+        self.element_blocks.values().map(|block| block.len()).sum()
     }
 
     pub fn get_element(&self, id: ElementId) -> Element {
@@ -62,11 +66,14 @@ where
             .flat_map(|(_, block)| block.iter(self.coords.view()))
     }
 
-    pub fn element_blocks(&self) -> &BTreeMap<ElementType, ElementBlockBase<C, F, G>> {
+    pub(crate) fn element_blocks(&self) -> &BTreeMap<ElementType, ElementBlockBase<C, F, G>> {
         &self.element_blocks
     }
 
-    pub fn element_block(&self, element_type: ElementType) -> Option<&ElementBlockBase<C, F, G>> {
+    pub(crate) fn element_block(
+        &self,
+        element_type: ElementType,
+    ) -> Option<&ElementBlockBase<C, F, G>> {
         self.element_blocks.get(&element_type)
     }
 
@@ -113,6 +120,7 @@ impl UMesh {
         }
     }
 
+    // TODO: do not expose ElementBlock, use ndarray directly
     pub fn add_block(&mut self, block: ElementBlock) {
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
