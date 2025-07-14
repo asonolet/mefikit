@@ -25,5 +25,5 @@ bench = false
 
 # ref: https://bheisler.github.io/criterion.rs/book/getting_started.html#step-1---add-dependency-to-cargotoml
 [[bench]]
-name = "submesh"
+name = "umesh"
 harness = false
