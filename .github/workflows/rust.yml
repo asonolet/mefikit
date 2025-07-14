@@ -38,3 +38,18 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
+
+  benchmark:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo bench -- --output-format bencher | tee output.txt
+      - uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'cargo'
+          output-file-path: output.txt
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+          alert-threshold: '150%'
+          fail-on-alert: true
