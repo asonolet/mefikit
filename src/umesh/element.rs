@@ -2,8 +2,7 @@ use ndarray::prelude::*;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 // #[derive(Copy, Clone)]
 // pub enum EdgeType {
@@ -195,6 +194,9 @@ pub enum Dimension {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct ElementId(ElementType, usize);
 
+#[derive(Debug, Clone)]
+pub struct ElementIds(BTreeMap<ElementType, Vec<usize>>);
+
 impl ElementId {
     pub fn new(element_type: ElementType, index: usize) -> Self {
         ElementId(element_type, index)
@@ -206,6 +208,52 @@ impl ElementId {
 
     pub fn index(&self) -> usize {
         self.1
+    }
+}
+
+impl ElementIds {
+    pub fn new() -> Self {
+        ElementIds(BTreeMap::new())
+    }
+
+    pub fn add(&mut self, element_type: ElementType, index: usize) {
+        self.0.entry(element_type).or_default().push(index);
+    }
+
+    pub fn remove(&mut self, element_type: ElementType, index: usize) -> Option<usize> {
+        if let Some(indices) = self.0.get_mut(&element_type) {
+            if let Some(pos) = indices.iter().position(|&i| i == index) {
+                return Some(indices.remove(pos));
+            }
+        }
+        None
+    }
+
+    pub fn get(&self, element_type: &ElementType) -> Option<&Vec<usize>> {
+        self.0.get(element_type)
+    }
+
+    pub fn contains(&self, element_type: ElementType) -> bool {
+        self.0.contains_key(&element_type)
+    }
+    pub fn iter(&self) -> impl Iterator<Item = (&ElementType, &Vec<usize>)> {
+        self.0.iter()
+    }
+    pub fn into_iter(self) -> impl Iterator<Item = ElementId> {
+        self.0.into_iter().flat_map(|(et, indices)| {
+            indices
+                .into_iter()
+                .map(move |index| ElementId(et.clone(), index))
+        })
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    pub fn len(&self) -> usize {
+        self.0.values().map(|v| v.len()).sum()
+    }
+    pub fn element_types(&self) -> Vec<ElementType> {
+        self.0.keys().cloned().collect()
     }
 }
 
