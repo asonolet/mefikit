@@ -39,5 +39,21 @@ fn selection_sphere(c: &mut Criterion) {
     }
 }
 
-criterion_group!(bench, submesh, selection_sphere);
+fn measure2(c: &mut Criterion) {
+    let mut group = c.benchmark_group("measure2");
+
+    for i in [2, 10, 100] {
+        let mesh = RegularUMeshBuilder::new()
+            .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
+            .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
+            .build();
+        group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
+            b.iter(|| {
+                std::hint::black_box(mesh.measure());
+            })
+        });
+    }
+}
+
+criterion_group!(bench, submesh, selection_sphere, measure2);
 criterion_main!(bench);

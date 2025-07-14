@@ -45,6 +45,10 @@ where
         &self.coords
     }
 
+    pub fn space_dimension(&self) -> usize {
+        self.coords.shape()[1]
+    }
+
     pub fn elements(&self) -> impl Iterator<Item = Element> {
         self.element_blocks
             .values()
@@ -161,6 +165,26 @@ where
 
         (neighbors, subentity_to_elem, elem_to_subentity)
     }
+
+    pub fn measure(&self) -> BTreeMap<ElementType, Array1<f64>> {
+        match self.space_dimension() {
+            0 => self.element_blocks().iter().map(|(&k, v)| (k, nd::arr1(&vec![0.0; v.len()]))).collect(),
+            1 => todo!(),
+            2 => self.element_blocks().iter().map(
+                |(&k, v)| (
+                    k,
+                    nd::arr1(&v.iter(self.coords.view()).map(|e| e.measure2()).collect::<Vec<f64>>()))
+                )
+                .collect(),
+            3 => self.element_blocks().iter().map(
+                |(&k, v)| (
+                    k,
+                    nd::arr1(&v.iter(self.coords.view()).map(|e| e.measure3()).collect::<Vec<f64>>()))
+                )
+                .collect(),
+            c => panic!("{c} is not a valid space dimension. Space (coordinates) dimension must be 0, 1, 2 ou 3.")
+        }
+    }
 }
 
 impl UMesh {
@@ -220,6 +244,7 @@ impl UMesh {
 mod tests {
     use super::*;
     use crate::umesh::ElementType;
+    use approx::*;
     use ndarray as nd;
 
     fn make_test_2d_mesh() -> UMesh {
@@ -290,4 +315,15 @@ mod tests {
     //     assert!(sub_mesh.element_blocks().contains_key(&ElementType::QUAD4));
     //     assert_eq!(sub_mesh.coords().shape(), &[4, 2]);
     // }
+
+    #[test]
+    fn test_umesh_measure() {
+        let mesh = make_test_2d_mesh();
+        let measures = mesh.measure();
+        assert_eq!(measures.len(), 1);
+        assert!(measures.contains_key(&ElementType::QUAD4));
+        let measure_values = measures.get(&ElementType::QUAD4).unwrap();
+        assert_eq!(measure_values.len(), 1);
+        assert_abs_diff_eq!(measure_values[0], 1.0); // Area of the quad is 1.0
+    }
 }
