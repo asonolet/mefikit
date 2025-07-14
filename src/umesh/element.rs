@@ -411,6 +411,29 @@ pub trait ElementLike<'a> {
         }
     }
 
+    fn to_simplexes(&self) -> Vec<(ElementType, Vec<usize>)> {
+        use ElementType::*;
+        let co = self.connectivity();
+        match self.element_type() {
+            VERTEX => vec![(VERTEX, vec![co[0]])],
+            SEG2 | SEG3 | SEG4 => vec![(SEG2, vec![co[0], co[1]])],
+            TRI3 | TRI6 | TRI7 => vec![(TRI3, vec![co[0], co[1], co[2]])],
+            QUAD4 | QUAD8 | QUAD9 => vec![
+                (TRI3, vec![co[0], co[1], co[3]]),
+                (TRI3, vec![co[2], co[3], co[1]]),
+            ],
+            TET4 | TET10 => vec![(TET4, vec![co[0], co[1], co[2], co[3]])],
+            HEX8 | HEX21 => vec![
+                (TET4, vec![co[0], co[1], co[3], co[4]]),
+                (TET4, vec![co[2], co[3], co[1], co[6]]),
+                (TET4, vec![co[7], co[6], co[4], co[3]]),
+                (TET4, vec![co[5], co[4], co[6], co[1]]),
+                (TET4, vec![co[4], co[6], co[3], co[1]]),
+            ],
+            _ => todo!(),
+        }
+    }
+
     /// Geometric queries
 
     /// Returns a reference to an owned
