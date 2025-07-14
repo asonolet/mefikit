@@ -112,8 +112,28 @@ where
     //     }
     // }
 
-    pub fn replace(&mut self, ids: &ElementIds) {
+    /// This method is used to replace elements in the current mesh with another mesh.
+    ///
+    /// Please mind what you are doing, this method wont check for mesh constitency.
+    ///
+    /// The element number is the same, in which case we just replace the elements inplace. It is
+    /// efficient except in the case of poly elements. It can be used to reorder elements, change
+    /// their fields or families, change their node order, etc. The ElementIds are still valid and
+    /// can be used to access the elements in the mesh.
+    pub fn replace_inplace(&mut self, ids: &ElementIds, replace_mesh: &UMesh) {
         todo!();
+    }
+
+    /// This method is used to replace elements in the current mesh with another mesh.
+    ///
+    /// Please mind what you are doing, this method wont check for mesh constitency.
+    ///
+    /// The element number is potentially different, in which case we need to remove the elements
+    /// from the current mesh and add the elements from the replace mesh. This creates a new mesh
+    /// because everything needs to be reallocated to be copied either way.
+    /// ElementIds are invalid on the new mesh.
+    pub fn replace(&self, ids: &ElementIds, replace_mesh: &UMesh) -> UMesh {
+        todo!()
     }
 
     /// This method is used to compute a subentity mesh.
@@ -185,6 +205,10 @@ where
             c => panic!("{c} is not a valid space dimension. Space (coordinates) dimension must be 0, 1, 2 ou 3.")
         }
     }
+
+    pub fn normal(&self) -> BTreeMap<ElementType, Array2<f64>> {
+        todo!()
+    }
 }
 
 impl UMesh {
@@ -237,6 +261,10 @@ impl UMesh {
             .get_mut(&element_type)
             .unwrap() // This unwrap is safe because we just inserted the element type
             .add_element(ArrayView1::from(connectivity), family, fields);
+    }
+
+    pub fn remove_elements(&mut self, ids: &ElementIds) {
+        todo!()
     }
 }
 
