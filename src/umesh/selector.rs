@@ -1,11 +1,11 @@
 use ndarray as nd;
 use rayon::prelude::*;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use todo;
 
 use crate::umesh::geometry as geo;
 use crate::umesh::umesh_core::UMeshBase;
-use crate::umesh::{ElementId, ElementLike, ElementType};
+use crate::umesh::{ElementId, ElementIds, ElementLike, ElementType};
 
 /// Here umesh should be replace with UMeshView, so that it can interact with non owned umesh
 /// struct.
@@ -17,9 +17,9 @@ where
     F: nd::RawData<Elem = f64> + nd::Data + Sync,
     G: nd::RawData<Elem = usize> + nd::Data + Sync,
 {
-    pub umesh: &'a UMeshBase<N, C, F, G>,
-    pub index: HashMap<ElementType, Vec<usize>>,
-    pub state: State,
+    umesh: &'a UMeshBase<N, C, F, G>,
+    pub index: ElementIds,
+    state: State,
 }
 
 pub struct FieldBasedSelector {
@@ -103,7 +103,7 @@ where
     G: nd::RawData<Elem = usize> + nd::Data + Sync,
 {
     pub fn new(umesh: &'a UMeshBase<N, C, F, G>) -> Self {
-        let index = umesh
+        let index: BTreeMap<ElementType, Vec<usize>> = umesh
             .element_blocks()
             .iter()
             .map(|(k, v)| (*k, (0..v.len()).collect()))
@@ -111,7 +111,7 @@ where
         let state = ElementTypeSelector {};
         Self {
             umesh,
-            index,
+            index: index.into(),
             state,
         }
     }
@@ -138,24 +138,17 @@ where
     G: nd::RawData<Elem = usize> + nd::Data + Sync,
 {
     pub fn ge(self, val: f64) -> Self {
-        let index: HashMap<ElementType, Vec<usize>> = self
+        let index: ElementIds = self
             .index
-            .into_par_iter()
-            .map(|(k, v)| {
-                (
-                    k,
-                    v.into_iter()
-                        .filter(|&i| {
-                            self.umesh
-                                .element_block(k)
-                                .unwrap()
-                                .fields
-                                .get(self.state.field_name.as_str())
-                                .unwrap()[[i]]
-                                >= val
-                        })
-                        .collect(),
-                )
+            .into_iter()
+            .filter(|&e_id| {
+                self.umesh
+                    .element_block(e_id.element_type())
+                    .unwrap()
+                    .fields
+                    .get(self.state.field_name.as_str())
+                    .unwrap()[[e_id.index()]]
+                    >= val
             })
             .collect();
         Self {
@@ -166,24 +159,17 @@ where
     }
 
     pub fn lt(self, val: f64) -> Self {
-        let index: HashMap<ElementType, Vec<usize>> = self
+        let index: ElementIds = self
             .index
-            .into_par_iter()
-            .map(|(k, v)| {
-                (
-                    k,
-                    v.into_iter()
-                        .filter(|&i| {
-                            self.umesh
-                                .element_block(k)
-                                .unwrap()
-                                .fields
-                                .get(self.state.field_name.as_str())
-                                .unwrap()[[i]]
-                                < val
-                        })
-                        .collect(),
-                )
+            .into_iter()
+            .filter(|&e_id| {
+                self.umesh
+                    .element_block(e_id.element_type())
+                    .unwrap()
+                    .fields
+                    .get(self.state.field_name.as_str())
+                    .unwrap()[[e_id.index()]]
+                    < val
             })
             .collect();
         Self {
@@ -330,22 +316,8 @@ where
     {
         let index = self
             .index
-            .into_par_iter()
-            .map(|(et, ids)| {
-                (
-                    et,
-                    ids.into_par_iter()
-                        .filter(|&i| {
-                            f(self
-                                .umesh
-                                .get_element(ElementId::new(et, i))
-                                .centroid()
-                                .as_slice()
-                                .unwrap())
-                        })
-                        .collect(),
-                )
-            })
+            .into_iter()
+            .filter(|&e_id| f(self.umesh.get_element(e_id).centroid().as_slice().unwrap()))
             .collect();
 
         let state = self.state;

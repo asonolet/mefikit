@@ -246,6 +246,13 @@ impl ElementIds {
                 .map(move |index| ElementId(et.clone(), index))
         })
     }
+    pub fn into_par_iter(self) -> impl ParallelIterator<Item = ElementId> {
+        self.0.into_par_iter().flat_map(|(et, indices)| {
+            indices
+                .into_par_iter()
+                .map(move |index| ElementId(et.clone(), index))
+        })
+    }
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -254,6 +261,22 @@ impl ElementIds {
     }
     pub fn element_types(&self) -> Vec<ElementType> {
         self.0.keys().cloned().collect()
+    }
+}
+
+impl From<BTreeMap<ElementType, Vec<usize>>> for ElementIds {
+    fn from(map: BTreeMap<ElementType, Vec<usize>>) -> Self {
+        ElementIds(map)
+    }
+}
+
+impl FromIterator<ElementId> for ElementIds {
+    fn from_iter<T: IntoIterator<Item = ElementId>>(iter: T) -> Self {
+        let mut ids = ElementIds::new();
+        for id in iter {
+            ids.add(id.element_type(), id.index());
+        }
+        ids
     }
 }
 

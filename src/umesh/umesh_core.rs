@@ -197,4 +197,46 @@ mod tests {
         assert_eq!(elements[0].element_type, ElementType::QUAD4);
         assert_eq!(elements[0].connectivity, nd::arr1(&[0, 1, 3, 2]));
     }
+    // #[test]
+    // fn test_umesh_element_block_addition() {
+    //     let mut mesh = make_test_2d_mesh();
+    //     assert_eq!(mesh.element_blocks().len(), 1);
+    //     assert!(mesh.element_blocks().contains_key(&ElementType::QUAD4));
+
+    //     mesh.add_element(
+    //         ElementType::TRI3,
+    //         &[0, 1, 2],
+    //         Some(0),
+    //         Some(BTreeMap::new()),
+    //     );
+    //     assert_eq!(mesh.element_blocks().len(), 2);
+    //     assert!(mesh.element_blocks().contains_key(&ElementType::TRI3));
+    // }
+    #[test]
+    fn test_umesh_element_retrieval() {
+        let mesh = make_test_2d_mesh();
+        let element = mesh.get_element(ElementId::new(ElementType::QUAD4, 0));
+        assert_eq!(element.element_type, ElementType::QUAD4);
+        assert_eq!(element.connectivity, nd::arr1(&[0, 1, 3, 2]));
+    }
+    #[test]
+    fn test_umesh_element_selection() {
+        let mesh = make_test_2d_mesh();
+        let selected_ids = mesh
+            .select_ids()
+            .centroids()
+            .in_rectangle(&[0.0, 0.0], &[1.0, 1.0])
+            .index;
+        assert_eq!(selected_ids.len(), 1);
+        assert_eq!(selected_ids.get(&ElementType::QUAD4).unwrap(), &vec![0]);
+    }
+    // #[test]
+    // fn test_umesh_extract_mesh() {
+    //     let mesh = make_test_2d_mesh();
+    //     let ids = vec![ElementId::new(ElementType::QUAD4, 0)];
+    //     let sub_mesh = mesh.extract_mesh(&ids);
+    //     assert_eq!(sub_mesh.element_blocks().len(), 1);
+    //     assert!(sub_mesh.element_blocks().contains_key(&ElementType::QUAD4));
+    //     assert_eq!(sub_mesh.coords().shape(), &[4, 2]);
+    // }
 }
