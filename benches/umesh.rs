@@ -1,6 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 
-use mefikit::compute_submesh;
 use mefikit::RegularUMeshBuilder;
 
 fn submesh(c: &mut Criterion) {
@@ -13,7 +12,7 @@ fn submesh(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(compute_submesh(&mesh, None));
+                std::hint::black_box(mesh.compute_submesh(None));
             })
         });
     }

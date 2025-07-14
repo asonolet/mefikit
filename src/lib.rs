@@ -6,5 +6,4 @@ pub mod umesh;
 // pub use crate::element_block::{ElementBlock, IntoElementBlockEntry, RegularCells, PolyCells};
 // pub use crate::element_block_like::ElementBlockLike;
 pub use crate::builders::RegularUMeshBuilder;
-pub use crate::topology::compute_submesh;
-pub use crate::umesh::UMesh;
+pub use crate::umesh::{Element, ElementId, ElementIds, ElementLike, ElementMut, UMesh, UMeshView};

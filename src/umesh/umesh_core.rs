@@ -1,11 +1,12 @@
 use ndarray as nd;
 use ndarray::prelude::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use todo;
 
-use crate::umesh::element::{Dimension, Element, ElementId, Regularity};
+use crate::umesh::element::{Dimension, Element, ElementId, ElementIds, ElementLike, Regularity};
 use crate::umesh::element_block::{ElementBlock, ElementBlockBase, IntoElementBlockEntry};
 use crate::umesh::selector::Selector;
+use crate::umesh::utils::SortedVecKey;
 use crate::umesh::ElementType;
 
 /// An unstrustured mesh.
@@ -95,7 +96,7 @@ where
     ///
     /// This method creates a new `UMesh`, owning its data (with copy) containing only the elements
     /// specified by the IDs.
-    pub fn extract_mesh(&self, ids: &[ElementId]) -> UMesh {
+    pub fn extract_mesh(&self, ids: &ElementIds) -> UMesh {
         todo!();
     }
 
@@ -107,8 +108,58 @@ where
     //     }
     // }
 
-    pub fn replace(&mut self, ids: &[ElementId]) {
+    pub fn replace(&mut self, ids: &ElementIds) {
         todo!();
+    }
+
+    /// This method is used to compute a subentity mesh.
+    ///
+    /// By default, the mesh computed as a codimension of 1 with the entry mesh. Meaning that there
+    /// is a difference of 1 in their dimensions. Hence volumes gives faces mesh, faces gives edges
+    /// mesh and edges mesh gives vertices.  If the codim asked for is too high, the function will
+    /// panick.  For performance reason, two subentities are considered the same if they have the
+    /// same nodes, regardless of their order.
+    pub fn compute_submesh(
+        &self,
+        codim: Option<Dimension>,
+    ) -> (
+        UMesh,
+        HashMap<ElementId, ElementId>,
+        HashMap<ElementId, ElementId>,
+    ) {
+        let codim = match codim {
+            Some(c) => c,
+            None => Dimension::D1,
+        };
+        let mut subentities_hash: HashMap<SortedVecKey, ElementId> = HashMap::new();
+        let mut subentity_to_elem: HashMap<ElementId, ElementId> = HashMap::new();
+        let mut elem_to_subentity: HashMap<ElementId, ElementId> = HashMap::new();
+        let mut neighbors: UMesh = UMesh::new(self.coords().to_owned());
+
+        for elem in self.elements() {
+            // let faces = elem.faces();
+            for (et, conn) in elem.subentities(Some(codim)).unwrap() {
+                let subentity_id = match neighbors.element_block(et) {
+                    Some(block) => block.len(),
+                    None => 0,
+                };
+                let key = SortedVecKey::new(conn.clone());
+                if let Some(val) = subentities_hash.get(&key) {
+                    // The subentity already exists
+                    subentity_to_elem.insert(*val, elem.id());
+                    elem_to_subentity.insert(elem.id(), *val);
+                } else {
+                    // The subentity is new
+                    let new_id = ElementId::new(et, subentity_id);
+                    subentities_hash.insert(key, new_id);
+                    subentity_to_elem.insert(new_id, elem.id());
+                    elem_to_subentity.insert(elem.id(), new_id);
+                    neighbors.add_element(et, conn.as_slice(), None, None);
+                }
+            }
+        }
+
+        (neighbors, subentity_to_elem, elem_to_subentity)
     }
 }
 
@@ -120,8 +171,14 @@ impl UMesh {
         }
     }
 
-    // TODO: do not expose ElementBlock, use ndarray directly
-    pub fn add_block(&mut self, block: ElementBlock) {
+    pub fn add_regular_block(&mut self, et: ElementType, block: Array2<usize>) {
+        let block = ElementBlock::new_regular(et, block);
+        let (key, wrapped) = block.into_entry();
+        self.element_blocks.entry(key).or_insert(wrapped);
+    }
+
+    pub fn add_poly_block(&mut self, et: ElementType, conn: Array1<usize>, offsets: Array1<usize>) {
+        let block = ElementBlock::new_poly(et, conn, offsets);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -169,10 +226,7 @@ mod tests {
         let coords =
             Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
         let mut mesh = UMesh::new(coords);
-        mesh.add_block(ElementBlock::new_regular(
-            ElementType::QUAD4,
-            nd::arr2(&[[0, 1, 3, 2]]),
-        ));
+        mesh.add_regular_block(ElementType::QUAD4, nd::arr2(&[[0, 1, 3, 2]]));
         mesh
     }
 
@@ -180,10 +234,7 @@ mod tests {
     fn test_umesh_creation() {
         let coords = Array2::from_shape_vec((3, 1), vec![0.0, 1.0, 2.0]).unwrap();
         let mut mesh = UMesh::new(coords);
-        mesh.add_block(ElementBlock::new_regular(
-            ElementType::SEG2,
-            nd::arr2(&[[0, 1], [1, 2]]),
-        ));
+        mesh.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1], [1, 2]]));
         assert_eq!(mesh.coords().shape(), &[3, 1]);
         assert_eq!(mesh.element_blocks().len(), 1);
         assert!(mesh.element_blocks().contains_key(&ElementType::SEG2));
