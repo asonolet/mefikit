@@ -3,11 +3,11 @@ use ndarray::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use todo;
 
+use crate::umesh::ElementType;
 use crate::umesh::element::{Dimension, Element, ElementId, ElementIds, ElementLike, Regularity};
 use crate::umesh::element_block::{ElementBlock, ElementBlockBase, IntoElementBlockEntry};
 use crate::umesh::selector::Selector;
 use crate::umesh::utils::SortedVecKey;
-use crate::umesh::ElementType;
 
 /// An unstrustured mesh.
 ///
@@ -67,7 +67,7 @@ where
     pub fn elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element> {
         self.element_blocks
             .iter()
-            .filter(move |(&k, _)| k.dimension() == dim)
+            .filter(move |(k, _)| k.dimension() == dim)
             .flat_map(|(_, block)| block.iter(self.coords.view()))
     }
 
@@ -188,21 +188,43 @@ where
 
     pub fn measure(&self) -> BTreeMap<ElementType, Array1<f64>> {
         match self.space_dimension() {
-            0 => self.element_blocks().iter().map(|(&k, v)| (k, nd::arr1(&vec![0.0; v.len()]))).collect(),
+            0 => self
+                .element_blocks()
+                .iter()
+                .map(|(&k, v)| (k, nd::arr1(&vec![0.0; v.len()])))
+                .collect(),
             1 => todo!(),
-            2 => self.element_blocks().iter().map(
-                |(&k, v)| (
-                    k,
-                    nd::arr1(&v.iter(self.coords.view()).map(|e| e.measure2()).collect::<Vec<f64>>()))
-                )
+            2 => self
+                .element_blocks()
+                .iter()
+                .map(|(&k, v)| {
+                    (
+                        k,
+                        nd::arr1(
+                            &v.iter(self.coords.view())
+                                .map(|e| e.measure2())
+                                .collect::<Vec<f64>>(),
+                        ),
+                    )
+                })
                 .collect(),
-            3 => self.element_blocks().iter().map(
-                |(&k, v)| (
-                    k,
-                    nd::arr1(&v.iter(self.coords.view()).map(|e| e.measure3()).collect::<Vec<f64>>()))
-                )
+            3 => self
+                .element_blocks()
+                .iter()
+                .map(|(&k, v)| {
+                    (
+                        k,
+                        nd::arr1(
+                            &v.iter(self.coords.view())
+                                .map(|e| e.measure3())
+                                .collect::<Vec<f64>>(),
+                        ),
+                    )
+                })
                 .collect(),
-            c => panic!("{c} is not a valid space dimension. Space (coordinates) dimension must be 0, 1, 2 ou 3.")
+            c => panic!(
+                "{c} is not a valid space dimension. Space (coordinates) dimension must be 0, 1, 2 ou 3."
+            ),
         }
     }
 
@@ -241,7 +263,10 @@ impl UMesh {
         match element_type.regularity() {
             Regularity::Regular => {
                 if connectivity.len() != element_type.num_nodes().unwrap() {
-                    panic!("Connectivity length does not match the number of nodes for element type {:?}", element_type);
+                    panic!(
+                        "Connectivity length does not match the number of nodes for element type {:?}",
+                        element_type
+                    );
                 }
                 self.element_blocks.entry(element_type).or_insert_with(|| {
                     ElementBlock::new_regular(
