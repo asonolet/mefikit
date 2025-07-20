@@ -5,7 +5,7 @@ use todo;
 
 use crate::umesh::geometry as geo;
 use crate::umesh::umesh_core::UMeshBase;
-use crate::umesh::{ElementId, ElementIds, ElementLike, ElementType};
+use crate::umesh::{ElementIds, ElementLike, ElementType};
 
 /// Here umesh should be replace with UMeshView, so that it can interact with non owned umesh
 /// struct.

@@ -213,6 +213,12 @@ impl ElementId {
     }
 }
 
+impl Default for ElementIds {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ElementIds {
     pub fn new() -> Self {
         ElementIds(BTreeMap::new())
@@ -242,17 +248,15 @@ impl ElementIds {
         self.0.iter()
     }
     pub fn into_iter(self) -> impl Iterator<Item = ElementId> {
-        self.0.into_iter().flat_map(|(et, indices)| {
-            indices
-                .into_iter()
-                .map(move |index| ElementId(et.clone(), index))
-        })
+        self.0
+            .into_iter()
+            .flat_map(|(et, indices)| indices.into_iter().map(move |index| ElementId(et, index)))
     }
     pub fn into_par_iter(self) -> impl ParallelIterator<Item = ElementId> {
         self.0.into_par_iter().flat_map(|(et, indices)| {
             indices
                 .into_par_iter()
-                .map(move |index| ElementId(et.clone(), index))
+                .map(move |index| ElementId(et, index))
         })
     }
     pub fn is_empty(&self) -> bool {

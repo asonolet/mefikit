@@ -264,8 +264,7 @@ impl UMesh {
             Regularity::Regular => {
                 if connectivity.len() != element_type.num_nodes().unwrap() {
                     panic!(
-                        "Connectivity length does not match the number of nodes for element type {:?}",
-                        element_type
+                        "Connectivity length does not match the number of nodes for element type {element_type:?}"
                     );
                 }
                 self.element_blocks.entry(element_type).or_insert_with(|| {
