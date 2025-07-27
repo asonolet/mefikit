@@ -199,8 +199,8 @@ mod tests {
         let builder = RegularUMeshBuilder::new().add_axis(vec![0.0, 1.0, 2.0]);
         let mesh = builder.build();
         assert_eq!(mesh.coords().shape(), &[3, 1]);
-        assert_eq!(mesh.element_blocks().len(), 1);
-        assert!(mesh.element_blocks().contains_key(&ElementType::SEG2));
+        assert_eq!(mesh.element_blocks.len(), 1);
+        assert!(mesh.element_blocks.contains_key(&ElementType::SEG2));
     }
 
     #[test]
@@ -210,10 +210,15 @@ mod tests {
             .add_axis(vec![0.0, 1.0]);
         let mesh = builder.build();
         assert_eq!(mesh.coords().shape(), &[6, 2]);
-        assert_eq!(mesh.element_blocks().len(), 1);
-        assert!(mesh.element_blocks().contains_key(&ElementType::QUAD4));
+        assert_eq!(mesh.element_blocks.len(), 1);
+        assert!(mesh.element_blocks.contains_key(&ElementType::QUAD4));
         assert_eq!(
-            match &mesh.element_block(ElementType::QUAD4).unwrap().connectivity {
+            match &mesh
+                .element_blocks
+                .get(&ElementType::QUAD4)
+                .unwrap()
+                .connectivity
+            {
                 Connectivity::Regular(conn) => conn.shape(),
                 _ => panic!("Expected regular connectivity"),
             },
@@ -229,10 +234,15 @@ mod tests {
             .add_axis(vec![0.0, 1.0, 2.0]);
         let mesh = builder.build();
         assert_eq!(mesh.coords().shape(), &[18, 3]);
-        assert_eq!(mesh.element_blocks().len(), 1);
-        assert!(mesh.element_blocks().contains_key(&ElementType::HEX8));
+        assert_eq!(mesh.element_blocks.len(), 1);
+        assert!(mesh.element_blocks.contains_key(&ElementType::HEX8));
         assert_eq!(
-            match &mesh.element_blocks()[&ElementType::HEX8].connectivity {
+            match &mesh
+                .element_blocks
+                .get(&ElementType::HEX8)
+                .unwrap()
+                .connectivity
+            {
                 Connectivity::Regular(conn) => conn.shape(),
                 _ => panic!("Expected regular connectivity"),
             },

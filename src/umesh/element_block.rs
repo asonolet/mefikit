@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use crate::umesh::connectivity::{Connectivity, ConnectivityBase};
+use crate::umesh::connectivity::{Connectivity, ConnectivityBase, ConnectivityView};
 use crate::umesh::element::{Element, ElementType};
 
 /// The part of a mesh constituted by one kind of element.
@@ -183,7 +183,7 @@ where
     //             connectivity,
     //             family,
     //             fields,
-    //             groups: &self.groups,
+    //          , ConnectivityBase   groups: &self.groups,
     //             element_type: self.cell_type,
     //         }
     //     })
@@ -250,6 +250,62 @@ impl<'a> ElementBlock {
         if let Some(fields) = fields {
             todo!();
         }
+    }
+}
+
+impl<'a> ElementBlockView<'a> {
+    /// Create a new regular element block.
+    ///
+    /// # Arguments
+    /// * `cell_type` - The type of the elements in this block.
+    /// * `connectivity` - The connectivity of the elements in this block.
+    /// * `fields` - A map of field names to their values for each element.
+    /// * `families` - An array of family indices for each element.
+    /// * `groups` - A map of group names to sets of element indices.
+    /// # Returns
+    /// A new `ElementBlock` instance.
+    pub fn new_regular(cell_type: ElementType, connectivity: ArrayView2<'a, usize>) -> Self {
+        let conn_len = connectivity.len();
+        let reg_vec = Box::new(Array1::from(vec![0; conn_len]));
+        Self {
+            cell_type,
+            connectivity: ConnectivityView::Regular(connectivity),
+            fields: BTreeMap::new(),
+            families: Box::leak(reg_vec).view(),
+            groups: BTreeMap::new(),
+        }
+    }
+
+    /// Create a new poly element block.
+    ///
+    /// # Arguments
+    /// * `cell_type` - The type of the elements in this block.
+    /// * `connectivity` - The connectivity of the elements in this block.
+    /// * `fields` - A map of field names to their values for each element.
+    /// * `families` - An array of family indices for each element.
+    /// * `groups` - A map of group names to sets of element indices.
+    /// # Returns
+    /// A new `ElementBlock` instance.
+    pub fn new_poly(
+        cell_type: ElementType,
+        connectivity: ArrayView1<'a, usize>,
+        offsets: ArrayView1<'a, usize>,
+    ) -> Self {
+        let conn_len = connectivity.len();
+        let reg_vec = Box::new(Array1::from(vec![0; conn_len]));
+        Self {
+            cell_type,
+            connectivity: ConnectivityView::Poly {
+                data: connectivity,
+                offsets,
+            },
+            fields: BTreeMap::new(),
+            families: Box::leak(reg_vec).view(),
+            groups: BTreeMap::new(),
+        }
+    }
+    pub fn into_entry(self) -> (ElementType, ElementBlockView<'a>) {
+        (self.cell_type, self)
     }
 }
 

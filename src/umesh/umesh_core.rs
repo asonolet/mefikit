@@ -5,7 +5,9 @@ use todo;
 
 use crate::umesh::ElementType;
 use crate::umesh::element::{Dimension, Element, ElementId, ElementIds, ElementLike, Regularity};
-use crate::umesh::element_block::{ElementBlock, ElementBlockBase, IntoElementBlockEntry};
+use crate::umesh::element_block::{
+    ElementBlock, ElementBlockBase, ElementBlockView, IntoElementBlockEntry,
+};
 use crate::umesh::selector::Selector;
 use crate::umesh::utils::SortedVecKey;
 
@@ -20,8 +22,8 @@ where
     F: nd::RawData<Elem = f64>,   // Fields data
     G: nd::RawData<Elem = usize>, // Groups data
 {
-    coords: ArrayBase<N, Ix2>, // TODO: Use ArcArray2 for shared ownership
-    element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
+    pub(crate) coords: ArrayBase<N, Ix2>, // TODO: Use ArcArray2 for shared ownership
+    pub(crate) element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
 }
 
 pub type UMesh =
@@ -42,8 +44,20 @@ where
     G: nd::RawData<Elem = usize> + nd::Data,
 {
     pub fn view(&self) -> UMeshView<'_> {
-        UMeshView::new(self.coords())
+        let mut view = UMeshView::new(self.coords());
+        for (&et, block) in self.element_blocks.iter() {
+            match &block.connectivity {
+                super::connectivity::ConnectivityBase::Regular(arr) => {
+                    view.add_regular_block(et, arr.view())
+                }
+                super::connectivity::ConnectivityBase::Poly { data, offsets } => {
+                    view.add_poly_block(et, data.view(), offsets.view())
+                }
+            };
+        }
+        view
     }
+
     pub(crate) fn coords(&self) -> ArrayView2<'_, f64> {
         self.coords.view()
     }
@@ -76,16 +90,16 @@ where
 
     // TODO: check that it is a good idea to return an ElementBlockBase rather than an
     // ElementBlockView
-    pub(crate) fn element_blocks(&self) -> &BTreeMap<ElementType, ElementBlockBase<C, F, G>> {
-        &self.element_blocks
-    }
+    // pub(crate) fn element_blocks(&self) -> &BTreeMap<ElementType, ElementBlockBase<C, F, G>> {
+    //     &self.element_blocks
+    // }
 
-    pub(crate) fn element_block(
-        &self,
-        element_type: ElementType,
-    ) -> Option<&ElementBlockBase<C, F, G>> {
-        self.element_blocks.get(&element_type)
-    }
+    // pub(crate) fn element_block(
+    //     &self,
+    //     element_type: ElementType,
+    // ) -> Option<&ElementBlockBase<C, F, G>> {
+    //     self.element_blocks.get(&element_type)
+    // }
 
     /// Creates a new selector for this mesh.
     ///
@@ -160,9 +174,8 @@ where
         let mut neighbors: UMesh = UMesh::new(self.coords().to_owned());
 
         for elem in self.elements() {
-            // let faces = elem.faces();
             for (et, conn) in elem.subentities(Some(codim)).unwrap() {
-                let subentity_id = match neighbors.element_block(et) {
+                let subentity_id = match neighbors.element_blocks.get(&et) {
                     Some(block) => block.len(),
                     None => 0,
                 };
@@ -188,13 +201,13 @@ where
     pub fn measure(&self) -> BTreeMap<ElementType, Array1<f64>> {
         match self.space_dimension() {
             0 => self
-                .element_blocks()
+                .element_blocks
                 .iter()
                 .map(|(&k, v)| (k, nd::arr1(&vec![0.0; v.len()])))
                 .collect(),
             1 => todo!(),
             2 => self
-                .element_blocks()
+                .element_blocks
                 .iter()
                 .map(|(&k, v)| {
                     (
@@ -208,7 +221,7 @@ where
                 })
                 .collect(),
             3 => self
-                .element_blocks()
+                .element_blocks
                 .iter()
                 .map(|(&k, v)| {
                     (
@@ -241,7 +254,7 @@ impl<'a> UMeshView<'a> {
     }
 
     pub fn add_regular_block(&mut self, et: ElementType, block: ArrayView2<'a, usize>) {
-        let block = ElementBlockView<'a>::new_regular(et, block);
+        let block = ElementBlockView::new_regular(et, block);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -252,7 +265,7 @@ impl<'a> UMeshView<'a> {
         conn: ArrayView1<'a, usize>,
         offsets: ArrayView1<'a, usize>,
     ) {
-        let block = ElementBlockView<'a>::new_poly(et, conn, offsets);
+        let block = ElementBlockView::new_poly(et, conn, offsets);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -338,8 +351,8 @@ mod tests {
         let mut mesh = UMesh::new(coords);
         mesh.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1], [1, 2]]));
         assert_eq!(mesh.coords().shape(), &[3, 1]);
-        assert_eq!(mesh.element_blocks().len(), 1);
-        assert!(mesh.element_blocks().contains_key(&ElementType::SEG2));
+        assert_eq!(mesh.element_blocks.len(), 1);
+        assert!(mesh.element_blocks.contains_key(&ElementType::SEG2));
     }
     #[test]
     fn test_umesh_element_iteration() {

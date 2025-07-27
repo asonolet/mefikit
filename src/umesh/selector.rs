@@ -85,7 +85,7 @@ impl<'a, State> Selector<'a, State> {
 impl<'a> Selector<'a, ElementTypeSelector> {
     pub fn new(umesh: UMeshView<'a>) -> Self {
         let index: BTreeMap<ElementType, Vec<usize>> = umesh
-            .element_blocks()
+            .element_blocks
             .iter()
             .map(|(k, v)| (*k, (0..v.len()).collect()))
             .collect();
@@ -118,7 +118,8 @@ impl<'a> Selector<'a, FieldBasedSelector> {
             .into_iter()
             .filter(|&e_id| {
                 self.umesh
-                    .element_block(e_id.element_type())
+                    .element_blocks
+                    .get(&e_id.element_type())
                     .unwrap()
                     .fields
                     .get(self.state.field_name.as_str())
@@ -139,7 +140,8 @@ impl<'a> Selector<'a, FieldBasedSelector> {
             .into_iter()
             .filter(|&e_id| {
                 self.umesh
-                    .element_block(e_id.element_type())
+                    .element_blocks
+                    .get(&e_id.element_type())
                     .unwrap()
                     .fields
                     .get(self.state.field_name.as_str())
@@ -172,7 +174,7 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     pub fn inside(self, name: &str) -> Self {
         let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
             .umesh
-            .element_blocks()
+            .element_blocks
             .par_iter()
             .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
             .collect();
@@ -198,7 +200,7 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     pub fn outside(self, name: &str) -> Self {
         let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
             .umesh
-            .element_blocks()
+            .element_blocks
             .par_iter()
             .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
             .collect();
@@ -288,6 +290,7 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
 
     pub fn in_sphere(self, p0: &[f64; 3], r: f64) -> Self {
         self.is_in(|x| {
+            debug_assert_eq!(x.len(), 3);
             geo::in_sphere(
                 x.try_into().expect("Coords should have 3 components."),
                 p0,
@@ -298,6 +301,7 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
 
     pub fn in_bbox(self, p0: &[f64; 3], p1: &[f64; 3]) -> Self {
         self.is_in(|x| {
+            debug_assert_eq!(x.len(), 3);
             geo::in_aa_bbox(
                 x.try_into().expect("Coords should have 3 components."),
                 p0,
@@ -308,6 +312,7 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
 
     pub fn in_rectangle(self, p0: &[f64; 2], p1: &[f64; 2]) -> Self {
         self.is_in(|x| {
+            debug_assert_eq!(x.len(), 2);
             geo::in_aa_rectangle(
                 x.try_into().expect("Coords should have 2 components."),
                 p0,
