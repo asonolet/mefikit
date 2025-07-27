@@ -41,8 +41,11 @@ where
     F: nd::RawData<Elem = f64> + nd::Data,
     G: nd::RawData<Elem = usize> + nd::Data,
 {
-    pub(crate) fn coords(&self) -> &ArrayBase<N, Ix2> {
-        &self.coords
+    pub fn view(&self) -> UMeshView<'_> {
+        UMeshView::new(self.coords())
+    }
+    pub(crate) fn coords(&self) -> ArrayView2<'_, f64> {
+        self.coords.view()
     }
 
     pub fn space_dimension(&self) -> usize {
@@ -71,6 +74,8 @@ where
             .flat_map(|(_, block)| block.iter(self.coords.view()))
     }
 
+    // TODO: check that it is a good idea to return an ElementBlockBase rather than an
+    // ElementBlockView
     pub(crate) fn element_blocks(&self) -> &BTreeMap<ElementType, ElementBlockBase<C, F, G>> {
         &self.element_blocks
     }
@@ -86,14 +91,8 @@ where
     ///
     /// This allows for selecting elements (returning ElementIds) based on mutliple criteria at
     /// once, such as element type, dimension, position and fields values.
-    pub fn select_ids(&self) -> Selector<N, C, F, G>
-    where
-        C: Sync,
-        N: Sync,
-        F: Sync,
-        G: Sync,
-    {
-        Selector::new(self)
+    pub fn select_ids(&self) -> Selector {
+        Selector::new(self.view())
     }
 
     /// Extracts a sub-mesh from the current mesh based on the provided element IDs.
@@ -230,6 +229,32 @@ where
 
     pub fn normal(&self) -> BTreeMap<ElementType, Array2<f64>> {
         todo!()
+    }
+}
+
+impl<'a> UMeshView<'a> {
+    pub fn new(coords: nd::ArrayView2<'a, f64>) -> Self {
+        Self {
+            coords,
+            element_blocks: BTreeMap::new(),
+        }
+    }
+
+    pub fn add_regular_block(&mut self, et: ElementType, block: ArrayView2<'a, usize>) {
+        let block = ElementBlockView<'a>::new_regular(et, block);
+        let (key, wrapped) = block.into_entry();
+        self.element_blocks.entry(key).or_insert(wrapped);
+    }
+
+    pub fn add_poly_block(
+        &mut self,
+        et: ElementType,
+        conn: ArrayView1<'a, usize>,
+        offsets: ArrayView1<'a, usize>,
+    ) {
+        let block = ElementBlockView<'a>::new_poly(et, conn, offsets);
+        let (key, wrapped) = block.into_entry();
+        self.element_blocks.entry(key).or_insert(wrapped);
     }
 }
 
