@@ -113,7 +113,7 @@ where
     ///
     /// This method creates a new `UMesh`, owning its data (with copy) containing only the elements
     /// specified by the IDs.
-    pub fn extract_mesh(&self, ids: &ElementIds) -> UMesh {
+    pub fn extract(&self, ids: &ElementIds) -> UMesh {
         todo!();
     }
 
@@ -400,7 +400,7 @@ mod tests {
     // fn test_umesh_extract_mesh() {
     //     let mesh = make_test_2d_mesh();
     //     let ids = vec![ElementId::new(ElementType::QUAD4, 0)];
-    //     let sub_mesh = mesh.extract_mesh(&ids);
+    //     let sub_mesh = mesh.extract(&ids);
     //     assert_eq!(sub_mesh.element_blocks().len(), 1);
     //     assert!(sub_mesh.element_blocks().contains_key(&ElementType::QUAD4));
     //     assert_eq!(sub_mesh.coords().shape(), &[4, 2]);
