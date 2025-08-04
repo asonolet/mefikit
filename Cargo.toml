@@ -15,9 +15,12 @@ robust = "1.2.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
 serde_yaml = "0.9.34"
+vtkio = { version = "0.6.3", optional = true }
 
 [features]
+default = ["vtk"]
 hdf5 = ["dep:hdf5"]
+vtk = ["dep:vtkio"]
 
 [lib]
 bench = false

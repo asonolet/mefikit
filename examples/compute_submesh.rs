@@ -1,4 +1,6 @@
 use mefikit::RegularUMeshBuilder;
+use mefikit::io;
+use std::path::Path;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Dummy mesh
@@ -9,5 +11,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
     let (submesh, _, _) = mesh.compute_submesh(None);
 
-    Ok(())
+    io::write(&Path::new("examples/submesh.vtk"), submesh.view())
 }

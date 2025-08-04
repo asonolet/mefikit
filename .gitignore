@@ -3,3 +3,5 @@
 *.swp
 examples/*.json
 examples/*.yaml
+examples/out.vtk
+examples/submesh.vtk
