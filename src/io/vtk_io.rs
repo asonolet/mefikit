@@ -1,10 +1,12 @@
 use crate::ElementLike;
-use crate::UMeshView;
 use crate::umesh::ElementType;
+use crate::{UMesh, UMeshView};
+use ndarray as nd;
+use ndarray::prelude::*;
 use std::path::Path;
 use vtkio::model::*;
 
-fn convert(et: ElementType) -> CellType {
+fn to_vtk_cell(et: ElementType) -> CellType {
     use ElementType::*;
     match et {
         VERTEX => CellType::Vertex,
@@ -24,20 +26,20 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
         1 => mesh
             .coords()
             .outer_iter()
-            .flat_map(|x| {
-                let mut y = vec![0.0; 3];
-                y[0] = x[0];
-                y
+            .flat_map(|x1| {
+                let mut x3 = vec![0.0; 3];
+                x3[0] = x1[0];
+                x3
             })
             .collect(),
         2 => mesh
             .coords()
             .outer_iter()
-            .flat_map(|x| {
-                let mut y = vec![0.0; 3];
-                y[0] = x[0];
-                y[1] = x[1];
-                y
+            .flat_map(|x2| {
+                let mut x3 = vec![0.0; 3];
+                x3[0] = x2[0];
+                x3[1] = x2[1];
+                x3
             })
             .collect(),
         // Grr this is also copy
@@ -63,7 +65,10 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
         })
         .collect();
 
-    let types: Vec<CellType> = mesh.elements().map(|x| convert(x.element_type())).collect();
+    let types: Vec<CellType> = mesh
+        .elements()
+        .map(|x| to_vtk_cell(x.element_type()))
+        .collect();
 
     let vtk = Vtk {
         version: Version::new((4, 1)),
@@ -83,6 +88,46 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
         }),
     };
     Ok(vtk.export(path)?)
+}
+
+fn to_element_type(cell_type: CellType) -> ElementType {
+    use CellType::*;
+    match cell_type {
+        Vertex => ElementType::VERTEX,
+        Line => ElementType::SEG2,
+        Triangle => ElementType::TRI3,
+        Polygon => ElementType::PGON,
+        Quad => ElementType::QUAD4,
+        Tetra => ElementType::TET4,
+        Hexahedron => ElementType::HEX8,
+        Polyhedron => ElementType::PHED,
+        _ => panic!("Unsupported cell type for VTK: {:?}", cell_type),
+    }
+}
+
+pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
+    let vtk = Vtk::import(path)?;
+    let data = vtk.data;
+    todo!();
+    // let pieces = match data {
+    //     DataSet::UnstructuredGrid { pieces, .. } => pieces,
+    //     _ => return Err("Only unstructured grid pieces are supported".into()),
+    // };
+    // let piece = &pieces[0];
+    // let data = match *piece {
+    //     Piece::Inline(data) => data,
+    //     _ => return Err("Only inline unstructured grid pieces are supported".into()),
+    // };
+
+    // let points: Vec<f64> = data.points.into_vec().unwrap();
+    // let mut mesh = UMesh::new(Array2::from_shape_vec((points.len() / 3, 3), points)?);
+
+    // for (cell_verts, cell_type) in data.cells.cell_verts {
+    //     let et = to_element_type(cell_type);
+    //     mesh.add_regular_block(et, cell_verts.connectivity().into());
+    // }
+    //
+    // Ok(mesh)
 }
 
 #[cfg(test)]
