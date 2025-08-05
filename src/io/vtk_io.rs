@@ -1,8 +1,6 @@
 use crate::ElementLike;
 use crate::umesh::ElementType;
 use crate::{UMesh, UMeshView};
-use ndarray as nd;
-use ndarray::prelude::*;
 use std::path::Path;
 use vtkio::model::*;
 
@@ -17,7 +15,7 @@ fn to_vtk_cell(et: ElementType) -> CellType {
         TET4 => CellType::Tetra,
         HEX8 => CellType::Hexahedron,
         PHED => CellType::Polyhedron,
-        _ => panic!("Unsupported element type for VTK: {:?}", et),
+        _ => panic!("Unsupported element type for VTK: {et:?}"),
     }
 }
 
@@ -101,7 +99,7 @@ fn to_element_type(cell_type: CellType) -> ElementType {
         Tetra => ElementType::TET4,
         Hexahedron => ElementType::HEX8,
         Polyhedron => ElementType::PHED,
-        _ => panic!("Unsupported cell type for VTK: {:?}", cell_type),
+        _ => panic!("Unsupported cell type for VTK: {cell_type:?}"),
     }
 }
 
