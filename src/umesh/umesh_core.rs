@@ -407,6 +407,18 @@ mod tests {
     // }
 
     #[test]
+    fn test_umesh_view() {
+        for i in [40] {
+            let mesh = crate::RegularUMeshBuilder::new()
+                .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
+                .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
+                .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
+                .build();
+            mesh.view();
+        }
+    }
+
+    #[test]
     fn test_umesh_measure() {
         let mesh = make_test_2d_mesh();
         let measures = mesh.measure();

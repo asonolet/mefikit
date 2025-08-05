@@ -1,4 +1,4 @@
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 
 use mefikit::RegularUMeshBuilder;
 
@@ -39,6 +39,27 @@ fn selection_sphere(c: &mut Criterion) {
     }
 }
 
+fn take_view(c: &mut Criterion) {
+    let mut group = c.benchmark_group("take_view");
+
+    for i in [4, 8, 16] {
+        group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
+            b.iter_batched(
+                || {
+                    RegularUMeshBuilder::new()
+                        .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
+                        .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
+                        .build()
+                },
+                |data| {
+                    std::hint::black_box(data.view());
+                },
+                BatchSize::LargeInput,
+            )
+        });
+    }
+}
+
 fn measure2(c: &mut Criterion) {
     let mut group = c.benchmark_group("measure2");
 
@@ -55,5 +76,5 @@ fn measure2(c: &mut Criterion) {
     }
 }
 
-criterion_group!(bench, submesh, selection_sphere, measure2);
+criterion_group!(bench, submesh, selection_sphere, measure2, take_view);
 criterion_main!(bench);
