@@ -70,7 +70,7 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
         .collect();
 
     let vtk = Vtk {
-        version: Version::new((4, 1)),
+        version: Version::XML { major: 1, minor: 0 },
         byte_order: ByteOrder::BigEndian,
         title: String::from("Test VTK File"),
         file_path: Some(path.into()),
@@ -132,6 +132,7 @@ pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
     let (connectivity, offsets) = piece.cells.cell_verts.into_xml();
     let cell_type = piece.cells.types;
 
+    // TODO: for efficiency I could preallocate the connectivities vectors
     for i in 0..cell_type.len() {
         let cell_connectivity =
             extract_connectivity(connectivity.as_slice(), offsets.as_slice(), i);
@@ -172,7 +173,7 @@ mod tests {
 
     #[test]
     fn test_read_vtk() {
-        let path = PathBuf::from("test.vtk");
+        let path = PathBuf::from("test2.vtk");
         let mesh = make_test_2d_mesh();
         assert!(write(&path, mesh.view()).is_ok());
         let mesh2 = read(&path).unwrap();
