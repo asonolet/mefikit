@@ -1,5 +1,4 @@
 use ndarray::prelude::*;
-use todo;
 
 pub fn dist(a: ArrayView1<f64>, b: ArrayView1<f64>) -> f64 {
     let diff = &a - &b;

@@ -19,7 +19,6 @@ use derive_where::derive_where;
 use ndarray as nd;
 use ndarray::prelude::*;
 use std::collections::{BTreeMap, HashMap};
-use todo;
 
 use self::connectivity::ConnectivityBase;
 use self::element::Regularity;
