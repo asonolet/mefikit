@@ -4,7 +4,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::umesh::measure as mes;
+use super::measure as mes;
 
 // #[derive(Copy, Clone)]
 // pub enum EdgeType {

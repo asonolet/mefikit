@@ -2,9 +2,9 @@ use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use todo;
 
-use crate::umesh::geometry as geo;
-use crate::umesh::umesh_core::UMeshView;
-use crate::umesh::{ElementIds, ElementLike, ElementType};
+use super::UMeshView;
+use super::element::{ElementIds, ElementLike, ElementType};
+use super::geometry as geo;
 
 /// Here umesh should be replace with UMeshView, so that it can interact with non owned umesh
 /// struct.

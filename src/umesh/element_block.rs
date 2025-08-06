@@ -5,8 +5,8 @@ use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use crate::umesh::connectivity::{Connectivity, ConnectivityBase, ConnectivityView};
-use crate::umesh::element::{Element, ElementType};
+use super::connectivity::{Connectivity, ConnectivityBase, ConnectivityView};
+use super::element::{Element, ElementType};
 
 /// The part of a mesh constituted by one kind of element.
 ///

@@ -1,16 +1,33 @@
+mod connectivity;
+mod element;
+mod element_block;
+mod geometry;
+mod measure;
+mod selector;
+mod utils;
+
+// pub use crate::element_block::{ElementBlock, IntoElementBlockEntry, RegularCells, PolyCells};
+// pub use crate::element_block_like::ElementBlockLike;
+pub use self::element::{
+    Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut, ElementType,
+};
+
+#[allow(unused_imports)]
+pub(crate) use self::connectivity::Connectivity;
+
 use derive_where::derive_where;
 use ndarray as nd;
 use ndarray::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 use todo;
 
-use crate::umesh::ElementType;
-use crate::umesh::element::{Dimension, Element, ElementId, ElementIds, ElementLike, Regularity};
-use crate::umesh::element_block::{
+use self::connectivity::ConnectivityBase;
+use self::element::Regularity;
+use self::element_block::{
     ElementBlock, ElementBlockBase, ElementBlockView, IntoElementBlockEntry,
 };
-use crate::umesh::selector::Selector;
-use crate::umesh::utils::SortedVecKey;
+use self::selector::Selector;
+use self::utils::SortedVecKey;
 
 /// An unstrustured mesh.
 ///
@@ -51,10 +68,8 @@ where
         let mut view = UMeshView::new(self.coords());
         for (&et, block) in self.element_blocks.iter() {
             match &block.connectivity {
-                super::connectivity::ConnectivityBase::Regular(arr) => {
-                    view.add_regular_block(et, arr.view())
-                }
-                super::connectivity::ConnectivityBase::Poly { data, offsets } => {
+                ConnectivityBase::Regular(arr) => view.add_regular_block(et, arr.view()),
+                ConnectivityBase::Poly { data, offsets } => {
                     view.add_poly_block(et, data.view(), offsets.view())
                 }
             };
