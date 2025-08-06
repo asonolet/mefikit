@@ -15,6 +15,7 @@ pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
     {
         // "json" => serde_io::read_json(path),
         // "yaml" | "yml" => serde_io::read_yaml(path),
+        "vtk" | "vtu" => vtk_io::read(path),
         _ => Err(format!("Unsupported file extension: {path:?}").into()),
     }
 }
