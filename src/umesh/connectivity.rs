@@ -1,3 +1,4 @@
+use derive_where::derive_where;
 use ndarray as nd;
 // use rayon::prelude::*;
 
@@ -7,9 +8,12 @@ use ndarray as nd;
 /// while polygonal connectivity is represented as a 1D array with offsets. The offsets array
 /// indicates the start and end of each polygon in the data array. The data array contains the
 /// indices of the vertices of the polygons.
+#[derive_where(Clone; C: nd::RawDataClone)]
+#[derive_where(Debug, Serialize, PartialEq, Eq, Hash)]
+#[derive_where(Deserialize; C: nd::DataOwned)]
 pub enum ConnectivityBase<C>
 where
-    C: nd::RawData<Elem = usize>,
+    C: nd::RawData<Elem = usize> + nd::Data,
 {
     Regular(nd::ArrayBase<C, nd::Ix2>),
     Poly {
@@ -158,7 +162,7 @@ impl Connectivity {
 
 impl<C> ConnectivityBase<C>
 where
-    C: nd::RawData<Elem = usize>,
+    C: nd::RawData<Elem = usize> + nd::Data,
 {
     pub fn len(&self) -> usize {
         match self {

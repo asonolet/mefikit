@@ -9,6 +9,7 @@ edition = "2024"
 
 [dependencies]
 criterion = "0.7.0"
+derive-where = { version = "1.6.0", features = ["serde"] }
 hdf5 = { version = "0.8.1", optional = true }
 ndarray = { version = "0.16", features = ["serde"] }
 once_cell = "1.21.3"

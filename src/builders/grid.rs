@@ -61,7 +61,7 @@ impl RegularUMeshBuilder {
             self.coords_grid.push(axis);
         } else {
             // If we already have two axes, we cannot add more
-            panic!("Cannot add more than two axes to a regular mesh builder");
+            panic!("Cannot add more than three axes to a regular mesh builder");
         }
         self
     }

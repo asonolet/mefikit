@@ -1,3 +1,4 @@
+use derive_where::derive_where;
 use ndarray as nd;
 use ndarray::prelude::*;
 use std::collections::{BTreeMap, HashMap};
@@ -15,12 +16,15 @@ use crate::umesh::utils::SortedVecKey;
 ///
 /// The most general mesh format in mefikit. Can describe any kind on mesh, with multiple elements
 /// kinds and fields associated.
+#[derive_where(Clone; N: nd::RawDataClone, C: nd::RawDataClone, F: nd::RawDataClone, G: nd::RawDataClone)]
+#[derive_where(Debug, Serialize, PartialEq)]
+#[derive_where(Deserialize; N: nd::DataOwned, C: nd::DataOwned, F: nd::DataOwned, G: nd::DataOwned)]
 pub struct UMeshBase<N, C, F, G>
 where
-    N: nd::RawData<Elem = f64>,   // Nodes (Coords) data
-    C: nd::RawData<Elem = usize>, // Connectivity data
-    F: nd::RawData<Elem = f64>,   // Fields data
-    G: nd::RawData<Elem = usize>, // Groups data
+    N: nd::RawData<Elem = f64> + nd::Data,   // Nodes (Coords) data
+    C: nd::RawData<Elem = usize> + nd::Data, // Connectivity data
+    F: nd::RawData<Elem = f64> + nd::Data,   // Fields data
+    G: nd::RawData<Elem = usize> + nd::Data, // Groups data
 {
     pub(crate) coords: ArrayBase<N, Ix2>, // TODO: Use ArcArray2 for shared ownership
     pub(crate) element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,

@@ -1,3 +1,4 @@
+use derive_where::derive_where;
 use ndarray as nd;
 use ndarray::prelude::*;
 use rayon::prelude::*;
@@ -12,11 +13,14 @@ use crate::umesh::element::{Element, ElementType};
 /// The element block is the base structure to hold connectivity, fields, groups.
 /// It is used to hold all cell information and allows cell iteration.
 /// The only data not included for an element block to be standalone is the coordinates array.
+#[derive_where(Clone; C: nd::RawDataClone, F: nd::RawDataClone, G: nd::RawDataClone)]
+#[derive_where(Debug, Serialize, PartialEq)]
+#[derive_where(Deserialize; C: nd::DataOwned, F: nd::DataOwned, G: nd::DataOwned)]
 pub struct ElementBlockBase<C, F, G>
 where
-    C: nd::RawData<Elem = usize>,
-    F: nd::RawData<Elem = f64>,
-    G: nd::RawData<Elem = usize>,
+    C: nd::RawData<Elem = usize> + nd::Data,
+    F: nd::RawData<Elem = f64> + nd::Data,
+    G: nd::RawData<Elem = usize> + nd::Data,
 {
     pub cell_type: ElementType,
     pub connectivity: ConnectivityBase<C>,
@@ -33,9 +37,9 @@ pub type ElementBlockView<'a> =
 
 impl<C, F, G> ElementBlockBase<C, F, G>
 where
-    C: nd::RawData<Elem = usize>,
-    F: nd::RawData<Elem = f64>,
-    G: nd::RawData<Elem = usize>,
+    C: nd::RawData<Elem = usize> + nd::Data,
+    F: nd::RawData<Elem = f64> + nd::Data,
+    G: nd::RawData<Elem = usize> + nd::Data,
 {
     pub fn len(&self) -> usize {
         self.connectivity.len()

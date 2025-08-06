@@ -85,13 +85,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     println!("Mesh saved to triangles_tetra.vtu");
 
-    // save_mesh(Path::new("examples/out.yaml"), &mesh)?;
-    // println!("Mesh saved to out.yaml");
-
-    // let umesh2 = load_mesh(Path::new("examples/out.json"))?;
-
-    // println!("Mesh loaded from out.json");
-    // println!("{umesh2:?}");
+    mf::io::write(Path::new("examples/out.yaml"), triangle_tetra_mesh().view())?;
+    println!("Mesh saved to out.yaml");
 
     Ok(())
 }
