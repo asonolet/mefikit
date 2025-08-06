@@ -1,5 +1,5 @@
 use crate::ElementLike;
-use crate::umesh::ElementType;
+use crate::ElementType;
 use crate::{UMesh, UMeshView};
 use ndarray::prelude::*;
 use std::path::Path;

@@ -64,28 +64,28 @@ fn triangle_tetra_mesh() -> mf::UMesh {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Dummy mesh
 
-    mf::io::write(Path::new("examples/hexa.vtu"), regular_hexa().view())?;
+    mf::write(Path::new("examples/hexa.vtu"), regular_hexa().view())?;
     println!("Mesh saved to hexa.vtu");
 
-    mf::io::write(Path::new("examples/quad.vtu"), regular_quad().view())?;
+    mf::write(Path::new("examples/quad.vtu"), regular_quad().view())?;
     println!("Mesh saved to quad.vtu");
 
-    mf::io::write(Path::new("examples/line.vtu"), regular_line().view())?;
+    mf::write(Path::new("examples/line.vtu"), regular_line().view())?;
     println!("Mesh saved to line.vtu");
 
-    mf::io::write(Path::new("examples/triangles.vtu"), triangles_mesh().view())?;
+    mf::write(Path::new("examples/triangles.vtu"), triangles_mesh().view())?;
     println!("Mesh saved to triangles.vtu");
 
-    mf::io::write(Path::new("examples/tetra.vtu"), tetra_mesh().view())?;
+    mf::write(Path::new("examples/tetra.vtu"), tetra_mesh().view())?;
     println!("Mesh saved to tetra.vtu");
 
-    mf::io::write(
+    mf::write(
         Path::new("examples/triangles_tetra.vtu"),
         triangle_tetra_mesh().view(),
     )?;
     println!("Mesh saved to triangles_tetra.vtu");
 
-    mf::io::write(Path::new("examples/out.yaml"), triangle_tetra_mesh().view())?;
+    mf::write(Path::new("examples/out.yaml"), triangle_tetra_mesh().view())?;
     println!("Mesh saved to out.yaml");
 
     Ok(())
