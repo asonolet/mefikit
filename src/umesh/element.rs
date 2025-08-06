@@ -411,6 +411,22 @@ pub trait ElementLike<'a> {
                     None
                 }
             }
+            HEX8 => {
+                if codim == Dimension::D1 {
+                    Some(vec![
+                        (QUAD4, vec![co[0], co[1], co[2], co[3]]),
+                        (QUAD4, vec![co[0], co[3], co[7], co[4]]),
+                        (QUAD4, vec![co[0], co[4], co[5], co[1]]),
+                        (QUAD4, vec![co[1], co[5], co[6], co[2]]),
+                        (QUAD4, vec![co[2], co[6], co[7], co[3]]),
+                        (QUAD4, vec![co[4], co[7], co[6], co[5]]),
+                    ])
+                } else if codim == Dimension::D2 {
+                    todo!()
+                } else {
+                    None
+                }
+            }
             _ => todo!(), // For other types, return empty vector
         }
     }
