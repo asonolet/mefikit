@@ -6,10 +6,8 @@ mod measure;
 mod selector;
 mod utils;
 
-// pub use crate::element_block::{ElementBlock, IntoElementBlockEntry, RegularCells, PolyCells};
-// pub use crate::element_block_like::ElementBlockLike;
 pub use self::element::{
-    Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut, ElementType,
+    Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut, ElementType, Regularity,
 };
 
 #[allow(unused_imports)]
@@ -21,7 +19,6 @@ use ndarray::prelude::*;
 use std::collections::{BTreeMap, HashMap};
 
 use self::connectivity::ConnectivityBase;
-use self::element::Regularity;
 use self::element_block::{
     ElementBlock, ElementBlockBase, ElementBlockView, IntoElementBlockEntry,
 };
