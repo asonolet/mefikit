@@ -1,4 +1,4 @@
-use crate::umesh::{ElementType, UMesh};
+use crate::{ElementType, UMesh};
 use ndarray::Array2;
 
 /// Regular umesh builder (1d, 2d or 3d).
@@ -191,8 +191,8 @@ impl RegularUMeshBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ElementType;
     use crate::umesh::Connectivity;
-    use crate::umesh::ElementType;
 
     #[test]
     fn test_regular_mesh_builder_1d() {
