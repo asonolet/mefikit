@@ -1,5 +1,5 @@
 use crate::{ElementType, UMesh};
-use ndarray::Array2;
+use ndarray::{ArcArray2, Array2};
 
 /// Regular umesh builder (1d, 2d or 3d).
 ///
@@ -171,7 +171,7 @@ impl RegularUMeshBuilder {
         let coords_dim = coords.shape()[1];
         let connectivity = self.compute_connectivity();
 
-        let mut umesh = UMesh::new(Array2::from(coords));
+        let mut umesh = UMesh::new(ArcArray2::from(coords));
         if coords_dim == 1 {
             // 1D mesh
             umesh.add_regular_block(ElementType::SEG2, connectivity);

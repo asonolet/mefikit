@@ -128,7 +128,7 @@ pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
         .expect("Failed to load piece data");
 
     let points: Vec<f64> = piece.points.into_vec().unwrap();
-    let mut mesh = UMesh::new(Array2::from_shape_vec((points.len() / 3, 3), points)?);
+    let mut mesh = UMesh::new(Array2::from_shape_vec((points.len() / 3, 3), points)?.into());
     let (connectivity, offsets) = piece.cells.cell_verts.into_xml();
     let cell_type = piece.cells.types;
 
@@ -158,7 +158,7 @@ mod tests {
     fn make_test_2d_mesh() -> UMesh {
         let coords =
             Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
-        let mut mesh = UMesh::new(coords);
+        let mut mesh = UMesh::new(coords.into());
         mesh.add_regular_block(ElementType::QUAD4, nd::arr2(&[[0, 1, 3, 2]]));
         mesh
     }

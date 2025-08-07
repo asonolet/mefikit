@@ -39,8 +39,12 @@ where
     pub(crate) element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
 }
 
-pub type UMesh =
-    UMeshBase<nd::OwnedRepr<f64>, nd::OwnedRepr<usize>, nd::OwnedRepr<f64>, nd::OwnedRepr<usize>>;
+pub type UMesh = UMeshBase<
+    nd::OwnedArcRepr<f64>,
+    nd::OwnedRepr<usize>,
+    nd::OwnedRepr<f64>,
+    nd::OwnedRepr<usize>,
+>;
 
 pub type UMeshView<'a> = UMeshBase<
     nd::ViewRepr<&'a f64>,
@@ -57,7 +61,7 @@ where
     G: nd::RawData<Elem = usize> + nd::Data,
 {
     pub fn view(&self) -> UMeshView<'_> {
-        let mut view = UMeshView::new(self.coords());
+        let mut view = UMeshView::new(self.coords.view());
         for (&et, block) in self.element_blocks.iter() {
             match &block.connectivity {
                 ConnectivityBase::Regular(arr) => view.add_regular_block(et, arr.view()),
@@ -69,7 +73,7 @@ where
         view
     }
 
-    pub(crate) fn coords(&self) -> ArrayView2<'_, f64> {
+    pub fn coords(&self) -> ArrayView2<'_, f64> {
         self.coords.view()
     }
 
@@ -98,19 +102,6 @@ where
             .filter(move |(k, _)| k.dimension() == dim)
             .flat_map(|(_, block)| block.iter(self.coords.view()))
     }
-
-    // TODO: check that it is a good idea to return an ElementBlockBase rather than an
-    // ElementBlockView
-    // pub(crate) fn element_blocks(&self) -> &BTreeMap<ElementType, ElementBlockBase<C, F, G>> {
-    //     &self.element_blocks
-    // }
-
-    // pub(crate) fn element_block(
-    //     &self,
-    //     element_type: ElementType,
-    // ) -> Option<&ElementBlockBase<C, F, G>> {
-    //     self.element_blocks.get(&element_type)
-    // }
 
     /// Extracts a sub-mesh from the current mesh based on the provided element IDs.
     ///
@@ -174,7 +165,7 @@ where
         let mut subentities_hash: HashMap<SortedVecKey, ElementId> = HashMap::new();
         let mut subentity_to_elem: HashMap<ElementId, ElementId> = HashMap::new();
         let mut elem_to_subentity: HashMap<ElementId, ElementId> = HashMap::new();
-        let mut neighbors: UMesh = UMesh::new(self.coords().to_owned());
+        let mut neighbors: UMesh = UMesh::new(self.coords.to_shared());
 
         for elem in self.elements() {
             for (et, conn) in elem.subentities(Some(codim)).unwrap() {
@@ -199,10 +190,6 @@ where
         }
 
         (neighbors, subentity_to_elem, elem_to_subentity)
-    }
-
-    pub fn normal(&self) -> BTreeMap<ElementType, Array2<f64>> {
-        todo!()
     }
 }
 
@@ -233,7 +220,7 @@ impl<'a> UMeshView<'a> {
 }
 
 impl UMesh {
-    pub fn new(coords: nd::Array2<f64>) -> Self {
+    pub fn new(coords: nd::ArcArray2<f64>) -> Self {
         Self {
             coords,
             element_blocks: BTreeMap::new(),
@@ -295,13 +282,12 @@ impl UMesh {
 mod tests {
     use super::*;
     use crate::umesh::ElementType;
-    use approx::*;
     use ndarray as nd;
 
     fn make_test_2d_mesh() -> UMesh {
         let coords =
             Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
-        let mut mesh = UMesh::new(coords);
+        let mut mesh = UMesh::new(coords.into());
         mesh.add_regular_block(ElementType::QUAD4, nd::arr2(&[[0, 1, 3, 2]]));
         mesh
     }
@@ -309,9 +295,9 @@ mod tests {
     #[test]
     fn test_umesh_creation() {
         let coords = Array2::from_shape_vec((3, 1), vec![0.0, 1.0, 2.0]).unwrap();
-        let mut mesh = UMesh::new(coords);
+        let mut mesh = UMesh::new(coords.into());
         mesh.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1], [1, 2]]));
-        assert_eq!(mesh.coords().shape(), &[3, 1]);
+        assert_eq!(mesh.coords.shape(), &[3, 1]);
         assert_eq!(mesh.element_blocks.len(), 1);
         assert!(mesh.element_blocks.contains_key(&ElementType::SEG2));
     }
