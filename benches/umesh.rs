@@ -46,7 +46,7 @@ fn take_view(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
             b.iter_batched(
                 || {
-                    RegularUMeshBuilder::new()
+                    mf::RegularUMeshBuilder::new()
                         .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
                         .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
                         .build()
@@ -64,13 +64,13 @@ fn measure2(c: &mut Criterion) {
     let mut group = c.benchmark_group("measure2");
 
     for i in [2, 10, 100] {
-        let mesh = RegularUMeshBuilder::new()
+        let mesh = mf::RegularUMeshBuilder::new()
             .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
             .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mesh.measure());
+                std::hint::black_box(mf::measure(mesh.view()));
             })
         });
     }
