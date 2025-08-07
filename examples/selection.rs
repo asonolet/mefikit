@@ -1,4 +1,5 @@
 use mefikit::RegularUMeshBuilder;
+use mefikit::Selector;
 use mefikit::UMesh;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     // Compute selecion ids
-    let sel = mesh.select_ids();
+    let sel = Selector::new(mesh.view());
     // sel.nodes(true).is_in_sphere(
     //     &[2.0, 10.0, 100.0], // Center of the sphere
     //     1.0,               // Radius of the sphere

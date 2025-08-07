@@ -1,9 +1,6 @@
 mod connectivity;
 mod element;
 mod element_block;
-mod geometry;
-mod measure;
-mod selector;
 mod utils;
 
 pub use self::element::{
@@ -22,7 +19,6 @@ use self::connectivity::ConnectivityBase;
 use self::element_block::{
     ElementBlock, ElementBlockBase, ElementBlockView, IntoElementBlockEntry,
 };
-use self::selector::Selector;
 use self::utils::SortedVecKey;
 
 /// An unstrustured mesh.
@@ -116,14 +112,6 @@ where
     //     self.element_blocks.get(&element_type)
     // }
 
-    /// Creates a new selector for this mesh.
-    ///
-    /// This allows for selecting elements (returning ElementIds) based on mutliple criteria at
-    /// once, such as element type, dimension, position and fields values.
-    pub fn select_ids(&self) -> Selector {
-        Selector::new(self.view())
-    }
-
     /// Extracts a sub-mesh from the current mesh based on the provided element IDs.
     ///
     /// This method creates a new `UMesh`, owning its data (with copy) containing only the elements
@@ -211,48 +199,6 @@ where
         }
 
         (neighbors, subentity_to_elem, elem_to_subentity)
-    }
-
-    pub fn measure(&self) -> BTreeMap<ElementType, Array1<f64>> {
-        match self.space_dimension() {
-            0 => self
-                .element_blocks
-                .iter()
-                .map(|(&k, v)| (k, nd::arr1(&vec![0.0; v.len()])))
-                .collect(),
-            1 => todo!(),
-            2 => self
-                .element_blocks
-                .iter()
-                .map(|(&k, v)| {
-                    (
-                        k,
-                        nd::arr1(
-                            &v.iter(self.coords.view())
-                                .map(|e| e.measure2())
-                                .collect::<Vec<f64>>(),
-                        ),
-                    )
-                })
-                .collect(),
-            3 => self
-                .element_blocks
-                .iter()
-                .map(|(&k, v)| {
-                    (
-                        k,
-                        nd::arr1(
-                            &v.iter(self.coords.view())
-                                .map(|e| e.measure3())
-                                .collect::<Vec<f64>>(),
-                        ),
-                    )
-                })
-                .collect(),
-            c => panic!(
-                "{c} is not a valid space dimension. Space (coordinates) dimension must be 0, 1, 2 ou 3."
-            ),
-        }
     }
 
     pub fn normal(&self) -> BTreeMap<ElementType, Array2<f64>> {
@@ -400,17 +346,6 @@ mod tests {
         assert_eq!(element.element_type, ElementType::QUAD4);
         assert_eq!(element.connectivity, nd::arr1(&[0, 1, 3, 2]));
     }
-    #[test]
-    fn test_umesh_element_selection() {
-        let mesh = make_test_2d_mesh();
-        let selected_ids = mesh
-            .select_ids()
-            .centroids()
-            .in_rectangle(&[0.0, 0.0], &[1.0, 1.0])
-            .index;
-        assert_eq!(selected_ids.len(), 1);
-        assert_eq!(selected_ids.get(&ElementType::QUAD4).unwrap(), &vec![0]);
-    }
     // #[test]
     // fn test_umesh_extract_mesh() {
     //     let mesh = make_test_2d_mesh();
@@ -431,16 +366,5 @@ mod tests {
                 .build();
             mesh.view();
         }
-    }
-
-    #[test]
-    fn test_umesh_measure() {
-        let mesh = make_test_2d_mesh();
-        let measures = mesh.measure();
-        assert_eq!(measures.len(), 1);
-        assert!(measures.contains_key(&ElementType::QUAD4));
-        let measure_values = measures.get(&ElementType::QUAD4).unwrap();
-        assert_eq!(measure_values.len(), 1);
-        assert_abs_diff_eq!(measure_values[0], 1.0); // Area of the quad is 1.0
     }
 }

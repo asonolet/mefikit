@@ -1,12 +1,12 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 
-use mefikit::RegularUMeshBuilder;
+use mefikit as mf;
 
 fn submesh(c: &mut Criterion) {
     let mut group = c.benchmark_group("submesh");
 
     for i in [2, 10, 100] {
-        let mesh = RegularUMeshBuilder::new()
+        let mesh = mf::RegularUMeshBuilder::new()
             .add_axis((0..i).map(|i| i as f64).collect::<Vec<f64>>())
             .add_axis((0..i).map(|i| i as f64).collect::<Vec<f64>>())
             .build();
@@ -22,7 +22,7 @@ fn selection_sphere(c: &mut Criterion) {
     let mut group = c.benchmark_group("selection");
 
     for i in [2, 10, 40] {
-        let mesh = RegularUMeshBuilder::new()
+        let mesh = mf::RegularUMeshBuilder::new()
             .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
             .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
             .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
@@ -30,7 +30,7 @@ fn selection_sphere(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
             b.iter(|| {
                 std::hint::black_box(
-                    mesh.select_ids()
+                    mf::Selector::new(mesh.view())
                         .centroids()
                         .in_sphere(&[0.5, 0.5, 0.5], 0.25),
                 );

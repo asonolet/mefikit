@@ -4,8 +4,6 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::measure as mes;
-
 // #[derive(Copy, Clone)]
 // pub enum EdgeType {
 //     SEG2,
@@ -473,64 +471,6 @@ pub trait ElementLike<'a> {
     fn centroid(&self) -> Array1<f64> {
         self.coords().mean_axis(Axis(0)).unwrap()
     }
-
-    fn measure2(&self) -> f64 {
-        // Returns the measure of the element
-        // For 0D elements, return 0.0
-        // For 1D elements, return the length
-        // For 2D elements, return the area
-        use ElementType::*;
-        match self.element_type() {
-            VERTEX => 0.0,
-            SEG2 => mes::dist(self.coords().row(0), self.coords().row(1)),
-            TRI3 => mes::surf_tri2(
-                self.coords().row(0).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(1).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(2).as_slice().unwrap().try_into().unwrap(),
-            ),
-            QUAD4 => mes::surf_quad2(
-                self.coords().row(0).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(1).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(2).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(3).as_slice().unwrap().try_into().unwrap(),
-            ),
-            _ => todo!(),
-        }
-    }
-
-    fn measure3(&self) -> f64 {
-        // Returns the measure of the element
-        // For 0D elements, return 0.0
-        // For 1D elements, return the length
-        // For 2D elements, return the area
-        use ElementType::*;
-        match self.element_type() {
-            VERTEX => 0.0,
-            SEG2 => todo!(),
-            TRI3 => mes::surf_tri3(
-                self.coords().row(0).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(1).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(2).as_slice().unwrap().try_into().unwrap(),
-            ),
-            QUAD4 => mes::surf_quad3(
-                self.coords().row(0).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(1).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(2).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(3).as_slice().unwrap().try_into().unwrap(),
-            ),
-            _ => todo!(),
-        }
-    }
-
-    fn is_point_inside(&self, point: &[f64]) -> bool {
-        // Returns true if the point is inside the element
-        // For 0D elements, return true if the point is equal to the element's coordinates
-        // For 1D elements, return true if the point is between the two nodes
-        // For 2D elements, return true if the point is inside the polygon
-        // For 3D elements, return true if the point is inside the polyhedron
-        todo!()
-    }
-
     /// Groups queries
 
     fn groups(&self) -> &Vec<String>;
@@ -715,7 +655,7 @@ mod tests {
         assert_eq!(element.num_nodes(), 3);
         assert_eq!(element.regularity(), Regularity::Regular);
         assert_eq!(element.id(), ElementId::new(ElementType::TRI3, 0));
-        assert_abs_diff_eq!(element.measure2(), 0.5);
+        // assert_abs_diff_eq!(element.measure2(), 0.5);
         assert!(element.groups().is_empty());
         assert!(!element.in_group("nonexistent_group"));
     }
@@ -751,7 +691,7 @@ mod tests {
         assert_eq!(element.num_nodes(), 3);
         assert_eq!(element.regularity(), Regularity::Regular);
         assert_eq!(element.id(), ElementId::new(ElementType::TRI3, 0));
-        assert_abs_diff_eq!(element.measure3(), 0.5);
+        // assert_abs_diff_eq!(element.measure3(), 0.5);
         assert!(element.groups().is_empty());
         assert!(!element.in_group("nonexistent_group"));
     }
@@ -782,7 +722,7 @@ mod tests {
         assert_eq!(element.num_nodes(), 4);
         assert_eq!(element.regularity(), Regularity::Regular);
         assert_eq!(element.id(), ElementId::new(ElementType::QUAD4, 0));
-        assert_abs_diff_eq!(element.measure2(), 1.0);
+        // assert_abs_diff_eq!(element.measure2(), 1.0);
         assert!(element.groups().is_empty());
         assert!(!element.in_group("nonexistent_group"));
     }

@@ -1,9 +1,8 @@
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use super::UMeshView;
-use super::element::{ElementIds, ElementLike, ElementType};
-use super::geometry as geo;
+use super::geometry::is_in as geo;
+use super::umesh::{ElementIds, ElementLike, ElementType, UMeshView};
 
 /// Here umesh should be replace with UMeshView, so that it can interact with non owned umesh
 /// struct.
@@ -331,5 +330,32 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
     }
     pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
         self.to_nodes(all)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ElementType, UMesh};
+    use ndarray as nd;
+    use ndarray::prelude::*;
+
+    fn make_test_2d_mesh() -> UMesh {
+        let coords =
+            Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_regular_block(ElementType::QUAD4, nd::arr2(&[[0, 1, 3, 2]]));
+        mesh
+    }
+
+    #[test]
+    fn test_umesh_element_selection() {
+        let mesh = make_test_2d_mesh();
+        let selected_ids = Selector::new(mesh.view())
+            .centroids()
+            .in_rectangle(&[0.0, 0.0], &[1.0, 1.0])
+            .index;
+        assert_eq!(selected_ids.len(), 1);
+        assert_eq!(selected_ids.get(&ElementType::QUAD4).unwrap(), &vec![0]);
     }
 }
