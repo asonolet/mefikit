@@ -76,5 +76,5 @@ fn measure2(c: &mut Criterion) {
     }
 }
 
-criterion_group!(bench, submesh, selection_sphere, measure2, take_view);
+criterion_group!(bench, submesh, selection_sphere, measure2);
 criterion_main!(bench);
