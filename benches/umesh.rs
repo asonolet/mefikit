@@ -5,12 +5,12 @@ use mefikit as mf;
 fn submesh(c: &mut Criterion) {
     let mut group = c.benchmark_group("submesh");
 
-    for i in [2, 10, 100] {
+    for i in [4, 60, 100] {
         let mesh = mf::RegularUMeshBuilder::new()
-            .add_axis((0..i).map(|i| i as f64).collect::<Vec<f64>>())
-            .add_axis((0..i).map(|i| i as f64).collect::<Vec<f64>>())
+            .add_axis((0..(i + 1)).map(|i| i as f64).collect::<Vec<f64>>())
+            .add_axis((0..(i + 1)).map(|i| i as f64).collect::<Vec<f64>>())
             .build();
-        group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
+        group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter(|| {
                 std::hint::black_box(mesh.compute_submesh(None, None));
             })
@@ -21,13 +21,13 @@ fn submesh(c: &mut Criterion) {
 fn selection_sphere(c: &mut Criterion) {
     let mut group = c.benchmark_group("selection");
 
-    for i in [2, 10, 40] {
+    for i in [2, 20, 40] {
         let mesh = mf::RegularUMeshBuilder::new()
-            .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
-            .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
-            .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
+            .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
+            .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
+            .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
             .build();
-        group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
+        group.bench_with_input(BenchmarkId::new("mesh_size", i * i * i), &i, |b, _| {
             b.iter(|| {
                 std::hint::black_box(
                     mf::Selector::new(mesh.view())
@@ -42,13 +42,13 @@ fn selection_sphere(c: &mut Criterion) {
 fn take_view(c: &mut Criterion) {
     let mut group = c.benchmark_group("take_view");
 
-    for i in [4, 8, 16] {
-        group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
+    for i in [4, 12, 20] {
+        group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter_batched(
                 || {
                     mf::RegularUMeshBuilder::new()
-                        .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
-                        .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
+                        .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
+                        .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
                         .build()
                 },
                 |data| {
@@ -63,12 +63,12 @@ fn take_view(c: &mut Criterion) {
 fn measure2(c: &mut Criterion) {
     let mut group = c.benchmark_group("measure2");
 
-    for i in [2, 10, 100] {
+    for i in [4, 60, 100] {
         let mesh = mf::RegularUMeshBuilder::new()
-            .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
-            .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
+            .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
+            .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
             .build();
-        group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
+        group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter(|| {
                 std::hint::black_box(mf::measure(mesh.view()));
             })
