@@ -162,9 +162,10 @@ where
             Some(c) => c,
             None => Dimension::D1,
         };
-        let mut subentities_hash: HashMap<SortedVecKey, (ElementId, ElementId)> = HashMap::new(); // FaceId,
-        // ElemId
-        let mut elem_to_elem: UnGraphMap<ElementId, ElementId> = UnGraphMap::new(); // Node is
+        let mut subentities_hash: HashMap<SortedVecKey, (ElementId, ElementId)> =
+            HashMap::with_capacity(self.coords.shape()[0]); // FaceId, ElemId
+        let mut elem_to_elem: UnGraphMap<ElementId, ElementId> =
+            UnGraphMap::with_capacity(self.num_elements(), self.coords.shape()[0]); // Node is
         // ElemId, edge
         // is FaceId
         let mut neighbors: UMesh = UMesh::new(self.coords.to_shared());
