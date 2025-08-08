@@ -12,7 +12,7 @@ fn submesh(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mesh.compute_submesh(None));
+                std::hint::black_box(mesh.compute_submesh(None, None));
             })
         });
     }

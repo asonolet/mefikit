@@ -153,6 +153,7 @@ where
     /// same nodes, regardless of their order.
     pub fn compute_submesh(
         &self,
+        dim: Option<Dimension>,
         codim: Option<Dimension>,
     ) -> (
         UMesh,
@@ -162,6 +163,10 @@ where
             Some(c) => c,
             None => Dimension::D1,
         };
+        let dim = match dim {
+            Some(c) => c,
+            None => self.element_blocks.keys().max().unwrap().dimension(),
+        };
         let mut subentities_hash: HashMap<SortedVecKey, (ElementId, ElementId)> =
             HashMap::with_capacity(self.coords.shape()[0]); // FaceId, ElemId
         let mut elem_to_elem: UnGraphMap<ElementId, ElementId> =
@@ -170,7 +175,7 @@ where
         // is FaceId
         let mut neighbors: UMesh = UMesh::new(self.coords.to_shared());
 
-        for elem in self.elements() {
+        for elem in self.elements_of_dim(dim) {
             for (et, conn) in elem.subentities(Some(codim)).unwrap() {
                 let subentity_id = match neighbors.element_blocks.get(&et) {
                     Some(block) => block.len(),
