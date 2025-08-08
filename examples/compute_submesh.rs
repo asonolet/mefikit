@@ -9,7 +9,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_axis(vec![0.0, 5.0])
         .add_axis(vec![0.0, 10.0])
         .build();
-    let (submesh, _, _) = mesh.compute_submesh(None);
+    let (submesh, _) = mesh.compute_submesh(None);
 
     mf::write(&Path::new("examples/submesh.vtk"), submesh.view())
 }

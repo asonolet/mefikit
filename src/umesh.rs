@@ -13,6 +13,7 @@ pub(crate) use self::connectivity::Connectivity;
 use derive_where::derive_where;
 use ndarray as nd;
 use ndarray::prelude::*;
+use petgraph::prelude::UnGraphMap;
 use std::collections::{BTreeMap, HashMap};
 
 use self::connectivity::ConnectivityBase;
@@ -155,16 +156,17 @@ where
         codim: Option<Dimension>,
     ) -> (
         UMesh,
-        HashMap<ElementId, ElementId>,
-        HashMap<ElementId, ElementId>,
+        UnGraphMap<ElementId, ElementId>, // element to element with subelem as edges
     ) {
         let codim = match codim {
             Some(c) => c,
             None => Dimension::D1,
         };
-        let mut subentities_hash: HashMap<SortedVecKey, ElementId> = HashMap::new();
-        let mut subentity_to_elem: HashMap<ElementId, ElementId> = HashMap::new();
-        let mut elem_to_subentity: HashMap<ElementId, ElementId> = HashMap::new();
+        let mut subentities_hash: HashMap<SortedVecKey, (ElementId, ElementId)> = HashMap::new(); // FaceId,
+        // ElemId
+        let mut elem_to_elem: UnGraphMap<ElementId, ElementId> = UnGraphMap::new(); // Node is
+        // ElemId, edge
+        // is FaceId
         let mut neighbors: UMesh = UMesh::new(self.coords.to_shared());
 
         for elem in self.elements() {
@@ -174,22 +176,19 @@ where
                     None => 0,
                 };
                 let key = SortedVecKey::new(conn.clone());
-                if let Some(val) = subentities_hash.get(&key) {
+                if let Some((fid, eid)) = subentities_hash.get(&key) {
                     // The subentity already exists
-                    subentity_to_elem.insert(*val, elem.id());
-                    elem_to_subentity.insert(elem.id(), *val);
+                    elem_to_elem.add_edge(*eid, elem.id(), *fid);
                 } else {
                     // The subentity is new
                     let new_id = ElementId::new(et, subentity_id);
-                    subentities_hash.insert(key, new_id);
-                    subentity_to_elem.insert(new_id, elem.id());
-                    elem_to_subentity.insert(elem.id(), new_id);
+                    subentities_hash.insert(key, (new_id, elem.id()));
                     neighbors.add_element(et, conn.as_slice(), None, None);
                 }
             }
         }
 
-        (neighbors, subentity_to_elem, elem_to_subentity)
+        (neighbors, elem_to_elem)
     }
 }
 

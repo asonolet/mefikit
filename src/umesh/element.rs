@@ -2,6 +2,7 @@ use ndarray::prelude::*;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use smallvec::{SmallVec, smallvec};
 use std::collections::{BTreeMap, BTreeSet};
 
 // #[derive(Copy, Clone)]
@@ -341,7 +342,10 @@ pub trait ElementLike<'a> {
     }
 
     /// This function returns the subentities of the element based on the codimension.
-    fn subentities(&self, codim: Option<Dimension>) -> Option<Vec<(ElementType, Vec<usize>)>> {
+    fn subentities(
+        &self,
+        codim: Option<Dimension>,
+    ) -> Option<Vec<(ElementType, SmallVec<[usize; 4]>)>> {
         use ElementType::*;
         let codim = match codim {
             None => Dimension::D1,
@@ -352,7 +356,7 @@ pub trait ElementLike<'a> {
             SEG2 | SEG3 | SEG4 => {
                 // 1D elements have edges as subentities
                 if codim == Dimension::D1 {
-                    Some(vec![(VERTEX, vec![co[0]]), (VERTEX, vec![co[1]])])
+                    Some(vec![(VERTEX, smallvec![co[0]]), (VERTEX, smallvec![co[1]])])
                 } else {
                     None
                 }
@@ -361,9 +365,9 @@ pub trait ElementLike<'a> {
                 // 2D elements have edges as subentities
                 if codim == Dimension::D1 {
                     Some(vec![
-                        (SEG2, vec![co[0], co[1]]),
-                        (SEG2, vec![co[1], co[2]]),
-                        (SEG2, vec![co[2], co[0]]),
+                        (SEG2, smallvec![co[0], co[1]]),
+                        (SEG2, smallvec![co[1], co[2]]),
+                        (SEG2, smallvec![co[2], co[0]]),
                     ])
                 } else {
                     None
@@ -373,9 +377,9 @@ pub trait ElementLike<'a> {
                 // 2D Quad elements have edges3 as subentities
                 if codim == Dimension::D1 {
                     Some(vec![
-                        (SEG3, vec![co[0], co[1], co[3]]),
-                        (SEG3, vec![co[1], co[2], co[4]]),
-                        (SEG3, vec![co[2], co[0], co[5]]),
+                        (SEG3, smallvec![co[0], co[1], co[3]]),
+                        (SEG3, smallvec![co[1], co[2], co[4]]),
+                        (SEG3, smallvec![co[2], co[0], co[5]]),
                     ])
                 } else {
                     None
@@ -385,10 +389,10 @@ pub trait ElementLike<'a> {
                 // 2D elements have edges as subentities
                 if codim == Dimension::D1 {
                     Some(vec![
-                        (SEG2, vec![co[0], co[1]]),
-                        (SEG2, vec![co[1], co[2]]),
-                        (SEG2, vec![co[2], co[3]]),
-                        (SEG2, vec![co[3], co[0]]),
+                        (SEG2, smallvec![co[0], co[1]]),
+                        (SEG2, smallvec![co[1], co[2]]),
+                        (SEG2, smallvec![co[2], co[3]]),
+                        (SEG2, smallvec![co[3], co[0]]),
                     ])
                 } else {
                     None
@@ -398,10 +402,10 @@ pub trait ElementLike<'a> {
                 // 3D elements have faces as subentities
                 if codim == Dimension::D1 {
                     Some(vec![
-                        (TRI3, vec![co[0], co[1], co[2]]),
-                        (TRI3, vec![co[1], co[2], co[3]]),
-                        (TRI3, vec![co[2], co[3], co[0]]),
-                        (TRI3, vec![co[3], co[0], co[1]]),
+                        (TRI3, smallvec![co[0], co[1], co[2]]),
+                        (TRI3, smallvec![co[1], co[2], co[3]]),
+                        (TRI3, smallvec![co[2], co[3], co[0]]),
+                        (TRI3, smallvec![co[3], co[0], co[1]]),
                     ])
                 } else if codim == Dimension::D2 {
                     todo!()
@@ -412,12 +416,12 @@ pub trait ElementLike<'a> {
             HEX8 => {
                 if codim == Dimension::D1 {
                     Some(vec![
-                        (QUAD4, vec![co[0], co[1], co[2], co[3]]),
-                        (QUAD4, vec![co[0], co[3], co[7], co[4]]),
-                        (QUAD4, vec![co[0], co[4], co[5], co[1]]),
-                        (QUAD4, vec![co[1], co[5], co[6], co[2]]),
-                        (QUAD4, vec![co[2], co[6], co[7], co[3]]),
-                        (QUAD4, vec![co[4], co[7], co[6], co[5]]),
+                        (QUAD4, smallvec![co[0], co[1], co[2], co[3]]),
+                        (QUAD4, smallvec![co[0], co[3], co[7], co[4]]),
+                        (QUAD4, smallvec![co[0], co[4], co[5], co[1]]),
+                        (QUAD4, smallvec![co[1], co[5], co[6], co[2]]),
+                        (QUAD4, smallvec![co[2], co[6], co[7], co[3]]),
+                        (QUAD4, smallvec![co[4], co[7], co[6], co[5]]),
                     ])
                 } else if codim == Dimension::D2 {
                     todo!()
