@@ -45,10 +45,7 @@ where
         self.connectivity.len()
     }
 
-    pub fn element_connectivity(&self, index: usize) -> ArrayView1<'_, usize>
-    where
-        C: nd::Data,
-    {
+    pub fn element_connectivity(&self, index: usize) -> ArrayView1<'_, usize> {
         self.connectivity.get(index)
     }
 
@@ -59,12 +56,7 @@ where
         self.connectivity.get_mut(index)
     }
 
-    pub fn get<'a>(&'a self, index: usize, coords: ArrayView2<'a, f64>) -> Element<'a>
-    where
-        C: nd::Data,
-        G: nd::Data,
-        F: nd::Data,
-    {
+    pub fn get<'a>(&'a self, index: usize, coords: ArrayView2<'a, f64>) -> Element<'a> {
         let connectivity = self.element_connectivity(index);
         let fields = self
             .fields
@@ -82,12 +74,10 @@ where
         )
     }
 
-    pub fn iter<'a>(&'a self, coords: ArrayView2<'a, f64>) -> impl Iterator<Item = Element<'a>> + 'a
-    where
-        C: nd::Data,
-        G: nd::Data,
-        F: nd::Data,
-    {
+    pub fn iter<'a>(
+        &'a self,
+        coords: ArrayView2<'a, f64>,
+    ) -> impl Iterator<Item = Element<'a>> + 'a {
         (0..self.len()).map(move |i| {
             let connectivity = self.element_connectivity(i);
             let fields = self
@@ -109,12 +99,12 @@ where
 
     pub fn par_iter<'a>(
         &'a self,
-        coords: &'a Array2<f64>,
+        coords: ArrayView2<'a, f64>,
     ) -> impl ParallelIterator<Item = Element<'a>> + 'a
     where
-        C: nd::Data + Sync,
-        G: nd::Data + Sync,
-        F: nd::Data + Sync,
+        C: Sync,
+        G: Sync,
+        F: Sync,
     {
         (0..self.len()).into_par_iter().map(move |i| {
             let connectivity = self.element_connectivity(i);
@@ -126,7 +116,7 @@ where
 
             Element::new(
                 i,
-                coords.view(),
+                coords,
                 fields,
                 &self.families[i],
                 &self.groups,

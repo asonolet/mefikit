@@ -41,7 +41,7 @@ fn selection_sphere(c: &mut Criterion) {
 
 // fn take_view(c: &mut Criterion) {
 //     let mut group = c.benchmark_group("take_view");
-// 
+//
 //     for i in [4, 12, 20] {
 //         group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
 //             b.iter_batched(
