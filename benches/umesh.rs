@@ -39,26 +39,26 @@ fn selection_sphere(c: &mut Criterion) {
     }
 }
 
-fn take_view(c: &mut Criterion) {
-    let mut group = c.benchmark_group("take_view");
-
-    for i in [4, 12, 20] {
-        group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
-            b.iter_batched(
-                || {
-                    mf::RegularUMeshBuilder::new()
-                        .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
-                        .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
-                        .build()
-                },
-                |data| {
-                    std::hint::black_box(data.view());
-                },
-                BatchSize::LargeInput,
-            )
-        });
-    }
-}
+// fn take_view(c: &mut Criterion) {
+//     let mut group = c.benchmark_group("take_view");
+// 
+//     for i in [4, 12, 20] {
+//         group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
+//             b.iter_batched(
+//                 || {
+//                     mf::RegularUMeshBuilder::new()
+//                         .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
+//                         .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
+//                         .build()
+//                 },
+//                 |data| {
+//                     std::hint::black_box(data.view());
+//                 },
+//                 BatchSize::LargeInput,
+//             )
+//         });
+//     }
+// }
 
 fn measure2(c: &mut Criterion) {
     let mut group = c.benchmark_group("measure2");
