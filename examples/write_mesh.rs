@@ -25,19 +25,22 @@ fn regular_line() -> mf::UMesh {
 }
 
 fn triangles_mesh() -> mf::UMesh {
-    let mut mesh = mf::UMesh::new(arr2(&[[0., 0.], [1., 0.], [1., 1.], [0., 1.]]));
+    let mut mesh = mf::UMesh::new(arr2(&[[0., 0.], [1., 0.], [1., 1.], [0., 1.]]).to_shared());
     mesh.add_regular_block(mf::ElementType::TRI3, nd::arr2(&[[0, 1, 3], [1, 2, 3]]));
     mesh
 }
 
 fn tetra_mesh() -> mf::UMesh {
-    let mut mesh = mf::UMesh::new(arr2(&[
-        [0., 0., 0.],
-        [1., 0., 0.],
-        [1., 1., 0.],
-        [0., 1., 0.],
-        [0., 0., 1.],
-    ]));
+    let mut mesh = mf::UMesh::new(
+        arr2(&[
+            [0., 0., 0.],
+            [1., 0., 0.],
+            [1., 1., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ])
+        .to_shared(),
+    );
     mesh.add_regular_block(
         mf::ElementType::TET4,
         nd::arr2(&[[0, 1, 3, 4], [1, 2, 3, 4]]),
@@ -46,13 +49,16 @@ fn tetra_mesh() -> mf::UMesh {
 }
 
 fn triangle_tetra_mesh() -> mf::UMesh {
-    let mut mesh = mf::UMesh::new(arr2(&[
-        [0., 0., 0.],
-        [1., 0., 0.],
-        [1., 1., 0.],
-        [0., 1., 0.],
-        [0., 0., 1.],
-    ]));
+    let mut mesh = mf::UMesh::new(
+        arr2(&[
+            [0., 0., 0.],
+            [1., 0., 0.],
+            [1., 1., 0.],
+            [0., 1., 0.],
+            [0., 0., 1.],
+        ])
+        .to_shared(),
+    );
     mesh.add_regular_block(mf::ElementType::TRI3, nd::arr2(&[[0, 1, 3], [1, 2, 3]]));
     mesh.add_regular_block(
         mf::ElementType::TET4,
