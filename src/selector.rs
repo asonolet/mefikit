@@ -338,11 +338,11 @@ mod tests {
     use super::*;
     use crate::{ElementType, UMesh};
     use ndarray as nd;
-    use ndarray::prelude::*;
 
     fn make_test_2d_mesh() -> UMesh {
         let coords =
-            Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
+            nd::ArcArray2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])
+                .unwrap();
         let mut mesh = UMesh::new(coords);
         mesh.add_regular_block(ElementType::QUAD4, nd::arr2(&[[0, 1, 3, 2]]));
         mesh
