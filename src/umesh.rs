@@ -167,7 +167,7 @@ where
             Some(c) => c,
             None => self.element_blocks.keys().max().unwrap().dimension(),
         };
-        let mut subentities_hash: HashMap<SortedVecKey, (ElementId, ElementId)> =
+        let mut subentities_hash: HashMap<SortedVecKey, [ElementId; 2]> =
             HashMap::with_capacity(self.coords.shape()[0]); // FaceId, ElemId
         let mut elem_to_elem: UnGraphMap<ElementId, ElementId> =
             UnGraphMap::with_capacity(self.num_elements(), self.coords.shape()[0]); // Node is
@@ -182,13 +182,13 @@ where
                     None => 0,
                 };
                 let key = SortedVecKey::new(conn.clone());
-                if let Some((fid, eid)) = subentities_hash.get(&key) {
+                if let Some([fid, eid]) = subentities_hash.get(&key) {
                     // The subentity already exists
                     elem_to_elem.add_edge(*eid, elem.id(), *fid);
                 } else {
                     // The subentity is new
                     let new_id = ElementId::new(et, subentity_id);
-                    subentities_hash.insert(key, (new_id, elem.id()));
+                    subentities_hash.insert(key, [new_id, elem.id()]);
                     neighbors.add_element(et, conn.as_slice(), None, None);
                 }
             }
