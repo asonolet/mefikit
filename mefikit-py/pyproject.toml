@@ -1,0 +1,13 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "mefikit"
+version = "0.1.0"
+description = "Python bindings for the mefikit Rust library"
+requires-python = ">=3.9"
+authors = [
+  { name = "Aymeric SONOLET", email = "aymeric.sonolet@cea.fr" }
+]
+dependencies = ["numpy"]
