@@ -6,6 +6,7 @@ edition = "2021"
 [lib]
 name = "mefikit"
 crate-type = ["cdylib"]
+bench = false
 
 [dependencies]
 mefikit = { path = "../mefikit" }
