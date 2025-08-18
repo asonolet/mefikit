@@ -2,6 +2,6 @@
 resolver = "3"
 members = [
     "mefikit",
-    # "mefikit-py",
+    "mefikit-py",
     # "mefikit-ffi",
 ]
