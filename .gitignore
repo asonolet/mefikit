@@ -5,3 +5,4 @@ examples/*.json
 examples/*.yaml
 examples/*.vtk
 examples/*.vtu
+mefikit-py/.venv
