@@ -166,6 +166,8 @@ where
     /// mesh and edges mesh gives vertices.  If the codim asked for is too high, the function will
     /// panick.  For performance reason, two subentities are considered the same if they have the
     /// same nodes, regardless of their order.
+    /// The output graph is a element to element graph (from input mesh), using subentities as edges (weight in
+    /// petgraph lang)
     pub fn compute_submesh(
         &self,
         dim: Option<Dimension>,
@@ -174,6 +176,11 @@ where
         UMesh,
         UnGraphMap<ElementId, ElementId>, // element to element with subelem as edges
     ) {
+        // TODO: make it a seperate function ?
+        // TODO: cache the result and reinitialises it if the mesh is modified
+        // TODO: I could used the "cached" crate, whith the "cached" proc_macro, SizedCache and
+        // specific "convert" key using coords and connectivity arrays
+        // For now let not pay for caching overhead and be carefull not to recompute it too much
         let codim = match codim {
             Some(c) => c,
             None => Dimension::D1,
