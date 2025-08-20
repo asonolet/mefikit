@@ -1,5 +1,5 @@
 pub mod is_in;
-mod measure;
+pub mod measure;
 
 use self::measure as mes;
 use crate::{ElementLike, ElementType, UMeshView};
@@ -68,7 +68,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
 
 impl<'a, T> ElementGeo<'a> for T where T: ElementLike<'a> {}
 
-pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
+pub fn measure_mesh(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
     match mesh.space_dimension() {
         0 => mesh
             .element_blocks
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn test_umesh_measure() {
         let mesh = make_test_2d_mesh();
-        let measures = measure(mesh.view());
+        let measures = measure_mesh(mesh.view());
         assert_eq!(measures.len(), 1);
         assert!(measures.contains_key(&ElementType::QUAD4));
         let measure_values = measures.get(&ElementType::QUAD4).unwrap();
