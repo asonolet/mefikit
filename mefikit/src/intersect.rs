@@ -1,66 +1,37 @@
 use super::umesh::Dimension::*;
-use super::umesh::{Element, ElementId, ElementLike, ElementType};
+use super::umesh::{Element, ElementId, ElementLike};
 use super::umesh::{UMesh, UMeshView};
 
-struct BBox(f64, f64, f64, f64);
+use std::collections::HashMap;
 
-impl BBox {
-    fn from_seg2(seg: &Element) -> Self {
-        let p1 = [
-            *seg.coords().get((0, 0)).unwrap(),
-            *seg.coords().get((0, 1)).unwrap(),
-        ];
-        let p2 = [
-            *seg.coords().get((1, 0)).unwrap(),
-            *seg.coords().get((1, 1)).unwrap(),
-        ];
-        Self(
-            f64::min(p1[0], p2[0]),
-            f64::min(p1[1], p2[1]),
-            f64::max(p1[0], p2[0]),
-            f64::max(p1[1], p2[1]),
+use ndarray::prelude::*;
+use rstar::AABB;
+use rstar::primitives::{GeomWithData, Line};
+
+struct Segment(GeomWithData<Line<[f64; 2]>, (ElementId, UndirectedEdge)>);
+
+impl Segment {
+    pub fn new(p1: [f64; 2], p2: [f64; 2], eid: ElementId, n1: usize, n2: usize) -> Self {
+        Self(GeomWithData::new(
+            Line { from: p1, to: p2 },
+            (eid, UndirectedEdge::new(n1, n2)),
+        ))
+    }
+    fn from(el: &Element) -> Self {
+        let p1: &[f64] = el.coords().index_axis(Axis(0), 0).to_slice().unwrap();
+        let p2: &[f64] = el.coords().index_axis(Axis(0), 1).to_slice().unwrap();
+        Self::new(
+            [p1[0], p1[1]],
+            [p2[0], p2[1]],
+            el.id(),
+            el.connectivity[0],
+            el.connectivity[1],
         )
     }
+}
 
-    pub fn from_elem(e: &Element) -> Self {
-        use ElementType::*;
-        match e.element_type() {
-            SEG2 => Self::from_seg2(e),
-            _ => todo!(),
-        }
-    }
-
-    pub fn x_min(&self) -> f64 {
-        return self.0;
-    }
-
-    pub fn x_max(&self) -> f64 {
-        return self.2;
-    }
-
-    pub fn y_min(&self) -> f64 {
-        return self.1;
-    }
-
-    pub fn y_max(&self) -> f64 {
-        return self.3;
-    }
-
-    pub fn intersects(&self, other: &Self) -> bool {
-        if self.x_min() > other.x_max() {
-            return false;
-        }
-        if self.x_max() < other.x_min() {
-            return false;
-        }
-        if self.y_min() > other.y_max() {
-            return false;
-        }
-        if self.y_max() < other.y_min() {
-            return false;
-        }
-        true
-    }
+fn to_aabb(el: &Element) -> AABB<[f64; 2]> {
+    todo!()
 }
 
 fn intersect_seg_seg(seg1: &Element, seg2: &Element) -> Option<[f64; 2]> {
@@ -106,41 +77,18 @@ fn colinear_seg_seg(seg1: &Element, seg2: &Element) -> Option<([f64; 2], [f64; 2
 enum Intersection {
     /// The point variant corresponds to the case when two segments intersects in one point. This
     /// point can be an edge point.
-    Point(ElementId, ElementId, [f64; 2]),
+    Point(ElementId, usize),
+
     /// This variant corresponds to the case when two segments share a common part with non null
     /// length because they are colinear. The two points returned corresponds to this common
     /// segment. Those points can correspond to edge points of one or both segments.
-    Segment(ElementId, ElementId, [f64; 2], [f64; 2]),
+    Segment(ElementId, usize, usize),
 }
 
-fn intersect_seg_mesh1d(seg: Element, m1d: UMeshView) -> Vec<Intersection> {
-    let bbox1 = BBox::from_elem(&seg);
-    let mut res = Vec::new();
-    // TODO: optimize using BVH
-    for e in m1d.elements() {
-        let bbox2 = BBox::from_elem(&e);
-        if !bbox1.intersects(&bbox2) {
-            continue;
-        }
-        // TODO: check if colinear
-        let colinearity = colinear_seg_seg(&seg, &e);
-        if let Some(col) = colinearity {
-            res.push(Intersection::Segment(seg.id(), e.id(), col.0, col.1));
-            continue;
-        }
-        // else compute intersection
-        let intersection = intersect_seg_seg(&seg, &e);
-        if let Some(int) = intersection {
-            res.push(Intersection::Point(seg.id(), e.id(), int));
-        }
-    }
-    res
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 struct DirectedEdge(usize, usize);
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 struct UndirectedEdge(usize, usize);
 
 impl UndirectedEdge {
@@ -163,22 +111,43 @@ impl From<DirectedEdge> for UndirectedEdge {
 
 /// Cette méthode permet de découper un maillage 2d potentiellement non conforme avec un maillage
 /// de segments propres (sans noeuds non fusionnés).
-pub fn intersect_2dmesh_1dtool_mesh(mesh: UMeshView, tool_mesh: UMeshView) -> UMesh {
+pub fn intersect_2dmesh_1dtool_mesh(mesh: UMeshView, tool_mesh: UMesh) -> UMesh {
+    // tool_mesh.merge_nodes();
+    // tool_mesh.prepend_coords(mesh.coordinates().clone());
+
+    // build R*-tree with 1d tool mesh
+    let segs: Vec<_> = tool_mesh
+        .elements()
+        .map(|seg| Segment::from(&seg).0)
+        .collect();
+    let tree = rstar::RTree::bulk_load(segs);
     // find intersections and create two maps: polygon map with new intersection points and segments map
-    let (m1d, _mesh_grph) = mesh.compute_submesh(Some(D2), None);
     // There is a little preparation on tool_mesh that should be done:
     // - nodes should be merged.
     // - coords from mesh should be prepended
-    let mut intersections = Vec::new();
-    for seg in tool_mesh.elements() {
-        // Find intersections with m1d (can be optimized using BVH)
-        intersections.append(&mut intersect_seg_mesh1d(seg, m1d.view()));
-    }
     // Maintenant je travaille uniquement en terme de connectivité, j'utilise la table de
     // coordonnées suivante pour les identifiants de noeuds:
     // Table de mesh + table de tool_mesh après merge + nouveaux noeuds différents
     // Je créé la liste des segments de tool mesh découpés (avec les noeuds d'intersection)
+    let mut e2int: HashMap<UndirectedEdge, Vec<Intersection>> = HashMap::new();
     for el in mesh.elements() {
+        let segs_in_elem: Vec<_> = tree
+            .locate_in_envelope_intersecting(&to_aabb(&el))
+            .collect();
+        for (_, edge) in el.subentities(None).unwrap() {
+            // TODO: edge could be SEG3!
+            let edge = DirectedEdge(edge[0], edge[1]);
+            let uedge = UndirectedEdge::from(edge.clone());
+            let intersections: &_ = e2int.entry(uedge).or_insert_with(|| {
+                for seg in &segs_in_elem {
+                    // Calcul des intersections avec edge
+                    // Une intersection est soit un Point, soit un Segment
+                }
+                vec![]
+            });
+            // Je cherches les intersections de uedge déjà calculées dans le dict
+            // Si ce n'est pas déjà calculé je calcule
+        }
         // Je trouve tous les polygones créés à partir des intersections
         // Je traite le cas des points à fusionner par élément. Cela permet de traiter des mesh qui
         // ont des noeuds non mergés.
