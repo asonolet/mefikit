@@ -78,6 +78,47 @@ where
         self.coords.view()
     }
 
+    /// Low-level method to get view on the underlying connectivity array.
+    ///
+    /// Please consider using the elements() iterator which give the connectivity element by
+    /// element with zero costs.
+    pub fn regular_connectivity(&self, et: ElementType) -> Result<ArrayView2<'_, usize>, String> {
+        match &self
+            .element_blocks
+            .get(&et)
+            .ok_or_else(|| "Element is not in the mesh.".to_owned())?
+            .connectivity
+        {
+            ConnectivityBase::Regular(tab) => Ok(tab.view()),
+            _ => Err(
+                "This element type has poly connectivity, please use poly_connectivity(et) method."
+                    .to_owned(),
+            ),
+        }
+    }
+
+    /// Low-level method to get view on the underlying connectivity arrays.
+    ///
+    /// Please consider using the elements() iterator which give the connectivity element by
+    /// element with zero costs.
+    pub fn poly_connectivity(
+        &self,
+        et: ElementType,
+    ) -> Result<(ArrayView1<'_, usize>, ArrayView1<'_, usize>), String> {
+        match &self
+            .element_blocks
+            .get(&et)
+            .ok_or_else(|| "Element is not in the mesh.".to_owned())?
+            .connectivity
+        {
+            ConnectivityBase::Poly { data, offsets } => Ok((data.view(), offsets.view())),
+            _ => Err(
+                "This element type has regular connectivity, please use regular_connectivity(et) method."
+                    .to_owned(),
+            ),
+        }
+    }
+
     pub fn space_dimension(&self) -> usize {
         self.coords.shape()[1]
     }
@@ -302,6 +343,32 @@ impl UMesh {
 
     pub fn remove_elements(&mut self, ids: &ElementIds) {
         todo!()
+    }
+
+    /// This is the most efficient way because it does not copy coords if no reallocation is
+    /// needed if coords are not shared. When coords are shared it is copied either way.
+    pub fn append_coords(
+        mut self,
+        added_coords: ArrayView2<'_, f64>,
+    ) -> Result<Self, nd::ShapeError> {
+        let mut coords = self.coords.into_owned();
+        coords.append(Axis(0), added_coords)?;
+        self.coords = coords.into_shared();
+        Ok(self)
+    }
+
+    /// This is kind of efficient: coordinates are reallocated and copied but connectivities are
+    /// modified inplace.
+    pub fn prepend_coords(mut self, added_coords: ArrayView2<'_, f64>) -> Self {
+        let n_coords = added_coords.len_of(Axis(0));
+        self.coords = nd::concatenate![Axis(0), added_coords, self.coords].into_shared();
+        for (_, eb) in self.element_blocks.iter_mut() {
+            match &mut eb.connectivity {
+                ConnectivityBase::Regular(c) => *c += n_coords,
+                ConnectivityBase::Poly { data, .. } => *data += n_coords,
+            }
+        }
+        self
     }
 }
 
