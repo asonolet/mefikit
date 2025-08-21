@@ -26,7 +26,7 @@ use self::utils::SortedVecKey;
 ///
 /// The most general mesh format in mefikit. Can describe any kind on mesh, with multiple elements
 /// kinds and fields associated.
-#[derive_where(Clone; N: nd::RawDataClone, C: nd::RawDataClone, F: nd::RawDataClone, G: nd::RawDataClone)]
+// #[derive_where(Clone; N: nd::RawDataClone, C: nd::RawDataClone, F: nd::RawDataClone, G: nd::RawDataClone)]
 #[derive_where(Debug, Serialize, PartialEq)]
 #[derive_where(Deserialize; N: nd::DataOwned, C: nd::DataOwned, F: nd::DataOwned, G: nd::DataOwned)]
 pub struct UMeshBase<N, C, F, G>
@@ -269,6 +269,19 @@ impl<'a> UMeshView<'a> {
         }
     }
 
+    pub fn to_owned(&self) -> UMesh {
+        let mut umesh = UMesh::new(self.coords.to_shared());
+        for (&et, eb) in &self.element_blocks {
+            match eb.connectivity {
+                ConnectivityBase::Regular(r) => umesh.add_regular_block(et, r.to_owned()),
+                ConnectivityBase::Poly { data, offsets } => {
+                    umesh.add_poly_block(et, data.to_owned(), offsets.to_owned())
+                }
+            }
+        }
+        umesh
+    }
+
     pub fn add_regular_block(&mut self, et: ElementType, block: ArrayView2<'a, usize>) {
         let block = ElementBlockView::new_regular(et, block);
         let (key, wrapped) = block.into_entry();
@@ -305,6 +318,10 @@ impl UMesh {
         let block = ElementBlock::new_poly(et, conn, offsets);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
+    }
+
+    pub fn to_owned(self) -> UMesh {
+        self
     }
 
     pub fn add_element(

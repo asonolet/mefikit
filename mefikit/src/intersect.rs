@@ -114,12 +114,9 @@ fn intersect_1d_elems(e1: &Element, e2: &Element) -> Vec<IntersectionCoords> {
 
 /// Cette méthode permet de découper un maillage 2d potentiellement non conforme avec un maillage
 /// de segments propres (sans noeuds non fusionnés).
-pub fn intersect_2dmesh_1dtool_mesh(
-    mesh: UMeshView,
-    mut tool_mesh: UMesh,
-) -> Result<UMesh, String> {
+pub fn intersect_2dmesh_1dtool_mesh(mesh: UMeshView, tool_mesh: UMesh) -> Result<UMesh, String> {
     // tool_mesh.merge_nodes();
-    tool_mesh = tool_mesh.prepend_coords(mesh.coords());
+    let tool_mesh = tool_mesh.prepend_coords(mesh.coords());
 
     let (m1d, mgraph) = mesh.compute_submesh(Some(D2), None);
 
