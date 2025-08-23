@@ -1,10 +1,10 @@
-use super::geometry::measure as mes;
 use super::umesh::Dimension::*;
 use super::umesh::{Element, ElementId, ElementLike};
 use super::umesh::{UMesh, UMeshView};
 
 use std::collections::HashMap;
 
+use arrayvec::ArrayVec;
 use ndarray::prelude::*;
 use rstar::primitives::{GeomWithData, Line};
 use rstar::{AABB, RTree};
@@ -14,6 +14,9 @@ const EPSLION_THETA: f64 = 1e-4;
 const EPSILON_NN: f64 = 2.0 * EPSLION_L / EPSLION_THETA;
 const EPSILON_NN2: f64 = EPSILON_NN * EPSILON_NN;
 
+/// A wrapper struct representing a geometric line segment with associated element ID data.
+///
+/// The segment is defined by a `Line<[f64; 2]>` geometry and an `ElementId` for identification.
 struct Segment(GeomWithData<Line<[f64; 2]>, ElementId>);
 
 impl Segment {
@@ -59,146 +62,6 @@ impl From<DirectedEdge> for UndirectedEdge {
 //     }
 // }
 
-enum Intersection {
-    /// The point variant corresponds to the case when two segments intersects in one point. This
-    /// point can be an edge point.
-    Point(ElementId, usize),
-
-    /// This variant corresponds to the case when two segments share a common part with non null
-    /// length because they are colinear. The two points returned corresponds to this common
-    /// segment. Those points can correspond to edge points of one or both segments.
-    Segment(ElementId, usize, usize),
-}
-
-enum IntersectionCoords {
-    CommonNode(usize, usize),
-    Seg1TangentNode(usize, [f64; 2]),
-    Seg2TangentNode(usize, [f64; 2]),
-    ColinearityNSeg1NSeg2(usize, usize),
-    ColinearityNSeg1NSeg1(usize, usize),
-    ColinearityNSeg2NSeg2(usize, usize),
-    Point([f64; 2]),
-    None,
-}
-
-/// Les règles de fusions sont les suivantes (et servent à éviter de créer des éléments dégénérés:
-/// seg1 est la référence. Si un noeud doit être fusionné, c'est un noeud de seg1 qui est utilisé
-/// si possible.
-/// 1. Fusion de deux noeuds: 2 * EPSLION_NN est considéré plus petit que toutes les arrètes de mesh et
-///    tool. Si c'est bien le cas la fusion se passe bien.
-/// 2. Fusion d'un noeud de seg2 tangent à seg1: plutôt que de calculer une intersection toute
-///    petite, EPSILON_L est utilisé pour déterminer si un point de seg2 est sur seg1. La
-///    projection orthogonale est utilisée pour garantir la symmétrie du résultat. Un cas
-///    particulier dégénéré peut apparaitre si deux segments très proches de mesh sont présents
-///    dans cette zone. C'est pour cela que EPSILON_NN est calculé à partir de EPSILON_L et d'un
-///    angle minimal entre deux segments, EPSILON_THETA. La relation n'étant pas exacte, cet angle
-///    est indicatif. Ce point doit être dupliqué pour éviter de le partager entre deux arrètes
-///    proches. Ainsi dans ce cas je renvoie le numéro du point proche de seg2 et les coordonnées.
-/// 3. Fusion d'un noeud de seg1 tangent à seg2: même chose, si ce n'est que je n'ai pas besoin de
-///    créer de nouveau point, j'utilise le point de seg1 que j'insererais plus tard dans seg2.
-/// 4. Cas colinéaires
-/// 5. Intersection classique
-/// 6. Pas d'intersection
-fn intersect_seg_seg(seg1: &Element, seg2: &Element) -> Option<IntersectionCoords> {
-    let seg1_nodes = seg1.connectivity();
-    let seg2_nodes = seg2.connectivity();
-    let p1 = [seg1.coords()[[0, 0]], seg1.coords()[[0, 1]]];
-    let p2 = [seg1.coords()[[1, 0]], seg1.coords()[[1, 1]]];
-    let p3 = [seg2.coords()[[0, 0]], seg2.coords()[[0, 1]]];
-    let p4 = [seg2.coords()[[1, 0]], seg2.coords()[[1, 1]]];
-
-    let d1 = [p2[0] - p1[0], p2[1] - p1[1]];
-    let d2 = [p4[0] - p3[0], p4[1] - p3[1]];
-
-    let denom = d1[0] * d2[1] - d1[1] * d2[0];
-    let epsilon = 1e-12;
-
-    // Check for colinearity or parallelism
-    if denom.abs() < epsilon {
-        // Colinear: check for overlap
-        let is_p1_on_seg2 = point_on_segment(p1, p3, p4, epsilon);
-        let is_p2_on_seg2 = point_on_segment(p2, p3, p4, epsilon);
-        let is_p3_on_seg1 = point_on_segment(p3, p1, p2, epsilon);
-        let is_p4_on_seg1 = point_on_segment(p4, p1, p2, epsilon);
-
-        if is_p1_on_seg2 && is_p2_on_seg2 {
-            return Some(IntersectionCoords::ColinearityNSeg1NSeg1(
-                seg1_nodes[0],
-                seg1_nodes[1],
-            ));
-        }
-        if is_p3_on_seg1 && is_p4_on_seg1 {
-            return Some(IntersectionCoords::ColinearityNSeg2NSeg2(
-                seg2_nodes[0],
-                seg2_nodes[1],
-            ));
-        }
-        if is_p1_on_seg2 && is_p3_on_seg1 {
-            return Some(IntersectionCoords::ColinearityNSeg1NSeg2(
-                seg1_nodes[0],
-                seg2_nodes[0],
-            ));
-        }
-        if is_p2_on_seg2 && is_p4_on_seg1 {
-            return Some(IntersectionCoords::ColinearityNSeg1NSeg2(
-                seg1_nodes[1],
-                seg2_nodes[1],
-            ));
-        }
-        return Some(IntersectionCoords::None);
-    }
-
-    // Parametric intersection
-    let dx = p3[0] - p1[0];
-    let dy = p3[1] - p1[1];
-    let t = (dx * d2[1] - dy * d2[0]) / denom;
-    let u = (dx * d1[1] - dy * d1[0]) / denom;
-
-    // Check if intersection is within both segments
-    if t >= -epsilon && t <= 1.0 + epsilon && u >= -epsilon && u <= 1.0 + epsilon {
-        let intersection = [p1[0] + t * d1[0], p1[1] + t * d1[1]];
-
-        // Endpoint merging
-        for (i, &node1) in seg1_nodes.iter().enumerate() {
-            if nearly_equal(intersection, p1, epsilon) {
-                for (j, &node2) in seg2_nodes.iter().enumerate() {
-                    if nearly_equal(p1, p3, epsilon) {
-                        return Some(IntersectionCoords::CommonNode(node1, node2));
-                    }
-                    if nearly_equal(p1, p4, epsilon) {
-                        return Some(IntersectionCoords::CommonNode(node1, node2));
-                    }
-                }
-                return Some(IntersectionCoords::Seg1TangentNode(node1, intersection));
-            }
-            if nearly_equal(intersection, p2, epsilon) {
-                for (j, &node2) in seg2_nodes.iter().enumerate() {
-                    if nearly_equal(p2, p3, epsilon) {
-                        return Some(IntersectionCoords::CommonNode(node1, node2));
-                    }
-                    if nearly_equal(p2, p4, epsilon) {
-                        return Some(IntersectionCoords::CommonNode(node1, node2));
-                    }
-                }
-                return Some(IntersectionCoords::Seg1TangentNode(node1, intersection));
-            }
-        }
-        for (j, &node2) in seg2_nodes.iter().enumerate() {
-            if nearly_equal(intersection, p3, epsilon) || nearly_equal(intersection, p4, epsilon) {
-                return Some(IntersectionCoords::Seg2TangentNode(node2, intersection));
-            }
-        }
-        return Some(IntersectionCoords::Point(intersection));
-    }
-
-    Some(IntersectionCoords::None)
-}
-
-// Helper functions
-fn nearly_equal(a: [f64; 2], b: [f64; 2], eps: f64) -> bool {
-    (a[0] - b[0]).abs() < eps && (a[1] - b[1]).abs() < eps
-}
-
 fn point_on_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2], eps: f64) -> bool {
     let cross = ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])).abs();
     if cross > eps {
@@ -215,17 +78,279 @@ fn point_on_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2], eps: f64) -> bool {
     true
 }
 
+/// Computes the intersection between two line segments, applying fusion rules to avoid degenerate elements.
+///
+/// # Fusion Rules
+/// - Segment 1 (`seg1`) is the reference; its nodes are preferred for fusion.
+/// - Nodes are merged if they are closer than `2 * EPSILON_NN`.
+/// - Tangent nodes are detected using orthogonal projection and `EPSILON_L`.
+/// - Handles colinear, tangent, classic intersection, and no intersection cases.
+///
+/// # Arguments
+/// * `seg1` - The first segment (reference).
+/// * `seg2` - The second segment.
+///
+/// # Returns
+/// * ArrayVec<usize, 4> - New connectivity for `seg1`.
+/// * ArrayVec<usize, 4> - New connectivity for `seg2`.
+/// * Option<([f64; 2], usize)> - Intersection point and its index if a new node is created.
+///
+/// # Note
+/// The function assumes that both segments are of type SEG2 (2-node segments).
+pub fn intersect_seg_seg(
+    seg1: &Element,
+    seg2: &Element,
+    next_node_index: usize,
+) -> (ArrayVec<usize, 4>, ArrayVec<usize, 4>, Option<[f64; 2]>) {
+    let seg1_nodes = seg1.connectivity().to_slice().unwrap()[0..2]
+        .try_into()
+        .unwrap();
+    let seg2_nodes = seg2.connectivity().to_slice().unwrap()[0..2]
+        .try_into()
+        .unwrap();
+    let p1 = [seg1.coords()[[0, 0]], seg1.coords()[[0, 1]]];
+    let p2 = [seg1.coords()[[1, 0]], seg1.coords()[[1, 1]]];
+    let p3 = [seg2.coords()[[0, 0]], seg2.coords()[[0, 1]]];
+    let p4 = [seg2.coords()[[1, 0]], seg2.coords()[[1, 1]]];
+
+    let d1 = [p2[0] - p1[0], p2[1] - p1[1]];
+    let d2 = [p4[0] - p3[0], p4[1] - p3[1]];
+
+    let denom = d1[0] * d2[1] - d1[1] * d2[0];
+    let epsilon = 1e-12;
+
+    if denom.abs() < epsilon {
+        return handle_colinear_or_parallel(
+            seg1_nodes, seg2_nodes, p1, p2, p3, p4, d1, d2, epsilon,
+        );
+    }
+
+    let (t, u, intersection) = compute_parametric_intersection(p1, d1, p3, d2, denom);
+
+    if is_intersection_within_segments(t, u, epsilon) {
+        if is_existing_node(&intersection, &[p1, p2, p3, p4], epsilon) {
+            return (
+                [seg1_nodes[0], seg1_nodes[1]][..].try_into().unwrap(),
+                [seg2_nodes[0], seg2_nodes[1]][..].try_into().unwrap(),
+                None,
+            );
+        }
+        let seg1_new = insert_intersection_node(seg1_nodes, t, next_node_index);
+        let seg2_new = insert_intersection_node(seg2_nodes, u, next_node_index);
+        return (seg1_new, seg2_new, Some(intersection));
+    }
+
+    (
+        [seg1_nodes[0], seg1_nodes[1]][..].try_into().unwrap(),
+        [seg2_nodes[0], seg2_nodes[1]][..].try_into().unwrap(),
+        None,
+    )
+}
+
+/// Checks if two points are nearly equal within a given epsilon.
+fn nearly_equal(a: [f64; 2], b: [f64; 2], eps: f64) -> bool {
+    // TODO: use sqared distance comparison instead
+    (a[0] - b[0]).abs() < eps && (a[1] - b[1]).abs() < eps
+}
+
+/// Projects a point onto a segment defined by origin and direction.
+/// Returns the parametric coordinate along the segment.
+fn project_onto_segment(origin: [f64; 2], dir: [f64; 2], pt: [f64; 2]) -> f64 {
+    let dx = pt[0] - origin[0];
+    let dy = pt[1] - origin[1];
+    let norm = dir[0] * dir[0] + dir[1] * dir[1];
+    if norm.abs() < 1e-20 {
+        return 0.0;
+    }
+    (dx * dir[0] + dy * dir[1]) / norm
+}
+
+/// Handles the case where segments are colinear or parallel.
+/// Returns the new connectivities for each segment, with no intersection node.
+fn handle_colinear_or_parallel(
+    seg1_nodes: [usize; 2],
+    seg2_nodes: [usize; 2],
+    p1: [f64; 2],
+    p2: [f64; 2],
+    p3: [f64; 2],
+    p4: [f64; 2],
+    d1: [f64; 2],
+    d2: [f64; 2],
+    epsilon: f64,
+) -> (ArrayVec<usize, 4>, ArrayVec<usize, 4>, Option<[f64; 2]>) {
+    let nodes = [
+        (seg1_nodes[0], p1),
+        (seg1_nodes[1], p2),
+        (seg2_nodes[0], p3),
+        (seg2_nodes[1], p4),
+    ];
+
+    // Remove duplicates (shared nodes)
+    let mut unique_nodes: Vec<(usize, [f64; 2])> = Vec::new();
+    for (idx, pt) in nodes {
+        if !unique_nodes
+            .iter()
+            .any(|(_, p)| nearly_equal(*p, pt, epsilon))
+        {
+            unique_nodes.push((idx, pt));
+        }
+    }
+
+    // Sort nodes along seg1
+    let origin = p1;
+    let dir = d1;
+    unique_nodes.sort_by(|a, b| {
+        let pa = project_onto_segment(origin, dir, a.1);
+        let pb = project_onto_segment(origin, dir, b.1);
+        pa.partial_cmp(&pb).unwrap()
+    });
+
+    let mut seg1_new = ArrayVec::new();
+    let mut seg2_new = ArrayVec::new();
+    for &(idx, pt) in &unique_nodes {
+        if nearly_equal(pt, p1, epsilon) || nearly_equal(pt, p2, epsilon) {
+            seg1_new.push(idx);
+        }
+        if nearly_equal(pt, p3, epsilon) || nearly_equal(pt, p4, epsilon) {
+            seg2_new.push(idx);
+        }
+    }
+    // Insert interior nodes from the other segment if they are between endpoints
+    for &(idx, pt) in &unique_nodes {
+        // For seg1: if node belongs to seg2 and is between seg1 endpoints
+        if (idx == seg2_nodes[0] || idx == seg2_nodes[1])
+            && !nearly_equal(pt, p1, epsilon)
+            && !nearly_equal(pt, p2, epsilon)
+        {
+            let t = project_onto_segment(origin, dir, pt);
+            let mut inserted = false;
+            for i in 0..seg1_new.len() - 1 {
+                let t0 = project_onto_segment(
+                    origin,
+                    dir,
+                    if seg1_new[i] == seg1_nodes[0] { p1 } else { p2 },
+                );
+                let t1 = project_onto_segment(
+                    origin,
+                    dir,
+                    if seg1_new[i + 1] == seg1_nodes[0] {
+                        p1
+                    } else {
+                        p2
+                    },
+                );
+                if t > t0 && t < t1 {
+                    seg1_new.insert(i + 1, idx);
+                    inserted = true;
+                    break;
+                }
+            }
+            if !inserted {
+                seg1_new.push(idx);
+            }
+        }
+        // For seg2: if node belongs to seg1 and is between seg2 endpoints
+        if (idx == seg1_nodes[0] || idx == seg1_nodes[1])
+            && !nearly_equal(pt, p3, epsilon)
+            && !nearly_equal(pt, p4, epsilon)
+        {
+            let t = project_onto_segment(p3, d2, pt);
+            let mut inserted = false;
+            for i in 0..seg2_new.len() - 1 {
+                let t0 = project_onto_segment(
+                    p3,
+                    d2,
+                    if seg2_new[i] == seg2_nodes[0] { p3 } else { p4 },
+                );
+                let t1 = project_onto_segment(
+                    p3,
+                    d2,
+                    if seg2_new[i + 1] == seg2_nodes[0] {
+                        p3
+                    } else {
+                        p4
+                    },
+                );
+                if t > t0 && t < t1 {
+                    seg2_new.insert(i + 1, idx);
+                    inserted = true;
+                    break;
+                }
+            }
+            if !inserted {
+                seg2_new.push(idx);
+            }
+        }
+    }
+
+    (seg1_new, seg2_new, None)
+}
+
+/// Computes the parametric intersection values t and u, and intersection point.
+fn compute_parametric_intersection(
+    p1: [f64; 2],
+    d1: [f64; 2],
+    p3: [f64; 2],
+    d2: [f64; 2],
+    denom: f64,
+) -> (f64, f64, [f64; 2]) {
+    let dx = p3[0] - p1[0];
+    let dy = p3[1] - p1[1];
+    let t = (dx * d2[1] - dy * d2[0]) / denom;
+    let u = (dx * d1[1] - dy * d1[0]) / denom;
+    let intersection = [p1[0] + t * d1[0], p1[1] + t * d1[1]];
+    (t, u, intersection)
+}
+
+/// Checks if the intersection is within the bounds of both segments.
+fn is_intersection_within_segments(t: f64, u: f64, epsilon: f64) -> bool {
+    t >= -epsilon && t <= 1.0 + epsilon && u >= -epsilon && u <= 1.0 + epsilon
+}
+
+/// Checks if the intersection point coincides with any of the segment endpoints.
+fn is_existing_node(intersection: &[f64; 2], endpoints: &[[f64; 2]; 4], epsilon: f64) -> bool {
+    endpoints
+        .iter()
+        .any(|pt| nearly_equal(*intersection, *pt, epsilon))
+}
+
+/// Inserts the intersection node into the connectivity in the correct order.
+fn insert_intersection_node(
+    nodes: [usize; 2],
+    param: f64,
+    intersection_idx: usize,
+) -> ArrayVec<usize, 4> {
+    let t0 = 0.0;
+    let t1 = 1.0;
+    if param < t0 {
+        [intersection_idx, nodes[0], nodes[1]][..]
+            .try_into()
+            .unwrap()
+    } else if param > t1 {
+        [nodes[0], nodes[1], intersection_idx][..]
+            .try_into()
+            .unwrap()
+    } else {
+        [nodes[0], intersection_idx, nodes[1]][..]
+            .try_into()
+            .unwrap()
+    }
+}
+
 /// In the general case, there could be multiple intersections beween 1d elements (ex SEG2 and
 /// SEG3).
 ///
 /// The implementation should be completly symmetric for it to be correct.
-fn intersect_1d_elems(e1: &Element, e2: &Element) -> Vec<IntersectionCoords> {
+fn intersect_1d_elems(
+    e1: &Element,
+    e2: &Element,
+) -> (ArrayVec<usize, 4>, ArrayVec<usize, 4>, Option<[f64; 2]>) {
     todo!()
 }
 
 /// Cette méthode permet de découper un maillage 2d potentiellement non conforme avec un maillage
 /// de segments propres (sans noeuds non fusionnés).
-pub fn intersect_2dmesh_1dtool_mesh(mesh: UMeshView, tool_mesh: UMesh) -> Result<UMesh, String> {
+pub fn cut_2d_mesh_with_1d_mesh(mesh: UMeshView, tool_mesh: UMesh) -> Result<UMesh, String> {
     // tool_mesh.merge_nodes();
     let tool_mesh = tool_mesh.prepend_coords(mesh.coords());
 
@@ -242,7 +367,7 @@ pub fn intersect_2dmesh_1dtool_mesh(mesh: UMeshView, tool_mesh: UMesh) -> Result
     // coordonnées suivante pour les identifiants de noeuds:
     // Table de mesh + table de tool_mesh après merge + nouveaux noeuds différents
     // Je créé la liste des segments de tool mesh découpés (avec les noeuds d'intersection)
-    let mut e2int: HashMap<ElementId, Vec<Intersection>> = HashMap::new();
+    let mut e2int: HashMap<ElementId, Vec<[usize; 2]>> = HashMap::new();
     for el in mesh.elements_of_dim(D2) {
         let segs_in_elem: Vec<_> = cutter_tree
             .locate_in_envelope_intersecting(&to_aabb(&el))
@@ -257,32 +382,11 @@ pub fn intersect_2dmesh_1dtool_mesh(mesh: UMeshView, tool_mesh: UMesh) -> Result
                     // Calcul des intersections avec edge
                     // Une intersection est soit un Point, soit un Segment
                     let intersection_coords = intersect_1d_elems(&edge, &seg_elem);
-                    let mut intersection_nodes: Vec<Intersection> =
-                        Vec::with_capacity(intersection_coords.len());
-                    for int in intersection_coords {
-                        // TODO: if int is a new coord, append it to the tool_mesh coords, else retrieve its id, searching
-                        // first into edge nodes, then into seg_elem
-                        // push the new Intersection to intersection_nodes
-                    }
-                    intersections.append(&mut intersection_nodes);
+                    todo!()
                 }
                 intersections
             });
         }
-        // Je trouve tous les polygones créés à partir des intersections
-        // Je traite le cas des points à fusionner par élément. Cela permet de traiter des mesh qui
-        // ont des noeuds non mergés.
-        // Je supprime de tool_mesh les segments des extrémités (un seul noeuds) jusqu'à tomber soit
-        // sur un point d'intersection, soit sur un point commun avec mesh. Ainsi je ne garde pas les
-        // "bouts qui dépassent" de mesh_tool.
-        // Ensuite je créé les polygones en fermant les boucles. Pour suivre une boucle la règle est la
-        // suivante:
-        // - Je prend un segment de mesh, je le marque, le parcours dans un certain sens, puis je
-        //   cherche tous les segments qui partagent l'extrémité à laquelle j'arrive
-        // - Je retiens le segment qui tourne le plus dans le sens trigo (calcul d'angle)
-        // - Je continue jusqu'à fermer le polygone, que j'ajoute comme nouvel élément dans le mesh
-        // final.
-        //
     }
     todo!()
 }
@@ -310,8 +414,11 @@ mod tests {
         let seg1 = mock_seg([[0.0, 0.0], [1.0, 1.0]]);
         let seg2 = mock_seg([[0.0, 1.0], [1.0, 0.0]]);
         let e0 = ElementId::new(crate::ElementType::SEG2, 0);
-        let result = intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0));
-        assert!(matches!(result, Some(IntersectionCoords::Point(_))));
+        let (conn1, conn2, intersection) =
+            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
+        assert_eq!(&conn1[..], [0, 4, 1]);
+        assert_eq!(&conn2[..], [0, 4, 1]);
+        assert!(nearly_equal(intersection.unwrap(), [0.5, 0.5], 1e-12));
     }
 
     #[test]
@@ -319,8 +426,11 @@ mod tests {
         let seg1 = mock_seg([[0.0, 0.0], [1.0, 0.0]]);
         let seg2 = mock_seg([[1.0, 0.0], [1.0, 1.0]]);
         let e0 = ElementId::new(crate::ElementType::SEG2, 0);
-        let result = intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0));
-        assert!(matches!(result, Some(IntersectionCoords::CommonNode(1, 2))));
+        let (conn1, conn2, intersection) =
+            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
+        assert_eq!(&conn1[..], [0, 1]);
+        assert_eq!(&conn2[..], [1, 1]);
+        assert!(intersection.is_none());
     }
 
     #[test]
@@ -328,13 +438,23 @@ mod tests {
         let seg1 = mock_seg([[0.0, 0.0], [2.0, 0.0]]);
         let seg2 = mock_seg([[1.0, 0.0], [3.0, 0.0]]);
         let e0 = ElementId::new(crate::ElementType::SEG2, 0);
-        let result = intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0));
-        assert!(matches!(
-            result,
-            Some(IntersectionCoords::ColinearityNSeg1NSeg2(_, _))
-                | Some(IntersectionCoords::ColinearityNSeg1NSeg1(_, _))
-                | Some(IntersectionCoords::ColinearityNSeg2NSeg2(_, _))
-        ));
+        let (conn1, conn2, intersection) =
+            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
+        assert_eq!(&conn1[..], [0, 0, 1]);
+        assert_eq!(&conn2[..], [0, 1, 1]);
+        assert!(intersection.is_none());
+    }
+
+    #[test]
+    fn test_colinear_included_overlap() {
+        let seg1 = mock_seg([[0.0, 0.0], [4.0, 0.0]]);
+        let seg2 = mock_seg([[1.0, 0.0], [3.0, 0.0]]);
+        let e0 = ElementId::new(crate::ElementType::SEG2, 0);
+        let (conn1, conn2, intersection) =
+            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
+        assert_eq!(&conn1[..], [0, 0, 1, 1]);
+        assert_eq!(&conn2[..], [0, 1]);
+        assert!(intersection.is_none());
     }
 
     #[test]
@@ -342,8 +462,11 @@ mod tests {
         let seg1 = mock_seg([[0.0, 0.0], [1.0, 0.0]]);
         let seg2 = mock_seg([[2.0, 1.0], [2.0, 2.0]]);
         let e0 = ElementId::new(crate::ElementType::SEG2, 0);
-        let result = intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0));
-        assert!(matches!(result, Some(IntersectionCoords::None)));
+        let (conn1, conn2, intersection) =
+            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
+        assert_eq!(&conn1[..], [0, 1]);
+        assert_eq!(&conn2[..], [0, 1]);
+        assert!(intersection.is_none());
     }
 
     #[test]
@@ -351,12 +474,10 @@ mod tests {
         let seg1 = mock_seg([[0.0, 0.0], [1.0, 0.0]]);
         let seg2 = mock_seg([[1.0, 0.0], [2.0, 0.0]]);
         let e0 = ElementId::new(crate::ElementType::SEG2, 0);
-        let result = intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0));
-        assert!(matches!(
-            result,
-            Some(IntersectionCoords::CommonNode(1, 2))
-                | Some(IntersectionCoords::Seg1TangentNode(1, _))
-                | Some(IntersectionCoords::Seg2TangentNode(2, _))
-        ));
+        let (conn1, conn2, intersection) =
+            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
+        assert_eq!(&conn1[..], [0, 1]);
+        assert_eq!(&conn2[..], [1, 1]);
+        assert!(intersection.is_none());
     }
 }
