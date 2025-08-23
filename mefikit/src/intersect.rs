@@ -102,12 +102,8 @@ pub fn intersect_seg_seg(
     seg2: &Element,
     next_node_index: usize,
 ) -> (ArrayVec<usize, 4>, ArrayVec<usize, 4>, Option<[f64; 2]>) {
-    let seg1_nodes = seg1.connectivity().to_slice().unwrap()[0..2]
-        .try_into()
-        .unwrap();
-    let seg2_nodes = seg2.connectivity().to_slice().unwrap()[0..2]
-        .try_into()
-        .unwrap();
+    let seg1_nodes = [seg1.connectivity()[0], seg1.connectivity()[1]];
+    let seg2_nodes = [seg2.connectivity()[0], seg2.connectivity()[1]];
     let p1 = [seg1.coords()[[0, 0]], seg1.coords()[[0, 1]]];
     let p2 = [seg1.coords()[[1, 0]], seg1.coords()[[1, 1]]];
     let p3 = [seg2.coords()[[0, 0]], seg2.coords()[[0, 1]]];
