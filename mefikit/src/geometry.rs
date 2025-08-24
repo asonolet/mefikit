@@ -1,5 +1,6 @@
 pub mod is_in;
 pub mod measure;
+pub mod seg_intersect;
 
 use self::measure as mes;
 use crate::{ElementLike, ElementType, UMeshView};
