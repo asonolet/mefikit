@@ -14,3 +14,4 @@ pub use crate::umesh::{
     Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut, ElementType, Regularity,
     UMesh, UMeshBase, UMeshView,
 };
+pub use intersect::cut_2d_mesh_with_1d_mesh;

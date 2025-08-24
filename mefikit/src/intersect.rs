@@ -1,5 +1,5 @@
 use super::umesh::Dimension::*;
-use super::umesh::{Element, ElementId, ElementLike};
+use super::umesh::{Element, ElementId, ElementLike, ElementType};
 use super::umesh::{UMesh, UMeshView};
 
 use std::collections::HashMap;
@@ -116,9 +116,7 @@ pub fn intersect_seg_seg(
     let epsilon = 1e-12;
 
     if denom.abs() < epsilon {
-        return handle_colinear_or_parallel(
-            seg1_nodes, seg2_nodes, p1, p2, p3, p4, d1, d2, epsilon,
-        );
+        return handle_colinear_or_parallel(seg1_nodes, seg2_nodes, p1, p2, p3, p4, epsilon);
     }
 
     let (t, u, intersection) = compute_parametric_intersection(p1, d1, p3, d2, denom);
@@ -170,8 +168,6 @@ fn handle_colinear_or_parallel(
     p2: [f64; 2],
     p3: [f64; 2],
     p4: [f64; 2],
-    d1: [f64; 2],
-    d2: [f64; 2],
     epsilon: f64,
 ) -> (ArrayVec<usize, 4>, ArrayVec<usize, 4>, Option<[f64; 2]>) {
     let nodes = [
@@ -180,22 +176,35 @@ fn handle_colinear_or_parallel(
         (seg2_nodes[0], p3),
         (seg2_nodes[1], p4),
     ];
+    // Sort nodes along seg1
+    let origin = p1;
+    let dir = [p2[0] - p1[0], p2[1] - p1[1]];
 
-    // Remove duplicates (shared nodes)
-    let mut unique_nodes: Vec<(usize, [f64; 2])> = Vec::new();
-    for (idx, pt) in nodes {
-        if !unique_nodes
-            .iter()
-            .any(|(_, p)| nearly_equal(*p, pt, epsilon))
-        {
-            unique_nodes.push((idx, pt));
+    let p3_dist = compute_distance2_to_line(origin, dir, p3);
+    let p4_dist = compute_distance2_to_line(origin, dir, p4);
+    if p3_dist > EPSILON_NN2 && p4_dist > EPSILON_NN2 {
+        // seg2 is parallel and disjoint from seg1
+        return (
+            [seg1_nodes[0], seg1_nodes[1]][..].try_into().unwrap(),
+            [seg2_nodes[0], seg2_nodes[1]][..].try_into().unwrap(),
+            None,
+        );
+    }
+
+    // Detect duplicates (shared nodes)
+    let mut replace_nodes: Vec<(usize, usize)> = Vec::new();
+    for (idx2, pt) in nodes[2..].iter() {
+        for (idx1, p) in nodes[..2].iter() {
+            if nearly_equal(*p, *pt, epsilon) {
+                replace_nodes.push((*idx2, *idx1));
+                break;
+            }
         }
     }
 
     // Sort nodes along seg1
-    let origin = p1;
-    let dir = d1;
-    unique_nodes.sort_by(|a, b| {
+    let mut sorted_nodes = nodes.clone();
+    sorted_nodes.sort_by(|a, b| {
         let pa = project_onto_segment(origin, dir, a.1);
         let pb = project_onto_segment(origin, dir, b.1);
         pa.partial_cmp(&pb).unwrap()
@@ -203,83 +212,58 @@ fn handle_colinear_or_parallel(
 
     let mut seg1_new = ArrayVec::new();
     let mut seg2_new = ArrayVec::new();
-    for &(idx, pt) in &unique_nodes {
-        if nearly_equal(pt, p1, epsilon) || nearly_equal(pt, p2, epsilon) {
+
+    let mut in_seg1 = false;
+    let mut in_seg2 = false;
+    // Iterate over sorted nodes and build new connectivities
+    for (idx, _) in sorted_nodes {
+        // If idx==seg1_nodes[0], start inserting into seg1_new until idx==seg1_nodes[1]
+        if idx == seg1_nodes[0] {
+            in_seg1 = true;
+        }
+        if in_seg1 {
             seg1_new.push(idx);
         }
-        if nearly_equal(pt, p3, epsilon) || nearly_equal(pt, p4, epsilon) {
+        // If idx==seg2_nodes[0] or idx==seg2_nodes[1], start inserting into seg2_new until
+        // idx==seg2_nodes[1] or idx==seg2_nodes[0] (included)
+        let on_seg2 = if idx == seg2_nodes[0] || idx == seg2_nodes[1] {
+            in_seg2 = !in_seg2;
+            true
+        } else {
+            false
+        };
+        if on_seg2 || in_seg2 {
+            // If idx is in replace_nodes, replace it with the corresponding new node
+            let mut idx = idx;
+            for (old, new) in &replace_nodes {
+                if idx == *old {
+                    idx = *new;
+                    break;
+                }
+            }
             seg2_new.push(idx);
         }
-    }
-    // Insert interior nodes from the other segment if they are between endpoints
-    for &(idx, pt) in &unique_nodes {
-        // For seg1: if node belongs to seg2 and is between seg1 endpoints
-        if (idx == seg2_nodes[0] || idx == seg2_nodes[1])
-            && !nearly_equal(pt, p1, epsilon)
-            && !nearly_equal(pt, p2, epsilon)
-        {
-            let t = project_onto_segment(origin, dir, pt);
-            let mut inserted = false;
-            for i in 0..seg1_new.len() - 1 {
-                let t0 = project_onto_segment(
-                    origin,
-                    dir,
-                    if seg1_new[i] == seg1_nodes[0] { p1 } else { p2 },
-                );
-                let t1 = project_onto_segment(
-                    origin,
-                    dir,
-                    if seg1_new[i + 1] == seg1_nodes[0] {
-                        p1
-                    } else {
-                        p2
-                    },
-                );
-                if t > t0 && t < t1 {
-                    seg1_new.insert(i + 1, idx);
-                    inserted = true;
-                    break;
-                }
-            }
-            if !inserted {
-                seg1_new.push(idx);
-            }
-        }
-        // For seg2: if node belongs to seg1 and is between seg2 endpoints
-        if (idx == seg1_nodes[0] || idx == seg1_nodes[1])
-            && !nearly_equal(pt, p3, epsilon)
-            && !nearly_equal(pt, p4, epsilon)
-        {
-            let t = project_onto_segment(p3, d2, pt);
-            let mut inserted = false;
-            for i in 0..seg2_new.len() - 1 {
-                let t0 = project_onto_segment(
-                    p3,
-                    d2,
-                    if seg2_new[i] == seg2_nodes[0] { p3 } else { p4 },
-                );
-                let t1 = project_onto_segment(
-                    p3,
-                    d2,
-                    if seg2_new[i + 1] == seg2_nodes[0] {
-                        p3
-                    } else {
-                        p4
-                    },
-                );
-                if t > t0 && t < t1 {
-                    seg2_new.insert(i + 1, idx);
-                    inserted = true;
-                    break;
-                }
-            }
-            if !inserted {
-                seg2_new.push(idx);
-            }
+
+        if idx == seg1_nodes[1] {
+            in_seg1 = false;
         }
     }
 
     (seg1_new, seg2_new, None)
+}
+
+/// Computes the sqared distance of point p3 to the line defined by origin and dir.
+fn compute_distance2_to_line(origin: [f64; 2], dir: [f64; 2], p3: [f64; 2]) -> f64 {
+    let dx = dir[0];
+    let dy = dir[1];
+    let p1 = origin;
+    let len2 = dx * dx + dy * dy;
+    if len2.abs() < 1e-20 {
+        return (p3[0] - p1[0]).powi(2) + (p3[1] - p1[1]).powi(2);
+    }
+    let t = ((p3[0] - p1[0]) * dx + (p3[1] - p1[1]) * dy) / len2;
+    let proj = [p1[0] + t * dx, p1[1] + t * dy];
+    (p3[0] - proj[0]).powi(2) + (p3[1] - proj[1]).powi(2)
 }
 
 /// Computes the parametric intersection values t and u, and intersection point.
@@ -340,8 +324,12 @@ fn insert_intersection_node(
 fn intersect_1d_elems(
     e1: &Element,
     e2: &Element,
+    next_node_index: usize,
 ) -> (ArrayVec<usize, 4>, ArrayVec<usize, 4>, Option<[f64; 2]>) {
-    todo!()
+    match (e1.element_type(), e2.element_type()) {
+        (ElementType::SEG2, ElementType::SEG2) => intersect_seg_seg(e1, e2, next_node_index),
+        _ => todo!(),
+    }
 }
 
 /// Cette méthode permet de découper un maillage 2d potentiellement non conforme avec un maillage
@@ -377,7 +365,7 @@ pub fn cut_2d_mesh_with_1d_mesh(mesh: UMeshView, tool_mesh: UMesh) -> Result<UMe
                     let seg_elem = tool_mesh.get_element(seg.data);
                     // Calcul des intersections avec edge
                     // Une intersection est soit un Point, soit un Segment
-                    let intersection_coords = intersect_1d_elems(&edge, &seg_elem);
+                    let intersection_coords = intersect_1d_elems(&edge, &seg_elem, 4);
                     todo!()
                 }
                 intersections
@@ -392,26 +380,21 @@ mod tests {
     use super::*;
 
     // Helper to create a mock Element with two nodes and coordinates
-    fn mock_seg(coords: [[f64; 2]; 2]) -> UMesh {
+    fn mock_mesh(coords: &[f64]) -> UMesh {
         // Replace with your actual Element constructor
-        let mut umesh = UMesh::new(
-            ArcArray::from_shape_vec(
-                [2, 2],
-                vec![coords[0][0], coords[0][1], coords[1][0], coords[1][1]],
-            )
-            .unwrap(),
-        );
-        umesh.add_element(crate::ElementType::SEG2, &[0, 1], None, None);
+        let mut umesh = UMesh::new(ArcArray::from_shape_vec([4, 2], coords.to_vec()).unwrap());
+        umesh.add_element(ElementType::SEG2, &[0, 1], None, None);
+        umesh.add_element(ElementType::SEG2, &[2, 3], None, None);
         umesh
     }
 
     #[test]
     fn test_classic_intersection() {
-        let seg1 = mock_seg([[0.0, 0.0], [1.0, 1.0]]);
-        let seg2 = mock_seg([[0.0, 1.0], [1.0, 0.0]]);
-        let e0 = ElementId::new(crate::ElementType::SEG2, 0);
+        let mm = mock_mesh(&[0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0]);
+        let e0 = ElementId::new(ElementType::SEG2, 0);
+        let e1 = ElementId::new(ElementType::SEG2, 1);
         let (conn1, conn2, intersection) =
-            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
+            intersect_seg_seg(&mm.get_element(e0), &mm.get_element(e1), 4);
         assert_eq!(&conn1[..], [0, 4, 1]);
         assert_eq!(&conn2[..], [0, 4, 1]);
         assert!(nearly_equal(intersection.unwrap(), [0.5, 0.5], 1e-12));
@@ -419,61 +402,97 @@ mod tests {
 
     #[test]
     fn test_tangency_at_endpoint() {
-        let seg1 = mock_seg([[0.0, 0.0], [1.0, 0.0]]);
-        let seg2 = mock_seg([[1.0, 0.0], [1.0, 1.0]]);
-        let e0 = ElementId::new(crate::ElementType::SEG2, 0);
+        let mm = mock_mesh(&[0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0]);
+        let e0 = ElementId::new(ElementType::SEG2, 0);
+        let e1 = ElementId::new(ElementType::SEG2, 1);
         let (conn1, conn2, intersection) =
-            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
+            intersect_seg_seg(&mm.get_element(e0), &mm.get_element(e1), 4);
         assert_eq!(&conn1[..], [0, 1]);
-        assert_eq!(&conn2[..], [1, 1]);
+        assert_eq!(&conn2[..], [1, 3]);
         assert!(intersection.is_none());
     }
 
     #[test]
-    fn test_colinear_overlap() {
-        let seg1 = mock_seg([[0.0, 0.0], [2.0, 0.0]]);
-        let seg2 = mock_seg([[1.0, 0.0], [3.0, 0.0]]);
-        let e0 = ElementId::new(crate::ElementType::SEG2, 0);
+    fn test_intersection_colinear_overlap() {
+        let mm = mock_mesh(&[0.0, 0.0, 2.0, 0.0, 1.0, 0.0, 3.0, 0.0]);
+        let e0 = ElementId::new(ElementType::SEG2, 0);
+        let e1 = ElementId::new(ElementType::SEG2, 1);
         let (conn1, conn2, intersection) =
-            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
-        assert_eq!(&conn1[..], [0, 0, 1]);
-        assert_eq!(&conn2[..], [0, 1, 1]);
+            intersect_seg_seg(&mm.get_element(e0), &mm.get_element(e1), 4);
+        assert_eq!(&conn1[..], [0, 2, 1]);
+        assert_eq!(&conn2[..], [2, 1, 3]);
         assert!(intersection.is_none());
     }
 
     #[test]
-    fn test_colinear_included_overlap() {
-        let seg1 = mock_seg([[0.0, 0.0], [4.0, 0.0]]);
-        let seg2 = mock_seg([[1.0, 0.0], [3.0, 0.0]]);
-        let e0 = ElementId::new(crate::ElementType::SEG2, 0);
+    fn test_intersection_colinear_included_overlap() {
+        let mm = mock_mesh(&[0.0, 0.0, 4.0, 0.0, 1.0, 0.0, 3.0, 0.0]);
+        let e0 = ElementId::new(ElementType::SEG2, 0);
+        let e1 = ElementId::new(ElementType::SEG2, 1);
         let (conn1, conn2, intersection) =
-            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
-        assert_eq!(&conn1[..], [0, 0, 1, 1]);
-        assert_eq!(&conn2[..], [0, 1]);
+            intersect_seg_seg(&mm.get_element(e0), &mm.get_element(e1), 4);
+        assert_eq!(&conn1[..], [0, 2, 3, 1]);
+        assert_eq!(&conn2[..], [2, 3]);
+        assert!(intersection.is_none());
+    }
+
+    #[test]
+    fn test_no_intersection_colinear() {
+        let mm = mock_mesh(&[0.0, 0.0, 1.0, 0.0, 2.0, 0.0, 3.0, 0.0]);
+        let e0 = ElementId::new(ElementType::SEG2, 0);
+        let e1 = ElementId::new(ElementType::SEG2, 1);
+        let (conn1, conn2, intersection) =
+            intersect_seg_seg(&mm.get_element(e0), &mm.get_element(e1), 4);
+        assert_eq!(&conn1[..], [0, 1]);
+        assert_eq!(&conn2[..], [2, 3]);
+        assert!(intersection.is_none());
+    }
+
+    #[test]
+    fn test_no_intersection_colinear_parallel() {
+        let mm = mock_mesh(&[0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.5, 1.0]);
+        let e0 = ElementId::new(ElementType::SEG2, 0);
+        let e1 = ElementId::new(ElementType::SEG2, 1);
+        let (conn1, conn2, intersection) =
+            intersect_seg_seg(&mm.get_element(e0), &mm.get_element(e1), 4);
+        assert_eq!(&conn1[..], [0, 1]);
+        assert_eq!(&conn2[..], [2, 3]);
         assert!(intersection.is_none());
     }
 
     #[test]
     fn test_no_intersection() {
-        let seg1 = mock_seg([[0.0, 0.0], [1.0, 0.0]]);
-        let seg2 = mock_seg([[2.0, 1.0], [2.0, 2.0]]);
-        let e0 = ElementId::new(crate::ElementType::SEG2, 0);
+        let mm = mock_mesh(&[0.0, 0.0, 1.0, 0.0, 2.0, 1.0, 2.0, 2.0]);
+        let e0 = ElementId::new(ElementType::SEG2, 0);
+        let e1 = ElementId::new(ElementType::SEG2, 1);
         let (conn1, conn2, intersection) =
-            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
+            intersect_seg_seg(&mm.get_element(e0), &mm.get_element(e1), 4);
         assert_eq!(&conn1[..], [0, 1]);
-        assert_eq!(&conn2[..], [0, 1]);
+        assert_eq!(&conn2[..], [2, 3]);
         assert!(intersection.is_none());
     }
 
     #[test]
-    fn test_endpoint_merging() {
-        let seg1 = mock_seg([[0.0, 0.0], [1.0, 0.0]]);
-        let seg2 = mock_seg([[1.0, 0.0], [2.0, 0.0]]);
-        let e0 = ElementId::new(crate::ElementType::SEG2, 0);
+    fn test_intersection_endpoint_merging() {
+        let mm = mock_mesh(&[0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 2.0, 0.5]);
+        let e0 = ElementId::new(ElementType::SEG2, 0);
+        let e1 = ElementId::new(ElementType::SEG2, 1);
         let (conn1, conn2, intersection) =
-            intersect_seg_seg(&seg1.get_element(e0), &seg2.get_element(e0), 4);
+            intersect_seg_seg(&mm.get_element(e0), &mm.get_element(e1), 4);
         assert_eq!(&conn1[..], [0, 1]);
-        assert_eq!(&conn2[..], [1, 1]);
+        assert_eq!(&conn2[..], [1, 3]);
+        assert!(intersection.is_none());
+    }
+
+    #[test]
+    fn test_intersection_colinear_endpoint_merging() {
+        let mm = mock_mesh(&[0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 2.0, 0.0]);
+        let e0 = ElementId::new(ElementType::SEG2, 0);
+        let e1 = ElementId::new(ElementType::SEG2, 1);
+        let (conn1, conn2, intersection) =
+            intersect_seg_seg(&mm.get_element(e0), &mm.get_element(e1), 4);
+        assert_eq!(&conn1[..], [0, 1]);
+        assert_eq!(&conn2[..], [1, 3]);
         assert!(intersection.is_none());
     }
 }
