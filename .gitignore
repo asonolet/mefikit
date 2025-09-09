@@ -1,8 +1,8 @@
 /target
 *.swo
 *.swp
-examples/*.json
-examples/*.yaml
-examples/*.vtk
-examples/*.vtu
+**/examples/*.json
+**/examples/*.yaml
+**/examples/*.vtk
+**/examples/*.vtu
 mefikit-py/.venv

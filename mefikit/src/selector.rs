@@ -2,14 +2,14 @@ use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::geometry::is_in as geo;
-use super::umesh::{ElementIds, ElementLike, ElementType, UMeshView};
+use super::umesh::{ElementIds, ElementLike, ElementType, UMesh, UMeshView};
 
 /// Here umesh should be replace with UMeshView, so that it can interact with non owned umesh
 /// struct.
 
 pub struct Selector<'a, State = ElementTypeSelector> {
     umesh: UMeshView<'a>,
-    pub index: ElementIds,
+    index: ElementIds,
     state: State,
 }
 
@@ -30,6 +30,14 @@ pub struct GroupBasedSelector {
 pub struct CentroidBasedSelector;
 
 impl<'a, State> Selector<'a, State> {
+    pub fn index(&self) -> &ElementIds {
+        &self.index
+    }
+
+    pub fn select(&self) -> UMesh {
+        self.umesh.extract(&self.index)
+    }
+
     fn to_groups(self) -> Selector<'a, GroupBasedSelector> {
         let state = GroupBasedSelector {
             families: HashMap::new(),
@@ -274,7 +282,14 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
         let index = self
             .index
             .into_iter()
-            .filter(|&e_id| f(self.umesh.get_element(e_id).centroid().as_slice().unwrap()))
+            .filter(|&e_id| {
+                println!("{e_id:?}");
+                let centroid = self.umesh.get_element(e_id).centroid();
+                println!("{centroid:?}");
+                let isin = f(centroid.as_slice().unwrap());
+                println!("{isin:?}");
+                isin
+            })
             .collect();
 
         let state = self.state;
@@ -289,6 +304,8 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
     pub fn in_sphere(self, p0: &[f64; 3], r: f64) -> Self {
         self.is_in(|x| {
             debug_assert_eq!(x.len(), 3);
+            println!("{p0:?}");
+            println!("{r:?}");
             geo::in_sphere(
                 x.try_into().expect("Coords should have 3 components."),
                 p0,

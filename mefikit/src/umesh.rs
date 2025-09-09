@@ -108,8 +108,23 @@ where
     ///
     /// This method creates a new `UMesh`, owning its data (with copy) containing only the elements
     /// specified by the IDs.
+    /// This method is low level and error prone in the case where ElementsIds are not directly
+    /// issued from a Selector. Please use Selector API if possible.
     pub fn extract(&self, ids: &ElementIds) -> UMesh {
-        todo!();
+        let mut extracted = UMesh::new(self.coords.to_shared());
+        for (t, block) in ids.iter() {
+            if !self.element_blocks.contains_key(&t) {
+                continue;
+            }
+            match &self.element_blocks[t] {
+                ElementBlockBase {
+                    connectivity: ConnectivityBase::Regular(arr),
+                    ..
+                } => extracted.add_regular_block(*t, arr.select(Axis(0), block.as_slice())),
+                _ => todo!(),
+            };
+        }
+        extracted
     }
 
     // pub fn families(&self, element_type: ElementType) -> Option<&[usize]> {

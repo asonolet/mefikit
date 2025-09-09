@@ -16,12 +16,12 @@ pub fn in_sphere(x: &[f64; 3], center: &[f64; 3], r: f64) -> bool {
         y: center[1] + r,
         z: center[2],
     };
-    let pc = ro::Coord3D {
+    let pd = ro::Coord3D {
         x: center[0] - r,
         y: center[1],
         z: center[2],
     };
-    let pd = ro::Coord3D {
+    let pc = ro::Coord3D {
         x: center[0],
         y: center[1],
         z: center[2] + r,
