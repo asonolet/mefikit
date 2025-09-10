@@ -19,6 +19,7 @@ petgraph = "0.8.2"
 rayon = "1.10.0"
 robust = "1.2.0"
 rstar = "0.12.2"
+rustc-hash = "2.1.1"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.140", features = ["float_roundtrip"] }
 serde_yaml = "0.9.34"

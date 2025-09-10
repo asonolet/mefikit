@@ -16,6 +16,7 @@ use ndarray as nd;
 use ndarray::prelude::*;
 use petgraph::prelude::UnGraphMap;
 use rayon::prelude::*;
+use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::{SmallVec, smallvec};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -339,8 +340,10 @@ where
             Some(c) => c,
             None => self.element_blocks.keys().max().unwrap().dimension(),
         };
-        let mut subentities_hashmap: HashMap<SortedVecKey, (ElementId, SmallVec<[ElementId; 2]>)> =
-            HashMap::with_capacity(self.coords.shape()[0]);
+        let mut subentities_hashmap: FxHashMap<
+            SortedVecKey,
+            (ElementId, SmallVec<[ElementId; 2]>),
+        > = HashMap::default();
         let mut neighbors: UMesh = UMesh::new(self.coords.to_shared());
 
         for elem in self.elements_of_dim(dim) {
@@ -400,8 +403,7 @@ where
             Some(c) => c,
             None => self.element_blocks.keys().max().unwrap().dimension(),
         };
-        let mut subentities_hash: HashSet<SortedVecKey> =
-            HashSet::with_capacity(self.coords.shape()[0]); // FaceId, ElemId
+        let mut subentities_hash: FxHashSet<SortedVecKey> = HashSet::default(); // Face
         let mut neighbors: UMesh = UMesh::new(self.coords.to_shared());
 
         for elem in self.elements_of_dim(dim) {
