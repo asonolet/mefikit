@@ -12,6 +12,7 @@ arrayvec = "0.7.6"
 criterion = "0.7.0"
 derive-where = { version = "1.6.0", features = ["serde"] }
 hdf5 = { version = "0.8.1", optional = true }
+itertools = "0.14.0"
 ndarray = { version = "0.16", features = ["serde"] }
 once_cell = "1.21.3"
 petgraph = "0.8.2"

@@ -6,6 +6,7 @@ use self::measure as mes;
 use crate::{ElementLike, ElementType, UMeshView};
 use ndarray as nd;
 use ndarray::prelude::*;
+use rayon::prelude::*;
 use std::collections::BTreeMap;
 
 pub trait ElementGeo<'a>: ElementLike<'a> {
@@ -69,22 +70,22 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
 
 impl<'a, T> ElementGeo<'a> for T where T: ElementLike<'a> {}
 
-pub fn measure_mesh(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
+pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
     match mesh.space_dimension() {
         0 => mesh
             .element_blocks
-            .iter()
+            .par_iter()
             .map(|(&k, v)| (k, nd::arr1(&vec![0.0; v.len()])))
             .collect(),
         1 => todo!(),
         2 => mesh
             .element_blocks
-            .iter()
+            .par_iter()
             .map(|(&k, v)| {
                 (
                     k,
                     nd::arr1(
-                        &v.iter(mesh.coords.view())
+                        &v.par_iter(mesh.coords.view())
                             .map(|e| e.measure2())
                             .collect::<Vec<f64>>(),
                     ),
@@ -93,12 +94,12 @@ pub fn measure_mesh(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
             .collect(),
         3 => mesh
             .element_blocks
-            .iter()
+            .par_iter()
             .map(|(&k, v)| {
                 (
                     k,
                     nd::arr1(
-                        &v.iter(mesh.coords.view())
+                        &v.par_iter(mesh.coords.view())
                             .map(|e| e.measure3())
                             .collect::<Vec<f64>>(),
                     ),
@@ -130,7 +131,7 @@ mod tests {
     #[test]
     fn test_umesh_measure() {
         let mesh = make_test_2d_mesh();
-        let measures = measure_mesh(mesh.view());
+        let measures = measure(mesh.view());
         assert_eq!(measures.len(), 1);
         assert!(measures.contains_key(&ElementType::QUAD4));
         let measure_values = measures.get(&ElementType::QUAD4).unwrap();

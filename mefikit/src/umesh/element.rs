@@ -240,8 +240,15 @@ impl ElementIds {
         self.0.get(element_type)
     }
 
-    pub fn contains(&self, element_type: ElementType) -> bool {
+    pub fn contains_type(&self, element_type: ElementType) -> bool {
         self.0.contains_key(&element_type)
+    }
+    pub fn contains(&self, element_id: ElementId) -> bool {
+        if let Some(indices) = self.0.get(&element_id.element_type()) {
+            indices.contains(&element_id.index())
+        } else {
+            false
+        }
     }
     pub fn iter(&self) -> impl Iterator<Item = (&ElementType, &Vec<usize>)> {
         self.0.iter()
@@ -281,6 +288,35 @@ impl FromIterator<ElementId> for ElementIds {
         for id in iter {
             ids.add(id.element_type(), id.index());
         }
+        ids
+    }
+}
+
+impl FromParallelIterator<ElementId> for ElementIds {
+    fn from_par_iter<T>(par_iter: T) -> Self
+    where
+        T: IntoParallelIterator<Item = ElementId>,
+    {
+        let ids = par_iter
+            .into_par_iter()
+            .fold(
+                || ElementIds::new(),
+                |mut acc, id| {
+                    acc.add(id.element_type(), id.index());
+                    acc
+                },
+            )
+            .reduce(
+                || ElementIds::new(),
+                |mut acc, other| {
+                    for (et, indices) in other.0 {
+                        for index in indices {
+                            acc.add(et, index);
+                        }
+                    }
+                    acc
+                },
+            );
         ids
     }
 }

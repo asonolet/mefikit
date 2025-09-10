@@ -14,8 +14,8 @@ numerical operations built elsewhere in the library.
 
 ```rust
 pub struct UMesh {
-    pub coords: SharedCoords,
-    pub element_blocks: BTreeMap<ElementType, ElementBlock>
+    coords: ArcArray2<f64>,
+    element_blocks: BTreeMap<ElementType, ElementBlock>
 }
 ```
 

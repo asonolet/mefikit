@@ -7,7 +7,7 @@ use super::umesh::{ElementIds, ElementLike, ElementType, UMesh, UMeshView};
 /// Here umesh should be replace with UMeshView, so that it can interact with non owned umesh
 /// struct.
 
-pub struct Selector<'a, State = ElementTypeSelector> {
+pub struct Selector<'a, State = ElementSelector> {
     umesh: UMeshView<'a>,
     index: ElementIds,
     state: State,
@@ -17,7 +17,7 @@ pub struct FieldBasedSelector {
     pub field_name: String,
 }
 
-pub struct ElementTypeSelector;
+pub struct ElementSelector;
 
 pub struct NodeBasedSelector {
     pub all_nodes: bool,
@@ -60,8 +60,8 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn to_elements(self) -> Selector<'a, ElementTypeSelector> {
-        let state = ElementTypeSelector {};
+    fn to_elements(self) -> Selector<'a, ElementSelector> {
+        let state = ElementSelector {};
         Selector {
             umesh: self.umesh,
             index: self.index,
@@ -88,18 +88,44 @@ impl<'a, State> Selector<'a, State> {
     }
 }
 
-impl<'a> Selector<'a, ElementTypeSelector> {
+impl<'a> Selector<'a, ElementSelector> {
     pub fn new(umesh: UMeshView<'a>) -> Self {
         let index: BTreeMap<ElementType, Vec<usize>> = umesh
             .element_blocks
             .iter()
             .map(|(k, v)| (*k, (0..v.len()).collect()))
             .collect();
-        let state = ElementTypeSelector {};
+        let state = ElementSelector {};
         Self {
             umesh,
             index: index.into(),
             state,
+        }
+    }
+
+    pub fn of_types(self, ets: &[ElementType]) -> Self {
+        let index: ElementIds = self
+            .index
+            .into_iter()
+            .filter(|&e| ets.iter().any(|&et| e.element_type() == et))
+            .collect();
+        Self {
+            umesh: self.umesh,
+            index,
+            state: self.state,
+        }
+    }
+
+    pub fn in_index(self, ids: &ElementIds) -> Self {
+        let index: ElementIds = self
+            .index
+            .into_par_iter()
+            .filter(|&e_id| ids.contains(e_id))
+            .collect();
+        Self {
+            umesh: self.umesh,
+            index,
+            state: self.state,
         }
     }
 
@@ -165,7 +191,7 @@ impl<'a> Selector<'a, FieldBasedSelector> {
     pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
         self.to_groups()
     }
-    pub fn elements(self) -> Selector<'a, ElementTypeSelector> {
+    pub fn elements(self) -> Selector<'a, ElementSelector> {
         self.to_elements()
     }
     pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
@@ -231,7 +257,7 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     }
 
     /// I have a set of families per element_type, I can now select the real elements
-    fn collect(self) -> Selector<'a, ElementTypeSelector> {
+    fn collect(self) -> Selector<'a, ElementSelector> {
         todo!();
         // let index = self.umesh.families(et);
         // let state = ElementTypeSelector{};
@@ -245,7 +271,7 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {
         self.collect().to_field(name)
     }
-    pub fn elements(self) -> Selector<'a, ElementTypeSelector> {
+    pub fn elements(self) -> Selector<'a, ElementSelector> {
         self.collect().to_elements()
     }
     pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
@@ -257,7 +283,7 @@ impl<'a> Selector<'a, GroupBasedSelector> {
 }
 
 impl<'a> Selector<'a, NodeBasedSelector> {
-    pub fn elements(self) -> Selector<'a, ElementTypeSelector> {
+    pub fn elements(self) -> Selector<'a, ElementSelector> {
         self.to_elements()
     }
     pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {
@@ -281,13 +307,10 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
     {
         let index = self
             .index
-            .into_iter()
+            .into_par_iter()
             .filter(|&e_id| {
-                println!("{e_id:?}");
                 let centroid = self.umesh.get_element(e_id).centroid();
-                println!("{centroid:?}");
                 let isin = f(centroid.as_slice().unwrap());
-                println!("{isin:?}");
                 isin
             })
             .collect();
@@ -304,8 +327,6 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
     pub fn in_sphere(self, p0: &[f64; 3], r: f64) -> Self {
         self.is_in(|x| {
             debug_assert_eq!(x.len(), 3);
-            println!("{p0:?}");
-            println!("{r:?}");
             geo::in_sphere(
                 x.try_into().expect("Coords should have 3 components."),
                 p0,
@@ -336,7 +357,7 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
         })
     }
 
-    pub fn elements(self) -> Selector<'a, ElementTypeSelector> {
+    pub fn elements(self) -> Selector<'a, ElementSelector> {
         self.to_elements()
     }
     pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {

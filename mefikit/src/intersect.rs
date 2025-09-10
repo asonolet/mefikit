@@ -1,3 +1,30 @@
+/// Module for intersecting meshes.
+///
+/// In this context, intersections operations can be separated in the following cases:
+/// - 1d + 1d
+///   - cut: Intersection of 1D elements with other 1D elements producing 0D elements.
+///   - cut_add: Intersecting 1D elements with 1D elements producing 1D mesh conformized to both
+///   meshes.
+/// - 2d + 1d
+///   - cut_edges: Intersecting 2D elements with 1D elements and producing 2D mesh which contains
+///   intersections nodes in the connectivity. This new 2D mesh has the same number of elements as
+///   the original 2D mesh.
+///   - cute_faces: Intersecting 2D elements with 1D elements and producing 2D mesh by cutting the
+///   2D mesh with the 1D mesh. The new 2D mesh may contains more elements, and conformizes with
+///   the 1D mesh.
+/// - 2d + 2d
+///   - cut_union: Intersecting both meshes fully.
+///   - cut_intersect: Only keeping the domain covered by both meshes and intersecting them.
+///   - cut_xor: Only keeping the domain covered by one of the meshes and intersecting them.
+///
+/// The input meshes do not need to be clean (i.e. they can have unmerged nodes). They need to be
+/// conformed (i.e. no overlapping elements).
+/// In all cases, the operation gives a "conformized without merging nodes" mesh. The user can
+/// choose to merge nodes after the operation if needed.
+///
+/// Note: The implementation of these operations is not trivial. The main difficulty is to
+/// manage non conformities and numerical precision issues. The implementation should be robust
+/// and handle these issues gracefully.
 use super::geometry::seg_intersect::intersect_seg_seg;
 use super::umesh::Dimension::*;
 use super::umesh::{Element, ElementId, ElementLike, ElementType};
@@ -91,7 +118,8 @@ fn intersect_1d_elems(
             let p2 = [e1.coords()[[1, 0]], e1.coords()[[1, 1]]];
             let p3 = [e2.coords()[[0, 0]], e2.coords()[[0, 1]]];
             let p4 = [e2.coords()[[1, 0]], e2.coords()[[1, 1]]];
-            intersect_seg_seg(seg1_nodes, seg2_nodes, p1, p2, p3, p4, next_node_index)
+            todo!()
+            // intersect_seg_seg(seg1_nodes, seg2_nodes, p1, p2, p3, p4, next_node_index)
         }
         _ => todo!(),
     }
@@ -103,7 +131,7 @@ pub fn cut_2d_mesh_with_1d_mesh(mesh: UMeshView, tool_mesh: UMesh) -> Result<UMe
     // tool_mesh.merge_nodes();
     let tool_mesh = tool_mesh.prepend_coords(mesh.coords());
 
-    let (m1d, mgraph) = mesh.compute_submesh(Some(D2), None);
+    let (m1d, mgraph) = mesh.compute_neighbours(Some(D2), None);
 
     // build R*-tree with 1d tool mesh
     let segs: Vec<_> = tool_mesh

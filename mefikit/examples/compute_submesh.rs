@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_axis((0..=10).map(|i| i as f64 / 10.0).collect::<Vec<f64>>())
         .build();
     println!("Computing submesh");
-    let (submesh, _) = mesh.compute_submesh(None, None);
+    let submesh = mesh.compute_submesh(None, None);
     println!("Selecting in sphere.");
     let mesh_sel = mf::Selector::new(submesh.view())
         .centroids()

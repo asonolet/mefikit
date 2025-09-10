@@ -18,6 +18,38 @@ fn submesh(c: &mut Criterion) {
     }
 }
 
+fn neighbours(c: &mut Criterion) {
+    let mut group = c.benchmark_group("neighbours");
+
+    for i in [4, 60, 100] {
+        let mesh = mf::RegularUMeshBuilder::new()
+            .add_axis((0..=i).map(|i| i as f64).collect::<Vec<f64>>())
+            .add_axis((0..=i).map(|i| i as f64).collect::<Vec<f64>>())
+            .build();
+        group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
+            b.iter(|| {
+                std::hint::black_box(mesh.compute_neighbours(None, None));
+            })
+        });
+    }
+}
+
+fn par_neighbours(c: &mut Criterion) {
+    let mut group = c.benchmark_group("par_neighbours");
+
+    for i in [4, 60, 100] {
+        let mesh = mf::RegularUMeshBuilder::new()
+            .add_axis((0..=i).map(|i| i as f64).collect::<Vec<f64>>())
+            .add_axis((0..=i).map(|i| i as f64).collect::<Vec<f64>>())
+            .build();
+        group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
+            b.iter(|| {
+                std::hint::black_box(mesh.par_compute_neighbours(None, None));
+            })
+        });
+    }
+}
+
 fn selection_sphere(c: &mut Criterion) {
     let mut group = c.benchmark_group("selection");
 
@@ -76,5 +108,12 @@ fn measure2(c: &mut Criterion) {
     }
 }
 
-criterion_group!(bench, submesh, selection_sphere, measure2);
+criterion_group!(
+    bench,
+    submesh,
+    neighbours,
+    par_neighbours,
+    selection_sphere,
+    measure2
+);
 criterion_main!(bench);

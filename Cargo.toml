@@ -4,6 +4,6 @@ cargo-features = ["edition2024"]
 resolver = "3"
 members = [
     "mefikit",
-    "mefikit-py",
+    # "mefikit-py",
     # "mefikit-ffi",
 ]
