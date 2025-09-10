@@ -465,6 +465,47 @@ pub trait ElementLike<'a> {
                     None
                 }
             }
+            PGON => {
+                if codim == Dimension::D1 {
+                    let mut res: Vec<_> = co
+                        .as_slice()
+                        .unwrap()
+                        .windows(2)
+                        .zip(std::iter::repeat(SEG2))
+                        .map(|(a, b)| (b, a.try_into().unwrap()))
+                        .collect();
+                    res.push((SEG2, smallvec![co[co.len() - 1], co[0]]));
+                    Some(res)
+                } else if codim == Dimension::D2 {
+                    let res: Vec<_> = co
+                        .as_slice()
+                        .unwrap()
+                        .iter()
+                        .zip(std::iter::repeat(VERTEX))
+                        .map(|(&a, b)| (b, smallvec![a]))
+                        .collect();
+                    Some(res)
+                } else {
+                    todo!()
+                }
+            }
+            PHED => {
+                if codim == Dimension::D1 {
+                    let res: Vec<_> = co
+                        .as_slice()
+                        .unwrap()
+                        .split_inclusive(|&e| e == usize::MAX)
+                        .zip(std::iter::repeat(PGON))
+                        .map(|(a, b)| {
+                            let len = a.len() - 1;
+                            (b, a[..len].try_into().unwrap())
+                        })
+                        .collect();
+                    Some(res)
+                } else {
+                    todo!()
+                }
+            }
             _ => todo!(), // For other types, return empty vector
         }
     }
