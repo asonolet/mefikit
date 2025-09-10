@@ -327,6 +327,7 @@ impl FromParallelIterator<ElementId> for ElementIds {
 /// view. It holds references to this element family, fields and connectivity (local data). This
 /// view still has access to the whole coordinates array and the whole groups hashmap (but not
 /// publicly).
+#[derive(Debug)]
 pub struct Element<'a> {
     pub index: usize,
     coords: ArrayView2<'a, f64>,

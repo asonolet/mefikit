@@ -239,7 +239,9 @@ impl<'a> ElementBlock {
     ) {
         self.connectivity.append(connectivity);
         let family = family.unwrap_or_default();
-        self.families.append(Axis(0), array![family].view());
+        self.families
+            .append(Axis(0), array![family].view())
+            .unwrap();
 
         if let Some(fields) = fields {
             todo!();

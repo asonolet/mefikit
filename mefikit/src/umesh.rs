@@ -568,10 +568,15 @@ mod tests {
     use ndarray as nd;
 
     fn make_test_2d_mesh() -> UMesh {
-        let coords =
-            Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
+        let coords = Array2::from_shape_vec(
+            (5, 2),
+            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.5, 0.5],
+        )
+        .unwrap();
         let mut mesh = UMesh::new(coords.into());
+        mesh.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1], [1, 3]]));
         mesh.add_regular_block(ElementType::QUAD4, nd::arr2(&[[0, 1, 3, 2]]));
+        mesh.add_element(ElementType::PGON, &[0, 1, 5, 3, 2], None, None);
         mesh
     }
 
@@ -589,9 +594,15 @@ mod tests {
         let mesh = make_test_2d_mesh();
 
         let elements: Vec<Element> = mesh.elements().collect();
-        assert_eq!(elements.len(), 1);
-        assert_eq!(elements[0].element_type, ElementType::QUAD4);
-        assert_eq!(elements[0].connectivity, nd::arr1(&[0, 1, 3, 2]));
+        assert_eq!(elements.len(), 4);
+        assert_eq!(elements[0].element_type, ElementType::SEG2);
+        assert_eq!(elements[0].connectivity, nd::arr1(&[0, 1]));
+        assert_eq!(elements[1].element_type, ElementType::SEG2);
+        assert_eq!(elements[1].connectivity, nd::arr1(&[1, 3]));
+        assert_eq!(elements[2].element_type, ElementType::QUAD4);
+        assert_eq!(elements[2].connectivity, nd::arr1(&[0, 1, 3, 2]));
+        assert_eq!(elements[3].element_type, ElementType::PGON);
+        assert_eq!(elements[3].connectivity, nd::arr1(&[0, 1, 5, 3, 2]));
     }
     // #[test]
     // fn test_umesh_element_block_addition() {

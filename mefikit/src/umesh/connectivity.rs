@@ -35,18 +35,22 @@ impl<'a> Iterator for PolyConnIterator<'a> {
     type Item = nd::ArrayView1<'a, usize>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.offsets.len() - 1 {
+        if self.index >= self.offsets.len() {
             return None;
         }
-        let start = self.offsets[self.index];
-        let end = self.offsets[self.index + 1];
+        let start = if self.index == 0 {
+            0
+        } else {
+            self.offsets[self.index - 1]
+        };
+        let end = self.offsets[self.index];
         self.index += 1;
         let result = &self.data[start..end];
         Some(nd::ArrayView1::from(result))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.offsets.len() - 1;
+        let len = self.offsets.len();
         (len, Some(len))
     }
 }
@@ -84,11 +88,15 @@ impl<'a> Iterator for PolyConnIteratorMut<'a> {
     type Item = nd::ArrayViewMut1<'a, usize>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.offsets.len() - 1 {
+        if self.index >= self.offsets.len() {
             return None;
         }
-        let start = self.offsets[self.index];
-        let end = self.offsets[self.index + 1];
+        let start = if self.index == 0 {
+            0
+        } else {
+            self.offsets[self.index - 1]
+        };
+        let end = self.offsets[self.index];
         let len = end - start;
         self.index += 1;
 
@@ -108,7 +116,7 @@ impl<'a> Iterator for PolyConnIteratorMut<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.offsets.len() - 1;
+        let len = self.offsets.len();
         (len, Some(len))
     }
 }
@@ -167,7 +175,7 @@ where
     pub fn len(&self) -> usize {
         match self {
             ConnectivityBase::Regular(conn) => conn.nrows(),
-            ConnectivityBase::Poly { offsets, .. } => offsets.len() - 1,
+            ConnectivityBase::Poly { offsets, .. } => offsets.len(),
         }
     }
 
@@ -178,8 +186,8 @@ where
         match self {
             ConnectivityBase::Regular(conn) => conn.row(index),
             ConnectivityBase::Poly { data, offsets } => {
-                let start = offsets[index];
-                let end = offsets[index + 1];
+                let start = if index == 0 { 0 } else { offsets[index - 1] };
+                let end = offsets[index];
                 data.slice(nd::s![start..end])
             }
         }
@@ -209,8 +217,8 @@ where
         match self {
             ConnectivityBase::Regular(conn) => conn.row_mut(index),
             ConnectivityBase::Poly { data, offsets } => {
-                let start = offsets[index];
-                let end = offsets[index + 1];
+                let start = if index == 0 { 0 } else { offsets[index - 1] };
+                let end = offsets[index];
                 data.slice_mut(nd::s![start..end])
             }
         }
@@ -252,7 +260,7 @@ mod tests {
     #[test]
     fn test_poly_connectivity() {
         let data = arr1(&[0, 1, 2, 3, 4, 5]);
-        let offsets = arr1(&[0, 2, 5, 6]);
+        let offsets = arr1(&[2, 5, 6]);
         let connectivity = Connectivity::new_poly(data, offsets);
         assert_eq!(connectivity.len(), 3);
         assert_eq!(connectivity.get(0).to_vec(), vec![0, 1]);
@@ -262,7 +270,7 @@ mod tests {
     #[test]
     fn test_poly_connectivity_mut() {
         let data = arr1(&[0, 1, 2, 3, 4, 5]);
-        let offsets = arr1(&[0, 2, 5, 6]);
+        let offsets = arr1(&[2, 5, 6]);
         let mut connectivity = Connectivity::new_poly(data.clone(), offsets.clone());
         assert_eq!(connectivity.get_mut(0).to_vec(), vec![0, 1]);
         connectivity.get_mut(1)[0] = 10;
@@ -272,7 +280,7 @@ mod tests {
     #[test]
     fn test_poly_connectivity_iter() {
         let data = arr1(&[0, 1, 2, 3, 4, 5]);
-        let offsets = arr1(&[0, 2, 5, 6]);
+        let offsets = arr1(&[2, 5, 6]);
         let connectivity = Connectivity::new_poly(data, offsets);
         let mut iter = connectivity.iter();
         assert_eq!(iter.next().unwrap().to_vec(), vec![0, 1]);
@@ -282,7 +290,7 @@ mod tests {
     #[test]
     fn test_poly_connectivity_iter_mut() {
         let data = arr1(&[0, 1, 2, 3, 4, 5]);
-        let offsets = arr1(&[0, 2, 5, 6]);
+        let offsets = arr1(&[2, 5, 6]);
         let mut connectivity = Connectivity::new_poly(data.clone(), offsets.clone());
         let mut iter = connectivity.iter_mut();
         assert_eq!(iter.next().unwrap().to_vec(), vec![0, 1]);
@@ -292,7 +300,7 @@ mod tests {
     #[test]
     fn test_poly_connectivity_iter_size_hint() {
         let data = arr1(&[0, 1, 2, 3, 4, 5]);
-        let offsets = arr1(&[0, 2, 5, 6]);
+        let offsets = arr1(&[2, 5, 6]);
         let connectivity = Connectivity::new_poly(data, offsets);
         let iter = connectivity.iter();
         assert_eq!(iter.size_hint(), (3, Some(3)));
@@ -300,7 +308,7 @@ mod tests {
     #[test]
     fn test_poly_connectivity_iter_mut_size_hint() {
         let data = arr1(&[0, 1, 2, 3, 4, 5]);
-        let offsets = arr1(&[0, 2, 5, 6]);
+        let offsets = arr1(&[2, 5, 6]);
         let mut connectivity = Connectivity::new_poly(data.clone(), offsets.clone());
         let iter = connectivity.iter_mut();
         assert_eq!(iter.size_hint(), (3, Some(3)));
