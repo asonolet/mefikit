@@ -283,6 +283,128 @@ impl<'a> Selector<'a, GroupBasedSelector> {
 }
 
 impl<'a> Selector<'a, NodeBasedSelector> {
+    pub fn all_in<F0>(self, f: F0) -> Selector<'a, NodeBasedSelector>
+    where
+        F0: Fn(&[f64]) -> bool + Sync,
+    {
+        let index = self
+            .index
+            .into_par_iter()
+            .filter(|&e_id| {
+                let isin = self
+                    .umesh
+                    .get_element(e_id)
+                    .coords()
+                    .rows()
+                    .into_iter()
+                    .all(|x| f(x.as_slice().unwrap()));
+                isin
+            })
+            .collect();
+
+        let state = self.state;
+
+        Selector {
+            umesh: self.umesh,
+            index,
+            state,
+        }
+    }
+
+    pub fn any_in<F0>(self, f: F0) -> Selector<'a, NodeBasedSelector>
+    where
+        F0: Fn(&[f64]) -> bool + Sync,
+    {
+        let index = self
+            .index
+            .into_par_iter()
+            .filter(|&e_id| {
+                let isin = self
+                    .umesh
+                    .get_element(e_id)
+                    .coords()
+                    .rows()
+                    .into_iter()
+                    .any(|x| f(x.as_slice().unwrap()));
+                isin
+            })
+            .collect();
+
+        let state = self.state;
+
+        Selector {
+            umesh: self.umesh,
+            index,
+            state,
+        }
+    }
+
+    pub fn all_in_sphere(self, p0: &[f64; 3], r: f64) -> Self {
+        self.all_in(|x| {
+            debug_assert_eq!(x.len(), 3);
+            geo::in_sphere(
+                x.try_into().expect("Coords should have 3 components."),
+                p0,
+                r,
+            )
+        })
+    }
+
+    pub fn all_in_bbox(self, p0: &[f64; 3], p1: &[f64; 3]) -> Self {
+        self.all_in(|x| {
+            debug_assert_eq!(x.len(), 3);
+            geo::in_aa_bbox(
+                x.try_into().expect("Coords should have 3 components."),
+                p0,
+                p1,
+            )
+        })
+    }
+
+    pub fn all_in_rectangle(self, p0: &[f64; 2], p1: &[f64; 2]) -> Self {
+        self.all_in(|x| {
+            debug_assert_eq!(x.len(), 2);
+            geo::in_aa_rectangle(
+                x.try_into().expect("Coords should have 2 components."),
+                p0,
+                p1,
+            )
+        })
+    }
+
+    pub fn any_in_sphere(self, p0: &[f64; 3], r: f64) -> Self {
+        self.any_in(|x| {
+            debug_assert_eq!(x.len(), 3);
+            geo::in_sphere(
+                x.try_into().expect("Coords should have 3 components."),
+                p0,
+                r,
+            )
+        })
+    }
+
+    pub fn any_in_bbox(self, p0: &[f64; 3], p1: &[f64; 3]) -> Self {
+        self.any_in(|x| {
+            debug_assert_eq!(x.len(), 3);
+            geo::in_aa_bbox(
+                x.try_into().expect("Coords should have 3 components."),
+                p0,
+                p1,
+            )
+        })
+    }
+
+    pub fn any_in_rectangle(self, p0: &[f64; 2], p1: &[f64; 2]) -> Self {
+        self.any_in(|x| {
+            debug_assert_eq!(x.len(), 2);
+            geo::in_aa_rectangle(
+                x.try_into().expect("Coords should have 2 components."),
+                p0,
+                p1,
+            )
+        })
+    }
+
     pub fn elements(self) -> Selector<'a, ElementSelector> {
         self.to_elements()
     }
