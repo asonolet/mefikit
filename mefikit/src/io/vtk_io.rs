@@ -26,7 +26,7 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
             .coords()
             .outer_iter()
             .flat_map(|x1| {
-                let mut x3 = vec![0.0; 3];
+                let mut x3 = [0.0; 3];
                 x3[0] = x1[0];
                 x3
             })
@@ -35,7 +35,7 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
             .coords()
             .outer_iter()
             .flat_map(|x2| {
-                let mut x3 = vec![0.0; 3];
+                let mut x3 = [0.0; 3];
                 x3[0] = x2[0];
                 x3[1] = x2[1];
                 x3
