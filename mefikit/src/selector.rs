@@ -374,21 +374,12 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ElementType, UMesh};
-    use ndarray as nd;
-
-    fn make_test_2d_mesh() -> UMesh {
-        let coords =
-            nd::ArcArray2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])
-                .unwrap();
-        let mut mesh = UMesh::new(coords);
-        mesh.add_regular_block(ElementType::QUAD4, nd::arr2(&[[0, 1, 3, 2]]));
-        mesh
-    }
+    use crate::ElementType;
+    use crate::mesh_examples as me;
 
     #[test]
     fn test_umesh_element_selection() {
-        let mesh = make_test_2d_mesh();
+        let mesh = me::make_mesh_2d_quad();
         let selected_ids = Selector::new(mesh.view())
             .centroids()
             .in_rectangle(&[0.0, 0.0], &[1.0, 1.0])

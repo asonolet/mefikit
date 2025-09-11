@@ -115,22 +115,13 @@ pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ElementType, UMesh};
+    use crate::ElementType;
+    use crate::mesh_examples as me;
     use approx::*;
-    use ndarray as nd;
-
-    fn make_test_2d_mesh() -> UMesh {
-        let coords =
-            nd::ArcArray2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])
-                .unwrap();
-        let mut mesh = UMesh::new(coords);
-        mesh.add_regular_block(ElementType::QUAD4, nd::arr2(&[[0, 1, 3, 2]]));
-        mesh
-    }
 
     #[test]
     fn test_umesh_measure() {
-        let mesh = make_test_2d_mesh();
+        let mesh = me::make_mesh_2d_quad();
         let measures = measure(mesh.view());
         assert_eq!(measures.len(), 1);
         assert!(measures.contains_key(&ElementType::QUAD4));

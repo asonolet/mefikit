@@ -150,23 +150,13 @@ pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::UMesh;
-    use ndarray as nd;
-    use ndarray::Array2;
+    use crate::mesh_examples as me;
     use std::path::PathBuf;
-
-    fn make_test_2d_mesh() -> UMesh {
-        let coords =
-            Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap();
-        let mut mesh = UMesh::new(coords.into());
-        mesh.add_regular_block(ElementType::QUAD4, nd::arr2(&[[0, 1, 3, 2]]));
-        mesh
-    }
 
     #[test]
     fn test_write_vtk() {
         let path = PathBuf::from("test.vtk");
-        let mesh = make_test_2d_mesh();
+        let mesh = me::make_mesh_2d_multi();
         assert!(write(&path, mesh.view()).is_ok());
         std::fs::remove_file(path).unwrap(); // Clean up the test file
     }
@@ -174,7 +164,7 @@ mod tests {
     #[test]
     fn test_read_vtk() {
         let path = PathBuf::from("test2.vtk");
-        let mesh = make_test_2d_mesh();
+        let mesh = me::make_mesh_2d_multi();
         assert!(write(&path, mesh.view()).is_ok());
         let mesh2 = read(&path).unwrap();
         std::fs::remove_file(path).unwrap(); // Clean up the test file

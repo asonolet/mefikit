@@ -564,34 +564,20 @@ impl UMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mesh_examples as me;
     use crate::umesh::ElementType;
     use ndarray as nd;
 
-    fn make_test_2d_mesh() -> UMesh {
-        let coords = Array2::from_shape_vec(
-            (5, 2),
-            vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.5, 0.5],
-        )
-        .unwrap();
-        let mut mesh = UMesh::new(coords.into());
-        mesh.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1], [1, 3]]));
-        mesh.add_regular_block(ElementType::QUAD4, nd::arr2(&[[0, 1, 3, 2]]));
-        mesh.add_element(ElementType::PGON, &[0, 1, 5, 3, 2], None, None);
-        mesh
-    }
-
     #[test]
     fn test_umesh_creation() {
-        let coords = Array2::from_shape_vec((3, 1), vec![0.0, 1.0, 2.0]).unwrap();
-        let mut mesh = UMesh::new(coords.into());
-        mesh.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1], [1, 2]]));
+        let mesh = me::make_mesh_3d_seg2();
         assert_eq!(mesh.coords.shape(), &[3, 1]);
         assert_eq!(mesh.element_blocks.len(), 1);
         assert!(mesh.element_blocks.contains_key(&ElementType::SEG2));
     }
     #[test]
     fn test_umesh_element_iteration() {
-        let mesh = make_test_2d_mesh();
+        let mesh = me::make_mesh_2d_multi();
 
         let elements: Vec<Element> = mesh.elements().collect();
         assert_eq!(elements.len(), 4);
@@ -621,7 +607,7 @@ mod tests {
     // }
     #[test]
     fn test_umesh_element_retrieval() {
-        let mesh = make_test_2d_mesh();
+        let mesh = me::make_mesh_2d_multi();
         let element = mesh.get_element(ElementId::new(ElementType::QUAD4, 0));
         assert_eq!(element.element_type, ElementType::QUAD4);
         assert_eq!(element.connectivity, nd::arr1(&[0, 1, 3, 2]));
@@ -638,13 +624,7 @@ mod tests {
 
     #[test]
     fn test_umesh_view() {
-        for i in [40] {
-            let mesh = crate::RegularUMeshBuilder::new()
-                .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
-                .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
-                .add_axis((0..i).map(|k| (k as f64) / (i as f64)).collect())
-                .build();
-            mesh.view();
-        }
+        let mesh = me::make_imesh_3d(40);
+        mesh.view();
     }
 }

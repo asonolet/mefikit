@@ -2,6 +2,8 @@ mod builders;
 mod geometry;
 mod intersect;
 mod io;
+#[cfg(test)]
+pub mod mesh_examples;
 mod selector;
 mod topology;
 /// This module serves as the **central container** for all mesh-related data and logic in the library.
