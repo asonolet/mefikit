@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use smallvec::{SmallVec, smallvec};
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::connectivity::Connectivity;
+
 // #[derive(Copy, Clone)]
 // pub enum EdgeType {
 //     SEG2,
@@ -379,130 +381,139 @@ pub trait ElementLike<'a> {
     }
 
     /// This function returns the subentities of the element based on the codimension.
-    fn subentities(
-        &self,
-        codim: Option<Dimension>,
-    ) -> Option<Vec<(ElementType, SmallVec<[usize; 4]>)>> {
+    fn subentities(&self, codim: Option<Dimension>) -> Vec<(ElementType, Connectivity)> {
         use ElementType::*;
         let codim = match codim {
             None => Dimension::D1,
             Some(c) => c,
         };
         let co = self.connectivity();
+        let mut res = Vec::new();
         match self.element_type() {
             SEG2 | SEG3 | SEG4 => {
                 // 1D elements have edges as subentities
                 if codim == Dimension::D1 {
-                    Some(vec![(VERTEX, smallvec![co[0]]), (VERTEX, smallvec![co[1]])])
+                    let conn = arr2(&[[co[0]], [co[1]]]);
+                    res.push((VERTEX, Connectivity::new_regular(conn)));
+                    res
                 } else {
-                    None
+                    todo!()
                 }
             }
             TRI3 => {
                 // 2D elements have edges as subentities
                 if codim == Dimension::D1 {
-                    Some(vec![
-                        (SEG2, smallvec![co[0], co[1]]),
-                        (SEG2, smallvec![co[1], co[2]]),
-                        (SEG2, smallvec![co[2], co[0]]),
-                    ])
+                    let conn = arr2(&[[co[0], co[1]], [co[1], co[2]], [co[2], co[0]]]);
+                    res.push((SEG2, Connectivity::new_regular(conn)));
+                    res
                 } else {
-                    None
+                    todo!()
                 }
             }
             TRI6 | TRI7 => {
                 // 2D Quad elements have edges3 as subentities
                 if codim == Dimension::D1 {
-                    Some(vec![
-                        (SEG3, smallvec![co[0], co[1], co[3]]),
-                        (SEG3, smallvec![co[1], co[2], co[4]]),
-                        (SEG3, smallvec![co[2], co[0], co[5]]),
-                    ])
+                    let conn = arr2(&[
+                        [co[0], co[1], co[3]],
+                        [co[1], co[2], co[4]],
+                        [co[2], co[0], co[5]],
+                    ]);
+                    res.push((SEG3, Connectivity::new_regular(conn)));
+                    res
                 } else {
-                    None
+                    todo!()
                 }
             }
             QUAD4 => {
                 // 2D elements have edges as subentities
                 if codim == Dimension::D1 {
-                    Some(vec![
-                        (SEG2, smallvec![co[0], co[1]]),
-                        (SEG2, smallvec![co[1], co[2]]),
-                        (SEG2, smallvec![co[2], co[3]]),
-                        (SEG2, smallvec![co[3], co[0]]),
-                    ])
+                    let conn = arr2(&[
+                        [co[0], co[1]],
+                        [co[1], co[2]],
+                        [co[2], co[3]],
+                        [co[3], co[0]],
+                    ]);
+                    res.push((SEG2, Connectivity::new_regular(conn)));
+                    res
                 } else {
-                    None
+                    todo!()
                 }
             }
             TET4 => {
                 // 3D elements have faces as subentities
                 if codim == Dimension::D1 {
-                    Some(vec![
-                        (TRI3, smallvec![co[0], co[1], co[2]]),
-                        (TRI3, smallvec![co[1], co[2], co[3]]),
-                        (TRI3, smallvec![co[2], co[3], co[0]]),
-                        (TRI3, smallvec![co[3], co[0], co[1]]),
-                    ])
+                    let conn = arr2(&[
+                        [co[0], co[1], co[2]],
+                        [co[1], co[2], co[3]],
+                        [co[2], co[3], co[0]],
+                        [co[3], co[0], co[1]],
+                    ]);
+                    res.push((TRI3, Connectivity::new_regular(conn)));
+                    res
                 } else if codim == Dimension::D2 {
                     todo!()
                 } else {
-                    None
+                    todo!()
                 }
             }
             HEX8 => {
                 if codim == Dimension::D1 {
-                    Some(vec![
-                        (QUAD4, smallvec![co[0], co[1], co[2], co[3]]),
-                        (QUAD4, smallvec![co[0], co[3], co[7], co[4]]),
-                        (QUAD4, smallvec![co[0], co[4], co[5], co[1]]),
-                        (QUAD4, smallvec![co[1], co[5], co[6], co[2]]),
-                        (QUAD4, smallvec![co[2], co[6], co[7], co[3]]),
-                        (QUAD4, smallvec![co[4], co[7], co[6], co[5]]),
-                    ])
+                    let conn = arr2(&[
+                        [co[0], co[1], co[2], co[3]],
+                        [co[0], co[3], co[7], co[4]],
+                        [co[0], co[4], co[5], co[1]],
+                        [co[1], co[5], co[6], co[2]],
+                        [co[2], co[6], co[7], co[3]],
+                        [co[4], co[7], co[6], co[5]],
+                    ]);
+                    res.push((QUAD4, Connectivity::new_regular(conn)));
+                    res
                 } else if codim == Dimension::D2 {
                     todo!()
                 } else {
-                    None
+                    todo!()
                 }
             }
             PGON => {
                 if codim == Dimension::D1 {
-                    let mut res: Vec<_> = co
+                    let mut conn: Vec<_> = co
                         .as_slice()
                         .unwrap()
                         .windows(2)
-                        .zip(std::iter::repeat(SEG2))
-                        .map(|(a, b)| (b, a.try_into().unwrap()))
+                        .flatten()
+                        .cloned()
                         .collect();
-                    res.push((SEG2, smallvec![co[co.len() - 1], co[0]]));
-                    Some(res)
+                    conn.push(co[co.len() - 1]);
+                    conn.push(co[0]);
+                    let conn = Array2::from_shape_vec([conn.len() / 2, 2], conn).unwrap();
+                    res.push((SEG2, Connectivity::new_regular(conn)));
+                    res
                 } else if codim == Dimension::D2 {
-                    let res: Vec<_> = co
-                        .as_slice()
-                        .unwrap()
-                        .iter()
-                        .zip(std::iter::repeat(VERTEX))
-                        .map(|(&a, b)| (b, smallvec![a]))
-                        .collect();
-                    Some(res)
+                    let conn = Array2::from_shape_vec([co.len(), 1], co.to_vec()).unwrap();
+                    res.push((VERTEX, Connectivity::new_regular(conn)));
+                    res
                 } else {
                     todo!()
                 }
             }
             PHED => {
                 if codim == Dimension::D1 {
-                    let res: Vec<_> = co
-                        .as_slice()
+                    let mut conn = Vec::new();
+                    let mut offsets = Vec::new();
+                    let mut offset = 0;
+                    co.as_slice()
                         .unwrap()
                         .split_inclusive(|&e| e == usize::MAX)
-                        .zip(std::iter::repeat(PGON))
-                        .map(|(a, b)| {
+                        .for_each(|a| {
                             let len = a.len() - 1;
-                            (b, a[..len].try_into().unwrap())
-                        })
-                        .collect();
-                    Some(res)
+                            offset += len;
+                            offsets.push(offset);
+                            conn.append(&mut a[..len].to_vec())
+                        });
+                    let offsets = Array1::from_vec(offsets);
+                    let conn = Array::from_vec(conn);
+                    res.push((PGON, Connectivity::new_poly(conn, offsets)));
+                    res
                 } else {
                     todo!()
                 }

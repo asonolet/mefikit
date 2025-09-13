@@ -269,13 +269,17 @@ where
                     (SmallVec<[ElementId; 2]>, SmallVec<[usize; 4]>, ElementType),
                 >,
                  elem| {
-                    for (et, conn) in elem.subentities(Some(codim)).unwrap() {
-                        let key = SortedVecKey::new(conn.clone());
-                        match subentities_hash.get_mut(&key) {
-                            // The subentity already exists
-                            Some((ids, _, _)) => ids.push(elem.id()),
-                            None => {
-                                subentities_hash.insert(key, (smallvec![elem.id()], conn, et));
+                    for (et, conn) in elem.subentities(Some(codim)) {
+                        for co in conn.iter() {
+                            let co = co.as_slice().unwrap();
+                            let key = SortedVecKey::new(co.try_into().unwrap());
+                            match subentities_hash.get_mut(&key) {
+                                // The subentity already exists
+                                Some((ids, _, _)) => ids.push(elem.id()),
+                                None => {
+                                    subentities_hash
+                                        .insert(key, (smallvec![elem.id()], co.into(), et));
+                                }
                             }
                         }
                     }
@@ -347,23 +351,26 @@ where
         let mut neighbors: UMesh = UMesh::new(self.coords.to_shared());
 
         for elem in self.elements_of_dim(dim) {
-            for (et, conn) in elem.subentities(Some(codim)).unwrap() {
-                let key = SortedVecKey::new(conn.clone());
+            for (et, conn) in elem.subentities(Some(codim)) {
+                for co in conn.iter() {
+                    let co = co.as_slice().unwrap();
+                    let key = SortedVecKey::new(co.try_into().unwrap());
 
-                match subentities_hashmap.get_mut(&key) {
-                    None => {
-                        // The subentity is new
-                        let subentity_id = match neighbors.element_blocks.get(&et) {
-                            Some(block) => block.len(),
-                            None => 0,
-                        };
-                        let new_id = ElementId::new(et, subentity_id);
-                        subentities_hashmap.insert(key, (new_id, smallvec![elem.id()]));
-                        neighbors.add_element(et, conn.as_slice(), None, None);
-                    }
-                    Some((_, eids)) => {
-                        // The subentity already exists
-                        eids.push(elem.id());
+                    match subentities_hashmap.get_mut(&key) {
+                        None => {
+                            // The subentity is new
+                            let subentity_id = match neighbors.element_blocks.get(&et) {
+                                Some(block) => block.len(),
+                                None => 0,
+                            };
+                            let new_id = ElementId::new(et, subentity_id);
+                            subentities_hashmap.insert(key, (new_id, smallvec![elem.id()]));
+                            neighbors.add_element(et, co, None, None);
+                        }
+                        Some((_, eids)) => {
+                            // The subentity already exists
+                            eids.push(elem.id());
+                        }
                     }
                 }
             }
@@ -407,12 +414,15 @@ where
         let mut neighbors: UMesh = UMesh::new(self.coords.to_shared());
 
         for elem in self.elements_of_dim(dim) {
-            for (et, conn) in elem.subentities(Some(codim)).unwrap() {
-                let key = SortedVecKey::new(conn.clone());
-                if subentities_hash.get(&key).is_none() {
-                    // The subentity is new
-                    subentities_hash.insert(key);
-                    neighbors.add_element(et, conn.as_slice(), None, None);
+            for (et, conn) in elem.subentities(Some(codim)) {
+                for co in conn.iter() {
+                    let co = co.as_slice().unwrap();
+                    let key = SortedVecKey::new(co.try_into().unwrap());
+                    if subentities_hash.get(&key).is_none() {
+                        // The subentity is new
+                        subentities_hash.insert(key);
+                        neighbors.add_element(et, co, None, None);
+                    }
                 }
             }
         }
