@@ -4,9 +4,11 @@ pub mod seg_intersect;
 
 use self::measures as mes;
 use crate::{ElementLike, ElementType, UMeshView};
+
 use ndarray as nd;
 use ndarray::prelude::*;
 use rayon::prelude::*;
+use rstar::AABB;
 use std::collections::BTreeMap;
 
 pub trait ElementGeo<'a>: ElementLike<'a> {
@@ -58,13 +60,29 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         }
     }
 
-    fn is_point_inside(&self, point: &[f64]) -> bool {
+    fn is_point_inside(&self, _point: &[f64]) -> bool {
         // Returns true if the point is inside the element
         // For 0D elements, return true if the point is equal to the element's coordinates
         // For 1D elements, return true if the point is between the two nodes
         // For 2D elements, return true if the point is inside the polygon
         // For 3D elements, return true if the point is inside the polyhedron
         todo!()
+    }
+
+    fn to_aabb2(&self) -> AABB<[f64; 2]> {
+        AABB::from_points(
+            self.coords()
+                .axis_iter(Axis(0))
+                .map(|e| e.to_slice().unwrap()[..2].try_into().unwrap()),
+        )
+    }
+
+    fn to_aabb(&self) -> AABB<[f64; 3]> {
+        AABB::from_points(
+            self.coords()
+                .axis_iter(Axis(0))
+                .map(|e| e.to_slice().unwrap()[..3].try_into().unwrap()),
+        )
     }
 }
 

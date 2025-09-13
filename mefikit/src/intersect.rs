@@ -1,4 +1,4 @@
-use super::geometry::seg_intersect::intersect_seg_seg;
+use super::geometry::{ElementGeo, seg_intersect::intersect_seg_seg};
 use super::topo::compute_neighbours;
 use super::umesh::Dimension::*;
 use super::umesh::{Element, ElementId, ElementLike, ElementType};
@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use arrayvec::ArrayVec;
 use ndarray::prelude::*;
+use rstar::RTree;
 use rstar::primitives::{GeomWithData, Line};
-use rstar::{AABB, RTree};
 
 /// A wrapper struct representing a geometric line segment with associated element ID data.
 ///
@@ -25,14 +25,6 @@ impl Segment {
         let p2: &[f64] = el.coords().index_axis(Axis(0), 1).to_slice().unwrap();
         Self::new([p1[0], p1[1]], [p2[0], p2[1]], el.id())
     }
-}
-
-fn to_aabb(el: &Element) -> AABB<[f64; 2]> {
-    AABB::from_points(
-        el.coords()
-            .axis_iter(Axis(0))
-            .map(|e| e.to_slice().unwrap()[..2].try_into().unwrap()),
-    )
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
@@ -121,7 +113,7 @@ pub fn cut_2d_mesh_with_1d_mesh(mesh: UMeshView, tool_mesh: UMesh) -> Result<UMe
     let mut e2int: HashMap<ElementId, Vec<[usize; 2]>> = HashMap::new();
     for el in mesh.elements_of_dim(D2) {
         let segs_in_elem: Vec<_> = cutter_tree
-            .locate_in_envelope_intersecting(&to_aabb(&el))
+            .locate_in_envelope_intersecting(&el.to_aabb2())
             .collect();
         for (_, _, &eid) in mgraph.edges(el.id()) {
             // TODO: edge could be SEG3!
