@@ -198,7 +198,8 @@ where
     //     }
     // }
 
-    /// This method is used to replace elements in the current mesh with another mesh.
+    /// This method is used to replace elements in the current mesh with another mesh, producing a
+    /// new mesh.
     ///
     /// Please mind what you are doing, this method wont check for mesh constitency.
     ///
@@ -336,18 +337,6 @@ impl UMesh {
             }
         }
         self
-    }
-
-    /// This method is used to replace elements in the current mesh with another mesh.
-    ///
-    /// Please mind what you are doing, this method wont check for mesh constitency.
-    ///
-    /// The element number is the same, in which case we just replace the elements inplace. It is
-    /// efficient except in the case of poly elements. It can be used to reorder elements, change
-    /// their fields or families, change their node order, etc. The ElementIds are still valid and
-    /// can be used to access the elements in the mesh.
-    pub fn replace_inplace(&mut self, _ids: &ElementIds, _replace_mesh: &UMesh) {
-        todo!();
     }
 }
 
