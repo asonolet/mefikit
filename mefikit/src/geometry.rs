@@ -1,8 +1,8 @@
 pub mod is_in;
-pub mod measure;
+pub mod measures;
 pub mod seg_intersect;
 
-use self::measure as mes;
+use self::measures as mes;
 use crate::{ElementLike, ElementType, UMeshView};
 use ndarray as nd;
 use ndarray::prelude::*;
