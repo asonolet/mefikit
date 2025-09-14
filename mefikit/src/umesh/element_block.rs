@@ -109,24 +109,27 @@ where
         G: Sync,
         F: Sync,
     {
-        (0..self.len()).into_par_iter().map(move |i| {
-            let connectivity = self.element_connectivity(i);
-            // let fields = self
-            //     .fields
-            //     .iter()
-            //     .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
-            //     .collect();
+        (0..self.len())
+            .into_par_iter()
+            .with_min_len(200)
+            .map(move |i| {
+                let connectivity = self.element_connectivity(i);
+                // let fields = self
+                //     .fields
+                //     .iter()
+                //     .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
+                //     .collect();
 
-            Element::new(
-                i,
-                coords,
-                None,
-                &self.families[i],
-                &self.groups,
-                connectivity,
-                self.cell_type,
-            )
-        })
+                Element::new(
+                    i,
+                    coords,
+                    None,
+                    &self.families[i],
+                    &self.groups,
+                    connectivity,
+                    self.cell_type,
+                )
+            })
     }
 
     // pub fn iter_mut(

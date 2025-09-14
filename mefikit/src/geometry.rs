@@ -108,7 +108,7 @@ pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
         1 => todo!(),
         2 => mesh
             .element_blocks
-            .par_iter()
+            .iter()
             .map(|(&k, v)| {
                 (
                     k,
