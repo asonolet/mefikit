@@ -68,15 +68,15 @@ pub fn surf_quad2_(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> f64 {
 
 /// Cross intersecting is not tested and result is wrong
 #[inline]
-pub fn surf_quad2(coords: Array2<f64>) -> f64 {
-    let u0 = coords[[1, 0]] - coords[[0, 0]];
-    let u1 = coords[[1, 1]] - coords[[0, 1]];
-    let v0 = coords[[3, 0]] - coords[[0, 0]];
-    let v1 = coords[[3, 1]] - coords[[0, 1]];
-    let x0 = coords[[3, 0]] - coords[[2, 0]];
-    let x1 = coords[[3, 1]] - coords[[2, 1]];
-    let y0 = coords[[1, 0]] - coords[[2, 0]];
-    let y1 = coords[[1, 1]] - coords[[2, 1]];
+pub fn surf_quad2(coords: Vec<[f64; 2]>) -> f64 {
+    let u0 = coords[1][0] - coords[0][0];
+    let u1 = coords[1][1] - coords[0][1];
+    let v0 = coords[3][0] - coords[0][0];
+    let v1 = coords[3][1] - coords[0][1];
+    let x0 = coords[3][0] - coords[2][0];
+    let x1 = coords[3][1] - coords[2][1];
+    let y0 = coords[1][0] - coords[2][0];
+    let y1 = coords[1][1] - coords[2][1];
     0.5 * (u0 * v1 - u1 * v0 + x0 * y1 - x1 * y0).abs()
 }
 

@@ -33,7 +33,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
                 )
             }
             QUAD4 => {
-                let coords = self.coords();
+                let coords = self.coords2();
                 mes::surf_quad2(coords)
             }
             _ => todo!(),
