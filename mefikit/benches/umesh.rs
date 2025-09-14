@@ -102,7 +102,8 @@ fn measure2(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mf::measure(mesh.view()));
+                let view = mesh.view();
+                std::hint::black_box(mf::measure(view));
             })
         });
     }
@@ -110,10 +111,10 @@ fn measure2(c: &mut Criterion) {
 
 criterion_group!(
     bench,
-    submesh,
-    neighbours,
-    par_neighbours,
-    selection_sphere,
+    // submesh,
+    // neighbours,
+    // par_neighbours,
+    // selection_sphere,
     measure2
 );
 criterion_main!(bench);
