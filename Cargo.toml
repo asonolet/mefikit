@@ -7,3 +7,8 @@ members = [
     # "mefikit-py",
     # "mefikit-ffi",
 ]
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+debug = "line-tables-only"

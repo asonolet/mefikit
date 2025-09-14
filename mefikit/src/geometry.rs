@@ -20,18 +20,22 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => mes::dist(self.coords().row(0), self.coords().row(1)),
-            TRI3 => mes::surf_tri2(
-                self.coords().row(0).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(1).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(2).as_slice().unwrap().try_into().unwrap(),
-            ),
-            QUAD4 => mes::surf_quad2(
-                self.coords().row(0).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(1).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(2).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(3).as_slice().unwrap().try_into().unwrap(),
-            ),
+            SEG2 => {
+                let coords = self.coords();
+                mes::dist(coords.row(0), coords.row(1))
+            }
+            TRI3 => {
+                let coords = self.coords();
+                mes::surf_tri2(
+                    coords.row(0).as_slice().unwrap().try_into().unwrap(),
+                    coords.row(1).as_slice().unwrap().try_into().unwrap(),
+                    coords.row(2).as_slice().unwrap().try_into().unwrap(),
+                )
+            }
+            QUAD4 => {
+                let coords = self.coords();
+                mes::surf_quad2(coords)
+            }
             _ => todo!(),
         }
     }
@@ -45,17 +49,23 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         match self.element_type() {
             VERTEX => 0.0,
             SEG2 => todo!(),
-            TRI3 => mes::surf_tri3(
-                self.coords().row(0).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(1).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(2).as_slice().unwrap().try_into().unwrap(),
-            ),
-            QUAD4 => mes::surf_quad3(
-                self.coords().row(0).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(1).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(2).as_slice().unwrap().try_into().unwrap(),
-                self.coords().row(3).as_slice().unwrap().try_into().unwrap(),
-            ),
+            TRI3 => {
+                let coords = self.coords();
+                mes::surf_tri3(
+                    coords.row(0).as_slice().unwrap().try_into().unwrap(),
+                    coords.row(1).as_slice().unwrap().try_into().unwrap(),
+                    coords.row(2).as_slice().unwrap().try_into().unwrap(),
+                )
+            }
+            QUAD4 => {
+                let coords = self.coords();
+                mes::surf_quad3(
+                    coords.row(0).as_slice().unwrap().try_into().unwrap(),
+                    coords.row(1).as_slice().unwrap().try_into().unwrap(),
+                    coords.row(2).as_slice().unwrap().try_into().unwrap(),
+                    coords.row(3).as_slice().unwrap().try_into().unwrap(),
+                )
+            }
             _ => todo!(),
         }
     }
@@ -92,7 +102,7 @@ pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
     match mesh.space_dimension() {
         0 => mesh
             .element_blocks
-            .par_iter()
+            .iter()
             .map(|(&k, v)| (k, nd::arr1(&vec![0.0; v.len()])))
             .collect(),
         1 => todo!(),
@@ -112,7 +122,7 @@ pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
             .collect(),
         3 => mesh
             .element_blocks
-            .par_iter()
+            .iter()
             .map(|(&k, v)| {
                 (
                     k,

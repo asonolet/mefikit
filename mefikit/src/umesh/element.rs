@@ -302,12 +302,12 @@ impl FromParallelIterator<ElementId> for ElementIds {
 pub struct Element<'a> {
     pub index: usize,
     coords: ArrayView2<'a, f64>,
-    pub fields: BTreeMap<&'a str, ArrayViewD<'a, f64>>,
+    pub fields: Option<BTreeMap<&'a str, ArrayViewD<'a, f64>>>,
     pub family: &'a usize,
     groups: &'a BTreeMap<String, BTreeSet<usize>>,
-    pub connectivity: ArrayView1<'a, usize>,
+    pub connectivity: &'a [usize],
     pub element_type: ElementType,
-    element_coords_cache: OnceCell<Array2<f64>>,
+    // element_coords_cache: OnceCell<Array2<f64>>,
     element_groups_cache: OnceCell<Vec<String>>,
 }
 
@@ -321,7 +321,7 @@ pub trait ElementLike<'a> {
     fn id(&self) -> ElementId {
         ElementId::new(self.element_type(), self.index())
     }
-    fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize>;
+    fn connectivity(&self) -> &[usize];
 
     /// Returns the regularity of the element.
     ///
@@ -334,7 +334,7 @@ pub trait ElementLike<'a> {
     ///
     /// This is used to determine the number of nodes in the element.
     fn num_nodes(&self) -> usize {
-        self.connectivity().shape()[0]
+        self.connectivity().len()
     }
 
     /// Returns the topological dimension of the element.
@@ -344,14 +344,14 @@ pub trait ElementLike<'a> {
 
     fn connectivity_equals(&self, other: &Self) -> bool {
         // Check if the connectivity arrays are equal
-        self.connectivity().shape() == other.connectivity().shape()
+        self.connectivity().len() == other.connectivity().len()
             && self.connectivity().iter().eq(other.connectivity().iter())
     }
 
     /// Geometric queries
 
     /// Returns a reference to an owned
-    fn coords(&self) -> &Array2<f64>;
+    fn coords(&self) -> Array2<f64>;
 
     /// Returns the space dimension of the element
     fn space_dimension(&self) -> usize;
@@ -385,10 +385,10 @@ impl<'a> Element<'a> {
     pub fn new(
         index: usize,
         coords: ArrayView2<'a, f64>,
-        fields: BTreeMap<&'a str, ArrayViewD<'a, f64>>,
+        fields: Option<BTreeMap<&'a str, ArrayViewD<'a, f64>>>,
         family: &'a usize,
         groups: &'a BTreeMap<String, BTreeSet<usize>>,
-        connectivity: ArrayView1<'a, usize>,
+        connectivity: &'a [usize],
         element_type: ElementType,
     ) -> Element<'a> {
         Element {
@@ -399,7 +399,7 @@ impl<'a> Element<'a> {
             groups,
             connectivity,
             element_type,
-            element_coords_cache: OnceCell::new(),
+            // element_coords_cache: OnceCell::new(),
             element_groups_cache: OnceCell::new(),
         }
     }
@@ -412,16 +412,55 @@ impl<'a> ElementLike<'a> for Element<'a> {
     fn index(&self) -> usize {
         self.index
     }
-    fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize> {
-        self.connectivity.view()
+    fn connectivity(&self) -> &[usize] {
+        self.connectivity
     }
-    fn coords(&self) -> &Array2<f64> {
-        // TODO: implement cache mechanism for this using once_cell or similar
-        self.element_coords_cache.get_or_init(|| {
-            self.coords
-                .select(Axis(0), self.connectivity.as_slice().unwrap())
-        })
+    fn coords(&self) -> Array2<f64> {
+        let co = self.connectivity;
+        let coords = self.coords;
+        use ElementType::*;
+        match self.coords.shape()[1] {
+            1 => todo!(),
+            2 => match self.element_type {
+                SEG2 => arr2(&[
+                    [coords[[co[0], 0]], coords[[co[0], 1]]],
+                    [coords[[co[1], 0]], coords[[co[1], 1]]],
+                ]),
+                TRI3 => arr2(&[
+                    [coords[[co[0], 0]], coords[[co[0], 1]]],
+                    [coords[[co[1], 0]], coords[[co[1], 1]]],
+                    [coords[[co[2], 0]], coords[[co[2], 1]]],
+                ]),
+                QUAD4 => arr2(&[
+                    [coords[[co[0], 0]], coords[[co[0], 1]]],
+                    [coords[[co[1], 0]], coords[[co[1], 1]]],
+                    [coords[[co[2], 0]], coords[[co[2], 1]]],
+                    [coords[[co[3], 0]], coords[[co[3], 1]]],
+                ]),
+                _ => todo!(),
+            },
+            3 => match self.element_type {
+                SEG2 => arr2(&[
+                    [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                    [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+                ]),
+                TRI3 => arr2(&[
+                    [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                    [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+                    [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
+                ]),
+                QUAD4 => arr2(&[
+                    [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                    [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+                    [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
+                    [coords[[co[3], 0]], coords[[co[3], 1]], coords[[co[3], 2]]],
+                ]),
+                _ => todo!(),
+            },
+            _ => panic!("Coords shape can only be 1, 2 or 3d."),
+        }
     }
+
     fn groups(&self) -> &Vec<String> {
         self.element_groups_cache.get_or_init(|| {
             self.groups
@@ -451,7 +490,7 @@ impl<'a> ElementLike<'a> for Element<'a> {
 pub struct ElementMut<'a> {
     pub index: usize,
     coords: ArrayView2<'a, f64>,
-    pub connectivity: ArrayViewMut1<'a, usize>,
+    pub connectivity: &'a [usize],
     pub family: &'a mut usize,
     pub fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>>,
     groups: &'a BTreeMap<String, BTreeSet<usize>>, // safely shared across threads
@@ -467,15 +506,11 @@ impl<'a> ElementLike<'a> for ElementMut<'a> {
     fn index(&self) -> usize {
         self.index
     }
-    fn connectivity<'b>(&'b self) -> ArrayView1<'b, usize> {
-        self.connectivity.view()
+    fn connectivity(&self) -> &[usize] {
+        self.connectivity
     }
-    fn coords(&self) -> &Array2<f64> {
-        // TODO: implement cache mechanism for this using once_cell or similar
-        self.element_coords_cache.get_or_init(|| {
-            self.coords
-                .select(Axis(0), self.connectivity.as_slice().unwrap())
-        })
+    fn coords(&self) -> Array2<f64> {
+        self.coords.select(Axis(0), self.connectivity)
     }
     fn groups(&self) -> &Vec<String> {
         self.element_groups_cache.get_or_init(|| {
@@ -499,7 +534,7 @@ impl<'a> ElementMut<'a> {
     pub fn new(
         index: usize,
         coords: ArrayView2<'a, f64>,
-        connectivity: ArrayViewMut1<'a, usize>,
+        connectivity: &'a [usize],
         family: &'a mut usize,
         fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>>,
         groups: &'a BTreeMap<String, BTreeSet<usize>>,
@@ -528,17 +563,16 @@ mod tests {
     fn test_element_tri3_2d_basics() {
         let coords = array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
         let conn = array![0, 1, 2];
-        let fields = BTreeMap::new();
         let groups = BTreeMap::new();
         let family = 0;
 
         let element = Element::new(
             0,
             coords.view(),
-            fields,
+            None,
             &family,
             &groups,
-            conn.view(),
+            conn.as_slice().unwrap(),
             ElementType::TRI3,
         );
 
@@ -564,17 +598,16 @@ mod tests {
             [1.0, 1.0, 0.0]
         ];
         let conn = array![0, 1, 2];
-        let fields = BTreeMap::new();
         let groups = BTreeMap::new();
         let family = 0;
 
         let element = Element::new(
             0,
             coords.view(),
-            fields,
+            None,
             &family,
             &groups,
-            conn.view(),
+            conn.as_slice().unwrap(),
             ElementType::TRI3,
         );
 
@@ -595,17 +628,16 @@ mod tests {
     fn test_element_quad4_2d_basics() {
         let coords = array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
         let conn = array![0, 1, 3, 2];
-        let fields = BTreeMap::new();
         let groups = BTreeMap::new();
         let family = 0;
 
         let element = Element::new(
             0,
             coords.view(),
-            fields,
+            None,
             &family,
             &groups,
-            conn.view(),
+            conn.as_slice().unwrap(),
             ElementType::QUAD4,
         );
 

@@ -110,13 +110,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
             }
             PGON => {
                 if codim == Dimension::D1 {
-                    let mut conn: Vec<_> = co
-                        .as_slice()
-                        .unwrap()
-                        .windows(2)
-                        .flatten()
-                        .cloned()
-                        .collect();
+                    let mut conn: Vec<_> = co.windows(2).flatten().cloned().collect();
                     conn.push(co[co.len() - 1]);
                     conn.push(co[0]);
                     let conn = Array2::from_shape_vec([conn.len() / 2, 2], conn).unwrap();
@@ -135,15 +129,12 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     let mut conn = Vec::new();
                     let mut offsets = Vec::new();
                     let mut offset = 0;
-                    co.as_slice()
-                        .unwrap()
-                        .split_inclusive(|&e| e == usize::MAX)
-                        .for_each(|a| {
-                            let len = a.len() - 1;
-                            offset += len;
-                            offsets.push(offset);
-                            conn.append(&mut a[..len].to_vec())
-                        });
+                    co.split_inclusive(|&e| e == usize::MAX).for_each(|a| {
+                        let len = a.len() - 1;
+                        offset += len;
+                        offsets.push(offset);
+                        conn.append(&mut a[..len].to_vec())
+                    });
                     let offsets = Array1::from_vec(offsets);
                     let conn = Array::from_vec(conn);
                     res.push((PGON, Connectivity::new_poly(conn, offsets)));
@@ -230,7 +221,6 @@ pub fn par_compute_neighbours(
              elem| {
                 for (et, conn) in elem.subentities(Some(codim)) {
                     for co in conn.iter() {
-                        let co = co.as_slice().unwrap();
                         let key = SortedVecKey::new(co.try_into().unwrap());
                         match subentities_hash.get_mut(&key) {
                             // The subentity already exists
@@ -309,7 +299,6 @@ pub fn compute_neighbours(
     for elem in mesh.elements_of_dim(dim) {
         for (et, conn) in elem.subentities(Some(codim)) {
             for co in conn.iter() {
-                let co = co.as_slice().unwrap();
                 let key = SortedVecKey::new(co.try_into().unwrap());
 
                 match subentities_hashmap.get_mut(&key) {
@@ -367,7 +356,6 @@ pub fn compute_submesh(mesh: UMeshView, dim: Option<Dimension>, codim: Option<Di
     for elem in mesh.elements_of_dim(dim) {
         for (et, conn) in elem.subentities(Some(codim)) {
             for co in conn.iter() {
-                let co = co.as_slice().unwrap();
                 let key = SortedVecKey::new(co.try_into().unwrap());
                 if subentities_hash.get(&key).is_none() {
                     // The subentity is new

@@ -6,3 +6,4 @@
 **/examples/*.vtk
 **/examples/*.vtu
 mefikit-py/.venv
+perf.data*

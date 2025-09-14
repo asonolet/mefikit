@@ -25,7 +25,7 @@ pub fn surf_tri(a: ArrayView1<f64>, b: ArrayView1<f64>, c: ArrayView1<f64>) -> f
     todo!()
 }
 
-pub fn surf_tri2(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2]) -> f64 {
+pub fn surf_tri2(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
     // ad - bc
     0.5 * ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])).abs()
 }
@@ -40,7 +40,7 @@ pub fn surf_tri2_signed(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2]) -> f64 {
     0.5 * (u0 * v1 - u1 * v0)
 }
 
-pub fn surf_tri3(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3]) -> f64 {
+pub fn surf_tri3(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
     // 1/2 || u ^ v ||
     let u0 = b[0] - a[0];
     let u1 = b[1] - a[0];
@@ -53,7 +53,8 @@ pub fn surf_tri3(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3]) -> f64 {
 }
 
 /// Cross intersecting is not tested and result is wrong
-pub fn surf_quad2(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2], d: &[f64; 2]) -> f64 {
+#[inline]
+pub fn surf_quad2_(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> f64 {
     let u0 = b[0] - a[0];
     let u1 = b[1] - a[1];
     let v0 = d[0] - a[0];
@@ -62,6 +63,20 @@ pub fn surf_quad2(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2], d: &[f64; 2]) -> f64
     let x1 = d[1] - c[1];
     let y0 = b[0] - c[0];
     let y1 = b[1] - c[1];
+    0.5 * (u0 * v1 - u1 * v0 + x0 * y1 - x1 * y0).abs()
+}
+
+/// Cross intersecting is not tested and result is wrong
+#[inline]
+pub fn surf_quad2(coords: Array2<f64>) -> f64 {
+    let u0 = coords[[1, 0]] - coords[[0, 0]];
+    let u1 = coords[[1, 1]] - coords[[0, 1]];
+    let v0 = coords[[3, 0]] - coords[[0, 0]];
+    let v1 = coords[[3, 1]] - coords[[0, 1]];
+    let x0 = coords[[3, 0]] - coords[[2, 0]];
+    let x1 = coords[[3, 1]] - coords[[2, 1]];
+    let y0 = coords[[1, 0]] - coords[[2, 0]];
+    let y1 = coords[[1, 1]] - coords[[2, 1]];
     0.5 * (u0 * v1 - u1 * v0 + x0 * y1 - x1 * y0).abs()
 }
 

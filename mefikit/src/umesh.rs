@@ -361,13 +361,13 @@ mod tests {
         let elements: Vec<Element> = mesh.elements().collect();
         assert_eq!(elements.len(), 4);
         assert_eq!(elements[0].element_type, ElementType::SEG2);
-        assert_eq!(elements[0].connectivity, nd::arr1(&[0, 1]));
+        assert_eq!(elements[0].connectivity, &[0, 1]);
         assert_eq!(elements[1].element_type, ElementType::SEG2);
-        assert_eq!(elements[1].connectivity, nd::arr1(&[1, 3]));
+        assert_eq!(elements[1].connectivity, &[1, 3]);
         assert_eq!(elements[2].element_type, ElementType::QUAD4);
-        assert_eq!(elements[2].connectivity, nd::arr1(&[0, 1, 3, 2]));
+        assert_eq!(elements[2].connectivity, &[0, 1, 3, 2]);
         assert_eq!(elements[3].element_type, ElementType::PGON);
-        assert_eq!(elements[3].connectivity, nd::arr1(&[0, 1, 5, 3, 2]));
+        assert_eq!(elements[3].connectivity, &[0, 1, 5, 3, 2]);
     }
     // #[test]
     // fn test_umesh_element_block_addition() {
@@ -389,7 +389,7 @@ mod tests {
         let mesh = me::make_mesh_2d_multi();
         let element = mesh.get_element(ElementId::new(ElementType::QUAD4, 0));
         assert_eq!(element.element_type, ElementType::QUAD4);
-        assert_eq!(element.connectivity, nd::arr1(&[0, 1, 3, 2]));
+        assert_eq!(element.connectivity, &[0, 1, 3, 2]);
     }
     // #[test]
     // fn test_umesh_extract_mesh() {

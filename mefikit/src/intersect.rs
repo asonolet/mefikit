@@ -21,9 +21,9 @@ impl Segment {
         Self(GeomWithData::new(Line { from: p1, to: p2 }, eid))
     }
     fn from(el: &Element) -> Self {
-        let p1: &[f64] = el.coords().index_axis(Axis(0), 0).to_slice().unwrap();
-        let p2: &[f64] = el.coords().index_axis(Axis(0), 1).to_slice().unwrap();
-        Self::new([p1[0], p1[1]], [p2[0], p2[1]], el.id())
+        let p1: [f64; 2] = el.coords().row(0).to_slice().unwrap().try_into().unwrap();
+        let p2: [f64; 2] = el.coords().row(1).to_slice().unwrap().try_into().unwrap();
+        Self::new(p1, p2, el.id())
     }
 }
 

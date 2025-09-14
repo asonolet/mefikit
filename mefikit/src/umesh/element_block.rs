@@ -45,28 +45,28 @@ where
         self.connectivity.len()
     }
 
-    pub fn element_connectivity(&self, index: usize) -> ArrayView1<'_, usize> {
+    pub fn element_connectivity(&self, index: usize) -> &[usize] {
         self.connectivity.get(index)
     }
 
-    pub fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize>
-    where
-        C: nd::DataMut,
-    {
-        self.connectivity.get_mut(index)
-    }
+    // pub fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize>
+    // where
+    //     C: nd::DataMut,
+    // {
+    //     self.connectivity.get_mut(index)
+    // }
 
     pub fn get<'a>(&'a self, index: usize, coords: ArrayView2<'a, f64>) -> Element<'a> {
         let connectivity = self.element_connectivity(index);
-        let fields = self
-            .fields
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), index)))
-            .collect();
+        // let fields = self
+        //     .fields
+        //     .iter()
+        //     .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), index)))
+        //     .collect();
         Element::new(
             index,
             coords,
-            fields,
+            None,
             &self.families[index],
             &self.groups,
             connectivity,
@@ -78,23 +78,26 @@ where
         &'a self,
         coords: ArrayView2<'a, f64>,
     ) -> impl Iterator<Item = Element<'a>> + 'a {
-        (0..self.len()).map(move |i| {
-            let connectivity = self.element_connectivity(i);
-            let fields = self
-                .fields
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
-                .collect();
-            Element::new(
-                i,
-                coords,
-                fields,
-                &self.families[i],
-                &self.groups,
-                connectivity,
-                self.cell_type,
-            )
-        })
+        self.connectivity
+            .iter()
+            .enumerate()
+            .map(move |(i, connectivity)| {
+                // let connectivity = self.element_connectivity(i);
+                // let fields = self
+                //     .fields
+                //     .iter()
+                //     .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
+                //     .collect();
+                Element::new(
+                    i,
+                    coords,
+                    None,
+                    &self.families[i],
+                    &self.groups,
+                    connectivity,
+                    self.cell_type,
+                )
+            })
     }
 
     pub fn par_iter<'a>(
@@ -108,16 +111,16 @@ where
     {
         (0..self.len()).into_par_iter().map(move |i| {
             let connectivity = self.element_connectivity(i);
-            let fields = self
-                .fields
-                .iter()
-                .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
-                .collect();
+            // let fields = self
+            //     .fields
+            //     .iter()
+            //     .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
+            //     .collect();
 
             Element::new(
                 i,
                 coords,
-                fields,
+                None,
                 &self.families[i],
                 &self.groups,
                 connectivity,
