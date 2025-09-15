@@ -1,3 +1,4 @@
+use nalgebra as na;
 use ndarray::prelude::*;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
@@ -352,7 +353,8 @@ pub trait ElementLike<'a> {
 
     /// Returns a reference to an owned
     fn coords(&self) -> Array2<f64>;
-    fn coords2(&self) -> Vec<[f64; 2]>;
+    fn coords2(&self) -> Vec<na::Point2<f64>>;
+    fn coords3(&self) -> Vec<[f64; 3]>;
 
     /// Returns the space dimension of the element
     fn space_dimension(&self) -> usize;
@@ -456,36 +458,79 @@ impl<'a> ElementLike<'a> for Element<'a> {
                     [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
                     [coords[[co[3], 0]], coords[[co[3], 1]], coords[[co[3], 2]]],
                 ]),
+                HEX8 => arr2(&[
+                    [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                    [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+                    [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
+                    [coords[[co[3], 0]], coords[[co[3], 1]], coords[[co[3], 2]]],
+                    [coords[[co[4], 0]], coords[[co[4], 1]], coords[[co[4], 2]]],
+                    [coords[[co[5], 0]], coords[[co[5], 1]], coords[[co[5], 2]]],
+                    [coords[[co[6], 0]], coords[[co[6], 1]], coords[[co[6], 2]]],
+                    [coords[[co[7], 0]], coords[[co[7], 1]], coords[[co[7], 2]]],
+                ]),
                 _ => todo!(),
             },
             _ => panic!("Coords shape can only be 1, 2 or 3d."),
         }
     }
 
-    fn coords2(&self) -> Vec<[f64; 2]> {
+    fn coords2(&self) -> Vec<na::Point2<f64>> {
+        assert_eq!(self.coords.shape()[1], 2);
         let co = self.connectivity;
         let coords = self.coords;
         use ElementType::*;
-        match self.coords.shape()[1] {
-            2 => match self.element_type {
-                SEG2 => vec![
-                    [coords[[co[0], 0]], coords[[co[0], 1]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]]],
-                ],
-                TRI3 => vec![
-                    [coords[[co[0], 0]], coords[[co[0], 1]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]]],
-                    [coords[[co[2], 0]], coords[[co[2], 1]]],
-                ],
-                QUAD4 => vec![
-                    [coords[[co[0], 0]], coords[[co[0], 1]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]]],
-                    [coords[[co[2], 0]], coords[[co[2], 1]]],
-                    [coords[[co[3], 0]], coords[[co[3], 1]]],
-                ],
-                _ => todo!(),
-            },
-            _ => panic!("Coords shape can only be 2d."),
+        match self.element_type {
+            SEG2 => vec![
+                na::Point2::new(coords[[co[0], 0]], coords[[co[0], 1]]),
+                na::Point2::new(coords[[co[1], 0]], coords[[co[1], 1]]),
+            ],
+            TRI3 => vec![
+                na::Point2::new(coords[[co[0], 0]], coords[[co[0], 1]]),
+                na::Point2::new(coords[[co[1], 0]], coords[[co[1], 1]]),
+                na::Point2::new(coords[[co[2], 0]], coords[[co[2], 1]]),
+            ],
+            QUAD4 => vec![
+                na::Point2::new(coords[[co[0], 0]], coords[[co[0], 1]]),
+                na::Point2::new(coords[[co[1], 0]], coords[[co[1], 1]]),
+                na::Point2::new(coords[[co[2], 0]], coords[[co[2], 1]]),
+                na::Point2::new(coords[[co[3], 0]], coords[[co[3], 1]]),
+            ],
+            _ => todo!(),
+        }
+    }
+
+    fn coords3(&self) -> Vec<[f64; 3]> {
+        assert_eq!(self.coords.shape()[1], 3);
+        let co = self.connectivity;
+        let coords = self.coords;
+        use ElementType::*;
+        match self.element_type {
+            SEG2 => vec![
+                [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+            ],
+            TRI3 => vec![
+                [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+                [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
+            ],
+            QUAD4 => vec![
+                [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+                [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
+                [coords[[co[3], 0]], coords[[co[3], 1]], coords[[co[3], 2]]],
+            ],
+            HEX8 => vec![
+                [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+                [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
+                [coords[[co[3], 0]], coords[[co[3], 1]], coords[[co[3], 2]]],
+                [coords[[co[4], 0]], coords[[co[4], 1]], coords[[co[4], 2]]],
+                [coords[[co[5], 0]], coords[[co[5], 1]], coords[[co[5], 2]]],
+                [coords[[co[6], 0]], coords[[co[6], 1]], coords[[co[6], 2]]],
+                [coords[[co[7], 0]], coords[[co[7], 1]], coords[[co[7], 2]]],
+            ],
+            _ => todo!(),
         }
     }
 
@@ -541,30 +586,63 @@ impl<'a> ElementLike<'a> for ElementMut<'a> {
         self.coords.select(Axis(0), self.connectivity)
     }
 
-    fn coords2(&self) -> Vec<[f64; 2]> {
+    fn coords2(&self) -> Vec<na::Point2<f64>> {
+        assert_eq!(self.coords.shape()[1], 2);
         let co = self.connectivity;
         let coords = self.coords;
         use ElementType::*;
-        match self.coords.shape()[1] {
-            2 => match self.element_type {
-                SEG2 => vec![
-                    [coords[[co[0], 0]], coords[[co[0], 1]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]]],
-                ],
-                TRI3 => vec![
-                    [coords[[co[0], 0]], coords[[co[0], 1]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]]],
-                    [coords[[co[2], 0]], coords[[co[2], 1]]],
-                ],
-                QUAD4 => vec![
-                    [coords[[co[0], 0]], coords[[co[0], 1]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]]],
-                    [coords[[co[2], 0]], coords[[co[2], 1]]],
-                    [coords[[co[3], 0]], coords[[co[3], 1]]],
-                ],
-                _ => todo!(),
-            },
-            _ => panic!("Coords shape can only be 2d."),
+        match self.element_type {
+            SEG2 => vec![
+                na::Point2::new(coords[[co[0], 0]], coords[[co[0], 1]]),
+                na::Point2::new(coords[[co[1], 0]], coords[[co[1], 1]]),
+            ],
+            TRI3 => vec![
+                na::Point2::new(coords[[co[0], 0]], coords[[co[0], 1]]),
+                na::Point2::new(coords[[co[1], 0]], coords[[co[1], 1]]),
+                na::Point2::new(coords[[co[2], 0]], coords[[co[2], 1]]),
+            ],
+            QUAD4 => vec![
+                na::Point2::new(coords[[co[0], 0]], coords[[co[0], 1]]),
+                na::Point2::new(coords[[co[1], 0]], coords[[co[1], 1]]),
+                na::Point2::new(coords[[co[2], 0]], coords[[co[2], 1]]),
+                na::Point2::new(coords[[co[3], 0]], coords[[co[3], 1]]),
+            ],
+            _ => todo!(),
+        }
+    }
+
+    fn coords3(&self) -> Vec<[f64; 3]> {
+        assert_eq!(self.coords.shape()[1], 3);
+        let co = self.connectivity;
+        let coords = self.coords;
+        use ElementType::*;
+        match self.element_type {
+            SEG2 => vec![
+                [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+            ],
+            TRI3 => vec![
+                [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+                [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
+            ],
+            QUAD4 => vec![
+                [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+                [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
+                [coords[[co[3], 0]], coords[[co[3], 1]], coords[[co[3], 2]]],
+            ],
+            HEX8 => vec![
+                [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
+                [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
+                [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
+                [coords[[co[3], 0]], coords[[co[3], 1]], coords[[co[3], 2]]],
+                [coords[[co[4], 0]], coords[[co[4], 1]], coords[[co[4], 2]]],
+                [coords[[co[5], 0]], coords[[co[5], 1]], coords[[co[5], 2]]],
+                [coords[[co[6], 0]], coords[[co[6], 1]], coords[[co[6], 2]]],
+                [coords[[co[7], 0]], coords[[co[7], 1]], coords[[co[7], 2]]],
+            ],
+            _ => todo!(),
         }
     }
 

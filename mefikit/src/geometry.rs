@@ -21,20 +21,16 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         match self.element_type() {
             VERTEX => 0.0,
             SEG2 => {
-                let coords = self.coords();
-                mes::dist(coords.row(0), coords.row(1))
+                let coords = self.coords2();
+                mes::dist2(coords[0], coords[1])
             }
             TRI3 => {
-                let coords = self.coords();
-                mes::surf_tri2(
-                    coords.row(0).as_slice().unwrap().try_into().unwrap(),
-                    coords.row(1).as_slice().unwrap().try_into().unwrap(),
-                    coords.row(2).as_slice().unwrap().try_into().unwrap(),
-                )
+                let coords = self.coords2();
+                mes::surf_tri2(coords[0], coords[1], coords[2])
             }
             QUAD4 => {
                 let coords = self.coords2();
-                mes::surf_quad2(coords)
+                mes::surf_quad2(&coords[0], &coords[1], &coords[2], &coords[3])
             }
             _ => todo!(),
         }
