@@ -28,10 +28,12 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
                 let coords = self.coords2();
                 mes::surf_tri2(coords[0], coords[1], coords[2])
             }
-            QUAD4 => {
-                let coords = self.coords2();
-                mes::surf_quad2(&coords[0], &coords[1], &coords[2], &coords[3])
-            }
+            QUAD4 => mes::surf_quad2(
+                &self.coord2(0),
+                &self.coord2(1),
+                &self.coord2(2),
+                &self.coord2(3),
+            ),
             _ => todo!(),
         }
     }
@@ -109,7 +111,7 @@ pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
                 (
                     k,
                     nd::arr1(
-                        &v.par_iter(mesh.coords.view())
+                        &v.iter(mesh.coords.view())
                             .map(|e| e.measure2())
                             .collect::<Vec<f64>>(),
                     ),
@@ -123,7 +125,7 @@ pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
                 (
                     k,
                     nd::arr1(
-                        &v.par_iter(mesh.coords.view())
+                        &v.iter(mesh.coords.view())
                             .map(|e| e.measure3())
                             .collect::<Vec<f64>>(),
                     ),

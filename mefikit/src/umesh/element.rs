@@ -348,6 +348,7 @@ pub trait ElementLike<'a> {
     fn coords(&self) -> Array2<f64>;
     fn coords2(&self) -> Vec<na::Point2<f64>>;
     fn coords3(&self) -> Vec<[f64; 3]>;
+    fn coord2(&self, i: usize) -> na::Point2<f64>;
 
     /// Returns the space dimension of the element
     fn space_dimension(&self) -> usize;
@@ -467,6 +468,14 @@ impl<'a> ElementLike<'a> for Element<'a> {
         }
     }
 
+    #[inline]
+    fn coord2(&self, i: usize) -> na::Point2<f64> {
+        assert_eq!(self.coords.shape()[1], 2);
+        let co = self.connectivity;
+        let coords = self.coords;
+        na::Point2::new(coords[[co[i], 0]], coords[[co[i], 1]])
+    }
+
     fn coords2(&self) -> Vec<na::Point2<f64>> {
         assert_eq!(self.coords.shape()[1], 2);
         let co = self.connectivity;
@@ -577,6 +586,12 @@ impl<'a> ElementLike<'a> for ElementMut<'a> {
     }
     fn coords(&self) -> Array2<f64> {
         self.coords.select(Axis(0), self.connectivity)
+    }
+    fn coord2(&self, i: usize) -> na::Point2<f64> {
+        assert_eq!(self.coords.shape()[1], 2);
+        let co = self.connectivity;
+        let coords = self.coords;
+        na::Point2::new(coords[[co[i], 0]], coords[[co[i], 1]])
     }
 
     fn coords2(&self) -> Vec<na::Point2<f64>> {

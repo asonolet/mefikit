@@ -90,7 +90,7 @@ where
                 //     .collect();
                 Element::new(
                     i,
-                    coords,
+                    coords.clone(),
                     None,
                     &self.families[i],
                     &self.groups,
@@ -122,7 +122,7 @@ where
 
                 Element::new(
                     i,
-                    coords,
+                    coords.clone(),
                     None,
                     &self.families[i],
                     &self.groups,

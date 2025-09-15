@@ -7,3 +7,4 @@
 **/examples/*.vtu
 mefikit-py/.venv
 perf.data*
+flamegraph.svg
