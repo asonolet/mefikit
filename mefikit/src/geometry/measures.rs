@@ -1,4 +1,4 @@
-use na::{Point2, Vector2};
+use na::{Point2, Vector4};
 use nalgebra as na;
 use ndarray::prelude::*;
 
@@ -64,11 +64,11 @@ pub fn surf_tri3(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
 /// Cross intersecting is not tested and result is wrong
 #[inline(always)]
 pub fn surf_quad2(a: &Point2<f64>, b: &Point2<f64>, c: &Point2<f64>, d: &Point2<f64>) -> f64 {
-    let u = b - a;
-    let v = d - a;
-    let x = d - c;
-    let y = b - c;
-    0.5 * (u.x * v.y - u.y * v.x + x.x * y.y - x.y * y.x).abs()
+    let px: Vector4<f64> = Vector4::new(a.x, b.x, c.x, d.x);
+    let py: Vector4<f64> = Vector4::new(a.y, b.y, c.y, d.y);
+    let pxs: Vector4<f64> = Vector4::new(b.x, c.x, d.x, a.x);
+    let pys: Vector4<f64> = Vector4::new(b.y, c.y, d.y, a.y);
+    0.5 * (px.dot(&pys) - py.dot(&pxs)).abs()
 }
 
 /// Cross intersecting is not tested and result is wrong
