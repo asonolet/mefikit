@@ -269,27 +269,20 @@ impl FromParallelIterator<ElementId> for ElementIds {
     where
         T: IntoParallelIterator<Item = ElementId>,
     {
-        let ids = par_iter
+        par_iter
             .into_par_iter()
-            .fold(
-                || ElementIds::new(),
-                |mut acc, id| {
-                    acc.add(id.element_type(), id.index());
-                    acc
-                },
-            )
-            .reduce(
-                || ElementIds::new(),
-                |mut acc, other| {
-                    for (et, indices) in other.0 {
-                        for index in indices {
-                            acc.add(et, index);
-                        }
+            .fold(ElementIds::new, |mut acc, id| {
+                acc.add(id.element_type(), id.index());
+                acc
+            })
+            .reduce(ElementIds::new, |mut acc, other| {
+                for (et, indices) in other.0 {
+                    for index in indices {
+                        acc.add(et, index);
                     }
-                    acc
-                },
-            );
-        ids
+                }
+                acc
+            })
     }
 }
 

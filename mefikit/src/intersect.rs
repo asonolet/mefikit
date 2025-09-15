@@ -1,4 +1,4 @@
-use super::geometry::{ElementGeo, seg_intersect::intersect_seg_seg};
+use super::geometry::ElementGeo;
 use super::topo::compute_neighbours;
 use super::umesh::Dimension::*;
 use super::umesh::{Element, ElementId, ElementLike, ElementType};
@@ -7,7 +7,6 @@ use super::umesh::{UMesh, UMeshView};
 use std::collections::HashMap;
 
 use arrayvec::ArrayVec;
-use ndarray::prelude::*;
 use rstar::RTree;
 use rstar::primitives::{GeomWithData, Line};
 
@@ -119,7 +118,7 @@ pub fn cut_2d_mesh_with_1d_mesh(mesh: UMeshView, tool_mesh: UMesh) -> Result<UMe
             // TODO: edge could be SEG3!
             let edge = m1d.get_element(eid);
             let intersections: &_ = e2int.entry(eid).or_insert_with(|| {
-                let mut intersections = Vec::new();
+                let intersections = Vec::new();
                 for seg in &segs_in_elem {
                     let seg_elem = tool_mesh.get_element(seg.data);
                     // Calcul des intersections avec edge

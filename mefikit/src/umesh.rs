@@ -176,7 +176,7 @@ where
     pub fn extract(&self, ids: &ElementIds) -> UMesh {
         let mut extracted = UMesh::new(self.coords.to_shared());
         for (t, block) in ids.iter() {
-            if !self.element_blocks.contains_key(&t) {
+            if !self.element_blocks.contains_key(t) {
                 continue;
             }
             match &self.element_blocks[t] {

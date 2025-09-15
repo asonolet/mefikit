@@ -213,7 +213,7 @@ pub fn par_compute_neighbours(
 
     mesh.par_elements_of_dim(dim)
         .fold(
-            || HashMap::new(),
+            HashMap::new,
             |mut subentities_hash: HashMap<
                 SortedVecKey,
                 (SmallVec<[ElementId; 2]>, SmallVec<[usize; 4]>, ElementType),
@@ -221,7 +221,7 @@ pub fn par_compute_neighbours(
              elem| {
                 for (et, conn) in elem.subentities(Some(codim)) {
                     for co in conn.iter() {
-                        let key = SortedVecKey::new(co.try_into().unwrap());
+                        let key = SortedVecKey::new(co.into());
                         match subentities_hash.get_mut(&key) {
                             // The subentity already exists
                             Some((ids, _, _)) => ids.push(elem.id()),
@@ -234,21 +234,18 @@ pub fn par_compute_neighbours(
                 subentities_hash
             },
         )
-        .reduce(
-            || HashMap::new(),
-            |mut a, b| {
-                for (k, (ids, conn, et)) in b {
-                    match a.get_mut(&k) {
-                        // The subentity already exists
-                        Some((existing_ids, _, _)) => existing_ids.extend(ids),
-                        None => {
-                            a.insert(k, (ids, conn, et));
-                        }
+        .reduce(HashMap::new, |mut a, b| {
+            for (k, (ids, conn, et)) in b {
+                match a.get_mut(&k) {
+                    // The subentity already exists
+                    Some((existing_ids, _, _)) => existing_ids.extend(ids),
+                    None => {
+                        a.insert(k, (ids, conn, et));
                     }
                 }
-                a
-            },
-        )
+            }
+            a
+        })
         .into_iter()
         .for_each(|(_key, (ids, conn, et))| {
             neighbors.add_element(et, conn.as_slice(), None, None);
@@ -299,7 +296,7 @@ pub fn compute_neighbours(
     for elem in mesh.elements_of_dim(dim) {
         for (et, conn) in elem.subentities(Some(codim)) {
             for co in conn.iter() {
-                let key = SortedVecKey::new(co.try_into().unwrap());
+                let key = SortedVecKey::new(co.into());
 
                 match subentities_hashmap.get_mut(&key) {
                     None => {
@@ -356,7 +353,7 @@ pub fn compute_submesh(mesh: UMeshView, dim: Option<Dimension>, codim: Option<Di
     for elem in mesh.elements_of_dim(dim) {
         for (et, conn) in elem.subentities(Some(codim)) {
             for co in conn.iter() {
-                let key = SortedVecKey::new(co.try_into().unwrap());
+                let key = SortedVecKey::new(co.into());
                 if subentities_hash.get(&key).is_none() {
                     // The subentity is new
                     subentities_hash.insert(key);

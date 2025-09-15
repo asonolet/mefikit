@@ -8,7 +8,7 @@ pub fn dist_(a: ArrayView1<f64>, b: ArrayView1<f64>) -> f64 {
 }
 
 pub fn dist2(a: Point2<f64>, b: Point2<f64>) -> f64 {
-    let diff = &a - &b;
+    let diff = a - b;
     diff.norm()
 }
 
@@ -17,7 +17,7 @@ pub fn squared_dist2(a: &[f64; 2], b: &[f64; 2]) -> f64 {
 }
 
 pub fn squared_dist2_(a: Point2<f64>, b: Point2<f64>) -> f64 {
-    (&a - &b).norm_squared()
+    (a - b).norm_squared()
 }
 
 pub fn squared_dist3(a: &[f64; 3], b: &[f64; 3]) -> f64 {

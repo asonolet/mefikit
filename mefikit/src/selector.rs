@@ -291,14 +291,12 @@ impl<'a> Selector<'a, NodeBasedSelector> {
             .index
             .into_par_iter()
             .filter(|&e_id| {
-                let isin = self
-                    .umesh
+                self.umesh
                     .get_element(e_id)
                     .coords()
                     .rows()
                     .into_iter()
-                    .all(|x| f(x.as_slice().unwrap()));
-                isin
+                    .all(|x| f(x.as_slice().unwrap()))
             })
             .collect();
 
@@ -319,14 +317,12 @@ impl<'a> Selector<'a, NodeBasedSelector> {
             .index
             .into_par_iter()
             .filter(|&e_id| {
-                let isin = self
-                    .umesh
+                self.umesh
                     .get_element(e_id)
                     .coords()
                     .rows()
                     .into_iter()
-                    .any(|x| f(x.as_slice().unwrap()));
-                isin
+                    .any(|x| f(x.as_slice().unwrap()))
             })
             .collect();
 
@@ -432,8 +428,8 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
             .into_par_iter()
             .filter(|&e_id| {
                 let centroid = self.umesh.get_element(e_id).centroid();
-                let isin = f(centroid.as_slice().unwrap());
-                isin
+
+                f(centroid.as_slice().unwrap())
             })
             .collect();
 
