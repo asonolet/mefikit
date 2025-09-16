@@ -25,7 +25,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         assert_eq!(coord.len(), 2);
         coord.try_into().unwrap()
     }
-    fn coords2(&self) -> impl Iterator<Item = &[f64; 2]> {
+    fn coords2(&self) -> impl ExactSizeIterator<Item = &[f64; 2]> {
         (0..self.connectivity().len()).map(|i| self.coord2_ref(i))
     }
     #[inline(always)]
@@ -40,10 +40,10 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         assert_eq!(coord.len(), 3);
         coord.try_into().unwrap()
     }
-    fn coords3(&self) -> impl Iterator<Item = &[f64; 3]> {
+    fn coords3(&self) -> impl ExactSizeIterator<Item = &[f64; 3]> {
         (0..self.connectivity().len()).map(|i| self.coord3_ref(i))
     }
-    fn coords(&self) -> impl Iterator<Item = &[f64]> {
+    fn coords(&self) -> impl ExactSizeIterator<Item = &[f64]> {
         (0..self.connectivity().len()).map(|i| self.coord(i))
     }
 

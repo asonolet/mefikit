@@ -30,36 +30,6 @@ pub struct ConnectivityIterator<'a> {
     index: usize,
 }
 
-// pub struct PolyConnIterator<'a> {
-//     data: &'a [usize],
-//     offsets: &'a [usize],
-//     index: usize,
-// }
-//
-// impl<'a> Iterator for PolyConnIterator<'a> {
-//     type Item = &'a[usize];
-//
-//     fn next(&mut self) -> Option<Self::Item> {
-//         if self.index >= self.offsets.len() {
-//             return None;
-//         }
-//         let start = if self.index == 0 {
-//             0
-//         } else {
-//             self.offsets[self.index - 1]
-//         };
-//         let end = self.offsets[self.index];
-//         self.index += 1;
-//         let result = &self.data[start..end];
-//         Some(result)
-//     }
-//
-//     fn size_hint(&self) -> (usize, Option<usize>) {
-//         let len = self.offsets.len();
-//         (len, Some(len))
-//     }
-// }
-
 impl<'a> Iterator for ConnectivityIterator<'a> {
     type Item = &'a [usize];
 
@@ -69,7 +39,7 @@ impl<'a> Iterator for ConnectivityIterator<'a> {
                 if self.index >= arr.shape()[0] {
                     None
                 } else {
-                    // Why I am not succinding into using ndarray primitives ???
+                    // Why I am not succeeding into using ndarray primitives ???
                     let start = self.index * arr.shape()[1];
                     let end = (self.index + 1) * arr.shape()[1];
                     self.index += 1;
@@ -96,12 +66,12 @@ impl<'a> Iterator for ConnectivityIterator<'a> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         match self.connectivity {
             ConnectivityView::Regular(arr) => {
-                let len = arr.shape()[0];
-                (len, Some(len))
+                let remaning_len = arr.shape()[0] - self.index;
+                (remaning_len, Some(remaning_len))
             }
             ConnectivityView::Poly { offsets, .. } => {
-                let len = offsets.len();
-                (len, Some(len))
+                let remaning_len = offsets.len() - self.index;
+                (remaning_len, Some(remaning_len))
             }
         }
     }
@@ -223,7 +193,7 @@ where
             }
         }
     }
-    pub fn iter(&self) -> impl Iterator<Item = &'_ [usize]> + '_
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = &'_ [usize]> + '_
     where
         C: nd::Data,
     {

@@ -77,7 +77,7 @@ where
     pub fn iter<'a>(
         &'a self,
         coords: ArrayView2<'a, f64>,
-    ) -> impl Iterator<Item = Element<'a>> + 'a {
+    ) -> impl ExactSizeIterator<Item = Element<'a>> + 'a {
         self.connectivity
             .iter()
             .enumerate()

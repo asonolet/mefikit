@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::geometry::ElementGeo;
 use super::geometry::is_in as geo;
-use super::umesh::{ElementIds, ElementLike, ElementType, UMesh, UMeshView};
+use super::umesh::{ElementIds, ElementType, UMesh, UMeshView};
 
 /// Here umesh should be replace with UMeshView, so that it can interact with non owned umesh
 /// struct.

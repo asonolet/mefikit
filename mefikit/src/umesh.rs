@@ -23,7 +23,6 @@ use self::element_block::{
 ///
 /// The most general mesh format in mefikit. Can describe any kind on mesh, with multiple elements
 /// kinds and fields associated.
-// #[derive_where(Clone; N: nd::RawDataClone, C: nd::RawDataClone, F: nd::RawDataClone, G: nd::RawDataClone)]
 #[derive_where(Debug, Serialize, PartialEq)]
 #[derive_where(Deserialize; N: nd::DataOwned, C: nd::DataOwned, F: nd::DataOwned, G: nd::DataOwned)]
 pub struct UMeshBase<N, C, F, G>
