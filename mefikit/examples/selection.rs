@@ -1,5 +1,5 @@
 use mefikit as mf;
-use std::path::Path;
+use std::time;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a regular UMesh with specified axes
@@ -10,12 +10,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     println!("Selecting in sphere.");
-    let mesh_sel = mf::Selector::new(mesh.view())
-        .centroids()
-        .in_sphere(&[0.5, 0.5, 0.5], 0.5)
-        .select();
+    let now = time::Instant::now();
+    for _ in 0..1000 {
+        let _ = mf::Selector::new(mesh.view())
+            .centroids()
+            .in_sphere(&[0.5, 0.5, 0.5], 0.5)
+            .select();
+    }
+    let t_tot = now.elapsed().as_secs_f64();
 
-    println!("Writing mesh selected in sphere");
-    mf::write(&Path::new("examples/mesh_sphere.vtk"), mesh_sel.view())
+    println!("Total elapsed time per op: {t_tot:}ms");
     // Return Ok to indicate successful execution
+    Ok(())
 }
