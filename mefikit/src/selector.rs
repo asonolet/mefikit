@@ -1,6 +1,7 @@
 use rayon::prelude::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use super::geometry::ElementGeo;
 use super::geometry::is_in as geo;
 use super::umesh::{ElementIds, ElementLike, ElementType, UMesh, UMeshView};
 
@@ -290,14 +291,7 @@ impl<'a> Selector<'a, NodeBasedSelector> {
         let index = self
             .index
             .into_par_iter()
-            .filter(|&e_id| {
-                self.umesh
-                    .get_element(e_id)
-                    .coords()
-                    .rows()
-                    .into_iter()
-                    .all(|x| f(x.as_slice().unwrap()))
-            })
+            .filter(|&e_id| self.umesh.get_element(e_id).coords().all(|x| f(x)))
             .collect();
 
         let state = self.state;
@@ -316,14 +310,7 @@ impl<'a> Selector<'a, NodeBasedSelector> {
         let index = self
             .index
             .into_par_iter()
-            .filter(|&e_id| {
-                self.umesh
-                    .get_element(e_id)
-                    .coords()
-                    .rows()
-                    .into_iter()
-                    .any(|x| f(x.as_slice().unwrap()))
-            })
+            .filter(|&e_id| self.umesh.get_element(e_id).coords().any(|x| f(x)))
             .collect();
 
         let state = self.state;
@@ -426,10 +413,10 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
         let index = self
             .index
             .into_par_iter()
-            .filter(|&e_id| {
-                let centroid = self.umesh.get_element(e_id).centroid();
-
-                f(centroid.as_slice().unwrap())
+            .filter(|&e_id| match self.umesh.space_dimension() {
+                2 => f(self.umesh.get_element(e_id).centroid2().as_slice()),
+                3 => f(self.umesh.get_element(e_id).centroid3().as_slice()),
+                _ => todo!(),
             })
             .collect();
 

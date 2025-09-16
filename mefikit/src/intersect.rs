@@ -20,8 +20,8 @@ impl Segment {
         Self(GeomWithData::new(Line { from: p1, to: p2 }, eid))
     }
     fn from(el: &Element) -> Self {
-        let p1: [f64; 2] = el.coords().row(0).to_slice().unwrap().try_into().unwrap();
-        let p2: [f64; 2] = el.coords().row(1).to_slice().unwrap().try_into().unwrap();
+        let p1: [f64; 2] = el.coord2_ref(0).clone();
+        let p2: [f64; 2] = el.coord2_ref(1).clone();
         Self::new(p1, p2, el.id())
     }
 }
@@ -79,10 +79,10 @@ fn intersect_1d_elems(
         (ElementType::SEG2, ElementType::SEG2) => {
             let seg1_nodes = [e1.connectivity()[0], e1.connectivity()[1]];
             let seg2_nodes = [e2.connectivity()[0], e2.connectivity()[1]];
-            let p1 = [e1.coords()[[0, 0]], e1.coords()[[0, 1]]];
-            let p2 = [e1.coords()[[1, 0]], e1.coords()[[1, 1]]];
-            let p3 = [e2.coords()[[0, 0]], e2.coords()[[0, 1]]];
-            let p4 = [e2.coords()[[1, 0]], e2.coords()[[1, 1]]];
+            let p1 = e1.coord2_ref(0).clone();
+            let p2 = e1.coord2_ref(1).clone();
+            let p3 = e2.coord2_ref(0).clone();
+            let p4 = e2.coord2_ref(1).clone();
             todo!()
             // intersect_seg_seg(seg1_nodes, seg2_nodes, p1, p2, p3, p4, next_node_index)
         }

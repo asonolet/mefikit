@@ -116,10 +116,10 @@ fn measure2(c: &mut Criterion) {
 
 criterion_group!(
     bench,
-    // submesh,
-    // neighbours,
+    submesh,
+    neighbours,
     // par_neighbours,
-    // selection_sphere,
+    selection_sphere,
     measure2
 );
 criterion_main!(bench);

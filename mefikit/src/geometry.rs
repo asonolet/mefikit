@@ -5,6 +5,7 @@ pub mod seg_intersect;
 use self::measures as mes;
 use crate::{ElementLike, ElementType, UMeshView};
 
+use nalgebra as na;
 use ndarray as nd;
 use ndarray::prelude::*;
 use rayon::prelude::*;
@@ -12,6 +13,40 @@ use rstar::AABB;
 use std::collections::BTreeMap;
 
 pub trait ElementGeo<'a>: ElementLike<'a> {
+    #[inline(always)]
+    fn coord2(&self, i: usize) -> na::Point2<f64> {
+        let coord = self.coord(i);
+        assert_eq!(coord.len(), 2);
+        na::Point2::from_slice(coord)
+    }
+    #[inline(always)]
+    fn coord2_ref(&self, i: usize) -> &[f64; 2] {
+        let coord = self.coord(i);
+        assert_eq!(coord.len(), 2);
+        coord.try_into().unwrap()
+    }
+    fn coords2(&self) -> impl Iterator<Item = &[f64; 2]> {
+        (0..self.connectivity().len()).map(|i| self.coord2_ref(i))
+    }
+    #[inline(always)]
+    fn coord3(&self, i: usize) -> na::Point3<f64> {
+        let coord = self.coord(i);
+        assert_eq!(coord.len(), 3);
+        na::Point3::from_slice(coord)
+    }
+    #[inline(always)]
+    fn coord3_ref(&self, i: usize) -> &[f64; 3] {
+        let coord = self.coord(i);
+        assert_eq!(coord.len(), 3);
+        coord.try_into().unwrap()
+    }
+    fn coords3(&self) -> impl Iterator<Item = &[f64; 3]> {
+        (0..self.connectivity().len()).map(|i| self.coord3_ref(i))
+    }
+    fn coords(&self) -> impl Iterator<Item = &[f64]> {
+        (0..self.connectivity().len()).map(|i| self.coord(i))
+    }
+
     fn measure2(&self) -> f64 {
         // Returns the measure of the element
         // For 0D elements, return 0.0
@@ -41,23 +76,17 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         match self.element_type() {
             VERTEX => 0.0,
             SEG2 => todo!(),
-            TRI3 => {
-                let coords = self.coords();
-                mes::surf_tri3(
-                    coords.row(0).as_slice().unwrap().try_into().unwrap(),
-                    coords.row(1).as_slice().unwrap().try_into().unwrap(),
-                    coords.row(2).as_slice().unwrap().try_into().unwrap(),
-                )
-            }
-            QUAD4 => {
-                let coords = self.coords();
-                mes::surf_quad3(
-                    coords.row(0).as_slice().unwrap().try_into().unwrap(),
-                    coords.row(1).as_slice().unwrap().try_into().unwrap(),
-                    coords.row(2).as_slice().unwrap().try_into().unwrap(),
-                    coords.row(3).as_slice().unwrap().try_into().unwrap(),
-                )
-            }
+            TRI3 => mes::surf_tri3(
+                self.coord3(0).into(),
+                self.coord3(1).into(),
+                self.coord3(2).into(),
+            ),
+            QUAD4 => mes::surf_quad3(
+                &self.coord3(0).into(),
+                &self.coord3(1).into(),
+                &self.coord3(2).into(),
+                &self.coord3(3).into(),
+            ),
             _ => todo!(),
         }
     }
@@ -72,19 +101,27 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
     }
 
     fn to_aabb2(&self) -> AABB<[f64; 2]> {
-        AABB::from_points(
-            self.coords()
-                .axis_iter(Axis(0))
-                .map(|e| e.to_slice().unwrap()[..2].try_into().unwrap()),
-        )
+        AABB::from_points(self.coords2())
     }
 
     fn to_aabb(&self) -> AABB<[f64; 3]> {
-        AABB::from_points(
-            self.coords()
-                .axis_iter(Axis(0))
-                .map(|e| e.to_slice().unwrap()[..3].try_into().unwrap()),
-        )
+        AABB::from_points(self.coords3())
+    }
+
+    fn centroid2(&self) -> [f64; 2] {
+        let mut p: na::Point2<f64> = na::Point2::origin();
+        for i in 0..self.connectivity().len() {
+            p += self.coord2(i) - na::Point2::origin();
+        }
+        (p / (self.connectivity().len() as f64)).into()
+    }
+
+    fn centroid3(&self) -> [f64; 3] {
+        let mut p: na::Point3<f64> = na::Point3::origin();
+        for i in 0..self.connectivity().len() {
+            p += self.coord3(i) - na::Point3::origin();
+        }
+        (p / (self.connectivity().len() as f64)).into()
     }
 }
 
@@ -101,7 +138,7 @@ pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
                     0 => nd::Array1::from_vec(vec![0.0; v.len()]),
                     1 => todo!(),
                     2 => nd::Array1::from_vec(
-                        v.iter(mesh.coords.view())
+                        v.par_iter(mesh.coords.view())
                         .map(|e| e.measure2())
                         .collect()
                     ),

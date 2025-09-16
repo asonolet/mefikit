@@ -1,4 +1,3 @@
-use nalgebra as na;
 use ndarray::prelude::*;
 use once_cell::sync::OnceCell;
 use rayon::prelude::*;
@@ -344,25 +343,11 @@ pub trait ElementLike<'a> {
 
     /// Geometric queries
 
-    /// Returns a reference to an owned
-    fn coords(&self) -> Array2<f64>;
-    fn coord2(&self, i: usize) -> na::Point2<f64>;
-    fn coord3(&self, i: usize) -> na::Point3<f64>;
+    /// Returns a reference
+    fn coord(&self, i: usize) -> &[f64];
 
     /// Returns the space dimension of the element
     fn space_dimension(&self) -> usize;
-
-    fn bounding_box(&self) -> (Array1<f64>, Array1<f64>) {
-        // Returns the bounding box of the element
-        let coords = self.coords();
-        let min = coords.fold_axis(Axis(0), f64::INFINITY, |x: &f64, y: &f64| x.min(*y));
-        let max = coords.fold_axis(Axis(0), f64::NEG_INFINITY, |x: &f64, y: &f64| x.max(*y));
-        (min, max)
-    }
-
-    fn centroid(&self) -> Array1<f64> {
-        self.coords().mean_axis(Axis(0)).unwrap()
-    }
     /// Groups queries
 
     fn groups(&self) -> &Vec<String>;
@@ -411,76 +396,11 @@ impl<'a> ElementLike<'a> for Element<'a> {
     fn connectivity(&self) -> &[usize] {
         self.connectivity
     }
-    fn coords(&self) -> Array2<f64> {
-        let co = self.connectivity;
-        let coords = self.coords;
-        use ElementType::*;
-        match self.coords.shape()[1] {
-            1 => todo!(),
-            2 => match self.element_type {
-                SEG2 => arr2(&[
-                    [coords[[co[0], 0]], coords[[co[0], 1]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]]],
-                ]),
-                TRI3 => arr2(&[
-                    [coords[[co[0], 0]], coords[[co[0], 1]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]]],
-                    [coords[[co[2], 0]], coords[[co[2], 1]]],
-                ]),
-                QUAD4 => arr2(&[
-                    [coords[[co[0], 0]], coords[[co[0], 1]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]]],
-                    [coords[[co[2], 0]], coords[[co[2], 1]]],
-                    [coords[[co[3], 0]], coords[[co[3], 1]]],
-                ]),
-                _ => todo!(),
-            },
-            3 => match self.element_type {
-                SEG2 => arr2(&[
-                    [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
-                ]),
-                TRI3 => arr2(&[
-                    [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
-                    [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
-                ]),
-                QUAD4 => arr2(&[
-                    [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
-                    [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
-                    [coords[[co[3], 0]], coords[[co[3], 1]], coords[[co[3], 2]]],
-                ]),
-                HEX8 => arr2(&[
-                    [coords[[co[0], 0]], coords[[co[0], 1]], coords[[co[0], 2]]],
-                    [coords[[co[1], 0]], coords[[co[1], 1]], coords[[co[1], 2]]],
-                    [coords[[co[2], 0]], coords[[co[2], 1]], coords[[co[2], 2]]],
-                    [coords[[co[3], 0]], coords[[co[3], 1]], coords[[co[3], 2]]],
-                    [coords[[co[4], 0]], coords[[co[4], 1]], coords[[co[4], 2]]],
-                    [coords[[co[5], 0]], coords[[co[5], 1]], coords[[co[5], 2]]],
-                    [coords[[co[6], 0]], coords[[co[6], 1]], coords[[co[6], 2]]],
-                    [coords[[co[7], 0]], coords[[co[7], 1]], coords[[co[7], 2]]],
-                ]),
-                _ => todo!(),
-            },
-            _ => panic!("Coords shape can only be 1, 2 or 3d."),
-        }
-    }
 
-    #[inline]
-    fn coord2(&self, i: usize) -> na::Point2<f64> {
-        assert_eq!(self.coords.shape()[1], 2);
+    #[inline(always)]
+    fn coord(&self, i: usize) -> &[f64] {
         let co = self.connectivity;
-        let coords = self.coords;
-        na::Point2::new(coords[[co[i], 0]], coords[[co[i], 1]])
-    }
-
-    #[inline]
-    fn coord3(&self, i: usize) -> na::Point3<f64> {
-        assert_eq!(self.coords.shape()[1], 2);
-        let co = self.connectivity;
-        let coords = self.coords;
-        na::Point3::new(coords[[co[i], 0]], coords[[co[i], 1]], coords[[co[i], 2]])
+        self.coords.row(co[i]).to_slice().unwrap()
     }
 
     fn groups(&self) -> &Vec<String> {
@@ -531,22 +451,11 @@ impl<'a> ElementLike<'a> for ElementMut<'a> {
     fn connectivity(&self) -> &[usize] {
         self.connectivity
     }
-    fn coords(&self) -> Array2<f64> {
-        self.coords.select(Axis(0), self.connectivity)
-    }
-    fn coord2(&self, i: usize) -> na::Point2<f64> {
-        assert_eq!(self.coords.shape()[1], 2);
-        let co = self.connectivity;
-        let coords = self.coords;
-        na::Point2::new(coords[[co[i], 0]], coords[[co[i], 1]])
-    }
 
-    #[inline]
-    fn coord3(&self, i: usize) -> na::Point3<f64> {
-        assert_eq!(self.coords.shape()[1], 2);
+    #[inline(always)]
+    fn coord(&self, i: usize) -> &[f64] {
         let co = self.connectivity;
-        let coords = self.coords;
-        na::Point3::new(coords[[co[i], 0]], coords[[co[i], 1]], coords[[co[i], 2]])
+        self.coords.row(co[i]).to_slice().unwrap()
     }
 
     fn groups(&self) -> &Vec<String> {
@@ -616,7 +525,6 @@ mod tests {
         assert_eq!(element.connectivity.len(), 3);
         assert_eq!(element.index, 0);
         assert_eq!(element.element_type, ElementType::TRI3);
-        assert_eq!(element.coords().shape(), [3, 2]);
         assert_eq!(element.dimension(), Dimension::D2);
         assert_eq!(element.num_nodes(), 3);
         assert_eq!(element.regularity(), Regularity::Regular);
@@ -651,7 +559,6 @@ mod tests {
         assert_eq!(element.connectivity.len(), 3);
         assert_eq!(element.index, 0);
         assert_eq!(element.element_type, ElementType::TRI3);
-        assert_eq!(element.coords().shape(), [3, 3]);
         assert_eq!(element.dimension(), Dimension::D2);
         assert_eq!(element.num_nodes(), 3);
         assert_eq!(element.regularity(), Regularity::Regular);
@@ -681,7 +588,6 @@ mod tests {
         assert_eq!(element.connectivity.len(), 4);
         assert_eq!(element.index, 0);
         assert_eq!(element.element_type, ElementType::QUAD4);
-        assert_eq!(element.coords().shape(), [4, 2]);
         assert_eq!(element.dimension(), Dimension::D2);
         assert_eq!(element.num_nodes(), 4);
         assert_eq!(element.regularity(), Regularity::Regular);

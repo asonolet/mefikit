@@ -12,12 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
     println!("Computing submesh");
     let submesh = mf::topo::compute_submesh(mesh.view(), None, None);
-    println!("Selecting in sphere.");
-    let mesh_sel = mf::Selector::new(submesh.view())
-        .centroids()
-        .in_sphere(&[0.5, 0.5, 0.5], 0.5)
-        .select();
 
-    println!("Writing submesh selected in sphere");
-    mf::write(&Path::new("examples/submesh_sphere.vtk"), mesh_sel.view())
+    println!("Writing submesh");
+    mf::write(&Path::new("examples/submesh.vtk"), submesh.view())
 }
