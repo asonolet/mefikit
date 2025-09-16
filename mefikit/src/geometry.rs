@@ -20,14 +20,8 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => {
-                let coords = self.coords2();
-                mes::dist2(coords[0], coords[1])
-            }
-            TRI3 => {
-                let coords = self.coords2();
-                mes::surf_tri2(coords[0], coords[1], coords[2])
-            }
+            SEG2 => mes::dist2(self.coord2(0), self.coord2(1)),
+            TRI3 => mes::surf_tri2(self.coord2(0), self.coord2(1), self.coord2(2)),
             QUAD4 => mes::surf_quad2(
                 &self.coord2(0),
                 &self.coord2(1),
