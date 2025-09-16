@@ -91,45 +91,30 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
 impl<'a, T> ElementGeo<'a> for T where T: ElementLike<'a> {}
 
 pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
-    match mesh.space_dimension() {
-        0 => mesh
-            .element_blocks
-            .iter()
-            .map(|(&k, v)| (k, nd::arr1(&vec![0.0; v.len()])))
-            .collect(),
-        1 => todo!(),
-        2 => mesh
-            .element_blocks
-            .iter()
-            .map(|(&k, v)| {
-                (
-                    k,
-                    nd::arr1(
-                        &v.iter(mesh.coords.view())
-                            .map(|e| e.measure2())
-                            .collect::<Vec<f64>>(),
+    mesh
+        .element_blocks
+        .iter()
+        .map(|(&k, v)| {
+            (
+                k,
+                match mesh.space_dimension() {
+                    0 => nd::Array1::from_vec(vec![0.0; v.len()]),
+                    1 => todo!(),
+                    2 => nd::Array1::from_vec(
+                        v.iter(mesh.coords.view())
+                        .map(|e| e.measure2())
+                        .collect()
                     ),
-                )
-            })
-            .collect(),
-        3 => mesh
-            .element_blocks
-            .iter()
-            .map(|(&k, v)| {
-                (
-                    k,
-                    nd::arr1(
-                        &v.iter(mesh.coords.view())
-                            .map(|e| e.measure3())
-                            .collect::<Vec<f64>>(),
+                    3 => nd::Array1::from_vec(
+                        v.par_iter(mesh.coords.view())
+                        .map(|e| e.measure3())
+                        .collect()
                     ),
-                )
-            })
-            .collect(),
-        c => panic!(
-            "{c} is not a valid space dimension. Space (coordinates) dimension must be 0, 1, 2 ou 3."
-        ),
-    }
+                    c => panic!( "{c} is not a valid space dimension. Space (coordinates) dimension must be 0, 1, 2 ou 3.")
+                }
+            )
+        })
+    .collect()
 }
 
 #[cfg(test)]
