@@ -43,6 +43,12 @@ pub type UMesh = UMeshBase<
     nd::OwnedRepr<usize>,
 >;
 
+// TODO: replace coords with something a bit better :
+// An enum which is
+// - either OwnedArcRepr if it was cloned from a UMesh
+// - or a ViewRepr if it come from FFI / python
+// I could do the same with groups and fields. That way I would have free sharing of fields and
+// groups when creating a new UMesh from a UMesh.
 pub type UMeshView<'a> = UMeshBase<
     nd::ViewRepr<&'a f64>,
     nd::ViewRepr<&'a usize>,
@@ -173,6 +179,8 @@ where
     /// This method is low level and error prone in the case where ElementsIds are not directly
     /// issued from a Selector. Please use Selector API if possible.
     pub fn extract(&self, ids: &ElementIds) -> UMesh {
+        // Attention, dans le cas d'un UMeshView c'est une copie, passer des views partout ça
+        // empèche de garder la ref vers le tableau des coordonnées.
         let mut extracted = UMesh::new(self.coords.to_shared());
         for (t, block) in ids.iter() {
             if !self.element_blocks.contains_key(t) {
@@ -344,7 +352,6 @@ mod tests {
     use super::*;
     use crate::mesh_examples as me;
     use crate::umesh::ElementType;
-    use ndarray as nd;
 
     #[test]
     fn test_umesh_creation() {
