@@ -1,79 +1,102 @@
 mod connectivity;
+mod dataarray;
 mod element;
-mod element_block;
 
+pub(crate) use self::connectivity::{Connectivity, ConnectivityView};
+pub use self::dataarray::DataArray;
 pub use self::element::{
     Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut, ElementType, Regularity,
 };
 
-pub(crate) use self::connectivity::Connectivity;
-
-use derive_where::derive_where;
 use ndarray as nd;
 use ndarray::prelude::*;
 use rayon::prelude::*;
-use std::collections::BTreeMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 
-use self::connectivity::ConnectivityBase;
-use self::element_block::{
-    ElementBlock, ElementBlockBase, ElementBlockView, IntoElementBlockEntry,
-};
+/// The part of a mesh constituted by one kind of element.
+///
+/// The element block is the base structure to hold connectivity, fields, groups.
+/// It is used to hold all cell information and allows cell iteration.
+/// The only data not included for an element block to be standalone is the coordinates array.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+struct ElementBlock {
+    pub cell_type: ElementType,
+    pub connectivity: Connectivity,
+    pub fields: BTreeMap<String, ArcArray<f64, IxDyn>>,
+    pub groups: BTreeMap<String, BTreeSet<usize>>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+struct ElementBlockView<'a> {
+    pub cell_type: ElementType,
+    pub connectivity: ConnectivityView<'a>,
+    pub fields: BTreeMap<String, DataArray<'a, f64, IxDyn>>,
+    pub groups: BTreeMap<String, BTreeSet<usize>>,
+}
 
 /// An unstrustured mesh.
 ///
 /// The most general mesh format in mefikit. Can describe any kind on mesh, with multiple elements
 /// kinds and fields associated.
-#[derive_where(Debug, Serialize, PartialEq)]
-#[derive_where(Deserialize; N: nd::DataOwned, C: nd::DataOwned, F: nd::DataOwned, G: nd::DataOwned)]
-pub struct UMeshBase<N, C, F, G>
-where
-    N: nd::RawData<Elem = f64> + nd::Data,   // Nodes (Coords) data
-    C: nd::RawData<Elem = usize> + nd::Data, // Connectivity data
-    F: nd::RawData<Elem = f64> + nd::Data,   // Fields data
-    G: nd::RawData<Elem = usize> + nd::Data, // Groups data
-{
-    pub(crate) coords: ArrayBase<N, Ix2>, // TODO: Use ArcArray2 for shared ownership
-    pub(crate) element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct UMesh {
+    coords: nd::ArcArray2<f64>,
+    element_blocks: BTreeMap<ElementType, ElementBlock>,
 }
 
-pub type UMesh = UMeshBase<
-    nd::OwnedArcRepr<f64>,
-    nd::OwnedRepr<usize>,
-    nd::OwnedRepr<f64>,
-    nd::OwnedRepr<usize>,
->;
+pub struct UMeshView<'a> {
+    coords: DataArray<'a, f64, Ix2>,
+    element_blocks: BTreeMap<ElementType, ElementBlockView<'a>>,
+}
 
-// TODO: replace coords with something a bit better :
-// An enum which is
-// - either OwnedArcRepr if it was cloned from a UMesh
-// - or a ViewRepr if it come from FFI / python
-// I could do the same with groups and fields. That way I would have free sharing of fields and
-// groups when creating a new UMesh from a UMesh.
-pub type UMeshView<'a> = UMeshBase<
-    nd::ViewRepr<&'a f64>,
-    nd::ViewRepr<&'a usize>,
-    nd::ViewRepr<&'a f64>,
-    nd::ViewRepr<&'a usize>,
->;
-
-impl<N, C, F, G> UMeshBase<N, C, F, G>
-where
-    N: nd::RawData<Elem = f64> + nd::Data,
-    C: nd::RawData<Elem = usize> + nd::Data,
-    F: nd::RawData<Elem = f64> + nd::Data,
-    G: nd::RawData<Elem = usize> + nd::Data,
-{
-    pub fn view(&self) -> UMeshView<'_> {
-        let mut view = UMeshView::new(self.coords.view());
-        for (&et, block) in self.element_blocks.iter() {
-            match &block.connectivity {
-                ConnectivityBase::Regular(arr) => view.add_regular_block(et, arr.view()),
-                ConnectivityBase::Poly { data, offsets } => {
-                    view.add_poly_block(et, data.view(), offsets.view())
-                }
-            };
+impl<'a> UMeshView<'a> {
+    pub fn new(coords: DataArray<'a, f64, Ix2>) -> Self {
+        Self {
+            coords,
+            element_blocks: BTreeMap::new(),
         }
-        view
+    }
+
+    pub fn to_owned(&self) -> UMesh {
+        let mut umesh = UMesh::new(self.coords.to_shared());
+        for (&et, eb) in &self.element_blocks {
+            match eb.connectivity {
+                ConnectivityView::Regular(r) => umesh.add_regular_block(et, r.to_owned()),
+                ConnectivityView::Poly { data, offsets } => {
+                    umesh.add_poly_block(et, data.to_owned(), offsets.to_owned())
+                }
+            }
+        }
+        umesh
+    }
+
+    pub fn add_regular_block(&mut self, et: ElementType, block: ArrayView2<'a, usize>) {
+        let block = ElementBlockView {
+            cell_type: et,
+            connectivity: ConnectivityView::Regular(block),
+            fields: BTreeMap::new(),
+            groups: BTreeMap::new(),
+        };
+        self.element_blocks.entry(et).or_insert(block);
+    }
+
+    pub fn add_poly_block(
+        &mut self,
+        et: ElementType,
+        conn: ArrayView1<'a, usize>,
+        offsets: ArrayView1<'a, usize>,
+    ) {
+        let block = ElementBlockView {
+            cell_type: et,
+            connectivity: ConnectivityView::Poly {
+                data: conn,
+                offsets,
+            },
+            fields: BTreeMap::new(),
+            groups: BTreeMap::new(),
+        };
+        self.element_blocks.entry(et).or_insert(block);
     }
 
     pub fn coords(&self) -> ArrayView2<'_, f64> {
@@ -91,7 +114,7 @@ where
             .ok_or_else(|| "Element is not in the mesh.".to_owned())?
             .connectivity
         {
-            ConnectivityBase::Regular(tab) => Ok(tab.view()),
+            ConnectivityView::Regular(tab) => Ok(tab.view()),
             _ => Err(
                 "This element type has poly connectivity, please use poly_connectivity(et) method."
                     .to_owned(),
@@ -113,7 +136,7 @@ where
             .ok_or_else(|| "Element is not in the mesh.".to_owned())?
             .connectivity
         {
-            ConnectivityBase::Poly { data, offsets } => Ok((data.view(), offsets.view())),
+            ConnectivityView::Poly { data, offsets } => Ok((data.view(), offsets.view())),
             _ => Err(
                 "This element type has regular connectivity, please use regular_connectivity(et) method."
                     .to_owned(),
@@ -122,80 +145,125 @@ where
     }
 
     pub fn space_dimension(&self) -> usize {
-        self.coords.shape()[1]
+        self.coords().shape()[1]
     }
 
-    pub fn elements(&self) -> impl Iterator<Item = Element> {
-        self.element_blocks
-            .values()
-            .flat_map(|block| block.iter(self.coords.view()))
+    pub fn elements(&'a self) -> impl Iterator<Item = Element<'a>> {
+        self.element_blocks.values().flat_map(move |block| {
+            block
+                .connectivity
+                .iter()
+                .enumerate()
+                .map(move |(i, connectivity)| {
+                    Element::new(
+                        i,
+                        self.coords().clone(),
+                        None,
+                        &0,
+                        &block.groups,
+                        connectivity,
+                        block.cell_type,
+                    )
+                })
+        })
     }
 
-    pub fn par_elements(&self) -> impl ParallelIterator<Item = Element>
-    where
-        N: Sync,
-        C: Sync,
-        F: Sync,
-        G: Sync,
-    {
-        self.element_blocks
-            .par_iter()
-            .flat_map(|(_, block)| block.par_iter(self.coords.view()))
+    pub fn par_elements(&self) -> impl ParallelIterator<Item = Element> {
+        self.element_blocks.par_iter().flat_map(move |(_, block)| {
+            (0..block.connectivity.len())
+                .into_par_iter()
+                .with_min_len(200)
+                .map(move |i| {
+                    let connectivity = block.connectivity.get(i);
+                    // let fields = self
+                    //     .fields
+                    //     .iter()
+                    //     .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
+                    //     .collect();
+
+                    Element::new(
+                        i,
+                        self.coords().clone(),
+                        None,
+                        &0,
+                        &block.groups,
+                        connectivity,
+                        block.cell_type,
+                    )
+                })
+        })
     }
 
     pub fn num_elements(&self) -> usize {
-        self.element_blocks.values().map(|block| block.len()).sum()
+        self.element_blocks
+            .values()
+            .map(|block| block.connectivity.len())
+            .sum()
     }
 
     pub fn get_element(&self, id: ElementId) -> Element {
         let eb = self.element_blocks.get(&id.element_type()).unwrap();
-        eb.get(id.index(), self.coords.view())
+        let connectivity = eb.connectivity.get(id.index());
+        // let fields = self
+        //     .fields
+        //     .iter()
+        //     .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), index)))
+        //     .collect();
+        Element::new(
+            id.index(),
+            self.coords().clone(),
+            None,
+            &0,
+            &eb.groups,
+            connectivity,
+            id.element_type(),
+        )
     }
 
-    pub fn elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element> {
-        self.element_blocks
-            .iter()
-            .filter(move |(k, _)| k.dimension() == dim)
-            .flat_map(|(_, block)| block.iter(self.coords.view()))
-    }
+    // pub fn elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element> {
+    //     self.element_blocks
+    //         .iter()
+    //         .filter(move |(k, _)| k.dimension() == dim)
+    //         .flat_map(|(_, block)| block.iter(self.coords.view()))
+    // }
 
-    pub fn par_elements_of_dim(&self, dim: Dimension) -> impl ParallelIterator<Item = Element>
-    where
-        N: Sync,
-        C: Sync,
-        F: Sync,
-        G: Sync,
-    {
-        self.element_blocks
-            .par_iter()
-            .filter(move |(k, _)| k.dimension() == dim)
-            .flat_map(|(_, block)| block.par_iter(self.coords.view()))
-    }
+    // pub fn par_elements_of_dim(&self, dim: Dimension) -> impl ParallelIterator<Item = Element>
+    // where
+    //     N: Sync,
+    //     C: Sync,
+    //     F: Sync,
+    //     G: Sync,
+    // {
+    //     self.element_blocks
+    //         .par_iter()
+    //         .filter(move |(k, _)| k.dimension() == dim)
+    //         .flat_map(|(_, block)| block.par_iter(self.coords.view()))
+    // }
 
-    /// Extracts a sub-mesh from the current mesh based on the provided element IDs.
-    ///
-    /// This method creates a new `UMesh`, owning its data (with copy) containing only the elements
-    /// specified by the IDs.
-    /// This method is low level and error prone in the case where ElementsIds are not directly
-    /// issued from a Selector. Please use Selector API if possible.
-    pub fn extract(&self, ids: &ElementIds) -> UMesh {
-        // Attention, dans le cas d'un UMeshView c'est une copie, passer des views partout ça
-        // empèche de garder la ref vers le tableau des coordonnées.
-        let mut extracted = UMesh::new(self.coords.to_shared());
-        for (t, block) in ids.iter() {
-            if !self.element_blocks.contains_key(t) {
-                continue;
-            }
-            match &self.element_blocks[t] {
-                ElementBlockBase {
-                    connectivity: ConnectivityBase::Regular(arr),
-                    ..
-                } => extracted.add_regular_block(*t, arr.select(Axis(0), block.as_slice())),
-                _ => todo!(),
-            };
-        }
-        extracted
-    }
+    // /// Extracts a sub-mesh from the current mesh based on the provided element IDs.
+    // ///
+    // /// This method creates a new `UMesh`, owning its data (with copy) containing only the elements
+    // /// specified by the IDs.
+    // /// This method is low level and error prone in the case where ElementsIds are not directly
+    // /// issued from a Selector. Please use Selector API if possible.
+    // pub fn extract(&self, ids: &ElementIds) -> UMeshView<'a> {
+    //     // Attention, dans le cas d'un UMeshView c'est une copie, passer des views partout ça
+    //     // empèche de garder la ref vers le tableau des coordonnées.
+    //     let mut extracted = UMeshView::new(self.coords.clone());
+    //     for (t, block) in ids.iter() {
+    //         if !self.element_blocks.contains_key(t) {
+    //             continue;
+    //         }
+    //         match &self.element_blocks[t] {
+    //             ElementBlockView {
+    //                 connectivity: ConnectivityView::Regular(arr),
+    //                 ..
+    //             } => extracted.add_regular_block(*t, arr.select(Axis(0), block.as_slice())),
+    //             _ => todo!(),
+    //         };
+    //     }
+    //     extracted
+    // }
 
     // pub fn families(&self, element_type: ElementType) -> Option<&[usize]> {
     //     let eb = self.element_block(element_type);
@@ -205,58 +273,21 @@ where
     //     }
     // }
 
-    /// This method is used to replace elements in the current mesh with another mesh, producing a
-    /// new mesh.
-    ///
-    /// Please mind what you are doing, this method wont check for mesh constitency.
-    ///
-    /// The element number is potentially different, in which case we need to remove the elements
-    /// from the current mesh and add the elements from the replace mesh. This creates a new mesh
-    /// because everything needs to be reallocated to be copied either way.
-    /// ElementIds are invalid on the new mesh.
-    pub fn replace(&self, _ids: &ElementIds, _replace_mesh: &UMesh) -> UMesh {
-        todo!()
-    }
+    // /// This method is used to replace elements in the current mesh with another mesh, producing a
+    // /// new mesh.
+    // ///
+    // /// Please mind what you are doing, this method wont check for mesh constitency.
+    // ///
+    // /// The element number is potentially different, in which case we need to remove the elements
+    // /// from the current mesh and add the elements from the replace mesh. This creates a new mesh
+    // /// because everything needs to be reallocated to be copied either way.
+    // /// ElementIds are invalid on the new mesh.
+    // pub fn replace(&self, _ids: &ElementIds, _replace_mesh: &UMesh) -> UMesh {
+    //     todo!()
+    // }
 }
 
-impl<'a> UMeshView<'a> {
-    pub fn new(coords: nd::ArrayView2<'a, f64>) -> Self {
-        Self {
-            coords,
-            element_blocks: BTreeMap::new(),
-        }
-    }
-
-    pub fn to_owned(&self) -> UMesh {
-        let mut umesh = UMesh::new(self.coords.to_shared());
-        for (&et, eb) in &self.element_blocks {
-            match eb.connectivity {
-                ConnectivityBase::Regular(r) => umesh.add_regular_block(et, r.to_owned()),
-                ConnectivityBase::Poly { data, offsets } => {
-                    umesh.add_poly_block(et, data.to_owned(), offsets.to_owned())
-                }
-            }
-        }
-        umesh
-    }
-
-    pub fn add_regular_block(&mut self, et: ElementType, block: ArrayView2<'a, usize>) {
-        let block = ElementBlockView::new_regular(et, block);
-        let (key, wrapped) = block.into_entry();
-        self.element_blocks.entry(key).or_insert(wrapped);
-    }
-
-    pub fn add_poly_block(
-        &mut self,
-        et: ElementType,
-        conn: ArrayView1<'a, usize>,
-        offsets: ArrayView1<'a, usize>,
-    ) {
-        let block = ElementBlockView::new_poly(et, conn, offsets);
-        let (key, wrapped) = block.into_entry();
-        self.element_blocks.entry(key).or_insert(wrapped);
-    }
-}
+impl<'a> UMeshView<'a> {}
 
 impl UMesh {
     pub fn new(coords: nd::ArcArray2<f64>) -> Self {
@@ -267,15 +298,26 @@ impl UMesh {
     }
 
     pub fn add_regular_block(&mut self, et: ElementType, block: Array2<usize>) {
-        let block = ElementBlock::new_regular(et, block);
-        let (key, wrapped) = block.into_entry();
-        self.element_blocks.entry(key).or_insert(wrapped);
+        let block = ElementBlock {
+            cell_type: et,
+            connectivity: Connectivity::Regular(block),
+            fields: BTreeMap::new(),
+            groups: BTreeMap::new(),
+        };
+        self.element_blocks.entry(et).or_insert(block);
     }
 
     pub fn add_poly_block(&mut self, et: ElementType, conn: Array1<usize>, offsets: Array1<usize>) {
-        let block = ElementBlock::new_poly(et, conn, offsets);
-        let (key, wrapped) = block.into_entry();
-        self.element_blocks.entry(key).or_insert(wrapped);
+        let block = ElementBlock {
+            cell_type: et,
+            connectivity: Connectivity::Poly {
+                data: conn,
+                offsets,
+            },
+            fields: BTreeMap::new(),
+            groups: BTreeMap::new(),
+        };
+        self.element_blocks.entry(et).or_insert(block);
     }
 
     pub fn to_owned(self) -> UMesh {
@@ -339,7 +381,7 @@ impl UMesh {
         self.coords = nd::concatenate![Axis(0), added_coords, self.coords].into_shared();
         for (_, eb) in self.element_blocks.iter_mut() {
             match &mut eb.connectivity {
-                ConnectivityBase::Regular(c) => *c += n_coords,
+                ConnectivityView::Regular(c) => *c += n_coords,
                 ConnectivityBase::Poly { data, .. } => *data += n_coords,
             }
         }

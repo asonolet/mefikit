@@ -1,29 +1,46 @@
-use derive_where::derive_where;
 use ndarray as nd;
 // use rayon::prelude::*;
+use super::dataarray::DataArray;
+use serde::{Deserialize, Serialize};
 
-/// Connectivity structure to represent the connectivity of a mesh.
-///
-/// It can be either regular or polygonal. Regular connectivity is represented as a 2D array,
-/// while polygonal connectivity is represented as a 1D array with offsets. The offsets array
-/// indicates the start and end of each polygon in the data array. The data array contains the
-/// indices of the vertices of the polygons.
-#[derive_where(Clone; C: nd::RawDataClone)]
-#[derive_where(Debug, Serialize, PartialEq, Eq, Hash)]
-#[derive_where(Deserialize; C: nd::DataOwned)]
-pub enum ConnectivityBase<C>
-where
-    C: nd::RawData<Elem = usize> + nd::Data,
-{
-    Regular(nd::ArrayBase<C, nd::Ix2>),
+// /// Connectivity structure to represent the connectivity of a mesh.
+// ///
+// /// It can be either regular or polygonal. Regular connectivity is represented as a 2D array,
+// /// while polygonal connectivity is represented as a 1D array with offsets. The offsets array
+// /// indicates the start and end of each polygon in the data array. The data array contains the
+// /// indices of the vertices of the polygons.
+// #[derive_where(Clone; C: nd::RawDataClone)]
+// #[derive_where(Debug, Serialize, PartialEq, Eq, Hash)]
+// #[derive_where(Deserialize; C: nd::DataOwned)]
+// pub enum ConnectivityBase<C>
+// where
+//     C: nd::RawData<Elem = usize> + nd::Data,
+// {
+//     Regular(nd::ArrayBase<C, nd::Ix2>),
+//     Poly {
+//         data: nd::ArrayBase<C, nd::Ix1>,
+//         offsets: nd::ArrayBase<C, nd::Ix1>,
+//     },
+// }
+//
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq, Hash)]
+pub enum ConnectivityView<'a> {
+    Regular(DataArray<'a, usize, nd::Ix2>),
     Poly {
-        data: nd::ArrayBase<C, nd::Ix1>,
-        offsets: nd::ArrayBase<C, nd::Ix1>,
+        data: DataArray<'a, usize, nd::Ix1>,
+        offsets: DataArray<'a, usize, nd::Ix1>,
     },
 }
 
-pub type Connectivity = ConnectivityBase<nd::OwnedRepr<usize>>;
-pub type ConnectivityView<'a> = ConnectivityBase<nd::ViewRepr<&'a usize>>;
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+pub enum Connectivity {
+    Regular(nd::ArcArray<usize, nd::Ix2>),
+    Poly {
+        data: nd::ArcArray<usize, nd::Ix1>,
+        offsets: nd::ArcArray<usize, nd::Ix1>,
+    },
+}
 
 pub struct ConnectivityIterator<'a> {
     connectivity: ConnectivityView<'a>,
@@ -34,8 +51,9 @@ impl<'a> Iterator for ConnectivityIterator<'a> {
     type Item = &'a [usize];
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.connectivity {
+        match &self.connectivity {
             ConnectivityView::Regular(arr) => {
+                let arr = arr.view();
                 if self.index >= arr.shape()[0] {
                     None
                 } else {
@@ -47,6 +65,7 @@ impl<'a> Iterator for ConnectivityIterator<'a> {
                 }
             }
             ConnectivityView::Poly { data, offsets } => {
+                let offsets = offsets.view();
                 if self.index >= offsets.len() {
                     return None;
                 }
@@ -57,7 +76,7 @@ impl<'a> Iterator for ConnectivityIterator<'a> {
                 };
                 let end = offsets[self.index];
                 self.index += 1;
-                let result = &data.to_slice().unwrap()[start..end];
+                let result = &data.as_slice().unwrap()[start..end];
                 Some(result)
             }
         }
@@ -66,10 +85,12 @@ impl<'a> Iterator for ConnectivityIterator<'a> {
     fn size_hint(&self) -> (usize, Option<usize>) {
         match self.connectivity {
             ConnectivityView::Regular(arr) => {
+                let arr = arr.to_view();
                 let remaning_len = arr.shape()[0] - self.index;
                 (remaning_len, Some(remaning_len))
             }
             ConnectivityView::Poly { offsets, .. } => {
+                let offsets = offsets.to_view();
                 let remaning_len = offsets.len() - self.index;
                 (remaning_len, Some(remaning_len))
             }
@@ -169,47 +190,53 @@ impl Connectivity {
     }
 }
 
-impl<C> ConnectivityBase<C>
-where
-    C: nd::RawData<Elem = usize> + nd::Data,
-{
-    pub fn len(&self) -> usize {
+impl<'a> ConnectivityView<'a> {
+    pub fn len(&'a self) -> usize {
         match self {
-            ConnectivityBase::Regular(conn) => conn.nrows(),
-            ConnectivityBase::Poly { offsets, .. } => offsets.len(),
+            ConnectivityView::Regular(conn) => conn.view().nrows(),
+            ConnectivityView::Poly { offsets, .. } => offsets.view().len(),
         }
     }
 
-    pub fn get(&self, index: usize) -> &[usize]
-    where
-        C: nd::Data,
-    {
+    pub fn get(&'a self, index: usize) -> &'a [usize] {
         match self {
-            ConnectivityBase::Regular(conn) => conn.row(index).to_slice().unwrap(),
-            ConnectivityBase::Poly { data, offsets } => {
+            ConnectivityView::Regular(conn) => conn.row_slice(index),
+            ConnectivityView::Poly { data, offsets } => {
+                let offsets = offsets.view();
                 let start = if index == 0 { 0 } else { offsets[index - 1] };
                 let end = offsets[index];
                 &data.as_slice().unwrap()[start..end]
             }
         }
     }
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = &'_ [usize]> + '_
-    where
-        C: nd::Data,
-    {
-        ConnectivityIterator {
-            connectivity: self.view(),
-            index: 0,
-        }
-    }
 
-    pub fn view(&self) -> ConnectivityView {
+    pub fn iter(&'a self) -> impl ExactSizeIterator<Item = &'a [usize]> + 'a {
         match self {
-            ConnectivityBase::Regular(arr) => ConnectivityView::Regular(arr.view()),
-            ConnectivityBase::Poly { data, offsets } => ConnectivityView::Poly {
-                data: data.view(),
-                offsets: offsets.view(),
-            },
+            ConnectivityView::Regular(arr) => {
+                (0..arr.len()).map(move |i| arr.view().row(i).as_slice().unwrap())
+            }
+            ConnectivityView::Poly { data, offsets } => {
+                (0..offsets.len()).map(move |i| {
+                    let offsets = offsets.view();
+                    let start = if i == 0 { 0 } else { offsets[i - 1] };
+                    let end = offsets[i];
+                    &data.as_slice().unwrap()[start..end]
+                })
+                // let data = data.view();
+                // let offsets = offsets.view();
+                // if self.index >= offsets.len() {
+                //     return None;
+                // }
+                // let start = if self.index == 0 {
+                //     0
+                // } else {
+                //     offsets[self.index - 1]
+                // };
+                // let end = offsets[self.index];
+                // self.index += 1;
+                // let result = &data.to_slice().unwrap()[start..end];
+                // Some(result)
+            }
         }
     }
 
