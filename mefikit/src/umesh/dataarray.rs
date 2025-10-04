@@ -36,6 +36,12 @@ where
             DataArray::Shared(d) => d.to_shared(),
         }
     }
+    pub fn ensure_shared(self) -> Self {
+        match self {
+            DataArray::View(d) => DataArray::Shared(d.to_shared()),
+            DataArray::Shared(_) => self,
+        }
+    }
     pub fn into_shared(self) -> nd::ArcArray<T, D> {
         match self {
             DataArray::View(d) => d.to_shared(),

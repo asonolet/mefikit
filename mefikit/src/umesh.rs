@@ -58,20 +58,34 @@ impl<'a> UMeshView<'a> {
         }
     }
 
-    pub fn to_owned(&self) -> UMesh {
-        let mut umesh = UMesh::new(self.coords.to_shared());
-        for (&et, eb) in &self.element_blocks {
+    pub fn ensure_shared(self) -> Self {
+        let mut umesh = UMeshView::new(self.coords.ensure_shared());
+        for (et, eb) in self.element_blocks {
             match eb.connectivity {
-                ConnectivityView::Regular(r) => umesh.add_regular_block(et, r.to_owned()),
+                ConnectivityView::Regular(r) => umesh.add_regular_block(et, r.ensure_shared()),
                 ConnectivityView::Poly { data, offsets } => {
-                    umesh.add_poly_block(et, data.to_owned(), offsets.to_owned())
+                    umesh.add_poly_block(et, data.ensure_shared(), offsets.ensure_shared())
                 }
             }
         }
         umesh
     }
 
-    pub fn add_regular_block(&mut self, et: ElementType, block: ArrayView2<'a, usize>) {
+    pub fn to_shared(self) -> UMesh {
+        let mut umesh = UMesh::new(self.coords.to_shared());
+        for (et, eb) in self.element_blocks {
+            match eb.connectivity {
+                ConnectivityView::Regular(r) => umesh.add_regular_block(et, r.to_shared()),
+                ConnectivityView::Poly { data, offsets } => {
+                    umesh.add_poly_block(et, data.to_shared(), offsets.to_shared())
+                }
+            }
+        }
+        umesh
+    }
+
+
+    pub fn add_regular_block(&mut self, et: ElementType, block: DataArray<'a, usize, nd::Ix2>) {
         let block = ElementBlockView {
             cell_type: et,
             connectivity: ConnectivityView::Regular(block),
@@ -84,8 +98,8 @@ impl<'a> UMeshView<'a> {
     pub fn add_poly_block(
         &mut self,
         et: ElementType,
-        conn: ArrayView1<'a, usize>,
-        offsets: ArrayView1<'a, usize>,
+        conn: DataArray<'a, usize, nd::Ix1>,
+        offsets: DataArray<'a, usize, nd::Ix1>,
     ) {
         let block = ElementBlockView {
             cell_type: et,
@@ -168,7 +182,7 @@ impl<'a> UMeshView<'a> {
         })
     }
 
-    pub fn par_elements(&self) -> impl ParallelIterator<Item = Element> {
+    pub fn par_elements(&'a self) -> impl ParallelIterator<Item = Element<'a>> {
         self.element_blocks.par_iter().flat_map(move |(_, block)| {
             (0..block.connectivity.len())
                 .into_par_iter()
@@ -194,14 +208,14 @@ impl<'a> UMeshView<'a> {
         })
     }
 
-    pub fn num_elements(&self) -> usize {
+    pub fn num_elements(&'a self) -> usize {
         self.element_blocks
             .values()
             .map(|block| block.connectivity.len())
             .sum()
     }
 
-    pub fn get_element(&self, id: ElementId) -> Element {
+    pub fn get_element(&'a self, id: ElementId) -> Element<'a> {
         let eb = self.element_blocks.get(&id.element_type()).unwrap();
         let connectivity = eb.connectivity.get(id.index());
         // let fields = self
@@ -287,7 +301,6 @@ impl<'a> UMeshView<'a> {
     // }
 }
 
-impl<'a> UMeshView<'a> {}
 
 impl UMesh {
     pub fn new(coords: nd::ArcArray2<f64>) -> Self {
@@ -297,7 +310,20 @@ impl UMesh {
         }
     }
 
-    pub fn add_regular_block(&mut self, et: ElementType, block: Array2<usize>) {
+    pub fn view(&self) -> UMeshView<'_> {
+        let mut umesh = UMeshView::new(DataArray::Shared(self.coords.clone()));
+        for (&et, eb) in &self.element_blocks {
+            match &eb.connectivity {
+                Connectivity::Regular(r) => umesh.add_regular_block(et, DataArray::Shared(r.clone())),
+                Connectivity::Poly { data, offsets } => {
+                    umesh.add_poly_block(et, DataArray::Shared(data.clone()), DataArray::Shared(offsets.clone()))
+                }
+            }
+        }
+        umesh
+    }
+
+    pub fn add_regular_block(&mut self, et: ElementType, block: nd::ArcArray2<usize>) {
         let block = ElementBlock {
             cell_type: et,
             connectivity: Connectivity::Regular(block),
@@ -307,7 +333,7 @@ impl UMesh {
         self.element_blocks.entry(et).or_insert(block);
     }
 
-    pub fn add_poly_block(&mut self, et: ElementType, conn: Array1<usize>, offsets: Array1<usize>) {
+    pub fn add_poly_block(&mut self, et: ElementType, conn: nd::ArcArray1<usize>, offsets: nd::ArcArray1<usize>) {
         let block = ElementBlock {
             cell_type: et,
             connectivity: Connectivity::Poly {
@@ -320,47 +346,43 @@ impl UMesh {
         self.element_blocks.entry(et).or_insert(block);
     }
 
-    pub fn to_owned(self) -> UMesh {
-        self
-    }
+    // pub fn add_element(
+    //     &mut self,
+    //     element_type: ElementType,
+    //     connectivity: &[usize],
+    //     family: Option<usize>,
+    //     fields: Option<BTreeMap<String, ArrayViewD<f64>>>,
+    // ) {
+    //     match element_type.regularity() {
+    //         Regularity::Regular => {
+    //             if connectivity.len() != element_type.num_nodes().unwrap() {
+    //                 panic!(
+    //                     "Connectivity length does not match the number of nodes for element type {element_type:?}"
+    //                 );
+    //             }
+    //             self.element_blocks.entry(element_type).or_insert_with(|| {
+    //                 ElementBlock::new_regular(
+    //                     element_type,
+    //                     Array2::zeros((0, element_type.num_nodes().unwrap())),
+    //                 )
+    //             });
+    //         }
+    //         Regularity::Poly => {
+    //             self.element_blocks
+    //                 .entry(element_type)
+    //                 .or_insert_with(|| ElementBlock::new_poly(element_type, arr1(&[]), arr1(&[])));
+    //         }
+    //     }
 
-    pub fn add_element(
-        &mut self,
-        element_type: ElementType,
-        connectivity: &[usize],
-        family: Option<usize>,
-        fields: Option<BTreeMap<String, ArrayViewD<f64>>>,
-    ) {
-        match element_type.regularity() {
-            Regularity::Regular => {
-                if connectivity.len() != element_type.num_nodes().unwrap() {
-                    panic!(
-                        "Connectivity length does not match the number of nodes for element type {element_type:?}"
-                    );
-                }
-                self.element_blocks.entry(element_type).or_insert_with(|| {
-                    ElementBlock::new_regular(
-                        element_type,
-                        Array2::zeros((0, element_type.num_nodes().unwrap())),
-                    )
-                });
-            }
-            Regularity::Poly => {
-                self.element_blocks
-                    .entry(element_type)
-                    .or_insert_with(|| ElementBlock::new_poly(element_type, arr1(&[]), arr1(&[])));
-            }
-        }
+    //     self.element_blocks
+    //         .get_mut(&element_type)
+    //         .unwrap() // This unwrap is safe because we just inserted the element type
+    //         .add_element(ArrayView1::from(connectivity), family, fields);
+    // }
 
-        self.element_blocks
-            .get_mut(&element_type)
-            .unwrap() // This unwrap is safe because we just inserted the element type
-            .add_element(ArrayView1::from(connectivity), family, fields);
-    }
-
-    pub fn remove_elements(&mut self, _ids: &ElementIds) {
-        todo!()
-    }
+    // pub fn remove_elements(&mut self, _ids: &ElementIds) {
+    //     todo!()
+    // }
 
     /// This is the most efficient way because it does not copy coords if no reallocation is
     /// needed if coords are not shared. When coords are shared it is copied either way.
@@ -381,8 +403,8 @@ impl UMesh {
         self.coords = nd::concatenate![Axis(0), added_coords, self.coords].into_shared();
         for (_, eb) in self.element_blocks.iter_mut() {
             match &mut eb.connectivity {
-                ConnectivityView::Regular(c) => *c += n_coords,
-                ConnectivityBase::Poly { data, .. } => *data += n_coords,
+                Connectivity::Regular(c) => *c += n_coords,
+                Connectivity::Poly { data, .. } => *data += n_coords,
             }
         }
         self
