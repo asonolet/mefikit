@@ -179,8 +179,6 @@ where
     /// This method is low level and error prone in the case where ElementsIds are not directly
     /// issued from a Selector. Please use Selector API if possible.
     pub fn extract(&self, ids: &ElementIds) -> UMesh {
-        // Attention, dans le cas d'un UMeshView c'est une copie, passer des views partout ça
-        // empèche de garder la ref vers le tableau des coordonnées.
         let mut extracted = UMesh::new(self.coords.to_shared());
         for (t, block) in ids.iter() {
             if !self.element_blocks.contains_key(t) {
@@ -333,13 +331,13 @@ impl UMesh {
     /// This is the most efficient way because it does not copy coords if no reallocation is
     /// needed if coords are not shared. When coords are shared it is copied either way.
     pub fn append_coords(
-        mut self,
+        &mut self,
         added_coords: ArrayView2<'_, f64>,
-    ) -> Result<Self, nd::ShapeError> {
-        let mut coords = self.coords.into_owned();
+    ) -> Result<(), nd::ShapeError> {
+        let mut coords = std::mem::take(&mut self.coords).into_owned();
         coords.append(Axis(0), added_coords)?;
         self.coords = coords.into_shared();
-        Ok(self)
+        Ok(())
     }
 
     /// This is kind of efficient: coordinates are reallocated and copied but connectivities are
