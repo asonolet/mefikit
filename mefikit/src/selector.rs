@@ -3,13 +3,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::geometry::ElementGeo;
 use super::geometry::is_in as geo;
-use super::umesh::{ElementIds, ElementType, UMesh, UMeshView};
-
-/// Here umesh should be replace with UMeshView, so that it can interact with non owned umesh
-/// struct.
+use super::umesh::{ElementIds, ElementType, UMesh};
 
 pub struct Selector<'a, State = ElementSelector> {
-    umesh: UMeshView<'a>,
+    umesh: &'a UMesh,
     index: ElementIds,
     state: State,
 }
@@ -90,7 +87,7 @@ impl<'a, State> Selector<'a, State> {
 }
 
 impl<'a> Selector<'a, ElementSelector> {
-    pub fn new(umesh: UMeshView<'a>) -> Self {
+    pub fn new(umesh: &'a UMesh) -> Self {
         let index: BTreeMap<ElementType, Vec<usize>> = umesh
             .element_blocks
             .iter()
@@ -485,7 +482,7 @@ mod tests {
     #[test]
     fn test_umesh_element_selection() {
         let mesh = me::make_mesh_2d_quad();
-        let selected_ids = Selector::new(mesh.view())
+        let selected_ids = Selector::new(&mesh)
             .centroids()
             .in_rectangle(&[0.0, 0.0], &[1.0, 1.0])
             .index;

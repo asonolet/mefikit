@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 
 use self::utils::SortedVecKey;
 use crate::umesh::Connectivity;
-use crate::{Dimension, ElementId, ElementLike, ElementType, UMesh, UMeshView};
+use crate::{Dimension, ElementId, ElementLike, ElementType, UMesh};
 
 pub trait ElementTopo<'a>: ElementLike<'a> {
     /// This function returns the subentities of the element based on the codimension.
@@ -28,7 +28,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 // 1D elements have edges as subentities
                 if codim == Dimension::D1 {
                     let conn = arr2(&[[co[0]], [co[1]]]);
-                    res.push((VERTEX, Connectivity::new_regular(conn)));
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
                     res
                 } else {
                     todo!()
@@ -38,7 +38,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 // 2D elements have edges as subentities
                 if codim == Dimension::D1 {
                     let conn = arr2(&[[co[0], co[1]], [co[1], co[2]], [co[2], co[0]]]);
-                    res.push((SEG2, Connectivity::new_regular(conn)));
+                    res.push((SEG2, Connectivity::new_regular(conn.to_shared())));
                     res
                 } else {
                     todo!()
@@ -52,7 +52,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                         [co[1], co[2], co[4]],
                         [co[2], co[0], co[5]],
                     ]);
-                    res.push((SEG3, Connectivity::new_regular(conn)));
+                    res.push((SEG3, Connectivity::new_regular(conn.to_shared())));
                     res
                 } else {
                     todo!()
@@ -67,7 +67,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                         [co[2], co[3]],
                         [co[3], co[0]],
                     ]);
-                    res.push((SEG2, Connectivity::new_regular(conn)));
+                    res.push((SEG2, Connectivity::new_regular(conn.to_shared())));
                     res
                 } else {
                     todo!()
@@ -82,7 +82,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                         [co[2], co[3], co[0]],
                         [co[3], co[0], co[1]],
                     ]);
-                    res.push((TRI3, Connectivity::new_regular(conn)));
+                    res.push((TRI3, Connectivity::new_regular(conn.to_shared())));
                     res
                 } else if codim == Dimension::D2 {
                     todo!()
@@ -100,7 +100,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                         [co[2], co[6], co[7], co[3]],
                         [co[4], co[7], co[6], co[5]],
                     ]);
-                    res.push((QUAD4, Connectivity::new_regular(conn)));
+                    res.push((QUAD4, Connectivity::new_regular(conn.to_shared())));
                     res
                 } else if codim == Dimension::D2 {
                     todo!()
@@ -114,11 +114,11 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     conn.push(co[co.len() - 1]);
                     conn.push(co[0]);
                     let conn = Array2::from_shape_vec([conn.len() / 2, 2], conn).unwrap();
-                    res.push((SEG2, Connectivity::new_regular(conn)));
+                    res.push((SEG2, Connectivity::new_regular(conn.to_shared())));
                     res
                 } else if codim == Dimension::D2 {
                     let conn = Array2::from_shape_vec([co.len(), 1], co.to_vec()).unwrap();
-                    res.push((VERTEX, Connectivity::new_regular(conn)));
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
                     res
                 } else {
                     todo!()
@@ -137,7 +137,10 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     });
                     let offsets = Array1::from_vec(offsets);
                     let conn = Array::from_vec(conn);
-                    res.push((PGON, Connectivity::new_poly(conn, offsets)));
+                    res.push((
+                        PGON,
+                        Connectivity::new_poly(conn.to_shared(), offsets.to_shared()),
+                    ));
                     res
                 } else {
                     todo!()
@@ -183,7 +186,7 @@ impl<'a, T> ElementTopo<'a> for T where T: ElementLike<'a> {}
 /// The output graph is a element to element graph (from input mesh), using subentities as edges (weight in
 /// petgraph lang)
 pub fn par_compute_neighbours(
-    mesh: UMeshView,
+    mesh: &UMesh,
     dim: Option<Dimension>,
     codim: Option<Dimension>,
 ) -> (
@@ -269,7 +272,7 @@ pub fn par_compute_neighbours(
 /// The output graph is a element to element graph (from input mesh), using subentities as edges (weight in
 /// petgraph lang)
 pub fn compute_neighbours(
-    mesh: UMeshView,
+    mesh: &UMesh,
     dim: Option<Dimension>,
     codim: Option<Dimension>,
 ) -> (
@@ -338,7 +341,7 @@ pub fn compute_neighbours(
 /// same nodes, regardless of their order.
 /// The output graph is a element to element graph (from input mesh), using subentities as edges (weight in
 /// petgraph lang)
-pub fn compute_submesh(mesh: UMeshView, dim: Option<Dimension>, codim: Option<Dimension>) -> UMesh {
+pub fn compute_submesh(mesh: &UMesh, dim: Option<Dimension>, codim: Option<Dimension>) -> UMesh {
     let codim = match codim {
         Some(c) => c,
         None => Dimension::D1,

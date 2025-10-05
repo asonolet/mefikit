@@ -22,7 +22,7 @@ where
     },
 }
 
-pub type Connectivity = ConnectivityBase<nd::OwnedRepr<usize>>;
+pub type Connectivity = ConnectivityBase<nd::OwnedArcRepr<usize>>;
 pub type ConnectivityView<'a> = ConnectivityBase<nd::ViewRepr<&'a usize>>;
 
 pub struct ConnectivityIterator<'a> {
@@ -146,24 +146,35 @@ impl<'a> ExactSizeIterator for ConnectivityIterator<'a> {}
 // }
 
 impl Connectivity {
-    pub fn new_regular(conn: nd::Array2<usize>) -> Self {
+    pub fn new_regular(conn: nd::ArcArray2<usize>) -> Self {
         Connectivity::Regular(conn)
     }
 
-    pub fn new_poly(data: nd::Array1<usize>, offsets: nd::Array1<usize>) -> Self {
+    pub fn new_poly(data: nd::ArcArray1<usize>, offsets: nd::ArcArray1<usize>) -> Self {
         Connectivity::Poly { data, offsets }
     }
 
     pub fn append(&mut self, connectivity: nd::ArrayView1<usize>) {
         match self {
             Connectivity::Regular(conn) => {
+                let mut conn = std::mem::take(conn).into_owned();
                 conn.push_row(connectivity).unwrap();
+                let _ = std::mem::replace(self, Connectivity::Regular(conn.into_shared()));
             }
             Connectivity::Poly { data, offsets } => {
+                let mut data = std::mem::take(data).into_owned();
+                let mut offsets = std::mem::take(offsets).into_owned();
                 data.append(nd::Axis(0), connectivity).unwrap();
                 offsets
                     .append(nd::Axis(0), nd::arr1(&[data.len()]).view())
                     .unwrap();
+                let _ = std::mem::replace(
+                    self,
+                    Connectivity::Poly {
+                        data: data.into_shared(),
+                        offsets: offsets.into_shared(),
+                    },
+                );
             }
         }
     }
@@ -254,7 +265,7 @@ mod tests {
     #[test]
     fn test_connectivity() {
         let conn = arr2(&[[0, 1], [1, 2], [2, 3]]);
-        let connectivity = Connectivity::new_regular(conn);
+        let connectivity = Connectivity::new_regular(conn.to_shared());
         assert_eq!(connectivity.len(), 3);
         assert_eq!(connectivity.get(0).to_vec(), vec![0, 1]);
         assert_eq!(connectivity.get(1).to_vec(), vec![1, 2]);
@@ -264,7 +275,7 @@ mod tests {
     fn test_poly_connectivity() {
         let data = arr1(&[0, 1, 2, 3, 4, 5]);
         let offsets = arr1(&[2, 5, 6]);
-        let connectivity = Connectivity::new_poly(data, offsets);
+        let connectivity = Connectivity::new_poly(data.to_shared(), offsets.to_shared());
         assert_eq!(connectivity.len(), 3);
         assert_eq!(connectivity.get(0).to_vec(), vec![0, 1]);
         assert_eq!(connectivity.get(1).to_vec(), vec![2, 3, 4]);
@@ -282,8 +293,8 @@ mod tests {
     // }
     #[test]
     fn test_poly_connectivity_iter() {
-        let data = arr1(&[0, 1, 2, 3, 4, 5]);
-        let offsets = arr1(&[2, 5, 6]);
+        let data = arr1(&[0, 1, 2, 3, 4, 5]).to_shared();
+        let offsets = arr1(&[2, 5, 6]).to_shared();
         let connectivity = Connectivity::new_poly(data, offsets);
         let mut iter = connectivity.iter();
         assert_eq!(iter.next().unwrap().to_vec(), vec![0, 1]);
@@ -302,8 +313,8 @@ mod tests {
     // }
     #[test]
     fn test_poly_connectivity_iter_size_hint() {
-        let data = arr1(&[0, 1, 2, 3, 4, 5]);
-        let offsets = arr1(&[2, 5, 6]);
+        let data = arr1(&[0, 1, 2, 3, 4, 5]).to_shared();
+        let offsets = arr1(&[2, 5, 6]).to_shared();
         let connectivity = Connectivity::new_poly(data, offsets);
         let iter = connectivity.iter();
         assert_eq!(iter.size_hint(), (3, Some(3)));

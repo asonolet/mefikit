@@ -12,7 +12,7 @@ fn submesh(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mf::topo::compute_submesh(mesh.view(), None, None));
+                std::hint::black_box(mf::topo::compute_submesh(&mesh, None, None));
             })
         });
     }
@@ -28,7 +28,7 @@ fn neighbours(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mf::topo::compute_neighbours(mesh.view(), None, None));
+                std::hint::black_box(mf::topo::compute_neighbours(&mesh, None, None));
             })
         });
     }
@@ -44,7 +44,7 @@ fn par_neighbours(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mf::topo::par_compute_neighbours(mesh.view(), None, None));
+                std::hint::black_box(mf::topo::par_compute_neighbours(&mesh, None, None));
             })
         });
     }
@@ -62,7 +62,7 @@ fn selection_sphere(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("mesh_size", i * i * i), &i, |b, _| {
             b.iter(|| {
                 std::hint::black_box(
-                    mf::Selector::new(mesh.view())
+                    mf::Selector::new(&mesh)
                         .centroids()
                         .in_sphere(&[0.5, 0.5, 0.5], 0.25),
                 );

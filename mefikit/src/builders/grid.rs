@@ -174,13 +174,13 @@ impl RegularUMeshBuilder {
         let mut umesh = UMesh::new(ArcArray2::from(coords));
         if coords_dim == 1 {
             // 1D mesh
-            umesh.add_regular_block(ElementType::SEG2, connectivity);
+            umesh.add_regular_block(ElementType::SEG2, connectivity.to_shared());
         } else if coords_dim == 2 {
             // 2D mesh
-            umesh.add_regular_block(ElementType::QUAD4, connectivity);
+            umesh.add_regular_block(ElementType::QUAD4, connectivity.to_shared());
         } else if coords_dim == 3 {
             // 3D mesh
-            umesh.add_regular_block(ElementType::HEX8, connectivity);
+            umesh.add_regular_block(ElementType::HEX8, connectivity.to_shared());
         } else {
             panic!("Unsupported number of dimensions for regular mesh");
         }

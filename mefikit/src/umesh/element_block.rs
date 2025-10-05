@@ -30,7 +30,7 @@ where
 }
 
 pub type ElementBlock =
-    ElementBlockBase<nd::OwnedRepr<usize>, nd::OwnedRepr<f64>, nd::OwnedRepr<usize>>;
+    ElementBlockBase<nd::OwnedArcRepr<usize>, nd::OwnedArcRepr<f64>, nd::OwnedArcRepr<usize>>;
 
 pub type ElementBlockView<'a> =
     ElementBlockBase<nd::ViewRepr<&'a usize>, nd::ViewRepr<&'a f64>, nd::ViewRepr<&'a usize>>;
@@ -201,13 +201,13 @@ impl<'a> ElementBlock {
     /// * `groups` - A map of group names to sets of element indices.
     /// # Returns
     /// A new `ElementBlock` instance.
-    pub fn new_regular(cell_type: ElementType, connectivity: Array2<usize>) -> Self {
+    pub fn new_regular(cell_type: ElementType, connectivity: nd::ArcArray2<usize>) -> Self {
         let conn_len = connectivity.len();
         Self {
             cell_type,
             connectivity: Connectivity::Regular(connectivity),
             fields: BTreeMap::new(),
-            families: Array1::from(vec![0; conn_len]),
+            families: nd::ArcArray1::from(vec![0; conn_len]),
             groups: BTreeMap::new(),
         }
     }
@@ -224,15 +224,15 @@ impl<'a> ElementBlock {
     /// A new `ElementBlock` instance.
     pub fn new_poly(
         cell_type: ElementType,
-        connectivity: Array1<usize>,
-        offsets: Array1<usize>,
+        connectivity: nd::ArcArray1<usize>,
+        offsets: nd::ArcArray1<usize>,
     ) -> Self {
         let conn_len = connectivity.len();
         Self {
             cell_type,
             connectivity: Connectivity::new_poly(connectivity, offsets),
             fields: BTreeMap::new(),
-            families: Array1::from(vec![0; conn_len]),
+            families: nd::ArcArray1::from(vec![0; conn_len]),
             groups: BTreeMap::new(),
         }
     }
@@ -245,9 +245,9 @@ impl<'a> ElementBlock {
     ) {
         self.connectivity.append(connectivity);
         let family = family.unwrap_or_default();
-        self.families
-            .append(Axis(0), array![family].view())
-            .unwrap();
+        let mut new_families = std::mem::take(&mut self.families).into_owned();
+        new_families.append(Axis(0), array![family].view()).unwrap();
+        self.families = new_families.into_shared();
 
         if let Some(fields) = fields {
             todo!();
@@ -332,7 +332,7 @@ mod tests {
 
     #[test]
     fn test_element_block() {
-        let connectivity = Connectivity::Regular(array![[0, 1], [1, 2], [2, 3]]);
+        let connectivity = Connectivity::Regular(array![[0, 1], [1, 2], [2, 3]].to_shared());
         let fields = BTreeMap::new();
         let families = vec![0, 1, 2];
         let groups = BTreeMap::new();
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn test_element_block_iter() {
-        let connectivity = Connectivity::Regular(array![[0, 1], [1, 2], [2, 3]]);
+        let connectivity = Connectivity::Regular(array![[0, 1], [1, 2], [2, 3]].to_shared());
         let fields = BTreeMap::new();
         let families = vec![0, 1, 2];
         let groups = BTreeMap::new();

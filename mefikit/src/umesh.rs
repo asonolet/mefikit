@@ -38,9 +38,9 @@ where
 
 pub type UMesh = UMeshBase<
     nd::OwnedArcRepr<f64>,
-    nd::OwnedRepr<usize>,
-    nd::OwnedRepr<f64>,
-    nd::OwnedRepr<usize>,
+    nd::OwnedArcRepr<usize>,
+    nd::OwnedArcRepr<f64>,
+    nd::OwnedArcRepr<usize>,
 >;
 
 // TODO: replace coords with something a bit better :
@@ -125,13 +125,13 @@ where
         self.coords.shape()[1]
     }
 
-    pub fn elements(&self) -> impl Iterator<Item = Element> {
+    pub fn elements(&self) -> impl Iterator<Item = Element<'_>> {
         self.element_blocks
             .values()
             .flat_map(|block| block.iter(self.coords.view()))
     }
 
-    pub fn par_elements(&self) -> impl ParallelIterator<Item = Element>
+    pub fn par_elements(&self) -> impl ParallelIterator<Item = Element<'_>>
     where
         N: Sync,
         C: Sync,
@@ -147,19 +147,19 @@ where
         self.element_blocks.values().map(|block| block.len()).sum()
     }
 
-    pub fn get_element(&self, id: ElementId) -> Element {
+    pub fn get_element(&self, id: ElementId) -> Element<'_> {
         let eb = self.element_blocks.get(&id.element_type()).unwrap();
         eb.get(id.index(), self.coords.view())
     }
 
-    pub fn elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element> {
+    pub fn elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element<'_>> {
         self.element_blocks
             .iter()
             .filter(move |(k, _)| k.dimension() == dim)
             .flat_map(|(_, block)| block.iter(self.coords.view()))
     }
 
-    pub fn par_elements_of_dim(&self, dim: Dimension) -> impl ParallelIterator<Item = Element>
+    pub fn par_elements_of_dim(&self, dim: Dimension) -> impl ParallelIterator<Item = Element<'_>>
     where
         N: Sync,
         C: Sync,
@@ -190,7 +190,8 @@ where
                 ElementBlockBase {
                     connectivity: ConnectivityBase::Regular(arr),
                     ..
-                } => extracted.add_regular_block(*t, arr.select(Axis(0), block.as_slice())),
+                } => extracted
+                    .add_regular_block(*t, arr.select(Axis(0), block.as_slice()).to_shared()),
                 _ => todo!(),
             };
         }
@@ -227,13 +228,13 @@ impl<'a> UMeshView<'a> {
         }
     }
 
-    pub fn to_owned(&self) -> UMesh {
+    pub fn to_shared(&self) -> UMesh {
         let mut umesh = UMesh::new(self.coords.to_shared());
         for (&et, eb) in &self.element_blocks {
             match eb.connectivity {
-                ConnectivityBase::Regular(r) => umesh.add_regular_block(et, r.to_owned()),
+                ConnectivityBase::Regular(r) => umesh.add_regular_block(et, r.to_shared()),
                 ConnectivityBase::Poly { data, offsets } => {
-                    umesh.add_poly_block(et, data.to_owned(), offsets.to_owned())
+                    umesh.add_poly_block(et, data.to_shared(), offsets.to_shared())
                 }
             }
         }
@@ -266,13 +267,18 @@ impl UMesh {
         }
     }
 
-    pub fn add_regular_block(&mut self, et: ElementType, block: Array2<usize>) {
+    pub fn add_regular_block(&mut self, et: ElementType, block: nd::ArcArray2<usize>) {
         let block = ElementBlock::new_regular(et, block);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
 
-    pub fn add_poly_block(&mut self, et: ElementType, conn: Array1<usize>, offsets: Array1<usize>) {
+    pub fn add_poly_block(
+        &mut self,
+        et: ElementType,
+        conn: nd::ArcArray1<usize>,
+        offsets: nd::ArcArray1<usize>,
+    ) {
         let block = ElementBlock::new_poly(et, conn, offsets);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
@@ -299,14 +305,18 @@ impl UMesh {
                 self.element_blocks.entry(element_type).or_insert_with(|| {
                     ElementBlock::new_regular(
                         element_type,
-                        Array2::zeros((0, element_type.num_nodes().unwrap())),
+                        nd::ArcArray2::zeros((0, element_type.num_nodes().unwrap())),
                     )
                 });
             }
             Regularity::Poly => {
-                self.element_blocks
-                    .entry(element_type)
-                    .or_insert_with(|| ElementBlock::new_poly(element_type, arr1(&[]), arr1(&[])));
+                self.element_blocks.entry(element_type).or_insert_with(|| {
+                    ElementBlock::new_poly(
+                        element_type,
+                        arr1(&[]).to_shared(),
+                        arr1(&[]).to_shared(),
+                    )
+                });
             }
         }
 
