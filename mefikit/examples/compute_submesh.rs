@@ -11,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_axis((0..=10).map(|i| i as f64 / 10.0).collect::<Vec<f64>>())
         .build();
     println!("Computing submesh");
-    let submesh = mf::topo::compute_submesh(mesh.view(), None, None);
+    let submesh = mf::topo::compute_submesh(&mesh, None, None);
 
     println!("Writing submesh");
     mf::write(&Path::new("examples/submesh.vtk"), submesh.view())

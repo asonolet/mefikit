@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Selecting in sphere.");
     let now = time::Instant::now();
     for _ in 0..1000 {
-        let _ = mf::Selector::new(mesh.view())
+        let _ = mf::Selector::new(&mesh)
             .centroids()
             .in_sphere(&[0.5, 0.5, 0.5], 0.5)
             .select();
