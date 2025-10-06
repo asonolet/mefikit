@@ -9,7 +9,6 @@ edition = "2024"
 
 [dependencies]
 arrayvec = "0.7.6"
-criterion = "0.7.0"
 derive-where = { version = "1.6.0", features = ["serde"] }
 hdf5 = { version = "0.8.1", optional = true }
 itertools = "0.14.0"
@@ -42,4 +41,5 @@ harness = false
 
 [dev-dependencies]
 approx = "0.5.1"
+criterion = "0.7.0"
 todo = "0.3.0"

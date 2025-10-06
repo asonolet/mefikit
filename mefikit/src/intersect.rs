@@ -1,8 +1,8 @@
 use super::geometry::ElementGeo;
 use super::topo::compute_neighbours;
 use super::umesh::Dimension::*;
+use super::umesh::UMesh;
 use super::umesh::{Element, ElementId, ElementLike, ElementType};
-use super::umesh::{UMesh, UMeshView};
 
 use std::collections::HashMap;
 
