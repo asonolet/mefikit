@@ -11,13 +11,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Selecting in sphere.");
     let now = time::Instant::now();
-    for _ in 0..1000 {
+    for _ in 0..10 {
         let _ = mf::Selector::new(&mesh)
             .centroids()
             .in_sphere(&[0.5, 0.5, 0.5], 0.5)
             .select();
     }
-    let t_tot = now.elapsed().as_secs_f64();
+    let t_tot = now.elapsed().as_secs_f64() * 100.0;
 
     println!("Total elapsed time per op: {t_tot:}ms");
     // Return Ok to indicate successful execution

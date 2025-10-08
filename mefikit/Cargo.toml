@@ -39,7 +39,12 @@ bench = false
 name = "umesh"
 harness = false
 
+[[bench]]
+name = "umesh_analytics"
+harness = false
+
 [dev-dependencies]
 approx = "0.5.1"
 criterion = "0.7.0"
+gungraun = "0.17.0"
 todo = "0.3.0"
