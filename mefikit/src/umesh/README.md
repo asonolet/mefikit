@@ -43,13 +43,13 @@ Each block contains:
 pub struct ElementBlock {
     pub element_type: ElementType,
     pub connectivity: Connectivity,
-    pub fields: BTreeMap<String, ArrayD<f64>>,
+    pub fields: BTreeMap<String, ArcArrayD<f64>>,
     families: Vec<usize>,
     pub groups: BTreeMap<String, BTreeSet<usize>>,
 }
 ```
 
-Field data is stored as `ndarray::ArrayD<f64>`, and identified by a naming
+Field data is stored as `ndarray::ArcArrayD<f64>`, and identified by a naming
 convention supporting time-dependent fields, e.g.:
 
 ```
@@ -88,18 +88,23 @@ The `umesh` module provides building blocks for:
 
 ## 🔄 Mesh Ownership and Views: `UMesh`, `UMeshView`, and `UMeshBase`
 
-MeFiKit uses a very flexible ownership data model based on ndarray ownership
-model. Each array can be OwnedRepr or ViewRepr (for connectivity array,
-coordinates array, all fields and all groups). This makes integration with
-other systems (e.g., C or Python) efficient and safe, while also enabling
+MeFiKit uses an internal very flexible ownership data model based on ndarray ownership
+model. Each array can be OwnedArcRepred, OwnedRepr or ViewRepr (for connectivity array,
+coordinates array, all fields and all groups). The following two variants are
+exposed : UMeshView, which only contains views, and UMesh, which only contains
+ArcArrays. UMesh is the rust owned struct that is managed by all "transformer"
+algorithm. It allows for cheap copy of the coordinates tables, or of the
+fields. UMeshView is the view only variant. This makes integration with other
+systems (e.g., C or Python) efficient and safe, while also enabling
 high-performance zero-copy operations.
 This memory model brings a bit of complexity but allows for great flexibility.
 
 ### 📦 `UMesh` – Owned Mesh
 
-`UMesh` owns its data:
+`UMesh` owns and shares its data:
 - Coordinate array (`ArcArray2<f64>`)
-- Element blocks with connectivities, fields, families, groups
+- Element blocks with connectivities (`ArcArray<usize>`), fields
+  (`ArcArrayD<f64>`), families, groups
 
 This type is used for:
 - Internal mesh manipulation in Rust
@@ -107,7 +112,10 @@ This type is used for:
 - File I/O
 - Long-term computation or modification
 
-It is constructed by cloning or transferring ownership of arrays.
+It is constructed by cloning or transferring ownership of arrays.  When used in
+PyO3, input numpy buffers must be cloned for then to be owned by Rust. This
+favors a usage where mefikit is the core producer of the mesh, or make some
+heavy tranformations (computionally intensive).
 
 ---
 
@@ -130,83 +138,10 @@ referenced data lives.
 
 | Type           | Ownership | Mutable | Use Case                                 | Copies |
 |----------------|-----------|---------|------------------------------------------|--------|
-| `UMesh`        | Yes       | Yes     | Full ownership, long-term usage          | Yes    |
-| `UMeshView`    | No        | No      | Read-only access to foreign/borrowed data| No     |
+| `UMesh`        | Yes       | Yes     | Full ownership, long-term usage          | No -> Shared |
+| `UMeshView`    | No        | No      | Read-only access to foreign/borrowed data| No |
 
 This model ensures performance, safety, and clear interoperability boundaries.
-
----
-
-## SharedCoords: Shared Mutable Coordinate Storage
-
-The `SharedCoords` type provides shared, mutable access to a coordinate array
-(`Array2<f64>`) used by multiple `UMesh` instances or views. It is designed to
-support:
-
-- ✅ Efficient cloning (for views or derived meshes)
-- ✅ Safe read/write access
-- ✅ Memory efficiency when sharing coordinate data
-
-### Design Motivation
-
-In unstructured mesh representations, it's common for multiple mesh objects or
-views to share the same set of node coordinates. However, some operations (like
-adding coordinates or shared coordinate transformations) can be done in-place,
-while others (like node pruning, reordering or unshared coordinate
-transformations) require the array to diverge.
-
-The `SharedCoords` abstraction solves this by wrapping the coordinate array in
-a reference-counted container with interior mutability.
-
-```rust
-use std::rc::Rc;
-use std::cell::RefCell;
-use ndarray::Array2;
-
-#[derive(Clone)]
-pub struct SharedCoords {
-    pub inner: Rc<RefCell<Array2<f64>>>,
-}
-```
-
-- Use `.borrow()` for read access.
-- Use `.borrow_mut()` for in-place mutations.
-
-The favored approach is to avoid unnecessary copies of the coordinate data.
-That means that the corrdinate array must be unique to all meshes and views
-that interacts in the same space level. Hower when writing, it would be useless
-to have unused nodes in the coordinate array. That is why, as write operation
-is either way limited by disk write speed, the useless coordinates are pruned
-before write.
-
-### Copy-on-Write / Desynchronization
-
-To ensure safe mutation when multiple owners exist (e.g., during node
-reordering)a unique copy is forced:
-
-```rust
-impl SharedCoords {
-    pub fn ensure_unique(&mut self) {
-        if Rc::strong_count(&self.inner) > 1 {
-            let cloned = self.inner.borrow().clone();
-            self.inner = Rc::new(RefCell::new(cloned));
-        }
-    }
-}
-```
-
-This ensures that no other mesh or view is affected by destructive operations.
-
-### Integration with `UMesh`
-
-```rust
-pub struct UMesh {
-    pub coords: SharedCoords,
-    pub element_blocks: ...
-}
-```
-
-`SharedCoords` allows `UMesh` and its views to share coordinate data efficiently while preserving correctness and performance during mutations in single-threaded workflows.
 
 ---
 
@@ -230,7 +165,6 @@ These operations can safely modify the owned mesh structure in-place.
 | `set_family`              | Sets the family (zone/subdomain tag) of elements |
 | `set_group`               | Modifies or defines a group of element IDs under a name |
 | `renumber_nodes`          | In-place reordering of coordinates and node indices |
-| `merge_close_nodes`       | Mutates coordinates and connectivity to merge nearby points |
 | `set_coordinates`         | Mutate existing geometry without changing topology |
 | `transform_coordinates`   | Apply affine transformation to node coordinates |
 
@@ -241,6 +175,8 @@ reallocation of connectivity tables or geometry arrays.
 
 | Operation                  | Description |
 |----------------------------|-------------|
+| `merge_close_nodes()`        | Mutates connectivity to merge nearby points |
+| `zip_coords()`               | Mutates coods to remove useless coords |
 | `renumber_cells()`         | In-place reordering of cells. Out-of-place because of Poly |
 | `build_submesh()`          | Returns a new mesh composed of subentities depending on codim |
 | `conformize(mesh)`         | Cleans internal inconsistencies, requires deep topology rewrite |

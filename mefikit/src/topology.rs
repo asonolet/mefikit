@@ -193,11 +193,6 @@ pub fn par_compute_neighbours(
     UMesh,
     UnGraphMap<ElementId, ElementId>, // element to element with subelem as edges
 ) {
-    // TODO: make it a seperate function ?
-    // TODO: cache the result and reinitialises it if the mesh is modified
-    // TODO: I could used the "cached" crate, whith the "cached" proc_macro, SizedCache and
-    // specific "convert" key using coords and connectivity arrays
-    // For now let not pay for caching overhead and be carefull not to recompute it too much
     let codim = match codim {
         Some(c) => c,
         None => Dimension::D1,
@@ -279,11 +274,6 @@ pub fn compute_neighbours(
     UMesh,
     UnGraphMap<ElementId, ElementId>, // element to element with subelem as edges
 ) {
-    // TODO: make it a seperate function ?
-    // TODO: cache the result and reinitialises it if the mesh is modified
-    // TODO: I could used the "cached" crate, whith the "cached" proc_macro, SizedCache and
-    // specific "convert" key using coords and connectivity arrays
-    // For now let not pay for caching overhead and be carefull not to recompute it too much
     let codim = match codim {
         Some(c) => c,
         None => Dimension::D1,

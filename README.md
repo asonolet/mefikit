@@ -76,9 +76,9 @@ pipelines.
 
 ### 🛠 In-place vs Out-of-place Operations
 - Clean mostly functionnal API:
-  - In-place for metadata and non destructive op (`UMeshViewMut`):
+  - In-place for metadata and non destructive op (`UMesh`):
     `assign_field`, `merge_close_nodes`, `add_group`, ...
-  - Out-of-place for heavy op (`UMeshView`): `build_submesh`, `fuse_meshes`,
+  - Out-of-place for heavy op (`UMeshView` or `&UMesh`): `compute_submesh`, `fuse_meshes`,
     `intersect_meshes`, ...
 
 ### 🐍 Python Bindings
@@ -88,7 +88,8 @@ pipelines.
 
 ### FFI
 - mefikit-ffi:
-  - All functionality is exposed via ffi bindings for C/C++ interoperability
+  - Some functionalities are exposed via ffi bindings for C/C++
+    interoperability. Those are zero-copy bindings (thanks to `UMeshView`).
 
 ---
 
@@ -96,10 +97,9 @@ pipelines.
 
 The internal mesh representation is designed for **simplicity and
 performance**, closely matching the file format layout. Unlike MEDCoupling’s
-complex (when mixed with MEDFile) and sometimes inefficient structure, MeFiKit
-provides:
+complex (when mixed with MEDFile) structure, MeFiKit provides:
 
-- 🚀 Better **runtime performance**
+- 🚀 Good **runtime performance**
 - 🧼 Clearer and **simpler interfaces**
 - ⚙️ Easier integration and debugging
 - 📦 Modern tools and clean build system (Rust/Cargo)
@@ -114,13 +114,10 @@ provides:
 
 ```text
 src/
-├── core/          # Mesh & field data model
-├── io/            # Format readers/writers
+├── umesh/         # Mesh & field data model
+├── io/            # Readers/writers
 ├── topology/      # Descending/neighbor tools
 ├── geometry/      # Volumes, bboxes, slicing
-├── tools/         # Mesh ops: fuse, cut, remap
-├── bindings/      # Python and FFI
-├── tests/
 ```
 
 ### Build Instructions
@@ -207,5 +204,5 @@ more information.
 This library is developed as part of the DM2S project at CEA. We would like
 to thank the contributors and maintainers of the MEDCoupling library for their
 work and support. This library is inspired by the MEDCoupling library and
-aims to provide a more performant and user-friendly alternative for mesh
-manipulation and analysis.
+aims to provide a more user-friendly alternative for mesh manipulation and
+analysis and for algorithms development.
