@@ -11,4 +11,5 @@ bench = false
 [dependencies]
 mefikit = { path = "../mefikit" }
 numpy = "0.25.0"
+ndarray = "0.16.1"
 pyo3 = { version = "0.25.1", features = ["extension-module"] }
