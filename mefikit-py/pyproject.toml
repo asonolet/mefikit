@@ -11,3 +11,8 @@ authors = [
   { name = "Aymeric SONOLET", email = "aymeric.sonolet@cea.fr" }
 ]
 dependencies = ["numpy"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]

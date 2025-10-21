@@ -9,14 +9,7 @@ mod mefikitpy {
     use pyo3::prelude::*;
 
     use mefikit as mf;
-    use ndarray as nd;
     use numpy::borrow::PyReadonlyArray2;
-
-    /// Formats the sum of two numbers as string.
-    #[pyfunction]
-    fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
-        Ok((a + b).to_string())
-    }
 
     #[pyclass]
     #[pyo3(name = "UMesh")]
@@ -28,12 +21,16 @@ mod mefikitpy {
     #[pymethods]
     impl PyUMesh {
         #[new]
-        fn new() -> Self {
+        fn new(coords: PyReadonlyArray2<'_, f64>) -> Self {
+            let coords = coords.as_array();
+
             PyUMesh {
-                inner: mf::UMesh::new(
-                    nd::ArcArray2::<f64>::from_shape_vec((1, 1), vec![0.0]).unwrap(),
-                ),
+                inner: mf::UMesh::new(coords.to_shared()),
             }
+        }
+
+        fn __str__(&self) -> String {
+            format!("UMesh:\n======\ncoords\n{}", self.inner.coords())
         }
     }
 }
