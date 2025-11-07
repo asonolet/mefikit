@@ -48,7 +48,7 @@
 
 | Feature                             | UMesh  | MEDCoupling           | Notes |
 |-------------------------------------|--------|-----------------------|-------|
-| Python Bindings via PyO3/maturin    | ⏳     | ✔️                    | Rust-native API with PyO3/maturin |
+| Python Bindings via PyO3/maturin    | 🚧     | ✔️                    | Rust-native API with PyO3/maturin |
 | Field Selection API in Python       | ⏳     | ✔️                    | Fluent `.field("temp").gt(...)` |
 | Conversion to NumPy Arrays          | ⏳     | ✔️                    | For coords, connectivity, fields |
 | Pythonic Mesh Access (coords, conn) | ⏳     | ✔️                    | Rust-style getter wrappers |

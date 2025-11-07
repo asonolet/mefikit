@@ -8,8 +8,10 @@ use pyo3::prelude::*;
 mod mefikitpy {
     use pyo3::prelude::*;
 
-    use mefikit as mf;
+    use mefikit::{self as mf, UMesh};
     use numpy::borrow::PyReadonlyArray2;
+
+    use std::path::Path;
 
     #[pyclass]
     #[pyo3(name = "UMesh")]
@@ -32,5 +34,30 @@ mod mefikitpy {
         fn __str__(&self) -> String {
             format!("UMesh:\n======\ncoords\n{}", self.inner.coords())
         }
+    }
+
+    impl From<UMesh> for PyUMesh {
+        fn from(umesh: UMesh) -> Self {
+            PyUMesh { inner: umesh }
+        }
+    }
+
+    impl From<PyUMesh> for UMesh {
+        fn from(pyumesh: PyUMesh) -> Self {
+            pyumesh.inner
+        }
+    }
+
+    #[pyfunction]
+    fn read(path: &str) -> PyUMesh {
+        let path = Path::new(path);
+        mf::read(path).unwrap().into()
+    }
+
+    #[pyfunction]
+    fn write(path: &str, mesh: &PyUMesh) {
+        let path = Path::new(path);
+        let mesh = mesh.inner.view();
+        let _ = mf::write(path, mesh);
     }
 }
