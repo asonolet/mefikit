@@ -288,7 +288,7 @@ impl<'a> Selector<'a, NodeBasedSelector> {
         let index = self
             .index
             .into_par_iter()
-            .filter(|&e_id| self.umesh.get_element(e_id).coords().all(|x| f(x)))
+            .filter(|&e_id| self.umesh.get_element(e_id).coords().all(&f))
             .collect();
 
         let state = self.state;
@@ -307,7 +307,7 @@ impl<'a> Selector<'a, NodeBasedSelector> {
         let index = self
             .index
             .into_par_iter()
-            .filter(|&e_id| self.umesh.get_element(e_id).coords().any(|x| f(x)))
+            .filter(|&e_id| self.umesh.get_element(e_id).coords().any(&f))
             .collect();
 
         let state = self.state;
