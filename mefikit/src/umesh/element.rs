@@ -44,6 +44,7 @@ pub enum RegularElemType {
 /// Some elements are not linear but of higher order such as SEG3, HEX21. The elements node
 /// connecivity follows a convention. Three kinds of elements can hold an abitrary number of nodes
 /// and are specials: SPLINE, PGON (Polygon), and PHED (Polyhedron).
+#[repr(u8)]
 #[derive(Debug, Eq, Hash, Copy, Clone, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ElementType {
     // 0d
