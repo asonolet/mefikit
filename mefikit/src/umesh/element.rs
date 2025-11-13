@@ -200,9 +200,10 @@ impl ElementIds {
 
     pub fn remove(&mut self, element_type: ElementType, index: usize) -> Option<usize> {
         if let Some(indices) = self.0.get_mut(&element_type)
-            && let Some(pos) = indices.iter().position(|&i| i == index) {
-                return Some(indices.remove(pos));
-            }
+            && let Some(pos) = indices.iter().position(|&i| i == index)
+        {
+            return Some(indices.remove(pos));
+        }
         None
     }
 

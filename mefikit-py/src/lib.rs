@@ -7,14 +7,18 @@ use pyo3::prelude::*;
 #[pyo3(name = "mefikit")]
 mod mefikitpy {
     use pyo3::prelude::*;
+    use std::fmt::{Display, Formatter};
 
     use mefikit::{self as mf, UMesh};
-    use numpy::borrow::PyReadonlyArray2;
 
     use std::path::Path;
 
-    #[pyclass]
+    use numpy::borrow::{PyReadonlyArray2, PyReadwriteArray2};
+    use serde_json;
+
+    #[pyclass(str)]
     #[pyo3(name = "UMesh")]
+    #[derive(PartialEq)]
     struct PyUMesh {
         // Add fields here
         inner: mf::UMesh,
@@ -24,15 +28,50 @@ mod mefikitpy {
     impl PyUMesh {
         #[new]
         fn new(coords: PyReadonlyArray2<'_, f64>) -> Self {
-            let coords = coords.as_array();
-
             PyUMesh {
-                inner: mf::UMesh::new(coords.to_shared()),
+                inner: mf::UMesh::new(coords.as_array().to_shared()),
             }
         }
 
-        fn __str__(&self) -> String {
-            format!("UMesh:\n======\ncoords\n{}", self.inner.coords())
+        fn to_json(&self) -> String {
+            serde_json::to_string(&self.inner).unwrap()
+        }
+
+        fn to_json_pretty(&self) -> String {
+            serde_json::to_string_pretty(&self.inner).unwrap()
+        }
+
+        /// Add a regular block of elements to the mesh.
+        fn add_regular_block(&mut self, et: &str, block: PyReadonlyArray2<'_, usize>) {
+            let et = match { et } {
+                "VERTEX" => mf::ElementType::VERTEX,
+                "TET4" => mf::ElementType::TET4,
+                "QUAD4" => mf::ElementType::QUAD4,
+                "TRI3" => mf::ElementType::TRI3,
+                "HEX8" => mf::ElementType::HEX8,
+                _ => panic!("Unsupported element type: {}", et),
+            };
+            self.inner
+                .add_regular_block(et, block.as_array().to_shared());
+        }
+
+        // fn get_regular_connectivity(&self, et: &str) -> Py<PyReadwriteArray2<'_, usize>> {
+        //     let et = match { et } {
+        //         "VERTEX" => mf::ElementType::VERTEX,
+        //         "TET4" => mf::ElementType::TET4,
+        //         "QUAD4" => mf::ElementType::QUAD4,
+        //         "TRI3" => mf::ElementType::TRI3,
+        //         "HEX8" => mf::ElementType::HEX8,
+        //         _ => panic!("Unsupported element type: {}", et),
+        //     };
+        //     let conn = self.inner.element_blocks.get(&et).unwrap().connectivity;
+        //     PyReadwriteArray2::from_array(py, &conn).into()
+        // }
+    }
+
+    impl Display for PyUMesh {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{:#?}", self.inner)
         }
     }
 

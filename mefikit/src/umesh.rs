@@ -32,8 +32,8 @@ where
     F: nd::RawData<Elem = f64> + nd::Data,   // Fields data
     G: nd::RawData<Elem = usize> + nd::Data, // Groups data
 {
-    pub(crate) coords: ArrayBase<N, Ix2>, // TODO: Use ArcArray2 for shared ownership
-    pub(crate) element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
+    pub coords: ArrayBase<N, Ix2>, // TODO: Use ArcArray2 for shared ownership
+    pub element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
 }
 
 pub type UMesh = UMeshBase<
