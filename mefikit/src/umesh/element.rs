@@ -12,27 +12,27 @@ pub enum Regularity {
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PolyElemType {
-    SPLINE,
-    PGON,
-    PHED,
+    Spline,
+    Pgon,
+    Phed,
 }
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub enum RegularElemType {
-    VERTEX,
-    SEG2,
-    SEG3,
-    SEG4,
-    TRI3,
-    TRI6,
-    TRI7,
-    QUAD4,
-    QUAD8,
-    QUAD9,
-    TET4,
-    TET10,
-    HEX8,
-    HEX21,
+    Vertex,
+    Seg2,
+    Seg3,
+    Seg4,
+    Tri3,
+    Tri6,
+    Tri7,
+    Quad4,
+    Quad8,
+    Quad9,
+    Tet4,
+    Tet10,
+    Hex8,
+    Hex21,
 }
 
 /// All kinds of elements supported in mefikit.
@@ -75,9 +75,9 @@ pub enum ElementType {
 impl From<PolyElemType> for ElementType {
     fn from(cell: PolyElemType) -> Self {
         match cell {
-            PolyElemType::SPLINE => ElementType::SPLINE,
-            PolyElemType::PGON => ElementType::PGON,
-            PolyElemType::PHED => ElementType::PHED,
+            PolyElemType::Spline => ElementType::SPLINE,
+            PolyElemType::Pgon => ElementType::PGON,
+            PolyElemType::Phed => ElementType::PHED,
         }
     }
 }
@@ -85,20 +85,20 @@ impl From<PolyElemType> for ElementType {
 impl From<RegularElemType> for ElementType {
     fn from(cell: RegularElemType) -> Self {
         match cell {
-            RegularElemType::VERTEX => ElementType::VERTEX,
-            RegularElemType::SEG2 => ElementType::SEG2,
-            RegularElemType::SEG3 => ElementType::SEG3,
-            RegularElemType::SEG4 => ElementType::SEG4,
-            RegularElemType::TRI3 => ElementType::TRI3,
-            RegularElemType::TRI6 => ElementType::TRI6,
-            RegularElemType::TRI7 => ElementType::TRI7,
-            RegularElemType::QUAD4 => ElementType::QUAD4,
-            RegularElemType::QUAD8 => ElementType::QUAD8,
-            RegularElemType::QUAD9 => ElementType::QUAD9,
-            RegularElemType::TET4 => ElementType::TET4,
-            RegularElemType::TET10 => ElementType::TET10,
-            RegularElemType::HEX8 => ElementType::HEX8,
-            RegularElemType::HEX21 => ElementType::HEX21,
+            RegularElemType::Vertex => ElementType::VERTEX,
+            RegularElemType::Seg2 => ElementType::SEG2,
+            RegularElemType::Seg3 => ElementType::SEG3,
+            RegularElemType::Seg4 => ElementType::SEG4,
+            RegularElemType::Tri3 => ElementType::TRI3,
+            RegularElemType::Tri6 => ElementType::TRI6,
+            RegularElemType::Tri7 => ElementType::TRI7,
+            RegularElemType::Quad4 => ElementType::QUAD4,
+            RegularElemType::Quad8 => ElementType::QUAD8,
+            RegularElemType::Quad9 => ElementType::QUAD9,
+            RegularElemType::Tet4 => ElementType::TET4,
+            RegularElemType::Tet10 => ElementType::TET10,
+            RegularElemType::Hex8 => ElementType::HEX8,
+            RegularElemType::Hex21 => ElementType::HEX21,
         }
     }
 }
@@ -341,14 +341,15 @@ pub trait ElementLike<'a> {
             && self.connectivity().iter().eq(other.connectivity().iter())
     }
 
-    /// Geometric queries
+    // Geometric queries
 
     /// Returns a reference
     fn coord(&self, i: usize) -> &[f64];
 
     /// Returns the space dimension of the element
     fn space_dimension(&self) -> usize;
-    /// Groups queries
+
+    // Groups queries
 
     fn groups(&self) -> &Vec<String>;
     fn in_group(&self, group: &str) -> bool;

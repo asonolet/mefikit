@@ -11,12 +11,14 @@ pipelines.
 ## ✨ Key Features
 
 ### 🧩 Mesh and Field Core
+
 - Unified, ergonomic mesh format:
   - Supports **mixed element types** in the same mesh
   - Named **fields of doubles** over elements or nodes
   - **Element groups** for flexible subdomain handling
 
 ### 🔄 Input/Output Support
+
 - Built-in support for major file formats:
   - `medcoupling`
   - `medfile`
@@ -24,17 +26,19 @@ pipelines.
   - Custom formats with `serde`
 
 ### 🏗️ Mesh Builders
+
 - Construct meshes from scratch:
   - Structured meshes (grid-like)
   - Extruded meshes (2D to 3D)
   - Fully unstructured meshes (manually)
-- Powerfull selection builder:
+- Powerful selection builder:
   - Based on element selection,
   - geometrical criterion,
   - field threshold,
   - etc.
 
 ### 🧠 Topological Toolbox
+
 - Utilities for advanced topological operations:
   - **Descending meshes** (edges/faces of volumes, etc.)
   - **Mesh aggregation** (grouping meshes)
@@ -44,6 +48,7 @@ pipelines.
   - **Tetrahedrization**, **polyhedrization**, and reverse operations
 
 ### 📐 Geometric Toolbox
+
 - Geometric computation tools:
   - Bounding box trees
   - Element intersections
@@ -52,6 +57,7 @@ pipelines.
   - Barycenter and volume evaluation
 
 ### 🧮 High-Level Algorithms
+
 - High-level, composable mesh operations (API not stable):
   - `aggregate_meshes` – Build a coarse mesh from multiple cell groups.
   - `build_intersection_map` – for **field interpolation** and remapping.
@@ -63,30 +69,31 @@ pipelines.
   - `substract_with` – Subtract one mesh from another.
 
 ### 🔄 Mesh Ownership, Views, and Shared Coordinates
+
 - MeFiKit distinguishes between mesh ownership and views for flexibility and
   performance:
   - `UMesh`: fully owns its data (coordinates, connectivity, fields,
     etc.), suitable for storage, transformation, and I/O.
   - `UMeshView<'a>`: read-only view into external or borrowed mesh
     data; ideal for zero-copy FFI.
-- Mefikit supports shared coordinates across meshes for performance:
-  - `SharedCoords` wraps coordinates for safe mutability.
-  - Shared coordinate arrays can be modified in-place unless exclusive access is
-    required (`ensure_unique()` triggers a copy).
+- Mefikit supports shared coordinates across meshes for performance
 
 ### 🛠 In-place vs Out-of-place Operations
-- Clean mostly functionnal API:
+
+- Clean mostly functional API:
   - In-place for metadata and non destructive op (`UMesh`):
     `assign_field`, `merge_close_nodes`, `add_group`, ...
   - Out-of-place for heavy op (`UMeshView` or `&UMesh`): `compute_submesh`, `fuse_meshes`,
     `intersect_meshes`, ...
 
 ### 🐍 Python Bindings
-- mefikit-python:
+
+- mefikit-py:
   - All functionality is exposed via clean Python bindings in this crate for
     rapid prototyping and integration in data pipelines.
 
 ### FFI
+
 - mefikit-ffi:
   - Some functionalities are exposed via ffi bindings for C/C++
     interoperability. Those are zero-copy bindings (thanks to `UMeshView`).
@@ -129,6 +136,7 @@ build the library using the following command:
 ```bash
 cargo build --release
 ```
+
 This will create a release build of the library in the `target/release`
 directory.
 
@@ -182,7 +190,6 @@ critcmp --list
 
 If a new benchmark source file `filename.rs` is added inside `benches/`,
 **`Cargo.toml` must be adapted accordingly**:
-
 
 ```toml
 [[bench]]
