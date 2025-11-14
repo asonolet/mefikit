@@ -214,7 +214,7 @@ where
         }
     }
 
-    pub fn view(&self) -> ConnectivityView {
+    pub fn view(&self) -> ConnectivityView<'_> {
         match self {
             ConnectivityBase::Regular(arr) => ConnectivityView::Regular(arr.view()),
             ConnectivityBase::Poly { data, offsets } => ConnectivityView::Poly {
@@ -223,38 +223,6 @@ where
             },
         }
     }
-
-    // pub fn get_mut(&mut self, index: usize) -> &mut [usize]
-    // where
-    //     C: nd::DataMut,
-    // {
-    //     match self {
-    //         ConnectivityBase::Regular(conn) => conn.row_mut(index).as_slice_mut().unwrap(),
-    //         ConnectivityBase::Poly { data, offsets } => {
-    //             let start = if index == 0 { 0 } else { offsets[index - 1] };
-    //             let end = offsets[index];
-    //             &mut data.as_slice_mut().unwrap()[start..end]
-    //         }
-    //     }
-    // }
-
-    // pub fn iter_mut(&mut self) -> impl Iterator<Item = nd::ArrayViewMut1<'_, usize>> + '_
-    // where
-    //     C: nd::DataMut,
-    // {
-    //     match self {
-    //         ConnectivityBase::Regular(conn) => {
-    //             ConnectivityIteratorMut::Regular(conn.axis_iter_mut(nd::Axis(0)))
-    //         }
-    //         ConnectivityBase::Poly { data, offsets } => {
-    //             ConnectivityIteratorMut::Poly(PolyConnIteratorMut {
-    //                 data: data.as_slice_mut().unwrap(),
-    //                 offsets: offsets.as_slice().unwrap(),
-    //                 index: 0,
-    //             })
-    //         }
-    //     }
-    // }
 }
 
 #[cfg(test)]
@@ -265,7 +233,7 @@ mod tests {
     #[test]
     fn test_connectivity() {
         let conn = arr2(&[[0, 1], [1, 2], [2, 3]]);
-        let connectivity = Connectivity::new_regular(conn.to_shared());
+        let connectivity = Connectivity::new_regular(conn.into_shared());
         assert_eq!(connectivity.len(), 3);
         assert_eq!(connectivity.get(0).to_vec(), vec![0, 1]);
         assert_eq!(connectivity.get(1).to_vec(), vec![1, 2]);
@@ -275,56 +243,70 @@ mod tests {
     fn test_poly_connectivity() {
         let data = arr1(&[0, 1, 2, 3, 4, 5]);
         let offsets = arr1(&[2, 5, 6]);
-        let connectivity = Connectivity::new_poly(data.to_shared(), offsets.to_shared());
+        let connectivity = Connectivity::new_poly(data.into_shared(), offsets.into_shared());
         assert_eq!(connectivity.len(), 3);
         assert_eq!(connectivity.get(0).to_vec(), vec![0, 1]);
         assert_eq!(connectivity.get(1).to_vec(), vec![2, 3, 4]);
         assert_eq!(connectivity.get(2).to_vec(), vec![5]);
     }
-    // #[test]
-    // fn test_poly_connectivity_mut() {
-    //     let data = arr1(&[0, 1, 2, 3, 4, 5]);
-    //     let offsets = arr1(&[2, 5, 6]);
-    //     let mut connectivity = Connectivity::new_poly(data.clone(), offsets.clone());
-    //     assert_eq!(connectivity.get_mut(0).to_vec(), vec![0, 1]);
-    //     connectivity.get_mut(1)[0] = 10;
-    //     assert_eq!(connectivity.get_mut(1).to_vec(), vec![10, 3, 4]);
-    //     assert_eq!(connectivity.get_mut(2).to_vec(), vec![5]);
-    // }
     #[test]
     fn test_poly_connectivity_iter() {
-        let data = arr1(&[0, 1, 2, 3, 4, 5]).to_shared();
-        let offsets = arr1(&[2, 5, 6]).to_shared();
+        let data = arr1(&[0, 1, 2, 3, 4, 5]).into_shared();
+        let offsets = arr1(&[2, 5, 6]).into_shared();
         let connectivity = Connectivity::new_poly(data, offsets);
         let mut iter = connectivity.iter();
         assert_eq!(iter.next().unwrap().to_vec(), vec![0, 1]);
         assert_eq!(iter.next().unwrap().to_vec(), vec![2, 3, 4]);
         assert_eq!(iter.next().unwrap().to_vec(), vec![5]);
     }
-    // #[test]
-    // fn test_poly_connectivity_iter_mut() {
-    //     let data = arr1(&[0, 1, 2, 3, 4, 5]);
-    //     let offsets = arr1(&[2, 5, 6]);
-    //     let mut connectivity = Connectivity::new_poly(data.clone(), offsets.clone());
-    //     let mut iter = connectivity.iter_mut();
-    //     assert_eq!(iter.next().unwrap().to_vec(), vec![0, 1]);
-    //     assert_eq!(iter.next().unwrap().to_vec(), vec![2, 3, 4]);
-    //     assert_eq!(iter.next().unwrap().to_vec(), vec![5]);
-    // }
     #[test]
     fn test_poly_connectivity_iter_size_hint() {
-        let data = arr1(&[0, 1, 2, 3, 4, 5]).to_shared();
-        let offsets = arr1(&[2, 5, 6]).to_shared();
+        let data = arr1(&[0, 1, 2, 3, 4, 5]).into_shared();
+        let offsets = arr1(&[2, 5, 6]).into_shared();
         let connectivity = Connectivity::new_poly(data, offsets);
         let iter = connectivity.iter();
         assert_eq!(iter.size_hint(), (3, Some(3)));
     }
-    // #[test]
-    // fn test_poly_connectivity_iter_mut_size_hint() {
-    //     let data = arr1(&[0, 1, 2, 3, 4, 5]);
-    //     let offsets = arr1(&[2, 5, 6]);
-    //     let mut connectivity = Connectivity::new_poly(data.clone(), offsets.clone());
-    //     let iter = connectivity.iter_mut();
-    //     assert_eq!(iter.size_hint(), (3, Some(3)));
-    // }
+    #[test]
+    fn test_append_regular() {
+        let conn = arr2(&[[0, 1], [1, 2]]);
+        let mut connectivity = Connectivity::new_regular(conn.into_shared());
+        connectivity.append(arr1(&[2, 3]).view());
+        assert_eq!(connectivity.len(), 3);
+        assert_eq!(connectivity.get(2).to_vec(), vec![2, 3]);
+    }
+    #[test]
+    fn test_append_poly() {
+        let data = arr1(&[0, 1, 2, 3]);
+        let offsets = arr1(&[2, 4]);
+        let mut connectivity = Connectivity::new_poly(data.into_shared(), offsets.into_shared());
+        connectivity.append(arr1(&[4, 5, 6]).view());
+        assert_eq!(connectivity.len(), 3);
+        assert_eq!(connectivity.get(2).to_vec(), vec![4, 5, 6]);
+    }
+    #[test]
+    fn test_regular_iter() {
+        let conn = arr2(&[[0, 1], [1, 2], [2, 3]]);
+        let connectivity = Connectivity::new_regular(conn.into_shared());
+        let mut iter = connectivity.iter();
+        assert_eq!(iter.next().unwrap().to_vec(), vec![0, 1]);
+        assert_eq!(iter.next().unwrap().to_vec(), vec![1, 2]);
+        assert_eq!(iter.next().unwrap().to_vec(), vec![2, 3]);
+    }
+    #[test]
+    fn test_regular_iter_size_hint() {
+        let conn = arr2(&[[0, 1], [1, 2], [2, 3]]);
+        let connectivity = Connectivity::new_regular(conn.into_shared());
+        let iter = connectivity.iter();
+        assert_eq!(iter.size_hint(), (3, Some(3)));
+    }
+    #[test]
+    fn test_connectivity_get_out_of_bounds() {
+        let conn = arr2(&[[0, 1], [1, 2], [2, 3]]);
+        let connectivity = Connectivity::new_regular(conn.into_shared());
+        let result = std::panic::catch_unwind(|| {
+            connectivity.get(3);
+        });
+        assert!(result.is_err());
+    }
 }

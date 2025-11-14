@@ -307,7 +307,7 @@ pub struct Element<'a> {
 
 /// Panics if the coords array is empty or if the connectivity array is empty.
 pub trait ElementLike<'a> {
-    /// Topology queries
+    // Topology queries
 
     fn element_type(&self) -> ElementType;
     fn index(&self) -> usize;
@@ -439,7 +439,7 @@ pub struct ElementMut<'a> {
     pub fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>>,
     groups: &'a BTreeMap<String, BTreeSet<usize>>, // safely shared across threads
     pub element_type: ElementType,
-    element_coords_cache: OnceCell<Array2<f64>>,
+    // element_coords_cache: OnceCell<Array2<f64>>,
     element_groups_cache: OnceCell<Vec<String>>,
 }
 
@@ -496,7 +496,7 @@ impl<'a> ElementMut<'a> {
             fields,
             groups,
             element_type,
-            element_coords_cache: OnceCell::new(),
+            // element_coords_cache: OnceCell::new(),
             element_groups_cache: OnceCell::new(),
         }
     }

@@ -82,12 +82,6 @@ where
             .iter()
             .enumerate()
             .map(move |(i, connectivity)| {
-                // let connectivity = self.element_connectivity(i);
-                // let fields = self
-                //     .fields
-                //     .iter()
-                //     .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), i)))
-                //     .collect();
                 Element::new(
                     i,
                     coords,

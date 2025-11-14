@@ -32,7 +32,7 @@ where
     F: nd::RawData<Elem = f64> + nd::Data,   // Fields data
     G: nd::RawData<Elem = usize> + nd::Data, // Groups data
 {
-    pub coords: ArrayBase<N, Ix2>, // TODO: Use ArcArray2 for shared ownership
+    pub coords: ArrayBase<N, Ix2>,
     pub element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
 }
 
@@ -43,12 +43,6 @@ pub type UMesh = UMeshBase<
     nd::OwnedArcRepr<usize>,
 >;
 
-// TODO: replace coords with something a bit better :
-// An enum which is
-// - either OwnedArcRepr if it was cloned from a UMesh
-// - or a ViewRepr if it come from FFI / python
-// I could do the same with groups and fields. That way I would have free sharing of fields and
-// groups when creating a new UMesh from a UMesh.
 pub type UMeshView<'a> = UMeshBase<
     nd::ViewRepr<&'a f64>,
     nd::ViewRepr<&'a usize>,
@@ -183,12 +177,12 @@ where
     /// This method is used to replace elements in the current mesh with another mesh, producing a
     /// new mesh.
     ///
-    /// Please mind what you are doing, this method wont check for mesh constitency.
+    /// Please mind what you are doing, this method wont check for mesh consistency.
     ///
     /// The element number is potentially different, in which case we need to remove the elements
     /// from the current mesh and add the elements from the replace mesh. This creates a new mesh
     /// because everything needs to be reallocated to be copied either way.
-    /// ElementIds are invalid on the new mesh.
+    /// `ElementIds` are invalid on the new mesh.
     pub fn replace(&self, _ids: &ElementIds, _replace_mesh: &UMesh) -> UMesh {
         todo!()
     }
@@ -287,8 +281,8 @@ impl UMesh {
                 self.element_blocks.entry(element_type).or_insert_with(|| {
                     ElementBlock::new_poly(
                         element_type,
-                        arr1(&[]).to_shared(),
-                        arr1(&[]).to_shared(),
+                        arr1(&[]).into_shared(),
+                        arr1(&[]).into_shared(),
                     )
                 });
             }
@@ -304,8 +298,8 @@ impl UMesh {
         todo!()
     }
 
-    /// This is the most efficient way because it does not copy coords if no reallocation is
-    /// needed if coords are not shared. When coords are shared it is copied either way.
+    /// This is the most efficient way because it does not copy coordinates if no reallocation is
+    /// needed if coordinates are not shared. When coordinates are shared it is copied either way.
     pub fn append_coords(
         &mut self,
         added_coords: ArrayView2<'_, f64>,
@@ -317,7 +311,7 @@ impl UMesh {
     }
 
     /// This is kind of efficient: coordinates are reallocated and copied but connectivities are
-    /// modified inplace.
+    /// modified in-place.
     pub fn prepend_coords(mut self, added_coords: ArrayView2<'_, f64>) -> Self {
         let n_coords = added_coords.len_of(Axis(0));
         self.coords = nd::concatenate![Axis(0), added_coords, self.coords].into_shared();
@@ -334,7 +328,7 @@ impl UMesh {
     ///
     /// This method creates a new `UMesh`, owning its data (with copy) containing only the elements
     /// specified by the IDs.
-    /// This method is low level and error prone in the case where ElementsIds are not directly
+    /// This method is low level and error prone in the case where `ElementsIds` are not directly
     /// issued from a Selector. Please use Selector API if possible.
     pub fn extract(&self, ids: &ElementIds) -> UMesh {
         let mut extracted = UMesh::new(self.coords.clone());
@@ -347,7 +341,7 @@ impl UMesh {
                     connectivity: ConnectivityBase::Regular(arr),
                     ..
                 } => extracted
-                    .add_regular_block(*t, arr.select(Axis(0), block.as_slice()).to_shared()),
+                    .add_regular_block(*t, arr.select(Axis(0), block.as_slice()).into_shared()),
                 _ => todo!(),
             };
         }

@@ -53,7 +53,7 @@ fn par_neighbours(c: &mut Criterion) {
 fn selection_sphere(c: &mut Criterion) {
     let mut group = c.benchmark_group("selection");
 
-    for i in [2, 20, 40] {
+    for i in [2, 20, 30] {
         let mesh = mf::RegularUMeshBuilder::new()
             .add_axis((0..=i).map(|k| (k as f64) / (i as f64)).collect())
             .add_axis((0..=i).map(|k| (k as f64) / (i as f64)).collect())
