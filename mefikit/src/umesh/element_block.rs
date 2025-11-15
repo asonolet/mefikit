@@ -1,6 +1,7 @@
 use derive_where::derive_where;
 use ndarray as nd;
 use ndarray::prelude::*;
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -93,7 +94,15 @@ where
                 )
             })
     }
+    #[cfg(not(feature = "rayon"))]
+    pub fn par_iter<'a>(
+        &'a self,
+        coords: ArrayView2<'a, f64>,
+    ) -> impl Iterator<Item = Element<'a>> + 'a {
+        self.iter(coords)
+    }
 
+    #[cfg(feature = "rayon")]
     pub fn par_iter<'a>(
         &'a self,
         coords: ArrayView2<'a, f64>,
@@ -184,7 +193,7 @@ where
     // }
 }
 
-impl<'a> ElementBlock {
+impl ElementBlock {
     /// Create a new regular element block.
     ///
     /// # Arguments

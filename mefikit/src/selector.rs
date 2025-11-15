@@ -1,4 +1,6 @@
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::geometry::ElementGeo;
@@ -36,7 +38,7 @@ impl<'a, State> Selector<'a, State> {
         self.umesh.extract(&self.index)
     }
 
-    fn to_groups(self) -> Selector<'a, GroupBasedSelector> {
+    fn into_groups(self) -> Selector<'a, GroupBasedSelector> {
         let state = GroupBasedSelector {
             families: HashMap::new(),
         };
@@ -47,7 +49,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn to_field(self, name: &str) -> Selector<'a, FieldBasedSelector> {
+    fn into_field(self, name: &str) -> Selector<'a, FieldBasedSelector> {
         let state = FieldBasedSelector {
             field_name: name.to_owned(),
         };
@@ -58,7 +60,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn to_elements(self) -> Selector<'a, ElementSelector> {
+    fn into_elements(self) -> Selector<'a, ElementSelector> {
         let state = ElementSelector {};
         Selector {
             umesh: self.umesh,
@@ -67,7 +69,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn to_centroids(self) -> Selector<'a, CentroidBasedSelector> {
+    fn into_centroids(self) -> Selector<'a, CentroidBasedSelector> {
         let state = CentroidBasedSelector {};
         Selector {
             umesh: self.umesh,
@@ -76,7 +78,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn to_nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    fn into_nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
         let state = NodeBasedSelector { all_nodes: all };
         Selector {
             umesh: self.umesh,
@@ -128,16 +130,16 @@ impl<'a> Selector<'a, ElementSelector> {
     }
 
     pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
-        self.to_groups()
+        self.into_groups()
     }
     pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
-        self.to_nodes(all)
+        self.into_nodes(all)
     }
     pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
-        self.to_centroids()
+        self.into_centroids()
     }
     pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {
-        self.to_field(name)
+        self.into_field(name)
     }
 }
 
@@ -187,25 +189,33 @@ impl<'a> Selector<'a, FieldBasedSelector> {
     }
 
     pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
-        self.to_groups()
+        self.into_groups()
     }
     pub fn elements(self) -> Selector<'a, ElementSelector> {
-        self.to_elements()
+        self.into_elements()
     }
     pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
-        self.to_nodes(all)
+        self.into_nodes(all)
     }
     pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
-        self.to_centroids()
+        self.into_centroids()
     }
 }
 
 impl<'a> Selector<'a, GroupBasedSelector> {
     pub fn inside(self, name: &str) -> Self {
+        #[cfg(feature = "rayon")]
         let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
             .umesh
             .element_blocks
             .par_iter()
+            .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
+            .collect();
+        #[cfg(not(feature = "rayon"))]
+        let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
+            .umesh
+            .element_blocks
+            .iter()
             .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
             .collect();
         let intersection_fmies = self
@@ -228,10 +238,18 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     }
 
     pub fn outside(self, name: &str) -> Self {
+        #[cfg(feature = "rayon")]
         let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
             .umesh
             .element_blocks
             .par_iter()
+            .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
+            .collect();
+        #[cfg(not(feature = "rayon"))]
+        let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
+            .umesh
+            .element_blocks
+            .iter()
             .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
             .collect();
         let intersection_fmies = self
@@ -267,16 +285,16 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     }
 
     pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {
-        self.collect().to_field(name)
+        self.collect().into_field(name)
     }
     pub fn elements(self) -> Selector<'a, ElementSelector> {
-        self.collect().to_elements()
+        self.collect().into_elements()
     }
     pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
-        self.collect().to_nodes(all)
+        self.collect().into_nodes(all)
     }
     pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
-        self.collect().to_centroids()
+        self.collect().into_centroids()
     }
 }
 
@@ -386,19 +404,19 @@ impl<'a> Selector<'a, NodeBasedSelector> {
     }
 
     pub fn elements(self) -> Selector<'a, ElementSelector> {
-        self.to_elements()
+        self.into_elements()
     }
     pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {
-        self.to_field(name)
+        self.into_field(name)
     }
     pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
-        self.to_groups()
+        self.into_groups()
     }
     pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
-        self.to_centroids()
+        self.into_centroids()
     }
     pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
-        self.to_nodes(all)
+        self.into_nodes(all)
     }
 }
 
@@ -460,16 +478,16 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
     }
 
     pub fn elements(self) -> Selector<'a, ElementSelector> {
-        self.to_elements()
+        self.into_elements()
     }
     pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {
-        self.to_field(name)
+        self.into_field(name)
     }
     pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
-        self.to_groups()
+        self.into_groups()
     }
     pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
-        self.to_nodes(all)
+        self.into_nodes(all)
     }
 }
 

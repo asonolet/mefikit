@@ -6,14 +6,14 @@ mod geometry;
 /// - 1d + 1d
 ///   - cut: Intersection of 1D elements with other 1D elements producing 0D elements.
 ///   - cut_add: Intersecting 1D elements with 1D elements producing 1D mesh conformized to both
-///   meshes.
+///     meshes.
 /// - 2d + 1d
 ///   - cut_edges: Intersecting 2D elements with 1D elements and producing 2D mesh which contains
-///   intersections nodes in the connectivity. This new 2D mesh has the same number of elements as
-///   the original 2D mesh.
+///     intersections nodes in the connectivity. This new 2D mesh has the same number of elements as
+///     the original 2D mesh.
 ///   - cute_faces: Intersecting 2D elements with 1D elements and producing 2D mesh by cutting the
-///   2D mesh with the 1D mesh. The new 2D mesh may contains more elements, and conformizes with
-///   the 1D mesh.
+///     2D mesh with the 1D mesh. The new 2D mesh may contains more elements, and conformizes with
+///     the 1D mesh.
 /// - 2d + 2d
 ///   - cut_union: Intersecting both meshes fully.
 ///   - cut_intersect: Only keeping the domain covered by both meshes and intersecting them.
@@ -141,7 +141,7 @@ pub mod topology;
 /// `UMesh` owns its data:
 /// - Coordinate array (`ArcArray2<f64>`)
 /// - Element blocks with connectivities, fields, families, groups are composed of
-///  owned arrays (`Array2<usize>`, `Array1<usize>`, `ArrayD<f64>`, etc.)
+///   owned arrays (`Array2<usize>`, `Array1<usize>`, `ArrayD<f64>`, etc.)
 ///
 /// This type is used for:
 /// - Internal mesh manipulation in Rust

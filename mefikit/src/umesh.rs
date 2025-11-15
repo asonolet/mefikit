@@ -11,6 +11,7 @@ pub(crate) use self::connectivity::Connectivity;
 use derive_where::derive_where;
 use ndarray as nd;
 use ndarray::prelude::*;
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 
@@ -125,6 +126,7 @@ where
             .flat_map(|block| block.iter(self.coords.view()))
     }
 
+    #[cfg(feature = "rayon")]
     pub fn par_elements(&self) -> impl ParallelIterator<Item = Element<'_>>
     where
         N: Sync,
@@ -135,6 +137,11 @@ where
         self.element_blocks
             .par_iter()
             .flat_map(|(_, block)| block.par_iter(self.coords.view()))
+    }
+
+    #[cfg(not(feature = "rayon"))]
+    pub fn par_elements(&self) -> impl Iterator<Item = Element<'_>> {
+        self.elements()
     }
 
     pub fn num_elements(&self) -> usize {
@@ -153,6 +160,7 @@ where
             .flat_map(|(_, block)| block.iter(self.coords.view()))
     }
 
+    #[cfg(feature = "rayon")]
     pub fn par_elements_of_dim(&self, dim: Dimension) -> impl ParallelIterator<Item = Element<'_>>
     where
         N: Sync,
@@ -164,6 +172,11 @@ where
             .par_iter()
             .filter(move |(k, _)| k.dimension() == dim)
             .flat_map(|(_, block)| block.par_iter(self.coords.view()))
+    }
+
+    #[cfg(not(feature = "rayon"))]
+    pub fn par_elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element<'_>> {
+        self.elements_of_dim(dim)
     }
 
     // pub fn families(&self, element_type: ElementType) -> Option<&[usize]> {

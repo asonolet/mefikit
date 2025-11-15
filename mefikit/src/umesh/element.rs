@@ -1,5 +1,6 @@
 use ndarray::prelude::*;
 use once_cell::sync::OnceCell;
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -230,6 +231,8 @@ impl ElementIds {
             .into_iter()
             .flat_map(|(et, indices)| indices.into_iter().map(move |index| ElementId(et, index)))
     }
+
+    #[cfg(feature = "rayon")]
     pub fn into_par_iter(self) -> impl ParallelIterator<Item = ElementId> {
         self.0.into_par_iter().flat_map(|(et, indices)| {
             indices
@@ -237,6 +240,11 @@ impl ElementIds {
                 .map(move |index| ElementId(et, index))
         })
     }
+    #[cfg(not(feature = "rayon"))]
+    pub fn into_par_iter(self) -> impl Iterator<Item = ElementId> {
+        self.into_iter()
+    }
+
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -264,6 +272,7 @@ impl FromIterator<ElementId> for ElementIds {
     }
 }
 
+#[cfg(feature = "rayon")]
 impl FromParallelIterator<ElementId> for ElementIds {
     fn from_par_iter<T>(par_iter: T) -> Self
     where
@@ -405,10 +414,22 @@ impl<'a> ElementLike<'a> for Element<'a> {
         self.coords.row(co[i]).to_slice().unwrap()
     }
 
+    #[cfg(feature = "rayon")]
     fn groups(&self) -> &Vec<String> {
         self.element_groups_cache.get_or_init(|| {
             self.groups
                 .par_iter()
+                .filter(|(_, v)| v.contains(self.family))
+                .map(|(k, _)| k)
+                .cloned()
+                .collect()
+        })
+    }
+    #[cfg(not(feature = "rayon"))]
+    fn groups(&self) -> &Vec<String> {
+        self.element_groups_cache.get_or_init(|| {
+            self.groups
+                .iter()
                 .filter(|(_, v)| v.contains(self.family))
                 .map(|(k, _)| k)
                 .cloned()
@@ -460,10 +481,23 @@ impl<'a> ElementLike<'a> for ElementMut<'a> {
         self.coords.row(co[i]).to_slice().unwrap()
     }
 
+    #[cfg(feature = "rayon")]
     fn groups(&self) -> &Vec<String> {
         self.element_groups_cache.get_or_init(|| {
             self.groups
                 .par_iter()
+                .filter(|(_, v)| v.contains(self.family))
+                .map(|(k, _)| k)
+                .cloned()
+                .collect()
+        })
+    }
+
+    #[cfg(not(feature = "rayon"))]
+    fn groups(&self) -> &Vec<String> {
+        self.element_groups_cache.get_or_init(|| {
+            self.groups
+                .iter()
                 .filter(|(_, v)| v.contains(self.family))
                 .map(|(k, _)| k)
                 .cloned()

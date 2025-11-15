@@ -4,6 +4,7 @@ mod utils;
 use itertools::Itertools;
 use ndarray::prelude::*;
 use petgraph::prelude::UnGraphMap;
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::{SmallVec, smallvec};
@@ -185,6 +186,7 @@ impl<'a, T> ElementTopo<'a> for T where T: ElementLike<'a> {}
 /// same nodes, regardless of their order.
 /// The output graph is a element to element graph (from input mesh), using subentities as edges (weight in
 /// petgraph lang)
+#[cfg(feature = "rayon")]
 pub fn par_compute_neighbours(
     mesh: &UMesh,
     dim: Option<Dimension>,

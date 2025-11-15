@@ -8,6 +8,7 @@ use crate::{ElementLike, ElementType, UMeshView};
 use nalgebra as na;
 use ndarray as nd;
 use ndarray::prelude::*;
+#[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rstar::AABB;
 use std::collections::BTreeMap;
