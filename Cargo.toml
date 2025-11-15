@@ -8,6 +8,10 @@ members = [
     # "mefikit-ffi",
 ]
 
+[workspace.dependencies]
+ndarray = { version = "0.16", features = ["serde"] }
+
+
 [profile.release]
 opt-level = 3
 codegen-units = 1
