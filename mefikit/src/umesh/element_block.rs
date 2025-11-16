@@ -204,13 +204,21 @@ impl ElementBlock {
     /// * `groups` - A map of group names to sets of element indices.
     /// # Returns
     /// A new `ElementBlock` instance.
-    pub fn new_regular(cell_type: ElementType, connectivity: nd::ArcArray2<usize>) -> Self {
+    pub fn new_regular(
+        cell_type: ElementType,
+        connectivity: nd::ArcArray2<usize>,
+        families: Option<nd::ArcArray1<usize>>,
+    ) -> Self {
         let conn_len = connectivity.len();
+        let families = match families {
+            Some(fams) => Some(fams),
+            None => Some(nd::ArcArray1::from(vec![0; conn_len])),
+        };
         Self {
             cell_type,
             connectivity: Connectivity::Regular(connectivity),
             fields: BTreeMap::new(),
-            families: nd::ArcArray1::from(vec![0; conn_len]),
+            families: families.unwrap(),
             groups: BTreeMap::new(),
         }
     }
@@ -269,14 +277,21 @@ impl<'a> ElementBlockView<'a> {
     /// * `groups` - A map of group names to sets of element indices.
     /// # Returns
     /// A new `ElementBlock` instance.
-    pub fn new_regular(cell_type: ElementType, connectivity: ArrayView2<'a, usize>) -> Self {
+    pub fn new_regular(
+        cell_type: ElementType,
+        connectivity: ArrayView2<'a, usize>,
+        families: Option<ArrayView1<'a, usize>>,
+    ) -> Self {
         let conn_len = connectivity.len();
-        let reg_vec = Box::new(Array1::from(vec![0; conn_len]));
+        let families = match families {
+            Some(fams) => Some(fams),
+            None => Some(Box::leak(Box::new(Array1::from(vec![0; conn_len]))).view()),
+        };
         Self {
             cell_type,
             connectivity: ConnectivityView::Regular(connectivity),
             fields: BTreeMap::new(),
-            families: Box::leak(reg_vec).view(),
+            families: families.unwrap(),
             groups: BTreeMap::new(),
         }
     }

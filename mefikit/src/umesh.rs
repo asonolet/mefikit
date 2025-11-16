@@ -62,7 +62,9 @@ where
         let mut view = UMeshView::new(self.coords.view());
         for (&et, block) in self.element_blocks.iter() {
             match &block.connectivity {
-                ConnectivityBase::Regular(arr) => view.add_regular_block(et, arr.view()),
+                ConnectivityBase::Regular(arr) => {
+                    view.add_regular_block(et, arr.view(), Some(block.families.view()))
+                }
                 ConnectivityBase::Poly { data, offsets } => {
                     view.add_poly_block(et, data.view(), offsets.view())
                 }
@@ -257,8 +259,13 @@ impl<'a> UMeshView<'a> {
         umesh
     }
 
-    pub fn add_regular_block(&mut self, et: ElementType, block: ArrayView2<'a, usize>) {
-        let block = ElementBlockView::new_regular(et, block);
+    pub fn add_regular_block(
+        &mut self,
+        et: ElementType,
+        connectivity: ArrayView2<'a, usize>,
+        families: Option<ArrayView1<'a, usize>>,
+    ) {
+        let block = ElementBlockView::new_regular(et, connectivity, families);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -284,7 +291,7 @@ impl UMesh {
     }
 
     pub fn add_regular_block(&mut self, et: ElementType, block: nd::ArcArray2<usize>) {
-        let block = ElementBlock::new_regular(et, block);
+        let block = ElementBlock::new_regular(et, block, None);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -322,6 +329,7 @@ impl UMesh {
                     ElementBlock::new_regular(
                         element_type,
                         nd::ArcArray2::zeros((0, element_type.num_nodes().unwrap())),
+                        None,
                     )
                 });
             }
