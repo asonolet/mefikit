@@ -201,7 +201,7 @@ pub fn par_compute_neighbours(
     };
     let dim = match dim {
         Some(c) => c,
-        None => mesh.element_blocks.keys().max().unwrap().dimension(),
+        None => mesh.topological_dimension().unwrap(),
     };
     // let mut subentities_hash: HashMap<SortedVecKey, [ElementId; 2]> =
     //     HashMap::with_capacity(self.coords.shape()[0]); // FaceId, ElemId
@@ -249,7 +249,7 @@ pub fn par_compute_neighbours(
         .into_iter()
         .for_each(|(_key, (ids, conn, et))| {
             neighbors.add_element(et, conn.as_slice(), None, None);
-            let subentity_id = neighbors.element_blocks.get(&et).unwrap().len() - 1;
+            let subentity_id = neighbors.get_block(et).unwrap().len() - 1;
             let new_id = ElementId::new(et, subentity_id);
             ids.iter().tuple_combinations().for_each(|(eid_a, eid_b)| {
                 elem_to_elem.add_edge(*eid_a, *eid_b, new_id);
@@ -282,7 +282,7 @@ pub fn compute_neighbours(
     };
     let dim = match dim {
         Some(c) => c,
-        None => mesh.element_blocks.keys().max().unwrap().dimension(),
+        None => mesh.topological_dimension().unwrap(),
     };
     let mut subentities_hashmap: FxHashMap<SortedVecKey, (ElementId, SmallVec<[ElementId; 2]>)> =
         HashMap::default();
@@ -296,7 +296,7 @@ pub fn compute_neighbours(
                 match subentities_hashmap.get_mut(&key) {
                     None => {
                         // The subentity is new
-                        let subentity_id = match neighbors.element_blocks.get(&et) {
+                        let subentity_id = match neighbors.get_block(et) {
                             Some(block) => block.len(),
                             None => 0,
                         };
@@ -340,7 +340,7 @@ pub fn compute_submesh(mesh: &UMesh, dim: Option<Dimension>, codim: Option<Dimen
     };
     let dim = match dim {
         Some(c) => c,
-        None => mesh.element_blocks.keys().max().unwrap().dimension(),
+        None => mesh.topological_dimension().unwrap(),
     };
     let mut subentities_hash: FxHashSet<SortedVecKey> = HashSet::default(); // Face
     let mut neighbors: UMesh = UMesh::new(mesh.coords.to_shared());

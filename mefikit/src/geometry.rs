@@ -130,8 +130,7 @@ impl<'a, T> ElementGeo<'a> for T where T: ElementLike<'a> {}
 
 pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
     mesh
-        .element_blocks
-        .iter()
+        .par_iter_blocks()
         .map(|(&k, v)| {
             (
                 k,

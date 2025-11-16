@@ -34,7 +34,7 @@ where
     G: nd::RawData<Elem = usize> + nd::Data, // Groups data
 {
     pub coords: ArrayBase<N, Ix2>,
-    pub element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
+    element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
 }
 
 pub type UMesh = UMeshBase<
@@ -120,6 +120,13 @@ where
         self.coords.shape()[1]
     }
 
+    pub fn topological_dimension(&self) -> Option<Dimension> {
+        if self.element_blocks.len() == 0 {
+            return None;
+        }
+        Some(self.element_blocks.keys().max().unwrap().dimension())
+    }
+
     pub fn elements(&self) -> impl Iterator<Item = Element<'_>> {
         self.element_blocks
             .values()
@@ -177,6 +184,34 @@ where
     #[cfg(not(feature = "rayon"))]
     pub fn par_elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element<'_>> {
         self.elements_of_dim(dim)
+    }
+
+    pub fn iter_blocks(&self) -> impl Iterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)> {
+        self.element_blocks.iter()
+    }
+
+    #[cfg(feature = "rayon")]
+    pub fn par_iter_blocks(
+        &self,
+    ) -> impl ParallelIterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)>
+    where
+        N: Sync,
+        C: Sync,
+        F: Sync,
+        G: Sync,
+    {
+        self.element_blocks.par_iter()
+    }
+
+    #[cfg(not(feature = "rayon"))]
+    pub fn par_iter_blocks(
+        &self,
+    ) -> impl Iterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)> {
+        self.iter_blocks()
+    }
+
+    pub fn get_block(&self, element_type: ElementType) -> Option<&ElementBlockBase<C, F, G>> {
+        self.element_blocks.get(&element_type)
     }
 
     // pub fn families(&self, element_type: ElementType) -> Option<&[usize]> {
