@@ -34,6 +34,7 @@ fn neighbours(c: &mut Criterion) {
     }
 }
 
+#[cfg(feature = "rayon")]
 fn par_neighbours(c: &mut Criterion) {
     let mut group = c.benchmark_group("par_neighbours");
 

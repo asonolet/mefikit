@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 
 use self::utils::SortedVecKey;
 use crate::umesh::Connectivity;
-use crate::{Dimension, ElementId, ElementLike, ElementType, UMesh};
+use crate::{Dimension, Element, ElementId, ElementLike, ElementType, UMesh};
 
 pub trait ElementTopo<'a>: ElementLike<'a> {
     /// This function returns the subentities of the element based on the codimension.
@@ -211,14 +211,13 @@ pub fn par_compute_neighbours(
     // is FaceId
     let mut neighbors: UMesh = UMesh::new(mesh.coords.to_shared());
 
+    type SubentityMap =
+        HashMap<SortedVecKey, (SmallVec<[ElementId; 2]>, SmallVec<[usize; 4]>, ElementType)>;
+
     mesh.par_elements_of_dim(dim)
         .fold(
             HashMap::new,
-            |mut subentities_hash: HashMap<
-                SortedVecKey,
-                (SmallVec<[ElementId; 2]>, SmallVec<[usize; 4]>, ElementType),
-            >,
-             elem| {
+            |mut subentities_hash: SubentityMap, elem: Element| {
                 for (et, conn) in elem.subentities(Some(codim)) {
                     for co in conn.iter() {
                         let key = SortedVecKey::new(co.into());
@@ -349,7 +348,7 @@ pub fn compute_submesh(mesh: &UMesh, dim: Option<Dimension>, codim: Option<Dimen
         for (et, conn) in elem.subentities(Some(codim)) {
             for co in conn.iter() {
                 let key = SortedVecKey::new(co.into());
-                if subentities_hash.get(&key).is_none() {
+                if !subentities_hash.contains(&key) {
                     // The subentity is new
                     subentities_hash.insert(key);
                     neighbors.add_element(et, co, None, None);
