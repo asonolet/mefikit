@@ -50,13 +50,6 @@ where
         self.connectivity.get(index)
     }
 
-    // pub fn element_connectivity_mut(&mut self, index: usize) -> ArrayViewMut1<usize>
-    // where
-    //     C: nd::DataMut,
-    // {
-    //     self.connectivity.get_mut(index)
-    // }
-
     pub fn get<'a>(&'a self, index: usize, coords: ArrayView2<'a, f64>) -> Element<'a> {
         let connectivity = self.element_connectivity(index);
         // let fields = self
@@ -134,63 +127,6 @@ where
                 )
             })
     }
-
-    // pub fn iter_mut(
-    //     &'a mut self,
-    //     coords: &'a Array2<f64>,
-    // ) -> impl Iterator<Item = ElementMut<'a>> + 'a {
-    //     let fields: Vec<BTreeMap<&'a str, ArrayViewMutD<'a, f64>>> = (0..self.len()).map(|i| {
-    //         self
-    //         .fields
-    //         .iter_mut()
-    //         .map(|(k, v)| (k.as_str(), v.index_axis_mut(Axis(0), i)))
-    //         .collect()
-    //     }).collect();
-
-    //     self.connectivity.iter_mut().zip(self.families.iter_mut()).zip(fields.iter()).enumerate().map(|(i, ((conn, fam), fields))| {
-
-    //         ElementMut::new(
-    //             i,
-    //             coords,
-    //             conn,
-    //             fam,
-    //             *fields,
-    //             &self.groups,
-    //             self.cell_type,
-    //         )
-    //     })
-    // }
-
-    // pub fn par_iter_mut<'a>(
-    //     &'a mut self,
-    //     coords: &'a Array2<f64>,
-    // ) -> impl ParallelIterator<Item = ElementMut<'a>> {
-    //     let num_elems = self.connectivity.len();
-
-    //     // SAFETY: We split interior mutability manually into chunks
-    //     // and make sure each index `i` is accessed only once.
-    //     (0..num_elems).into_par_iter().map(move |i| {
-    //         let connectivity = self.connectivity.element_connectivity_mut(i);
-
-    //         let family = &mut self.families[i];
-
-    //         let fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>> = self
-    //             .fields
-    //             .iter_mut()
-    //             .map(|(k, v)| (k.as_str(), v.index_axis_mut(ndarray::Axis(0), i)))
-    //             .collect();
-
-    //         ElementMut {
-    //             global_index: i,
-    //             coords,
-    //             connectivity,
-    //             family,
-    //             fields,
-    //          , ConnectivityBase   groups: &self.groups,
-    //             element_type: self.cell_type,
-    //         }
-    //     })
-    // }
 }
 
 impl ElementBlock {

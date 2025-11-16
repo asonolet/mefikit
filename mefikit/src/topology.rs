@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 
 use self::utils::SortedVecKey;
 use crate::umesh::Connectivity;
-use crate::{Dimension, Element, ElementId, ElementLike, ElementType, UMesh};
+use crate::{Dimension, ElementId, ElementLike, ElementType, UMesh};
 
 pub trait ElementTopo<'a>: ElementLike<'a> {
     /// This function returns the subentities of the element based on the codimension.
@@ -215,24 +215,21 @@ pub fn par_compute_neighbours(
         HashMap<SortedVecKey, (SmallVec<[ElementId; 2]>, SmallVec<[usize; 4]>, ElementType)>;
 
     mesh.par_elements_of_dim(dim)
-        .fold(
-            HashMap::new,
-            |mut subentities_hash: SubentityMap, elem: Element| {
-                for (et, conn) in elem.subentities(Some(codim)) {
-                    for co in conn.iter() {
-                        let key = SortedVecKey::new(co.into());
-                        match subentities_hash.get_mut(&key) {
-                            // The subentity already exists
-                            Some((ids, _, _)) => ids.push(elem.id()),
-                            None => {
-                                subentities_hash.insert(key, (smallvec![elem.id()], co.into(), et));
-                            }
+        .fold(HashMap::new, |mut subentities_hash: SubentityMap, elem| {
+            for (et, conn) in elem.subentities(Some(codim)) {
+                for co in conn.iter() {
+                    let key = SortedVecKey::new(co.into());
+                    match subentities_hash.get_mut(&key) {
+                        // The subentity already exists
+                        Some((ids, _, _)) => ids.push(elem.id()),
+                        None => {
+                            subentities_hash.insert(key, (smallvec![elem.id()], co.into(), et));
                         }
                     }
                 }
-                subentities_hash
-            },
-        )
+            }
+            subentities_hash
+        })
         .reduce(HashMap::new, |mut a, b| {
             for (k, (ids, conn, et)) in b {
                 match a.get_mut(&k) {

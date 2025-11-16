@@ -123,10 +123,8 @@ where
     }
 
     pub fn topological_dimension(&self) -> Option<Dimension> {
-        if self.element_blocks.len() == 0 {
-            return None;
-        }
-        Some(self.element_blocks.keys().max().unwrap().dimension())
+        let max_et = self.element_blocks.keys().max()?;
+        Some(max_et.dimension())
     }
 
     pub fn elements(&self) -> impl Iterator<Item = Element<'_>> {
@@ -188,12 +186,12 @@ where
         self.elements_of_dim(dim)
     }
 
-    pub fn iter_blocks(&self) -> impl Iterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)> {
+    pub fn blocks(&self) -> impl Iterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)> {
         self.element_blocks.iter()
     }
 
     #[cfg(feature = "rayon")]
-    pub fn par_iter_blocks(
+    pub fn par_blocks(
         &self,
     ) -> impl ParallelIterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)>
     where
@@ -206,10 +204,8 @@ where
     }
 
     #[cfg(not(feature = "rayon"))]
-    pub fn par_iter_blocks(
-        &self,
-    ) -> impl Iterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)> {
-        self.iter_blocks()
+    pub fn par_blocks(&self) -> impl Iterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)> {
+        self.blocks()
     }
 
     pub fn get_block(&self, element_type: ElementType) -> Option<&ElementBlockBase<C, F, G>> {

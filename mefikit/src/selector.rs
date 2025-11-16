@@ -91,7 +91,7 @@ impl<'a, State> Selector<'a, State> {
 impl<'a> Selector<'a, ElementSelector> {
     pub fn new(umesh: &'a UMesh) -> Self {
         let index: BTreeMap<ElementType, Vec<usize>> = umesh
-            .iter_blocks()
+            .blocks()
             .map(|(k, v)| (*k, (0..v.len()).collect()))
             .collect();
         let state = ElementSelector {};
@@ -203,7 +203,7 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     pub fn inside(self, name: &str) -> Self {
         let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
             .umesh
-            .par_iter_blocks()
+            .par_blocks()
             .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
             .collect();
         let intersection_fmies = self
@@ -228,7 +228,7 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     pub fn outside(self, name: &str) -> Self {
         let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
             .umesh
-            .par_iter_blocks()
+            .par_blocks()
             .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
             .collect();
         let intersection_fmies = self
