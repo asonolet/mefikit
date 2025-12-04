@@ -13,6 +13,7 @@ use ndarray as nd;
 use ndarray::prelude::*;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+use rustc_hash::FxHashSet;
 use std::collections::BTreeMap;
 
 use self::connectivity::ConnectivityBase;
@@ -398,6 +399,20 @@ impl UMesh {
             };
         }
         extracted
+    }
+
+    pub fn used_nodes(&self) -> Vec<usize> {
+        let mut used_nodes = FxHashSet::default();
+        for element in self.elements() {
+            for &node in element.connectivity.iter() {
+                if !used_nodes.contains(&node) {
+                    used_nodes.insert(node);
+                }
+            }
+        }
+        let mut used_nodes: Vec<usize> = used_nodes.into_iter().collect();
+        used_nodes.sort_unstable();
+        used_nodes
     }
 }
 

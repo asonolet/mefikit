@@ -1,6 +1,10 @@
 use crate::geometry::measures as mes;
 use arrayvec::ArrayVec;
+use rstar::Point;
+use rstar::primitives::Line;
+use std::convert::TryInto as _;
 
+const MACHINE_EPSLION: f64 = 1e-20;
 const EPSLION_L: f64 = 1e-12;
 const EPSLION_THETA: f64 = 1e-4;
 const EPSILON_NN: f64 = 2.0 * EPSLION_L / EPSLION_THETA;
@@ -11,6 +15,15 @@ pub enum Intersections {
     None,
     One([f64; 2]),
     Two([[f64; 2]; 2]),
+}
+
+#[derive(Copy, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
+enum SegmentPoint {
+    P1,
+    P2,
+    P3,
+    P4,
+    NEW,
 }
 
 /// Computes the intersection between two line segments, applying fusion rules to avoid degenerate elements.
@@ -35,21 +48,22 @@ pub enum Intersections {
 /// # Note
 /// The function assumes that both segments are of type SEG2 (2-node segments).
 pub fn intersect_seg_seg(
-    seg1_nodes: [usize; 2],
-    seg2_nodes: [usize; 2],
     p1: [f64; 2],
     p2: [f64; 2],
     p3: [f64; 2],
     p4: [f64; 2],
-    next_node_index: usize,
-) -> (ArrayVec<usize, 4>, ArrayVec<usize, 4>, Intersections) {
+) -> (
+    ArrayVec<SegmentPoint, 4>,
+    ArrayVec<SegmentPoint, 4>,
+    Intersections,
+) {
     let d1 = [p2[0] - p1[0], p2[1] - p1[1]];
     let d2 = [p4[0] - p3[0], p4[1] - p3[1]];
 
     let denom = d1[0] * d2[1] - d1[1] * d2[0];
 
     if denom.abs() < EPSLION_L {
-        return handle_colinear_or_parallel(seg1_nodes, seg2_nodes, p1, p2, p3, p4, EPSLION_L);
+        return handle_colinear_or_parallel(p1, p2, p3, p4, EPSLION_L);
     }
 
     let (t, u, intersection) = compute_parametric_intersection(p1, d1, p3, d2, denom);
@@ -57,19 +71,27 @@ pub fn intersect_seg_seg(
     if is_intersection_within_segments(t, u, EPSLION_L) {
         if is_existing_node(&intersection, &[p1, p2, p3, p4], EPSLION_L) {
             return (
-                [seg1_nodes[0], seg1_nodes[1]][..].try_into().unwrap(),
-                [seg2_nodes[0], seg2_nodes[1]][..].try_into().unwrap(),
+                (&[SegmentPoint::P1, SegmentPoint::P2] as &[_])
+                    .try_into()
+                    .unwrap(),
+                (&[SegmentPoint::P3, SegmentPoint::P4] as &[_])
+                    .try_into()
+                    .unwrap(),
                 Intersections::None,
             );
         }
-        let seg1_new = insert_intersection_node(seg1_nodes, t, next_node_index);
-        let seg2_new = insert_intersection_node(seg2_nodes, u, next_node_index);
+        let seg1_new = insert_intersection_node(t);
+        let seg2_new = insert_intersection_node(u);
         return (seg1_new, seg2_new, Intersections::One(intersection));
     }
 
     (
-        [seg1_nodes[0], seg1_nodes[1]][..].try_into().unwrap(),
-        [seg2_nodes[0], seg2_nodes[1]][..].try_into().unwrap(),
+        (&[SegmentPoint::P1, SegmentPoint::P2] as &[_])
+            .try_into()
+            .unwrap(),
+        (&[SegmentPoint::P3, SegmentPoint::P4] as &[_])
+            .try_into()
+            .unwrap(),
         Intersections::None,
     )
 }
@@ -85,7 +107,7 @@ fn project_onto_segment(origin: [f64; 2], dir: [f64; 2], pt: [f64; 2]) -> f64 {
     let dx = pt[0] - origin[0];
     let dy = pt[1] - origin[1];
     let norm = dir[0] * dir[0] + dir[1] * dir[1];
-    if norm.abs() < 1e-20 {
+    if norm.abs() < MACHINE_EPSLION {
         return 0.0;
     }
     (dx * dir[0] + dy * dir[1]) / norm
@@ -94,19 +116,21 @@ fn project_onto_segment(origin: [f64; 2], dir: [f64; 2], pt: [f64; 2]) -> f64 {
 /// Handles the case where segments are colinear or parallel.
 /// Returns the new connectivities for each segment, with no new intersection node.
 fn handle_colinear_or_parallel(
-    seg1_nodes: [usize; 2],
-    seg2_nodes: [usize; 2],
     p1: [f64; 2],
     p2: [f64; 2],
     p3: [f64; 2],
     p4: [f64; 2],
     epsilon: f64,
-) -> (ArrayVec<usize, 4>, ArrayVec<usize, 4>, Intersections) {
+) -> (
+    ArrayVec<SegmentPoint, 4>,
+    ArrayVec<SegmentPoint, 4>,
+    Intersections,
+) {
     let nodes = [
-        (seg1_nodes[0], p1),
-        (seg1_nodes[1], p2),
-        (seg2_nodes[0], p3),
-        (seg2_nodes[1], p4),
+        (SegmentPoint::P1, p1),
+        (SegmentPoint::P2, p2),
+        (SegmentPoint::P3, p3),
+        (SegmentPoint::P4, p4),
     ];
     // Sort nodes along seg1
     let origin = p1;
@@ -117,14 +141,14 @@ fn handle_colinear_or_parallel(
     if p3_dist > EPSILON_NN2 && p4_dist > EPSILON_NN2 {
         // seg2 is parallel and disjoint from seg1
         return (
-            [seg1_nodes[0], seg1_nodes[1]][..].try_into().unwrap(),
-            [seg2_nodes[0], seg2_nodes[1]][..].try_into().unwrap(),
+            [SegmentPoint::P1, SegmentPoint::P2][..].try_into().unwrap(),
+            [SegmentPoint::P3, SegmentPoint::P4][..].try_into().unwrap(),
             Intersections::None,
         );
     }
 
     // Detect duplicates (shared nodes)
-    let mut replace_nodes: Vec<(usize, usize)> = Vec::new();
+    let mut replace_nodes: Vec<(SegmentPoint, SegmentPoint)> = Vec::new();
     for (idx2, pt) in nodes[2..].iter() {
         for (idx1, p) in nodes[..2].iter() {
             if nearly_equal(*p, *pt, epsilon) {
@@ -150,7 +174,7 @@ fn handle_colinear_or_parallel(
     // Iterate over sorted nodes and build new connectivities
     for (idx, _) in sorted_nodes {
         // If idx==seg1_nodes[0], start inserting into seg1_new until idx==seg1_nodes[1]
-        if idx == seg1_nodes[0] {
+        if idx == SegmentPoint::P1 {
             in_seg1 = true;
         }
         if in_seg1 {
@@ -158,7 +182,7 @@ fn handle_colinear_or_parallel(
         }
         // If idx==seg2_nodes[0] or idx==seg2_nodes[1], start inserting into seg2_new until
         // idx==seg2_nodes[1] or idx==seg2_nodes[0] (included)
-        let on_seg2 = if idx == seg2_nodes[0] || idx == seg2_nodes[1] {
+        let on_seg2 = if idx == SegmentPoint::P3 || idx == SegmentPoint::P4 {
             in_seg2 = !in_seg2;
             true
         } else {
@@ -176,7 +200,7 @@ fn handle_colinear_or_parallel(
             seg2_new.push(idx);
         }
 
-        if idx == seg1_nodes[1] {
+        if idx == SegmentPoint::P2 {
             in_seg1 = false;
         }
     }
@@ -227,23 +251,17 @@ fn is_existing_node(intersection: &[f64; 2], endpoints: &[[f64; 2]; 4], epsilon:
 }
 
 /// Inserts the intersection node into the connectivity in the correct order.
-fn insert_intersection_node(
-    nodes: [usize; 2],
-    param: f64,
-    intersection_idx: usize,
-) -> ArrayVec<usize, 4> {
-    let t0 = 0.0;
-    let t1 = 1.0;
-    if param < t0 {
-        [intersection_idx, nodes[0], nodes[1]][..]
+fn insert_intersection_node(param: f64) -> ArrayVec<SegmentPoint, 4> {
+    if param < 0.0 {
+        (&[SegmentPoint::NEW, SegmentPoint::P1, SegmentPoint::P2] as &[_])
             .try_into()
             .unwrap()
-    } else if param > t1 {
-        [nodes[0], nodes[1], intersection_idx][..]
+    } else if param > 1.0 {
+        (&[SegmentPoint::P1, SegmentPoint::P2, SegmentPoint::NEW] as &[_])
             .try_into()
             .unwrap()
     } else {
-        [nodes[0], intersection_idx, nodes[1]][..]
+        (&[SegmentPoint::P1, SegmentPoint::NEW, SegmentPoint::P2] as &[_])
             .try_into()
             .unwrap()
     }
@@ -268,11 +286,16 @@ mod tests {
 
     #[test]
     fn test_classic_intersection() {
-        let (seg1, seg2, [p1, p2, p3, p4]) =
-            mock_seg([0.0, 0.0], [1.0, 1.0], [0.0, 1.0], [1.0, 0.0]);
-        let (conn1, conn2, intersection) = intersect_seg_seg(seg1, seg2, p1, p2, p3, p4, 4);
-        assert_eq!(&conn1[..], [0, 4, 1]);
-        assert_eq!(&conn2[..], [2, 4, 3]);
+        let (p1, p2, p3, p4) = ([0.0, 0.0], [1.0, 1.0], [0.0, 1.0], [1.0, 0.0]);
+        let (conn1, conn2, intersection) = intersect_seg_seg(p1, p2, p3, p4);
+        assert_eq!(
+            &conn1[..],
+            [SegmentPoint::P1, SegmentPoint::NEW, SegmentPoint::P2]
+        );
+        assert_eq!(
+            &conn2[..],
+            [SegmentPoint::P3, SegmentPoint::NEW, SegmentPoint::P4]
+        );
         match intersection {
             Intersections::One(inter) => assert!(nearly_equal(inter, [0.5, 0.5], 1e-12)),
             _ => panic!(),
@@ -281,11 +304,13 @@ mod tests {
 
     #[test]
     fn test_tangency_from_seg2() {
-        let (seg1, seg2, [p1, p2, p3, p4]) =
-            mock_seg([0.0, 0.0], [2.0, 0.0], [1.0, 0.0], [1.0, 1.0]);
-        let (conn1, conn2, intersection) = intersect_seg_seg(seg1, seg2, p1, p2, p3, p4, 4);
-        assert_eq!(&conn1[..], [0, 4, 1]);
-        assert_eq!(&conn2[..], [4, 3]);
+        let (p1, p2, p3, p4) = ([0.0, 0.0], [2.0, 0.0], [1.0, 0.0], [1.0, 1.0]);
+        let (conn1, conn2, intersection) = intersect_seg_seg(p1, p2, p3, p4);
+        assert_eq!(
+            conn1[..],
+            [SegmentPoint::P1, SegmentPoint::NEW, SegmentPoint::P2]
+        );
+        assert_eq!(conn2[..], [SegmentPoint::NEW, SegmentPoint::P4]);
         assert!(
             matches!(intersection, Intersections::One(inter) if nearly_equal(inter, [1.0, 0.0], 1e-12))
         );
@@ -293,21 +318,28 @@ mod tests {
 
     #[test]
     fn test_tangency_from_seg1() {
-        let (seg1, seg2, [p1, p2, p3, p4]) =
-            mock_seg([0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [1.0, -1.0]);
-        let (conn1, conn2, intersection) = intersect_seg_seg(seg1, seg2, p1, p2, p3, p4, 4);
-        assert_eq!(&conn1[..], [0, 1]);
-        assert_eq!(&conn2[..], [2, 1, 3]);
+        let (p1, p2, p3, p4) = ([0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [1.0, -1.0]);
+        let (conn1, conn2, intersection) = intersect_seg_seg(p1, p2, p3, p4);
+        assert_eq!(conn1[..], [SegmentPoint::P1, SegmentPoint::P2]);
+        assert_eq!(
+            conn2[..],
+            [SegmentPoint::P3, SegmentPoint::P2, SegmentPoint::P4]
+        );
         assert_eq!(intersection, Intersections::None);
     }
 
     #[test]
     fn test_intersection_colinear_overlap() {
-        let (seg1, seg2, [p1, p2, p3, p4]) =
-            mock_seg([0.0, 0.0], [2.0, 0.0], [1.0, 0.0], [3.0, 0.0]);
-        let (conn1, conn2, intersection) = intersect_seg_seg(seg1, seg2, p1, p2, p3, p4, 4);
-        assert_eq!(&conn1[..], [0, 4, 1]);
-        assert_eq!(&conn2[..], [4, 1, 3]);
+        let (p1, p2, p3, p4) = ([0.0, 0.0], [2.0, 0.0], [1.0, 0.0], [3.0, 0.0]);
+        let (conn1, conn2, intersection) = intersect_seg_seg(p1, p2, p3, p4);
+        assert_eq!(
+            conn1[..],
+            [SegmentPoint::P1, SegmentPoint::NEW, SegmentPoint::P2]
+        );
+        assert_eq!(
+            conn2[..],
+            [SegmentPoint::NEW, SegmentPoint::P2, SegmentPoint::P4]
+        );
         assert!(
             matches!(intersection, Intersections::One(inter) if nearly_equal(inter, [1.0, 0.0], 1e-12))
         );
@@ -315,11 +347,18 @@ mod tests {
 
     #[test]
     fn test_intersection_colinear_included_overlap() {
-        let (seg1, seg2, [p1, p2, p3, p4]) =
-            mock_seg([0.0, 0.0], [4.0, 0.0], [1.0, 0.0], [3.0, 0.0]);
-        let (conn1, conn2, intersection) = intersect_seg_seg(seg1, seg2, p1, p2, p3, p4, 4);
-        assert_eq!(&conn1[..], [0, 4, 5, 1]);
-        assert_eq!(&conn2[..], [4, 5]);
+        let (p1, p2, p3, p4) = ([0.0, 0.0], [4.0, 0.0], [1.0, 0.0], [3.0, 0.0]);
+        let (conn1, conn2, intersection) = intersect_seg_seg(p1, p2, p3, p4);
+        assert_eq!(
+            conn1[..],
+            [
+                SegmentPoint::P1,
+                SegmentPoint::P3,
+                SegmentPoint::P4,
+                SegmentPoint::P2
+            ]
+        );
+        assert_eq!(conn2[..], [SegmentPoint::P3, SegmentPoint::P4]);
         assert!(
             matches!(intersection, Intersections::Two([inter1, inter2]) if nearly_equal(inter1, [1.0, 0.0], 1e-12) & nearly_equal(inter2, [3.0, 0.0], 1e-12))
         );
@@ -327,11 +366,10 @@ mod tests {
 
     #[test]
     fn test_no_intersection_colinear() {
-        let (seg1, seg2, [p1, p2, p3, p4]) =
-            mock_seg([0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]);
-        let (conn1, conn2, intersection) = intersect_seg_seg(seg1, seg2, p1, p2, p3, p4, 4);
-        assert_eq!(&conn1[..], [0, 1]);
-        assert_eq!(&conn2[..], [2, 3]);
+        let (p1, p2, p3, p4) = ([0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]);
+        let (conn1, conn2, intersection) = intersect_seg_seg(p1, p2, p3, p4);
+        assert_eq!(conn1[..], [SegmentPoint::P1, SegmentPoint::P2]);
+        assert_eq!(conn2[..], [SegmentPoint::P3, SegmentPoint::P4]);
         assert_eq!(intersection, Intersections::None);
     }
 
