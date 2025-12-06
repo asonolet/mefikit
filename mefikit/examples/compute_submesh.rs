@@ -1,4 +1,4 @@
-use mefikit as mf;
+use mefikit::prelude as mf;
 use std::time;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Computing submesh");
     let now = time::Instant::now();
     for _ in 0..10 {
-        let _ = mf::topo::compute_submesh(&mesh, None, None);
+        let _ = mf::compute_submesh(&mesh, None, None);
     }
     let t_tot = now.elapsed().as_secs_f64() * 100.0;
 

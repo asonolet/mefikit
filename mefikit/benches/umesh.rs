@@ -1,6 +1,6 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 
-use mefikit as mf;
+use mefikit::prelude as mf;
 
 fn submesh(c: &mut Criterion) {
     let mut group = c.benchmark_group("submesh");
@@ -12,7 +12,7 @@ fn submesh(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mf::topo::compute_submesh(&mesh, None, None));
+                std::hint::black_box(mf::compute_submesh(&mesh, None, None));
             })
         });
     }
@@ -28,7 +28,7 @@ fn neighbours(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mf::topo::compute_neighbours(&mesh, None, None));
+                std::hint::black_box(mf::compute_neighbours(&mesh, None, None));
             })
         });
     }
@@ -45,7 +45,7 @@ fn par_neighbours(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mf::topo::par_compute_neighbours(&mesh, None, None));
+                std::hint::black_box(mf::par_compute_neighbours(&mesh, None, None));
             })
         });
     }

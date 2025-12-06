@@ -9,7 +9,7 @@ mod mefikitpy {
     use pyo3::prelude::*;
     use std::fmt::{Display, Formatter};
 
-    use mefikit::{self as mf, UMesh};
+    use mefikit::prelude as mf;
 
     use std::path::Path;
 
@@ -20,7 +20,6 @@ mod mefikitpy {
     #[pyo3(name = "UMesh")]
     #[derive(PartialEq)]
     struct PyUMesh {
-        // Add fields here
         inner: mf::UMesh,
     }
 
@@ -43,7 +42,7 @@ mod mefikitpy {
 
         /// Add a regular block of elements to the mesh.
         fn add_regular_block(&mut self, et: &str, block: PyReadonlyArray2<'_, usize>) {
-            let et = match { et } {
+            let et = match et {
                 "VERTEX" => mf::ElementType::VERTEX,
                 "TET4" => mf::ElementType::TET4,
                 "QUAD4" => mf::ElementType::QUAD4,
@@ -75,13 +74,13 @@ mod mefikitpy {
         }
     }
 
-    impl From<UMesh> for PyUMesh {
-        fn from(umesh: UMesh) -> Self {
+    impl From<mf::UMesh> for PyUMesh {
+        fn from(umesh: mf::UMesh) -> Self {
             PyUMesh { inner: umesh }
         }
     }
 
-    impl From<PyUMesh> for UMesh {
+    impl From<PyUMesh> for mf::UMesh {
         fn from(pyumesh: PyUMesh) -> Self {
             pyumesh.inner
         }

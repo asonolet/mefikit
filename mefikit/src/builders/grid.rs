@@ -1,4 +1,4 @@
-use crate::{ElementType, UMesh};
+use crate::umesh::{ElementType, UMesh};
 use ndarray::{ArcArray2, Array2};
 
 /// Regular umesh builder (1d, 2d or 3d).
@@ -191,16 +191,15 @@ impl RegularUMeshBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ElementType;
     use crate::umesh::Connectivity;
+    use crate::umesh::ElementType;
 
     #[test]
     fn test_regular_mesh_builder_1d() {
         let builder = RegularUMeshBuilder::new().add_axis(vec![0.0, 1.0, 2.0]);
         let mesh = builder.build();
         assert_eq!(mesh.coords().shape(), &[3, 1]);
-        assert_eq!(mesh.element_blocks.len(), 1);
-        assert!(mesh.element_blocks.contains_key(&ElementType::SEG2));
+        assert!(mesh.get_block(ElementType::SEG2).is_some());
     }
 
     #[test]
@@ -210,15 +209,9 @@ mod tests {
             .add_axis(vec![0.0, 1.0]);
         let mesh = builder.build();
         assert_eq!(mesh.coords().shape(), &[6, 2]);
-        assert_eq!(mesh.element_blocks.len(), 1);
-        assert!(mesh.element_blocks.contains_key(&ElementType::QUAD4));
+        assert!(mesh.get_block(ElementType::QUAD4).is_some());
         assert_eq!(
-            match &mesh
-                .element_blocks
-                .get(&ElementType::QUAD4)
-                .unwrap()
-                .connectivity
-            {
+            match &mesh.get_block(ElementType::QUAD4).unwrap().connectivity {
                 Connectivity::Regular(conn) => conn.shape(),
                 _ => panic!("Expected regular connectivity"),
             },
@@ -234,15 +227,9 @@ mod tests {
             .add_axis(vec![0.0, 1.0, 2.0]);
         let mesh = builder.build();
         assert_eq!(mesh.coords().shape(), &[18, 3]);
-        assert_eq!(mesh.element_blocks.len(), 1);
-        assert!(mesh.element_blocks.contains_key(&ElementType::HEX8));
+        assert!(mesh.get_block(ElementType::HEX8).is_some());
         assert_eq!(
-            match &mesh
-                .element_blocks
-                .get(&ElementType::HEX8)
-                .unwrap()
-                .connectivity
-            {
+            match &mesh.get_block(ElementType::HEX8).unwrap().connectivity {
                 Connectivity::Regular(conn) => conn.shape(),
                 _ => panic!("Expected regular connectivity"),
             },

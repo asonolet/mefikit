@@ -1,6 +1,7 @@
-use crate::ElementLike;
-use crate::ElementType;
-use crate::{UMesh, UMeshView};
+use crate::umesh::ElementLike;
+use crate::umesh::ElementType;
+use crate::umesh::{UMesh, UMeshView};
+
 use ndarray::prelude::*;
 use std::path::Path;
 use vtkio::model::*;

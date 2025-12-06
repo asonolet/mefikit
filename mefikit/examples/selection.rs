@@ -1,4 +1,4 @@
-use mefikit as mf;
+use mefikit::prelude as mf;
 use std::time;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

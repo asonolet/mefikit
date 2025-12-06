@@ -1,4 +1,4 @@
-use mefikit as mf;
+use mefikit::prelude as mf;
 use ndarray as nd;
 use ndarray::prelude::*;
 use std::path::Path;

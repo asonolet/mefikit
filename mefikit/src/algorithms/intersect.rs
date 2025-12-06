@@ -1,8 +1,8 @@
-use super::geometry::ElementGeo;
-use super::topo::compute_neighbours;
-use super::umesh::Dimension::*;
-use super::umesh::UMesh;
-use super::umesh::{Element, ElementId, ElementLike, ElementType};
+use crate::algorithms::compute_neighbours;
+use crate::geometry::ElementGeo;
+use crate::umesh::Dimension::*;
+use crate::umesh::UMesh;
+use crate::umesh::{Element, ElementId, ElementLike, ElementType};
 
 use std::collections::HashMap;
 

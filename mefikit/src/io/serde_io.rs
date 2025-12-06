@@ -1,4 +1,4 @@
-use crate::{UMesh, UMeshView};
+use crate::umesh::{UMesh, UMeshView};
 use std::fs::File;
 use std::path::Path;
 
