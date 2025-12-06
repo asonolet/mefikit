@@ -1,6 +1,6 @@
 use crate::geometry::ElementGeo;
-use crate::umesh::ElementType;
-use crate::umesh::UMeshView;
+use crate::mesh::ElementType;
+use crate::mesh::UMeshView;
 
 use ndarray as nd;
 use ndarray::prelude::*;
@@ -37,8 +37,8 @@ pub fn measure(mesh: UMeshView) -> BTreeMap<ElementType, Array1<f64>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mesh::ElementType;
     use crate::mesh_examples as me;
-    use crate::umesh::ElementType;
     use approx::*;
 
     #[test]

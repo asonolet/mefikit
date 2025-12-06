@@ -281,8 +281,8 @@ mod tests {
     use ndarray::array;
     use std::collections::BTreeMap;
 
-    use crate::umesh::element::Element;
-    use crate::umesh::element::ElementType;
+    use crate::mesh::element::Element;
+    use crate::mesh::element::ElementType;
 
     #[test]
     fn test_element_block() {

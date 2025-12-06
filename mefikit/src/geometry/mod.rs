@@ -3,7 +3,7 @@ pub mod measures;
 pub mod seg_intersect;
 
 use self::measures as mes;
-use crate::umesh::{ElementLike, ElementType};
+use crate::mesh::{ElementLike, ElementType};
 
 use nalgebra as na;
 use rstar::AABB;

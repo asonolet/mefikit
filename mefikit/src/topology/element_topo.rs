@@ -2,8 +2,8 @@ use ndarray::prelude::*;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-use crate::umesh::Connectivity;
-use crate::umesh::{Dimension, ElementLike, ElementType};
+use crate::mesh::Connectivity;
+use crate::mesh::{Dimension, ElementLike, ElementType};
 
 pub trait ElementTopo<'a>: ElementLike<'a> {
     /// This function returns the subentities of the element based on the codimension.

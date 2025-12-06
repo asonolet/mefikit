@@ -411,8 +411,8 @@ impl UMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mesh::ElementType;
     use crate::mesh_examples as me;
-    use crate::umesh::ElementType;
 
     #[test]
     fn test_umesh_creation() {

@@ -6,9 +6,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::{SmallVec, smallvec};
 use std::collections::{HashMap, HashSet};
 
+use crate::mesh::{Dimension, ElementId, ElementLike, ElementType, UMesh};
 use crate::topology::ElementTopo;
 use crate::topology::SortedVecKey;
-use crate::umesh::{Dimension, ElementId, ElementLike, UMesh};
 
 /// This method is used to compute a subentity mesh in parallel.
 ///

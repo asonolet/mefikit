@@ -1,6 +1,6 @@
-use crate::umesh::ElementLike;
-use crate::umesh::ElementType;
-use crate::umesh::{UMesh, UMeshView};
+use crate::mesh::ElementLike;
+use crate::mesh::ElementType;
+use crate::mesh::{UMesh, UMeshView};
 
 use ndarray::prelude::*;
 use std::path::Path;

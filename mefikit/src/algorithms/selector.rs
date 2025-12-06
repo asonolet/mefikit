@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::geometry::ElementGeo;
 use crate::geometry::is_in as geo;
-use crate::umesh::{ElementIds, ElementType, UMesh};
+use crate::mesh::{ElementIds, ElementType, UMesh};
 
 pub struct Selector<'a, State = ElementSelector> {
     umesh: &'a UMesh,
@@ -473,8 +473,8 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mesh::ElementType;
     use crate::mesh_examples as me;
-    use crate::umesh::ElementType;
 
     #[test]
     fn test_umesh_element_selection() {

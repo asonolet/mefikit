@@ -1,4 +1,4 @@
-use crate::umesh::ElementLike;
+use crate::mesh::ElementLike;
 use rustc_hash::FxHashSet as HashSet;
 
 pub trait ElementEquality<'a>: ElementLike<'a> {

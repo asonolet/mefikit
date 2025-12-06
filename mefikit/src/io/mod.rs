@@ -1,4 +1,4 @@
-use crate::umesh::{UMesh, UMeshView};
+use crate::mesh::{UMesh, UMeshView};
 use std::path::Path;
 
 mod serde_io;

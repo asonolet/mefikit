@@ -12,12 +12,6 @@ pub mod builders;
 pub mod geometry;
 /// This module defines a `read` and a `write` functions that can use various mesh formats
 mod io;
-#[cfg(test)]
-pub mod mesh_examples;
-/// This module defines topological operations on elements.
-///
-/// The operations are provided through the `ElementTopo` trait.
-pub mod topology;
 /// This module serves as the **central container** for all mesh-related data and logic in the
 /// library.
 ///
@@ -236,16 +230,22 @@ pub mod topology;
 ///
 /// - `geometry`, `topology`, `intersect` — operation-specific logic
 /// - `io` — file import/export (serde_json, serde_yaml, MED, CGNS, etc.)
-pub mod umesh;
+pub mod mesh;
+#[cfg(test)]
+pub mod mesh_examples;
+/// This module defines topological operations on elements.
+///
+/// The operations are provided through the `ElementTopo` trait.
+pub mod topology;
 
 pub mod prelude {
     pub use crate::algorithms::*;
     pub use crate::builders::RegularUMeshBuilder;
     pub use crate::geometry::ElementGeo;
     pub use crate::io::{read, write};
-    pub use crate::topology::ElementTopo;
-    pub use crate::umesh::{
+    pub use crate::mesh::{
         Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut, ElementType,
         Regularity, UMesh, UMeshBase, UMeshView,
     };
+    pub use crate::topology::ElementTopo;
 }
