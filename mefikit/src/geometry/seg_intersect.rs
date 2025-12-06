@@ -1,7 +1,5 @@
 use crate::geometry::measures as mes;
 use arrayvec::ArrayVec;
-use rstar::Point;
-use rstar::primitives::Line;
 use std::convert::TryInto as _;
 
 const MACHINE_EPSLION: f64 = 1e-20;
