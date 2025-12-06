@@ -253,7 +253,7 @@ pub mod topology;
 pub mod umesh;
 
 pub use crate::builders::RegularUMeshBuilder;
-pub use crate::geometry::{ElementGeo, measure};
+pub use crate::geometry::{ElementGeo, measure, snap::snap_points};
 pub use crate::io::{read, write};
 pub use crate::selector::Selector;
 pub use crate::topology as topo;
