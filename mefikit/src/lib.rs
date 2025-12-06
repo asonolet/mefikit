@@ -1,11 +1,25 @@
+/// This module groups all algorithms operating on one or more meshes.
+///
+/// Most of the algorithms take a &UMesh when using optimizations (sharing coordinates) or a
+/// UMeshView when not needed and produce a new owned UMesh.
 pub mod algorithms;
-mod builders;
-mod geometry;
+/// This module defines mesh builders, ie creational methods which does not modify or extend an
+/// existing mesh.
+pub mod builders;
+/// This module defines geometrical operations on elements.
+///
+/// The operations are provided through the `ElementGeo` trait.
+pub mod geometry;
+/// This module defines a `read` and a `write` functions that can use various mesh formats
 mod io;
 #[cfg(test)]
 pub mod mesh_examples;
+/// This module defines topological operations on elements.
+///
+/// The operations are provided through the `ElementTopo` trait.
 pub mod topology;
-/// This module serves as the **central container** for all mesh-related data and logic in the library.
+/// This module serves as the **central container** for all mesh-related data and logic in the
+/// library.
 ///
 /// ---
 ///
