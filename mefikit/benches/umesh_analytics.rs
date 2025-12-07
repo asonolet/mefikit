@@ -2,7 +2,7 @@ use gungraun::{
     Callgrind, FlamegraphConfig, LibraryBenchmarkConfig, library_benchmark,
     library_benchmark_group, main,
 };
-use mefikit as mf;
+use mefikit::prelude as mf;
 use std::hint::black_box;
 
 fn regular_grid(n: usize) -> mf::UMesh {
@@ -16,7 +16,7 @@ fn regular_grid(n: usize) -> mf::UMesh {
 #[bench::short(regular_grid(4))]
 #[bench::long(regular_grid(32))]
 fn bench_submesh(mesh: mf::UMesh) {
-    black_box(mf::topo::compute_submesh(&mesh, None, None));
+    black_box(mf::compute_submesh(&mesh, None, None));
 }
 
 library_benchmark_group!(
