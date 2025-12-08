@@ -162,6 +162,13 @@ mod mefikitpy {
             };
             mf::compute_submesh(&self.inner, with_dim, codim).into()
         }
+
+        fn measure<'py>(&self, py: Python<'py>) -> BTreeMap<String, Bound<'py, np::PyArray1<f64>>> {
+            mf::measure(self.inner.view())
+                .iter()
+                .map(|(&et, arr)| (etype_to_str(et), np::PyArray1::from_array(py, arr)))
+                .collect()
+        }
     }
 
     impl Display for PyUMesh {
