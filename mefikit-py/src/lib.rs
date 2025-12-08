@@ -6,8 +6,11 @@ use pyo3::prelude::*;
 #[pymodule]
 #[pyo3(name = "mefikit")]
 mod mefikitpy {
-    use pyo3::prelude::*;
-    use std::fmt::{Display, Formatter};
+    use pyo3::{prelude::*, types::PyTuple};
+    use std::{
+        collections::BTreeMap,
+        fmt::{Display, Formatter},
+    };
 
     use mefikit::prelude as mf;
 
@@ -19,22 +22,100 @@ mod mefikitpy {
     #[pyclass(str)]
     #[pyo3(name = "UMesh")]
     #[derive(PartialEq)]
-    struct PyUMesh {
+    pub struct PyUMesh {
         inner: mf::UMesh,
+    }
+
+    fn etype_to_str(et: mf::ElementType) -> String {
+        use mf::ElementType::*;
+        match et {
+            VERTEX => "VERTEX",
+            SEG2 => "SEG2",
+            SEG3 => "SEG3",
+            SEG4 => "SEG4",
+            SPLINE => "SPLINE",
+            TRI3 => "TRI3",
+            TRI6 => "TRI6",
+            TRI7 => "TRI7",
+            QUAD4 => "QUAD4",
+            QUAD8 => "QUAD8",
+            QUAD9 => "QUAD9",
+            PGON => "PGON",
+            TET4 => "TET4",
+            TET10 => "TET10",
+            HEX8 => "HEX8",
+            HEX21 => "HEX21",
+            PHED => "PHED",
+        }
+        .to_string()
+    }
+
+    fn str_to_etype(et: &str) -> mf::ElementType {
+        use mf::ElementType::*;
+        match et {
+            "VERTEX" => VERTEX,
+            "SEG2" => SEG2,
+            "SEG3" => SEG3,
+            "SEG4" => SEG4,
+            "TRI3" => TRI3,
+            "TRI6" => TRI6,
+            "TRI7" => TRI7,
+            "QUAD4" => QUAD4,
+            "QUAD8" => QUAD8,
+            "QUAD9" => QUAD9,
+            "TET4" => TET4,
+            "TET10" => TET10,
+            "HEX8" => HEX8,
+            "HEX21" => HEX21,
+            _ => panic!("Unsupported element type: {}", et),
+        }
+    }
+
+    #[derive(IntoPyObject)]
+    enum PyConnectivity<'py> {
+        Regular(Bound<'py, np::PyArray2<usize>>),
+        Poly(
+            Bound<'py, np::PyArray1<usize>>,
+            Bound<'py, np::PyArray1<usize>>,
+        ),
     }
 
     #[pymethods]
     impl PyUMesh {
         #[new]
         fn new(coords: np::PyReadonlyArray2<'_, f64>) -> Self {
-            PyUMesh {
-                inner: mf::UMesh::new(coords.as_array().to_shared()),
-            }
+            mf::UMesh::new(coords.as_array().to_shared()).into()
         }
 
         /// Returns a copy owned by python of the array coordinates
         fn coords<'py>(&self, py: Python<'py>) -> Bound<'py, np::PyArray2<f64>> {
             np::PyArray2::from_array(py, &self.inner.coords())
+        }
+
+        fn block_types(&self) -> Vec<String> {
+            self.inner
+                .blocks()
+                .map(|(&et, _)| etype_to_str(et))
+                .collect()
+        }
+
+        fn blocks<'py>(&self, py: Python<'py>) -> BTreeMap<String, PyConnectivity<'py>> {
+            self.inner
+                .blocks()
+                .map(|(&et, block)| {
+                    let et = etype_to_str(et);
+                    let conn = match &block.connectivity {
+                        mf::Connectivity::Regular(c) => {
+                            PyConnectivity::Regular(np::PyArray2::from_array(py, c))
+                        }
+                        mf::Connectivity::Poly { data, offsets } => PyConnectivity::Poly(
+                            np::PyArray1::from_array(py, data),
+                            np::PyArray1::from_array(py, offsets),
+                        ),
+                    };
+                    (et, conn)
+                })
+                .collect()
         }
 
         fn to_json(&self) -> String {
@@ -47,30 +128,9 @@ mod mefikitpy {
 
         /// Add a regular block of elements to the mesh.
         fn add_regular_block(&mut self, et: &str, block: np::PyReadonlyArray2<'_, usize>) {
-            let et = match et {
-                "VERTEX" => mf::ElementType::VERTEX,
-                "TET4" => mf::ElementType::TET4,
-                "QUAD4" => mf::ElementType::QUAD4,
-                "TRI3" => mf::ElementType::TRI3,
-                "HEX8" => mf::ElementType::HEX8,
-                _ => panic!("Unsupported element type: {}", et),
-            };
             self.inner
-                .add_regular_block(et, block.as_array().to_shared());
+                .add_regular_block(str_to_etype(et), block.as_array().to_shared());
         }
-
-        // fn get_regular_connectivity(&self, et: &str) -> Py<PyReadwriteArray2<'_, usize>> {
-        //     let et = match { et } {
-        //         "VERTEX" => mf::ElementType::VERTEX,
-        //         "TET4" => mf::ElementType::TET4,
-        //         "QUAD4" => mf::ElementType::QUAD4,
-        //         "TRI3" => mf::ElementType::TRI3,
-        //         "HEX8" => mf::ElementType::HEX8,
-        //         _ => panic!("Unsupported element type: {}", et),
-        //     };
-        //     let conn = self.inner.element_blocks.get(&et).unwrap().connectivity;
-        //     PyReadwriteArray2::from_array(py, &conn).into()
-        // }
 
         #[staticmethod]
         fn read(path: &str) -> Self {
@@ -82,6 +142,25 @@ mod mefikitpy {
             let path = Path::new(path);
             let mesh = self.inner.view();
             let _ = mf::write(path, mesh);
+        }
+
+        #[pyo3(signature = (select_dim=None, codim=None))]
+        fn submesh(&self, select_dim: Option<usize>, codim: Option<usize>) -> Self {
+            let with_dim = match select_dim {
+                Some(0) => Some(mf::Dimension::D0),
+                Some(1) => Some(mf::Dimension::D1),
+                Some(2) => Some(mf::Dimension::D2),
+                Some(3) => Some(mf::Dimension::D3),
+                _ => None,
+            };
+            let codim = match codim {
+                Some(0) => Some(mf::Dimension::D0),
+                Some(1) => Some(mf::Dimension::D1),
+                Some(2) => Some(mf::Dimension::D2),
+                Some(3) => Some(mf::Dimension::D3),
+                _ => None,
+            };
+            mf::compute_submesh(&self.inner, with_dim, codim).into()
         }
     }
 
@@ -101,5 +180,15 @@ mod mefikitpy {
         fn from(pyumesh: PyUMesh) -> Self {
             pyumesh.inner
         }
+    }
+
+    #[pyfunction]
+    #[pyo3(signature = (*args))]
+    pub fn build_cmesh(py: Python, args: &Bound<'_, PyTuple>) -> PyResult<PyUMesh> {
+        let mut builder = mf::RegularUMeshBuilder::new();
+        for arg in args {
+            builder = builder.add_axis(arg.unbind().extract(py)?)
+        }
+        Ok(builder.build().into())
     }
 }

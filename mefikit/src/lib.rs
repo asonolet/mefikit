@@ -244,8 +244,8 @@ pub mod prelude {
     pub use crate::geometry::ElementGeo;
     pub use crate::io::{read, write};
     pub use crate::mesh::{
-        Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut, ElementType,
-        Regularity, UMesh, UMeshBase, UMeshView,
+        Connectivity, Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut,
+        ElementType, Regularity, UMesh, UMeshBase, UMeshView,
     };
     pub use crate::topology::ElementTopo;
 }
