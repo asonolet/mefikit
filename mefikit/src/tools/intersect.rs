@@ -1,8 +1,8 @@
-use crate::algorithms::compute_neighbours;
 use crate::geometry::ElementGeo;
 use crate::mesh::Dimension::*;
 use crate::mesh::UMesh;
 use crate::mesh::{Element, ElementId, ElementLike, ElementType};
+use crate::tools::compute_neighbours;
 
 use std::collections::HashMap;
 

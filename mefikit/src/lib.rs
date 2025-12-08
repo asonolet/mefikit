@@ -1,8 +1,3 @@
-/// This module groups all algorithms operating on one or more meshes.
-///
-/// Most of the algorithms take a &UMesh when using optimizations (sharing coordinates) or a
-/// UMeshView when not needed and produce a new owned UMesh.
-pub mod algorithms;
 /// This module defines mesh builders, ie creational methods which does not modify or extend an
 /// existing mesh.
 pub mod builders;
@@ -233,13 +228,17 @@ mod io;
 pub mod mesh;
 #[cfg(test)]
 pub mod mesh_examples;
+/// This module groups all tools/algorithms operating on one or more meshes.
+///
+/// Most of the algorithms take a &UMesh when using optimizations (sharing coordinates) or a
+/// UMeshView when not needed and produce a new owned UMesh.
+pub mod tools;
 /// This module defines topological operations on elements.
 ///
 /// The operations are provided through the `ElementTopo` trait.
 pub mod topology;
 
 pub mod prelude {
-    pub use crate::algorithms::*;
     pub use crate::builders::RegularUMeshBuilder;
     pub use crate::geometry::ElementGeo;
     pub use crate::io::{read, write};
@@ -247,5 +246,6 @@ pub mod prelude {
         Connectivity, Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut,
         ElementType, Regularity, UMesh, UMeshBase, UMeshView,
     };
+    pub use crate::tools::*;
     pub use crate::topology::ElementTopo;
 }
