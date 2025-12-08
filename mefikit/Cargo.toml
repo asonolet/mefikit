@@ -43,6 +43,6 @@ harness = false
 
 [dev-dependencies]
 approx = "0.5.1"
-criterion = "0.7.0"
+criterion = "0.8.1"
 gungraun = "0.17.0"
 todo = "0.3.0"
