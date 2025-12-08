@@ -7,12 +7,17 @@ name = "mefikit"
 version = "0.1.0"
 description = "Python bindings for the mefikit Rust library"
 requires-python = ">=3.9"
-authors = [
-  { name = "Aymeric SONOLET", email = "aymeric.sonolet@cea.fr" }
-]
+authors = [{ name = "Aymeric SONOLET", email = "aymeric.sonolet@cea.fr" }]
 dependencies = ["numpy"]
 
-[dependency-groups]
-dev = [
-    "pytest>=8.4.2",
+[project.optional-dependencies]
+io = [
+    "meshio[all]>=5.3.5",
 ]
+
+[tool.maturin]
+python-source = "python"
+module-name = "mefikit.mefikit"
+
+[dependency-groups]
+dev = ["pytest>=8.4.2"]
