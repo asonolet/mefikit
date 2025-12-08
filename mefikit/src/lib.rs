@@ -1,6 +1,3 @@
-/// This module defines mesh builders, ie creational methods which does not modify or extend an
-/// existing mesh.
-pub mod builders;
 /// This module defines geometrical operations on elements.
 ///
 /// The operations are provided through the `ElementGeo` trait.
@@ -239,7 +236,6 @@ pub mod tools;
 pub mod topology;
 
 pub mod prelude {
-    pub use crate::builders::RegularUMeshBuilder;
     pub use crate::geometry::ElementGeo;
     pub use crate::io::{read, write};
     pub use crate::mesh::{

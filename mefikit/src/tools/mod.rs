@@ -1,3 +1,4 @@
+pub mod grid;
 /// Module for intersecting meshes.
 ///
 /// In this context, intersections operations can be separated in the following cases:
@@ -31,6 +32,7 @@ pub mod neighbours;
 pub mod selector;
 pub mod snap;
 
+pub use grid::*;
 pub use intersect::*;
 pub use measure::*;
 pub use neighbours::*;
