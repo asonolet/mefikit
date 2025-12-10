@@ -10,3 +10,4 @@ perf.data*
 flamegraph.svg
 **/__pycache__
 mefikit-py/python/mefikit/mefikit.*.so
+mefikit-py/venv
