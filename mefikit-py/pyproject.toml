@@ -11,17 +11,11 @@ authors = [{ name = "Aymeric SONOLET", email = "aymeric.sonolet@cea.fr" }]
 dependencies = ["numpy"]
 
 [project.optional-dependencies]
-io = [
-    "meshio[all]>=5.3.5",
-    "medcoupling",
-]
+io = ["meshio[all]>=5.3.5", "medcoupling", "pyvista[all]>=0.46.4"]
 
 [tool.maturin]
 python-source = "python"
 module-name = "mefikit.mefikit"
 
 [dependency-groups]
-dev = [
-    "pytest>=8.4.2",
-    "pyvista[all]>=0.46.4",
-]
+dev = ["pytest>=8.4.2"]

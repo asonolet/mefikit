@@ -1,4 +1,5 @@
 from .mefikit import *
+from . import io
 
 __doc__ = mefikit.__doc__
 if hasattr(mefikit, "__all__"):
