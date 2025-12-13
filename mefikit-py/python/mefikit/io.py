@@ -146,7 +146,7 @@ def to_pyvista(umesh: UMesh):
 
     mf_types_to_pv = {
         "VERTEX": pv.CellType.VERTEX,
-        "SEG2": pv.CellType.WEDGE,
+        "SEG2": pv.CellType.LINE,
         "SEG3": pv.CellType.QUADRATIC_EDGE,
         "TRI3": pv.CellType.TRIANGLE,
         "TRI6": pv.CellType.QUADRATIC_TRIANGLE,
