@@ -17,3 +17,6 @@ dev = ["pytest>=8.4.2", "jupyterlab"]
 [tool.maturin]
 python-source = "python"
 module-name = "mefikit.mefikit"
+
+[tool.ruff.lint]
+preview = true
