@@ -1,0 +1,5 @@
+[book]
+authors = ["SONOLET Aymeric"]
+language = "en"
+src = "src"
+title = "MeFiKit Book"
