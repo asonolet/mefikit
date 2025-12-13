@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 /// import the module.
 #[pymodule]
 #[pyo3(name = "mefikit")]
-mod mefikitpy {
+mod mefipy {
     use pyo3::{prelude::*, types::PyTuple};
     use std::{
         collections::BTreeMap,
