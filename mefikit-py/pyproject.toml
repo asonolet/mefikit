@@ -21,4 +21,7 @@ python-source = "python"
 module-name = "mefikit.mefikit"
 
 [dependency-groups]
-dev = ["pytest>=8.4.2"]
+dev = [
+    "pytest>=8.4.2",
+    "pyvista[all]>=0.46.4",
+]
