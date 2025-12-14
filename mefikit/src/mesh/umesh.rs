@@ -306,7 +306,7 @@ impl UMesh {
         connectivity: &[usize],
         family: Option<usize>,
         fields: Option<BTreeMap<String, ArrayViewD<f64>>>,
-    ) {
+    ) -> ElementId {
         match element_type.regularity() {
             Regularity::Regular => {
                 if connectivity.len() != element_type.num_nodes().unwrap() {
@@ -332,11 +332,12 @@ impl UMesh {
                 });
             }
         }
-
+        let new_element_id = self.element_blocks.get(&element_type).unwrap().len();
         self.element_blocks
             .get_mut(&element_type)
             .unwrap() // This unwrap is safe because we just inserted the element type
             .add_element(ArrayView1::from(connectivity), family, fields);
+        ElementId::new(element_type, new_element_id)
     }
 
     pub fn remove_elements(&mut self, _ids: &ElementIds) {

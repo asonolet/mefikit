@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::{SmallVec, smallvec};
 use std::collections::{HashMap, HashSet};
 
-use crate::mesh::{Dimension, ElementId, ElementLike, ElementType, UMesh};
+use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, ElementType, UMesh};
 use crate::topology::ElementTopo;
 use crate::topology::SortedVecKey;
 
@@ -22,19 +22,19 @@ use crate::topology::SortedVecKey;
 #[cfg(feature = "rayon")]
 pub fn par_compute_neighbours(
     mesh: &UMesh,
-    dim: Option<Dimension>,
-    codim: Option<Dimension>,
+    src_dim: Option<Dimension>,
+    target_dim: Option<Dimension>,
 ) -> (
     UMesh,
     UnGraphMap<ElementId, ElementId>, // element to element with subelem as edges
 ) {
-    let codim = match codim {
-        Some(c) => c,
-        None => Dimension::D1,
-    };
-    let dim = match dim {
+    let src_dim = match src_dim {
         Some(c) => c,
         None => mesh.topological_dimension().unwrap(),
+    };
+    let codim = match target_dim {
+        Some(t) => src_dim - t,
+        None => Dimension::D1,
     };
     // let mut subentities_hash: HashMap<SortedVecKey, [ElementId; 2]> =
     //     HashMap::with_capacity(self.coords.shape()[0]); // FaceId, ElemId
@@ -47,7 +47,7 @@ pub fn par_compute_neighbours(
     type SubentityMap =
         HashMap<SortedVecKey, (SmallVec<[ElementId; 2]>, SmallVec<[usize; 4]>, ElementType)>;
 
-    mesh.par_elements_of_dim(dim)
+    mesh.par_elements_of_dim(src_dim)
         .fold(HashMap::new, |mut subentities_hash: SubentityMap, elem| {
             for (et, conn) in elem.subentities(Some(codim)) {
                 for co in conn.iter() {
@@ -99,25 +99,25 @@ pub fn par_compute_neighbours(
 /// petgraph lang)
 pub fn compute_neighbours(
     mesh: &UMesh,
-    dim: Option<Dimension>,
-    codim: Option<Dimension>,
+    src_dim: Option<Dimension>,
+    target_dim: Option<Dimension>,
 ) -> (
     UMesh,
     UnGraphMap<ElementId, ElementId>, // element to element with subelem as edges
 ) {
-    let codim = match codim {
-        Some(c) => c,
-        None => Dimension::D1,
-    };
-    let dim = match dim {
+    let src_dim = match src_dim {
         Some(c) => c,
         None => mesh.topological_dimension().unwrap(),
+    };
+    let codim = match target_dim {
+        Some(t) => src_dim - t,
+        None => Dimension::D1,
     };
     let mut subentities_hashmap: FxHashMap<SortedVecKey, (ElementId, SmallVec<[ElementId; 2]>)> =
         HashMap::default();
     let mut neighbors: UMesh = UMesh::new(mesh.coords.to_shared());
 
-    for elem in mesh.elements_of_dim(dim) {
+    for elem in mesh.elements_of_dim(src_dim) {
         for (et, conn) in elem.subentities(Some(codim)) {
             for co in conn.iter() {
                 let key = SortedVecKey::new(co.into());
@@ -155,26 +155,30 @@ pub fn compute_neighbours(
 
 /// This method is used to compute a subentity mesh.
 ///
-/// By default, the mesh computed as a codimension of 1 with the entry mesh. Meaning that there
+/// By default, the mesh computed has a codimension of 1 with the entry mesh. Meaning that there
 /// is a difference of 1 in their dimensions. Hence volumes gives faces mesh, faces gives edges
 /// mesh and edges mesh gives vertices.  If the codim asked for is too high, the function will
 /// panick.  For performance reason, two subentities are considered the same if they have the
 /// same nodes, regardless of their order.
 /// The output graph is a element to element graph (from input mesh), using subentities as edges (weight in
 /// petgraph lang)
-pub fn compute_submesh(mesh: &UMesh, dim: Option<Dimension>, codim: Option<Dimension>) -> UMesh {
-    let codim = match codim {
-        Some(c) => c,
-        None => Dimension::D1,
-    };
-    let dim = match dim {
+pub fn compute_submesh(
+    mesh: &UMesh,
+    src_dim: Option<Dimension>,
+    target_dim: Option<Dimension>,
+) -> UMesh {
+    let src_dim = match src_dim {
         Some(c) => c,
         None => mesh.topological_dimension().unwrap(),
+    };
+    let codim = match target_dim {
+        Some(t) => src_dim - t,
+        None => Dimension::D1,
     };
     let mut subentities_hash: FxHashSet<SortedVecKey> = HashSet::default(); // Face
     let mut neighbors: UMesh = UMesh::new(mesh.coords.to_shared());
 
-    for elem in mesh.elements_of_dim(dim) {
+    for elem in mesh.elements_of_dim(src_dim) {
         for (et, conn) in elem.subentities(Some(codim)) {
             for co in conn.iter() {
                 let key = SortedVecKey::new(co.into());
@@ -188,4 +192,56 @@ pub fn compute_submesh(mesh: &UMesh, dim: Option<Dimension>, codim: Option<Dimen
     }
 
     neighbors
+}
+
+/// This method is used to compute the submesh and the map sub_elem_id to elem ids.
+pub fn compute_sub_to_elem(
+    mesh: &UMesh,
+    src_dim: Option<Dimension>,
+    target_dim: Option<Dimension>,
+) -> (UMesh, FxHashMap<ElementId, Vec<ElementId>>) {
+    let src_dim = match src_dim {
+        Some(c) => c,
+        None => mesh.topological_dimension().unwrap(),
+    };
+    let codim = match target_dim {
+        Some(t) => src_dim - t,
+        None => Dimension::D1,
+    };
+    let mut hash_to_subid: FxHashMap<SortedVecKey, ElementId> = HashMap::default(); // Face
+    let mut sub_to_elem: FxHashMap<ElementId, Vec<ElementId>> = HashMap::default(); // Face
+    let mut neighbors: UMesh = UMesh::new(mesh.coords.to_shared());
+
+    for elem in mesh.elements_of_dim(src_dim) {
+        for (et, conn) in elem.subentities(Some(codim)) {
+            for co in conn.iter() {
+                let key = SortedVecKey::new(co.into());
+                if let Some(subid) = hash_to_subid.get(&key) {
+                    // The subentity is already in the mesh
+                    let elems = sub_to_elem.get_mut(subid).unwrap();
+                    elems.push(elem.id());
+                } else {
+                    // The subentity is new
+                    let subid = neighbors.add_element(et, co, None, None);
+                    hash_to_subid.insert(key, subid);
+                    sub_to_elem.insert(subid, vec![elem.id()]);
+                }
+            }
+        }
+    }
+
+    (neighbors, sub_to_elem)
+}
+
+/// This method is used to compute the boundaries of a mesh.
+pub fn compute_boundaries(mesh: &UMesh, src_dim: Option<Dimension>) -> UMesh {
+    let (submesh, sub_to_elem) = compute_sub_to_elem(mesh, src_dim, None);
+    let boundaries_ids: ElementIds = sub_to_elem
+        .iter()
+        .filter_map(|(&sub, elems)| match elems.len() {
+            1 => Some(sub),
+            _ => None,
+        })
+        .collect();
+    submesh.extract(&boundaries_ids)
 }

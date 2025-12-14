@@ -144,23 +144,17 @@ mod mefipy {
             let _ = mf::write(path, mesh);
         }
 
-        #[pyo3(signature = (select_dim=None, codim=None))]
-        fn submesh(&self, select_dim: Option<usize>, codim: Option<usize>) -> Self {
-            let with_dim = match select_dim {
-                Some(0) => Some(mf::Dimension::D0),
-                Some(1) => Some(mf::Dimension::D1),
-                Some(2) => Some(mf::Dimension::D2),
-                Some(3) => Some(mf::Dimension::D3),
-                _ => None,
-            };
-            let codim = match codim {
-                Some(0) => Some(mf::Dimension::D0),
-                Some(1) => Some(mf::Dimension::D1),
-                Some(2) => Some(mf::Dimension::D2),
-                Some(3) => Some(mf::Dimension::D3),
-                _ => None,
-            };
-            mf::compute_submesh(&self.inner, with_dim, codim).into()
+        #[pyo3(signature = (src_dim=None, target_dim=None))]
+        fn submesh(&self, src_dim: Option<usize>, target_dim: Option<usize>) -> Self {
+            let src_dim = src_dim.map(|i| i.try_into().unwrap());
+            let target_dim = target_dim.map(|i| i.try_into().unwrap());
+            mf::compute_submesh(&self.inner, src_dim, target_dim).into()
+        }
+
+        #[pyo3(signature = (src_dim=None))]
+        fn boundaries(&self, src_dim: Option<usize>) -> Self {
+            let src_dim = src_dim.map(|i| i.try_into().unwrap());
+            mf::compute_boundaries(&self.inner, src_dim).into()
         }
 
         fn measure<'py>(&self, py: Python<'py>) -> BTreeMap<String, Bound<'py, np::PyArray1<f64>>> {
