@@ -3,10 +3,10 @@
 ![Mefikit logo](./mefibook/src/logo/dessin_rouge_full.png)
 
 **MeFiKit** (_Meshes and Fields Kit_) is a modern, high-performance library for
-manipulating unstructured meshes and associated fields. It is designed with a
-minimal, clear, and efficient interface, focusing on flexibility, correctness,
-and integration in multi-physics simulations and mesh-based data processing
-pipelines.
+manipulating unstructured meshes and associated fields and groups. It is
+designed with a minimal, clear, and efficient interface, focusing on
+flexibility, correctness, and integration in multi-physics simulations and
+mesh-based data processing pipelines.
 
 **MeFiKit** is in a very early development phase. You might want to check the [ROADMAP](./ROADMAP.md).
 
@@ -61,36 +61,33 @@ the [MeFiBook!](./mefibook/src/SUMMARY.md)
 
 ### 🧠 Topological Toolbox (rust only)
 
-- Utilities for topological operations on elements:
-  - **Descending elements** (edges/faces of volumes, etc.)
-  - **Equivalence classes** of elements
-  - **Simplexization**
+- **Descending elements** (edges/faces of volumes, etc.)
+- **Equivalence classes** of elements
+- **Simplexization**
+- ...
 
 ### 📐 Geometric Toolbox (rust only)
 
-- Geometric computation tools:
-  - Bounding box trees
-  - Element intersections
-  - Normal and orientation computation
-  - Barycenter and volume evaluation
+- Bounding box trees
+- Element intersections
+- Normal and orientation computation
+- Barycentre and volume evaluation
+- ...
 
 ### 🔄 Mesh Ownership, Views, and Shared Coordinates
 
-- `MeFiKit` distinguishes between mesh ownership and views for flexibility and
-  performance:
-  - `UMesh`: fully owns its data (coordinates, connectivity, fields,
-    etc.), suitable for storage, transformation, and I/O. Useful to share
-    arrays using copy-on-write. Maximum performance when staying in rust.
-  - `UMeshView<'a>`: read-only view into external or borrowed mesh
-    data; ideal for zero-copy FFI.
+- `UMesh`: fully owns its data (coordinates, connectivity, fields,
+  etc.), suitable for storage, transformation, and I/O. Useful to share
+  arrays using copy-on-write. Maximum performance when staying in rust.
+- `UMeshView<'a>`: read-only view into external or borrowed mesh
+  data; ideal for zero-copy FFI.
 
-### 🛠 In-place vs Out-of-place Operations
+### 🛠 Explicit is better than implicit
 
-- Clean mostly functional API:
-  - Out-of-place for heavy op (`UMeshView` or `&UMesh`): `compute_submesh`,
-    `intersect_meshes`, ...
-  - In-place for metadata and non destructive op (`&mut UMesh`):
-    `assign_field`, `merge_close_nodes`, `add_group`, `snap`, ...
+- Out-of-place functional API for heavy op (`UMeshView` or `&UMesh`): `compute_submesh`,
+  `intersect_meshes`, ...
+- In-place for metadata manipulations and non destructive op (`&mut UMesh`):
+  `assign_field`, `merge_close_nodes`, `add_group`, `snap`, ...
 
 ### 🐍 Python Bindings
 
@@ -99,22 +96,22 @@ the [MeFiBook!](./mefibook/src/SUMMARY.md)
     crate for rapid prototyping and integration in data pipelines.
 - `mefikit`:
   - python package exposing `mefipy`.
-  - adding python io conversions through `numpy` to `meshio`, `pyvista`, `medcoupling`.
+  - adding python conversions through `numpy` to `meshio`, `pyvista`, `medcoupling`.
 
 ---
 
-## 💡 Why MeFiKit?
+## 💡 Why `MeFiKit`?
 
 The internal mesh representation is designed for **simplicity and
 performance**, closely matching the file format layout. Unlike other tools
 `MeFiKit` provides:
 
-- 🧼 **Simpler interface**
-- ⚙️ Easier integration and debugging
+- 🧼 **Simple interface**
+- ⚙️ Easy development, integration and debugging
 - 📦 Modern tools and clean build system (Rust/Cargo)
 - 🧪 Pilot usage of rust in mesh tools and HPC scientific software
 
-And keeps:
+And thrive to:
 
 - 🚀 Good **runtime performance**
 - 🧪 Robust testing & benchmarking suite
@@ -126,15 +123,22 @@ And keeps:
 ### 📁 Project Structure
 
 ```text
-src/
-├── mesh/          # Mesh & field data model
-├── tools/         # The home to all high-level functionnalities
-├── io/            # Readers/writers
-├── topology/      # Descending/neighbor tools
-├── geometry/      # Volumes, bboxes, slicing
+mefikit/
+├── mefikit/       # The rust core library. You can use it as a rust dependency
+├── mefipy/        # PyO3 bindings and python package
+├── mefibook/      # The MeFiKit Book
 ```
 
-### Build Instructions
+### Rust core library
+
+```text
+src/
+├── mesh/          # Mesh & field data model, the Element API
+├── tools/         # The home to all high-level functionnalities
+├── io/            # Readers/writers
+├── topology/      # Element topological toolbox used for higher level functionnalities
+├── geometry/      # Element and basic geometry toolbox
+```
 
 To build the library, you need to have Rust installed. You can install Rust
 using [rustup](https://rustup.rs/). Once you have Rust installed, you can
@@ -146,6 +150,62 @@ cargo build --release
 
 This will create a release build of the library in the `target/release`
 directory.
+
+### Python bindings and python package
+
+```text
+mefipy/
+├── src/              # The PyO3 bindings of the mefikit crate
+├── python/mefikit/   # The python mefikit library
+├── tests/            # Python tests
+```
+
+The crate with the python bindings is called `mefipy`. It contains all the PyO3
+stuff. This crate is used as the basis of the python `mefikit` library. The
+same name was used for the python library for the sake of simplicity. If you
+want to specifically design the python lib and not the rust crate, you can call
+it `mefikit-py`.
+
+To build the bindings and the python package please run:
+
+```bash
+uv run maturin develop --uv
+```
+
+You can then run:
+
+```bash
+uv run pytest
+```
+
+`uv` won't build the package, it is only in charge of the dependencies.
+`maturin` is the only one parametrized for this. Please run `maturin` each time
+rust `mefikit` or `mefipy` changed.
+
+### MeFiBook
+
+```text
+mefibook/
+├── src/                # The mdbook root dir
+├── python_examples/    # Python notebooks
+```
+
+The `mefibook` is a `mdbook` project. Please refer to the `mdbook` documentation.
+In two lines, you should:
+
+```bash
+cargo binstall mdbook
+mdbook serve
+```
+
+`Jupyter-notebooks` are executed and converted to markdown using the following:
+
+```bash
+uv run make notebooks
+```
+
+`uv` is used here because the notebooks need `jupyterlab`, `mefikit` and all its
+dependencies to run. As `uv` won't build `mefipy` you need to build it first.
 
 ### Contributing
 
@@ -166,7 +226,7 @@ the following command to automatically format the code:
 
 ### Benchmarks
 
-The `mefkit/benches/` directory contains MeFiKit benchmarks. They use the
+The `mefkit/benches/` directory contains `MeFiKit` benchmarks. They use the
 [Criterion](https://bheisler.github.io/criterion.rs/book/getting_started.html)
 framework.
 
@@ -202,7 +262,7 @@ Note that `filename`, in `Cargo.toml`, is written without the `.rs` extension.
 More information in the [Criterion
 documentation](https://bheisler.github.io/criterion.rs/book/getting_started.html#step-1---add-dependency-to-cargotoml)
 
-You can create **flamegraphs** using to explore performance issues.
+You can create **flamegraphs** to spot performance bottleneck.
 
 ```bash
 cargo flamegraph --profile flame --example name_of_the_example
