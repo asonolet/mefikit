@@ -1,0 +1,9 @@
+[project]
+name = "mefibook"
+version = "0.1.0"
+description = "The MeFiKit Book"
+requires-python = ">=3.12"
+dependencies = ["jupyterlab>=4.5.0", "mefikit[all]"]
+
+[tool.uv.sources]
+mefikit = { path = "../mefipy" }

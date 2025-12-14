@@ -12,7 +12,7 @@ dependencies = ["numpy"]
 
 [project.optional-dependencies]
 io = ["meshio[all]>=5.3.5", "medcoupling", "pyvista[all]>=0.46.4"]
-dev = ["pytest>=8.4.2", "jupyterlab"]
+all = ["mefikit[io]"]
 
 [tool.maturin]
 python-source = "python"
@@ -23,3 +23,7 @@ preview = true
 
 [tool.uv]
 package = false
+default-groups = "all"
+
+[dependency-groups]
+dev = ["pytest>=8.4.2"]
