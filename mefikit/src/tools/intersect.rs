@@ -73,16 +73,16 @@ fn point_on_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2], eps: f64) -> bool {
 fn intersect_1d_elems(
     e1: &Element,
     e2: &Element,
-    next_node_index: usize,
+    _next_node_index: usize,
 ) -> (ArrayVec<usize, 4>, ArrayVec<usize, 4>, Option<[f64; 2]>) {
     match (e1.element_type(), e2.element_type()) {
         (ElementType::SEG2, ElementType::SEG2) => {
-            let seg1_nodes = [e1.connectivity()[0], e1.connectivity()[1]];
-            let seg2_nodes = [e2.connectivity()[0], e2.connectivity()[1]];
-            let p1 = *e1.coord2_ref(0);
-            let p2 = *e1.coord2_ref(1);
-            let p3 = *e2.coord2_ref(0);
-            let p4 = *e2.coord2_ref(1);
+            let _seg1_nodes = [e1.connectivity()[0], e1.connectivity()[1]];
+            let _seg2_nodes = [e2.connectivity()[0], e2.connectivity()[1]];
+            let _p1 = *e1.coord2_ref(0);
+            let _p2 = *e1.coord2_ref(1);
+            let _p3 = *e2.coord2_ref(0);
+            let _p4 = *e2.coord2_ref(1);
             todo!()
             // intersect_seg_seg(seg1_nodes, seg2_nodes, p1, p2, p3, p4, next_node_index)
         }
@@ -117,13 +117,13 @@ pub fn cut_2d_mesh_with_1d_mesh(mesh: &UMesh, tool_mesh: UMesh) -> Result<UMesh,
         for (_, _, &eid) in mgraph.edges(el.id()) {
             // TODO: edge could be SEG3!
             let edge = m1d.get_element(eid);
-            let intersections: &_ = e2int.entry(eid).or_insert_with(|| {
+            let _intersections: &_ = e2int.entry(eid).or_insert_with(|| {
                 let intersections = Vec::new();
                 for seg in &segs_in_elem {
                     let seg_elem = tool_mesh.get_element(seg.data);
                     // Calcul des intersections avec edge
                     // Une intersection est soit un Point, soit un Segment
-                    let intersection_coords = intersect_1d_elems(&edge, &seg_elem, 4);
+                    let _intersection_coords = intersect_1d_elems(&edge, &seg_elem, 4);
                     todo!()
                 }
                 intersections

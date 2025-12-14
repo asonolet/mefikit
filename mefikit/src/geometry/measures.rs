@@ -28,7 +28,7 @@ pub fn dist3(a: &[f64; 3], b: &[f64; 3]) -> f64 {
     squared_dist3(a, b).sqrt()
 }
 
-pub fn surf_tri(a: ArrayView1<f64>, b: ArrayView1<f64>, c: ArrayView1<f64>) -> f64 {
+pub fn surf_tri(_a: ArrayView1<f64>, _b: ArrayView1<f64>, _c: ArrayView1<f64>) -> f64 {
     todo!()
 }
 
@@ -84,15 +84,15 @@ pub fn surf_quad2_signed(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2], d: &[f64; 2])
     0.5 * (u0 * v1 - u1 * v0 + x0 * y1 - x1 * y0)
 }
 
-pub fn surf_quad3(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3], d: &[f64; 3]) -> f64 {
+pub fn surf_quad3(_a: &[f64; 3], _b: &[f64; 3], _c: &[f64; 3], _d: &[f64; 3]) -> f64 {
     // 1/2 || u ^ v ||
     todo!()
 }
 
-pub fn vol_tetra(a: ArrayView1<f64>, b: ArrayView1<f64>, c: ArrayView1<f64>) -> f64 {
+pub fn vol_tetra(_a: ArrayView1<f64>, _b: ArrayView1<f64>, _c: ArrayView1<f64>) -> f64 {
     todo!()
 }
 
-pub fn vol_hexa(a: ArrayView1<f64>, b: ArrayView1<f64>, c: ArrayView1<f64>) -> f64 {
+pub fn vol_hexa(_a: ArrayView1<f64>, _b: ArrayView1<f64>, _c: ArrayView1<f64>) -> f64 {
     todo!()
 }

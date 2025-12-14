@@ -196,7 +196,7 @@ impl ElementBlock {
         new_families.append(Axis(0), array![family].view()).unwrap();
         self.families = new_families.into_shared();
 
-        if let Some(fields) = fields {
+        if let Some(_fields) = fields {
             todo!();
         }
     }
