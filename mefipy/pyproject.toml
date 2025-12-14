@@ -20,3 +20,6 @@ module-name = "mefikit.mefikit"
 
 [tool.ruff.lint]
 preview = true
+
+[tool.uv]
+package = false
