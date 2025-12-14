@@ -4,7 +4,6 @@ use pyo3::prelude::*;
 /// the `lib.name` setting in the `Cargo.toml`, else Python will not be able to
 /// import the module.
 #[pymodule]
-#[pyo3(name = "mefikit")]
 mod mefipy {
     use pyo3::{prelude::*, types::PyTuple};
     use std::{

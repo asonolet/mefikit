@@ -620,7 +620,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mefikit-py"
+name = "mefipy"
 version = "0.1.0"
 dependencies = [
  "mefikit",

@@ -1,12 +1,12 @@
 # ruff: disable[F403,F405,F821,E402]
-from .mefikit import *
+from .mefipy import *
 
-__doc__ = mefikit.__doc__
-if hasattr(mefikit, "__all__"):
-    __all__ = mefikit.__all__
+__doc__ = mefipy.__doc__
+if hasattr(mefipy, "__all__"):
+    __all__ = mefipy.__all__
 else:
     __all__ = ()
-del mefikit
+del mefipy
 
 from . import io as io
 from . import data

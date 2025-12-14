@@ -9,7 +9,7 @@ mefikit-py/.venv
 perf.data*
 flamegraph.svg
 **/__pycache__
-mefipy/python/mefikit/mefikit.*.so
+mefipy/python/mefikit/*.so
 mefipy/venv
 mefipy/.venv
 .ipynb_checkpoints

@@ -1,10 +1,10 @@
 [package]
-name = "mefikit-py"
+name = "mefipy"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "mefikit"
+name = "mefipy"
 crate-type = ["cdylib"]
 bench = false
 

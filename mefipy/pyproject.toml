@@ -16,7 +16,7 @@ dev = ["pytest>=8.4.2", "jupyterlab"]
 
 [tool.maturin]
 python-source = "python"
-module-name = "mefikit.mefikit"
+module-name = "mefikit.mefipy"
 
 [tool.ruff.lint]
 preview = true
