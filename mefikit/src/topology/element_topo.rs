@@ -16,43 +16,41 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         let co = self.connectivity();
         let mut res = Vec::new();
         match self.element_type() {
-            SEG2 | SEG3 | SEG4 => {
-                // 1D elements have edges as subentities
-                if codim == Dimension::D1 {
+            SEG2 | SEG3 | SEG4 => match codim {
+                Dimension::D1 => {
                     let conn = arr2(&[[co[0]], [co[1]]]);
                     res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
-                    res
-                } else {
-                    todo!()
                 }
-            }
-            TRI3 => {
-                // 2D elements have edges as subentities
-                if codim == Dimension::D1 {
+                _ => panic!("It is not possible to ask for codim different from D1 on SEG"),
+            },
+            TRI3 => match codim {
+                Dimension::D1 => {
                     let conn = arr2(&[[co[0], co[1]], [co[1], co[2]], [co[2], co[0]]]);
                     res.push((SEG2, Connectivity::new_regular(conn.to_shared())));
-                    res
-                } else {
-                    todo!()
                 }
-            }
-            TRI6 | TRI7 => {
-                // 2D Quad elements have edges3 as subentities
-                if codim == Dimension::D1 {
+                Dimension::D2 => {
+                    let conn = arr2(&[[co[0]], [co[1]], [co[2]]]);
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => panic!("It is not possible to ask for codim diff from D1 and D2 on TRI3"),
+            },
+            TRI6 | TRI7 => match codim {
+                Dimension::D1 => {
                     let conn = arr2(&[
                         [co[0], co[1], co[3]],
                         [co[1], co[2], co[4]],
                         [co[2], co[0], co[5]],
                     ]);
                     res.push((SEG3, Connectivity::new_regular(conn.to_shared())));
-                    res
-                } else {
-                    todo!()
                 }
-            }
-            QUAD4 => {
-                // 2D elements have edges as subentities
-                if codim == Dimension::D1 {
+                Dimension::D2 => {
+                    let conn = arr2(&[[co[0]], [co[1]], [co[2]]]);
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => panic!("It is not possible to ask for codim diff from D1 and D2 on TRI3"),
+            },
+            QUAD4 => match codim {
+                Dimension::D1 => {
                     let conn = arr2(&[
                         [co[0], co[1]],
                         [co[1], co[2]],
@@ -60,14 +58,15 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                         [co[3], co[0]],
                     ]);
                     res.push((SEG2, Connectivity::new_regular(conn.to_shared())));
-                    res
-                } else {
-                    todo!()
                 }
-            }
-            TET4 => {
-                // 3D elements have faces as subentities
-                if codim == Dimension::D1 {
+                Dimension::D2 => {
+                    let conn = arr2(&[[co[0]], [co[1]], [co[2]], [co[3]]]);
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => panic!("It is not possible to ask for codim diff from D1 and D2 on QUAD"),
+            },
+            TET4 => match codim {
+                Dimension::D1 => {
                     let conn = arr2(&[
                         [co[0], co[1], co[2]],
                         [co[1], co[2], co[3]],
@@ -75,15 +74,28 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                         [co[3], co[0], co[1]],
                     ]);
                     res.push((TRI3, Connectivity::new_regular(conn.to_shared())));
-                    res
-                } else if codim == Dimension::D2 {
-                    todo!()
-                } else {
-                    todo!()
                 }
-            }
-            HEX8 => {
-                if codim == Dimension::D1 {
+                Dimension::D2 => {
+                    let conn = arr2(&[
+                        [co[0], co[1]],
+                        [co[0], co[2]],
+                        [co[0], co[3]],
+                        [co[1], co[2]],
+                        [co[1], co[3]],
+                        [co[2], co[3]],
+                    ]);
+                    res.push((SEG2, Connectivity::new_regular(conn.to_shared())));
+                }
+                Dimension::D3 => {
+                    let conn = arr2(&[[co[0]], [co[1]], [co[2]], [co[3]]]);
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => {
+                    panic!("It is not possible to ask for codim diff from D1, D2 or D3 on TET")
+                }
+            },
+            HEX8 => match codim {
+                Dimension::D1 => {
                     let conn = arr2(&[
                         [co[0], co[1], co[2], co[3]],
                         [co[0], co[3], co[7], co[4]],
@@ -93,31 +105,57 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                         [co[4], co[7], co[6], co[5]],
                     ]);
                     res.push((QUAD4, Connectivity::new_regular(conn.to_shared())));
-                    res
-                } else if codim == Dimension::D2 {
-                    todo!()
-                } else {
-                    todo!()
                 }
-            }
-            PGON => {
-                if codim == Dimension::D1 {
+                Dimension::D2 => {
+                    let conn = arr2(&[
+                        [co[0], co[1]],
+                        [co[0], co[3]],
+                        [co[0], co[4]],
+                        [co[1], co[2]],
+                        [co[1], co[5]],
+                        [co[2], co[3]],
+                        [co[2], co[6]],
+                        [co[3], co[7]],
+                        [co[4], co[5]],
+                        [co[4], co[7]],
+                        [co[5], co[6]],
+                        [co[6], co[7]],
+                    ]);
+                    res.push((SEG2, Connectivity::new_regular(conn.to_shared())));
+                }
+                Dimension::D3 => {
+                    let conn = arr2(&[
+                        [co[0]],
+                        [co[1]],
+                        [co[2]],
+                        [co[3]],
+                        [co[4]],
+                        [co[5]],
+                        [co[6]],
+                        [co[7]],
+                    ]);
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => {
+                    panic!("It is not possible to ask for codim diff from D1, D2 or D3 on HEX")
+                }
+            },
+            PGON => match codim {
+                Dimension::D1 => {
                     let mut conn: Vec<_> = co.windows(2).flatten().cloned().collect();
                     conn.push(co[co.len() - 1]);
                     conn.push(co[0]);
                     let conn = Array2::from_shape_vec([conn.len() / 2, 2], conn).unwrap();
                     res.push((SEG2, Connectivity::new_regular(conn.to_shared())));
-                    res
-                } else if codim == Dimension::D2 {
+                }
+                Dimension::D2 => {
                     let conn = Array2::from_shape_vec([co.len(), 1], co.to_vec()).unwrap();
                     res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
-                    res
-                } else {
-                    todo!()
                 }
-            }
-            PHED => {
-                if codim == Dimension::D1 {
+                _ => panic!("It is not possible to ask for codim diff from D1 or D2 on PGON"),
+            },
+            PHED => match codim {
+                Dimension::D1 => {
                     let mut conn = Vec::new();
                     let mut offsets = Vec::new();
                     let mut offset = 0;
@@ -133,13 +171,14 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                         PGON,
                         Connectivity::new_poly(conn.to_shared(), offsets.to_shared()),
                     ));
-                    res
-                } else {
+                }
+                _ => {
                     todo!()
                 }
-            }
+            },
             _ => todo!(), // For other types, return empty vector
-        }
+        };
+        res
     }
 
     fn to_simplexes(&self) -> Vec<(ElementType, Vec<usize>)> {

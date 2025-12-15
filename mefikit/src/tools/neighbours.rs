@@ -234,8 +234,12 @@ pub fn compute_sub_to_elem(
 }
 
 /// This method is used to compute the boundaries of a mesh.
-pub fn compute_boundaries(mesh: &UMesh, src_dim: Option<Dimension>) -> UMesh {
-    let (submesh, sub_to_elem) = compute_sub_to_elem(mesh, src_dim, None);
+pub fn compute_boundaries(
+    mesh: &UMesh,
+    src_dim: Option<Dimension>,
+    target_dim: Option<Dimension>,
+) -> UMesh {
+    let (submesh, sub_to_elem) = compute_sub_to_elem(mesh, src_dim, target_dim);
     let boundaries_ids: ElementIds = sub_to_elem
         .iter()
         .filter_map(|(&sub, elems)| match elems.len() {
