@@ -2342,6 +2342,11 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+all = [
+    { name = "medcoupling" },
+    { name = "meshio", extra = ["all"] },
+    { name = "pyvista", extra = ["all"] },
+]
 io = [
     { name = "medcoupling" },
     { name = "meshio", extra = ["all"] },
@@ -2357,11 +2362,12 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "medcoupling", marker = "extra == 'io'" },
+    { name = "mefikit", extras = ["io"], marker = "extra == 'all'" },
     { name = "meshio", extras = ["all"], marker = "extra == 'io'", specifier = ">=5.3.5" },
     { name = "numpy" },
     { name = "pyvista", extras = ["all"], marker = "extra == 'io'", specifier = ">=0.46.4" },
 ]
-provides-extras = ["io"]
+provides-extras = ["io", "all"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8.4.2" }]
