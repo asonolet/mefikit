@@ -149,6 +149,16 @@ impl PyUMesh {
         mf::compute_boundaries(&self.inner, src_dim, target_dim).into()
     }
 
+    #[pyo3(signature = (src_dim=None, link_dim=None))]
+    fn connected_components(&self, src_dim: Option<usize>, link_dim: Option<usize>) -> Vec<Self> {
+        let src_dim = src_dim.map(|i| i.try_into().unwrap());
+        let link_dim = link_dim.map(|i| i.try_into().unwrap());
+        mf::compute_connected_components(&self.inner, src_dim, link_dim)
+            .into_iter()
+            .map(|m| m.into())
+            .collect()
+    }
+
     fn measure<'py>(&self, py: Python<'py>) -> BTreeMap<String, Bound<'py, np::PyArray1<f64>>> {
         mf::measure(self.inner.view())
             .iter()

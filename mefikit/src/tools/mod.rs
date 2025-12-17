@@ -1,3 +1,4 @@
+pub mod connected_components;
 pub mod grid;
 /// Module for intersecting meshes.
 ///
@@ -32,6 +33,7 @@ pub mod neighbours;
 pub mod selector;
 pub mod snap;
 
+pub use connected_components::*;
 pub use grid::*;
 pub use intersect::*;
 pub use measure::*;

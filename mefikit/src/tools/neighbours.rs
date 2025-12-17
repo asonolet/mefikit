@@ -144,6 +144,9 @@ pub fn compute_neighbours(
     // Node is ElemId, edge is FaceId
     let mut elem_to_elem: UnGraphMap<ElementId, ElementId> =
         UnGraphMap::with_capacity(mesh.num_elements(), mesh.coords.shape()[0]);
+    for elem in mesh.elements_of_dim(src_dim) {
+        elem_to_elem.add_node(elem.id());
+    }
     for (_, (fid, eids)) in subentities_hashmap {
         eids.iter().tuple_combinations().for_each(|(eid_a, eid_b)| {
             elem_to_elem.add_edge(*eid_a, *eid_b, fid);

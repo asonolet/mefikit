@@ -95,3 +95,78 @@ plotter.show()
 
 
 ![png](neighbours_utilities_files/neighbours_utilities_8_0.png)
+
+
+
+# Connected components
+
+
+```python
+x, y = np.meshgrid(np.linspace(0, 1, 5), np.linspace(0., 1., 5))
+coords = np.c_[x.flatten(), y.flatten()]
+conn = np.array([
+    [0, 1, 6, 5],
+    [6, 7, 12, 11],
+], dtype=np.uint)
+mesh = mf.UMesh(coords)
+mesh.add_regular_block("QUAD4", conn)
+```
+
+
+```python
+compos_link_edge = mesh.connected_components(src_dim=2, link_dim=1)
+compos_link_node = mesh.connected_components(src_dim=2, link_dim=0)
+
+print(f"{len(compos_link_edge)=}")
+print(f"{len(compos_link_node)=}")
+```
+
+    len(compos_link_edge)=2
+    len(compos_link_node)=1
+
+
+
+```python
+edges = mesh.submesh()
+
+shape = (3, 2)
+row_weights = [1.5, 0.5, 0.5]
+groups = [
+    (0, np.s_[:]),
+    (1, 0),
+    (2, 0),
+    (np.s_[1:], 1),
+]
+
+plotter = pv.Plotter(shape=shape, groups=groups, row_weights=row_weights)
+plotter.subplot(0, 0)
+plotter.add_text("Original mesh")
+plotter.add_mesh(mesh.to_pyvista())
+plotter.camera_position = "xy"
+
+for i, compo in enumerate(compos_link_edge):
+    plotter.subplot(i+1, 0)
+    plotter.add_text(f"Compo linked by edge: n°{i}")
+    plotter.add_mesh(edges.to_pyvista())
+    plotter.add_mesh(compo.to_pyvista().shrink(0.9), show_edges=True)
+    plotter.camera_position = "xy"
+
+for i, compo in enumerate(compos_link_node):
+    plotter.subplot(i+1, 1)
+    plotter.add_text(f"Compo linked by node: n°{i}")
+    plotter.add_mesh(edges.to_pyvista())
+    plotter.add_mesh(compo.to_pyvista().shrink(0.9), show_edges=True)
+    plotter.camera_position = "xy"
+plotter.show()
+```
+
+
+
+![png](neighbours_utilities_files/neighbours_utilities_12_0.png)
+
+
+
+
+```python
+
+```
