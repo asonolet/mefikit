@@ -2,9 +2,12 @@ use crate::geometry::measures as mes;
 use arrayvec::ArrayVec;
 use std::convert::TryInto as _;
 
+// Adding documentation to these constants could be helpful.
+// Why not f64::EPSILON? 1e-20 is not the epsilon of f64
 const MACHINE_EPSLION: f64 = 1e-20;
-const EPSLION_L: f64 = 1e-12;
+const EPSLION_L: f64 = 1e-12; // why these magic values ? If magic, why not let the user chose them?
 const EPSLION_THETA: f64 = 1e-4;
+// What `NN` means here?
 const EPSILON_NN: f64 = 2.0 * EPSLION_L / EPSLION_THETA;
 const EPSILON_NN2: f64 = EPSILON_NN * EPSILON_NN;
 
