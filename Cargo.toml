@@ -31,6 +31,14 @@ opt-level = 3
 codegen-units = 1
 lto = true
 
+[profile.release-safe]
+inherits = "release"
+debug = true
+debug-assertions = true
+overflow-checks = true
+lto = false
+
+
 [profile.flame]
 inherits = "bench"
 debug = true
