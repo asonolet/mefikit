@@ -11,6 +11,7 @@ const EPSLION_THETA: f64 = 1e-4;
 const EPSILON_NN: f64 = 2.0 * EPSLION_L / EPSLION_THETA;
 const EPSILON_NN2: f64 = EPSILON_NN * EPSILON_NN;
 
+// What about a degenerated intersection?
 #[derive(Debug, PartialEq, Clone)]
 pub enum Intersections2 {
     None,
