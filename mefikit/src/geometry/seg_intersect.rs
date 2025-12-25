@@ -288,6 +288,7 @@ mod tests {
         (seg1_nodes, seg2_nodes, [p1, p2, p3, p4])
     }
 
+    // Candidates for `rstest`
     #[test]
     fn test_classic_intersection() {
         let (p1, p2, p3, p4) = ([0.0, 0.0], [1.0, 1.0], [0.0, 1.0], [1.0, 0.0]);
