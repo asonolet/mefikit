@@ -154,6 +154,8 @@ mod tests {
     use crate::mesh_examples as me;
     use std::path::PathBuf;
 
+    // Splitting creation of `Vtk` object and actual disk write could allow less
+    // invasive tests
     #[test]
     fn test_write_vtk() {
         let path = PathBuf::from("test.vtk");
