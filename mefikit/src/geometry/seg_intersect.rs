@@ -61,6 +61,8 @@ pub fn intersect_seg_seg2(
     let d1 = [p2[0] - p1[0], p2[1] - p1[1]];
     let d2 = [p4[0] - p3[0], p4[1] - p3[1]];
 
+    // use kahan product here ?
+    // use nalgebra ?
     let denom = d1[0] * d2[1] - d1[1] * d2[0];
 
     if denom.abs() < EPSLION_L {
