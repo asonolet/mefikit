@@ -268,6 +268,7 @@ fn insert_intersection_node(param: f64) -> ArrayVec<SegmentPoint, 4> {
     }
 }
 
+// Very good candidate for proptest
 #[cfg(test)]
 mod tests {
     use super::*;
