@@ -199,7 +199,7 @@ mod tests {
         let builder = RegularUMeshBuilder::new().add_axis(vec![0.0, 1.0, 2.0]);
         let mesh = builder.build();
         assert_eq!(mesh.coords().shape(), &[3, 1]);
-        assert!(mesh.get_block(ElementType::SEG2).is_some());
+        assert!(mesh.block(ElementType::SEG2).is_some());
     }
 
     #[test]
@@ -209,9 +209,9 @@ mod tests {
             .add_axis(vec![0.0, 1.0]);
         let mesh = builder.build();
         assert_eq!(mesh.coords().shape(), &[6, 2]);
-        assert!(mesh.get_block(ElementType::QUAD4).is_some());
+        assert!(mesh.block(ElementType::QUAD4).is_some());
         assert_eq!(
-            match &mesh.get_block(ElementType::QUAD4).unwrap().connectivity {
+            match &mesh.block(ElementType::QUAD4).unwrap().connectivity {
                 Connectivity::Regular(conn) => conn.shape(),
                 _ => panic!("Expected regular connectivity"),
             },
@@ -227,9 +227,9 @@ mod tests {
             .add_axis(vec![0.0, 1.0, 2.0]);
         let mesh = builder.build();
         assert_eq!(mesh.coords().shape(), &[18, 3]);
-        assert!(mesh.get_block(ElementType::HEX8).is_some());
+        assert!(mesh.block(ElementType::HEX8).is_some());
         assert_eq!(
-            match &mesh.get_block(ElementType::HEX8).unwrap().connectivity {
+            match &mesh.block(ElementType::HEX8).unwrap().connectivity {
                 Connectivity::Regular(conn) => conn.shape(),
                 _ => panic!("Expected regular connectivity"),
             },

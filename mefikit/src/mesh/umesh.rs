@@ -148,7 +148,7 @@ where
         self.element_blocks.values().map(|block| block.len()).sum()
     }
 
-    pub fn get_element(&self, id: ElementId) -> Element<'_> {
+    pub fn element(&self, id: ElementId) -> Element<'_> {
         let eb = self.element_blocks.get(&id.element_type()).unwrap();
         eb.get(id.index(), self.coords.view())
     }
@@ -201,7 +201,7 @@ where
         self.blocks()
     }
 
-    pub fn get_block(&self, element_type: ElementType) -> Option<&ElementBlockBase<C, F, G>> {
+    pub fn block(&self, element_type: ElementType) -> Option<&ElementBlockBase<C, F, G>> {
         self.element_blocks.get(&element_type)
     }
 
@@ -296,7 +296,7 @@ impl UMesh {
         self.element_blocks.entry(key).or_insert(wrapped);
     }
 
-    pub fn to_owned(self) -> UMesh {
+    pub fn into_owned(self) -> UMesh {
         self
     }
 
@@ -455,7 +455,7 @@ mod tests {
     #[test]
     fn test_umesh_element_retrieval() {
         let mesh = me::make_mesh_2d_multi();
-        let element = mesh.get_element(ElementId::new(ElementType::QUAD4, 0));
+        let element = mesh.element(ElementId::new(ElementType::QUAD4, 0));
         assert_eq!(element.element_type, ElementType::QUAD4);
         assert_eq!(element.connectivity, &[0, 1, 3, 2]);
     }

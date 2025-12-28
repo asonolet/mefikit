@@ -78,7 +78,7 @@ pub fn par_compute_neighbours(
         .into_iter()
         .for_each(|(_key, (ids, conn, et))| {
             neighbors.add_element(et, conn.as_slice(), None, None);
-            let subentity_id = neighbors.get_block(et).unwrap().len() - 1;
+            let subentity_id = neighbors.block(et).unwrap().len() - 1;
             let new_id = ElementId::new(et, subentity_id);
             ids.iter().tuple_combinations().for_each(|(eid_a, eid_b)| {
                 elem_to_elem.add_edge(*eid_a, *eid_b, new_id);
@@ -125,7 +125,7 @@ pub fn compute_neighbours(
                 match subentities_hashmap.get_mut(&key) {
                     None => {
                         // The subentity is new
-                        let subentity_id = match neighbors.get_block(et) {
+                        let subentity_id = match neighbors.block(et) {
                             Some(block) => block.len(),
                             None => 0,
                         };

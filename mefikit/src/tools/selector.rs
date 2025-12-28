@@ -149,7 +149,7 @@ impl<'a> Selector<'a, FieldBasedSelector> {
             .into_iter()
             .filter(|&e_id| {
                 self.umesh
-                    .get_block(e_id.element_type())
+                    .block(e_id.element_type())
                     .unwrap()
                     .fields
                     .get(self.state.field_name.as_str())
@@ -170,7 +170,7 @@ impl<'a> Selector<'a, FieldBasedSelector> {
             .into_iter()
             .filter(|&e_id| {
                 self.umesh
-                    .get_block(e_id.element_type())
+                    .block(e_id.element_type())
                     .unwrap()
                     .fields
                     .get(self.state.field_name.as_str())
@@ -285,7 +285,7 @@ impl<'a> Selector<'a, NodeBasedSelector> {
         let index = self
             .index
             .into_par_iter()
-            .filter(|&e_id| self.umesh.get_element(e_id).coords().all(&f))
+            .filter(|&e_id| self.umesh.element(e_id).coords().all(&f))
             .collect();
 
         let state = self.state;
@@ -304,7 +304,7 @@ impl<'a> Selector<'a, NodeBasedSelector> {
         let index = self
             .index
             .into_par_iter()
-            .filter(|&e_id| self.umesh.get_element(e_id).coords().any(&f))
+            .filter(|&e_id| self.umesh.element(e_id).coords().any(&f))
             .collect();
 
         let state = self.state;
@@ -408,8 +408,8 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
             .index
             .into_par_iter()
             .filter(|&e_id| match self.umesh.space_dimension() {
-                2 => f(self.umesh.get_element(e_id).centroid2().as_slice()),
-                3 => f(self.umesh.get_element(e_id).centroid3().as_slice()),
+                2 => f(self.umesh.element(e_id).centroid2().as_slice()),
+                3 => f(self.umesh.element(e_id).centroid3().as_slice()),
                 _ => todo!(),
             })
             .collect();

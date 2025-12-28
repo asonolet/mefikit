@@ -116,11 +116,11 @@ pub fn cut_2d_mesh_with_1d_mesh(mesh: &UMesh, tool_mesh: UMesh) -> Result<UMesh,
             .collect();
         for (_, _, &eid) in mgraph.edges(el.id()) {
             // TODO: edge could be SEG3!
-            let edge = m1d.get_element(eid);
+            let edge = m1d.element(eid);
             let _intersections: &_ = e2int.entry(eid).or_insert_with(|| {
                 let intersections = Vec::new();
                 for seg in &segs_in_elem {
-                    let seg_elem = tool_mesh.get_element(seg.data);
+                    let seg_elem = tool_mesh.element(seg.data);
                     // Calcul des intersections avec edge
                     // Une intersection est soit un Point, soit un Segment
                     let _intersection_coords = intersect_1d_elems(&edge, &seg_elem, 4);
