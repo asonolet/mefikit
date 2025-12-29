@@ -1,11 +1,12 @@
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::geometry::ElementGeo;
 use crate::geometry::is_in as geo;
-use crate::mesh::{ElementIds, ElementType, UMesh};
+use crate::mesh::{ElementIds, ElementLike, ElementType, UMesh};
 
 pub struct Selector<'a, State = ElementSelector> {
     umesh: &'a UMesh,
@@ -24,7 +25,7 @@ pub struct NodeBasedSelector {
 }
 
 pub struct GroupBasedSelector {
-    pub families: HashMap<ElementType, BTreeSet<usize>>,
+    pub families: FxHashMap<ElementType, BTreeSet<usize>>,
 }
 
 pub struct CentroidBasedSelector;
@@ -40,7 +41,7 @@ impl<'a, State> Selector<'a, State> {
 
     fn into_groups(self) -> Selector<'a, GroupBasedSelector> {
         let state = GroupBasedSelector {
-            families: HashMap::new(),
+            families: HashMap::default(),
         };
         Selector {
             umesh: self.umesh,
@@ -201,7 +202,7 @@ impl<'a> Selector<'a, FieldBasedSelector> {
 
 impl<'a> Selector<'a, GroupBasedSelector> {
     pub fn inside(self, name: &str) -> Self {
-        let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
+        let grp_fmies: FxHashMap<ElementType, BTreeSet<usize>> = self
             .umesh
             .par_blocks()
             .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
@@ -226,7 +227,7 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     }
 
     pub fn outside(self, name: &str) -> Self {
-        let grp_fmies: HashMap<ElementType, BTreeSet<usize>> = self
+        let grp_fmies: FxHashMap<ElementType, BTreeSet<usize>> = self
             .umesh
             .par_blocks()
             .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
@@ -315,12 +316,12 @@ impl<'a> Selector<'a, NodeBasedSelector> {
             state,
         }
     }
-    
-    pub fn in<F0>(self, f: F0) -> Self
+
+    pub fn in_shape<F0>(self, f: F0) -> Self
     where
         F0: Fn(&[f64]) -> bool + Sync,
     {
-        if &self.state {
+        if self.state.all_nodes {
             self.all_in(f)
         } else {
             self.any_in(f)
@@ -328,7 +329,7 @@ impl<'a> Selector<'a, NodeBasedSelector> {
     }
 
     pub fn in_sphere(self, p0: &[f64; 3], r: f64) -> Self {
-        self.in(|x| {
+        self.in_shape(|x| {
             debug_assert_eq!(x.len(), 3);
             geo::in_sphere(
                 x.try_into().expect("Coords should have 3 components."),
@@ -339,7 +340,7 @@ impl<'a> Selector<'a, NodeBasedSelector> {
     }
 
     pub fn in_bbox(self, p0: &[f64; 3], p1: &[f64; 3]) -> Self {
-        self.in(|x| {
+        self.in_shape(|x| {
             debug_assert_eq!(x.len(), 3);
             geo::in_aa_bbox(
                 x.try_into().expect("Coords should have 3 components."),
@@ -350,7 +351,7 @@ impl<'a> Selector<'a, NodeBasedSelector> {
     }
 
     pub fn in_rectangle(self, p0: &[f64; 2], p1: &[f64; 2]) -> Self {
-        self.in(|x| {
+        self.in_shape(|x| {
             debug_assert_eq!(x.len(), 2);
             geo::in_aa_rectangle(
                 x.try_into().expect("Coords should have 2 components."),
@@ -359,29 +360,59 @@ impl<'a> Selector<'a, NodeBasedSelector> {
             )
         })
     }
-    
+
     fn any_id_in(self, nodes_ids: &[usize]) -> Self {
-        let nodes_ids: FxHashSet<usize> = HashSet::from_slice(nodes_ids);
-        
-        self.index.into_par_iter().filter(|&e_id| {
-            self.umesh.element(e_id).connectivity()
-        })
+        let nodes_ids: FxHashSet<usize> = nodes_ids.iter().cloned().collect();
+
+        let index = self
+            .index
+            .into_par_iter()
+            .filter(|&e_id| {
+                self.umesh
+                    .element(e_id)
+                    .connectivity()
+                    .iter()
+                    .any(|n| nodes_ids.contains(n))
+            })
+            .collect();
+        let state = self.state;
+
+        Selector {
+            umesh: self.umesh,
+            index,
+            state,
+        }
     }
-    
+
     fn all_id_in(self, nodes_ids: &[usize]) -> Self {
-        let nodes_ids: FxHashSet<usize> = HashSet::from_slice(nodes_ids);
-        
-        self.index.into_par_iter().filter(|&e_id| {
-            self.umesh.element(e_id).connectivity()
-        })
+        let nodes_ids: FxHashSet<usize> = nodes_ids.iter().cloned().collect();
+
+        let index = self
+            .index
+            .into_par_iter()
+            .filter(|&e_id| {
+                self.umesh
+                    .element(e_id)
+                    .connectivity()
+                    .iter()
+                    .all(|n| nodes_ids.contains(n))
+            })
+            .collect();
+        let state = self.state;
+
+        Selector {
+            umesh: self.umesh,
+            index,
+            state,
+        }
     }
-    
+
     pub fn id_in(self, nodes_ids: &[usize]) -> Self {
-        let all = self.state;
+        let all = self.state.all_nodes;
         if all {
-            self.with_all(nodes_ids)
+            self.all_id_in(nodes_ids)
         } else {
-            self.with_any(nodes_ids)
+            self.any_id_in(nodes_ids)
         }
     }
 

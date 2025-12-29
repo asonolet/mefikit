@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::{SmallVec, smallvec};
 use std::collections::{HashMap, HashSet};
 
-use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, UMesh};
+use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, ElementType, UMesh};
 use crate::topology::ElementTopo;
 use crate::topology::SortedVecKey;
 
