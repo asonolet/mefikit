@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use petgraph::algo::tarjan_scc;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
-use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet, FxHasher};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 // This algorithm duplicates some nodes in order to break connectivites between some cells.
 use crate::mesh::{Dimension, ElementId, ElementLike, UMesh, UMeshView};
@@ -35,13 +35,15 @@ fn find_equals(mesh_ref: UMeshView, partmesh: UMeshView) -> Vec<Option<ElementId
         .collect()
 }
 
-pub fn crack(mesh: UMesh, cut: UMeshView) -> UMesh {
+pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
     // First extract the vicinity of the cut
     let nodes = cut.used_nodes();
-    let mut near_mesh = Selector::new(&mesh)
+    let index = Selector::new(&mesh)
         .nodes(false)
         .id_in(nodes.as_slice())
-        .select();
+        .index()
+        .clone();
+    let mut near_mesh = mesh.extract(&index);
     let (submesh, f2c) = compute_sub_to_elem(&near_mesh, None, None);
     // Throws if some element in cut is not in submesh
     let cut_ids = find_equals(submesh.view(), cut.view());
@@ -77,10 +79,10 @@ pub fn crack(mesh: UMesh, cut: UMeshView) -> UMesh {
                     }
                 }
             }
-            // TODO: Add the new node to the new coords array
+            let new_coord = mesh.coords().row(n).into_owned();
+            let _ = mesh.append_coord(new_coord.view());
             new_node_id += 1;
         }
     }
-
-    todo!()
+    mesh.replace(&index, &near_mesh)
 }

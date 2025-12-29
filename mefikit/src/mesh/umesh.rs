@@ -362,6 +362,15 @@ impl UMesh {
 
     /// This is the most efficient way because it does not copy coordinates if no reallocation is
     /// needed if coordinates are not shared. When coordinates are shared it is copied either way.
+    pub fn append_coord(&mut self, added_coord: ArrayView1<'_, f64>) -> Result<(), nd::ShapeError> {
+        let mut coords = std::mem::take(&mut self.coords).into_owned();
+        coords.push(Axis(0), added_coord)?;
+        self.coords = coords.into_shared();
+        Ok(())
+    }
+
+    /// This is the most efficient way because it does not copy coordinates if no reallocation is
+    /// needed if coordinates are not shared. When coordinates are shared it is copied either way.
     pub fn append_coords(
         &mut self,
         added_coords: ArrayView2<'_, f64>,
