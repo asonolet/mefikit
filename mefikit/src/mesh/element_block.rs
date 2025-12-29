@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
 use super::connectivity::{Connectivity, ConnectivityBase, ConnectivityView};
-use super::element::{Element, ElementType};
+use super::element::{Element, ElementMut, ElementType};
 
 /// The part of a mesh constituted by one kind of element.
 ///
@@ -199,6 +199,24 @@ impl ElementBlock {
         if let Some(_fields) = fields {
             todo!();
         }
+    }
+
+    pub fn get_mut<'a>(&'a mut self, index: usize, coords: ArrayView2<'a, f64>) -> ElementMut<'a> {
+        let connectivity = self.connectivity.get_mut(index);
+        // let fields = self
+        //     .fields
+        //     .iter()
+        //     .map(|(k, v)| (k.as_str(), v.index_axis(Axis(0), index)))
+        //     .collect();
+        ElementMut::new(
+            index,
+            coords,
+            None,
+            self.families.get_mut(index).unwrap(),
+            &self.groups,
+            connectivity,
+            self.cell_type,
+        )
     }
 }
 

@@ -530,10 +530,10 @@ impl<'a> ElementLike<'a> for Element<'a> {
 pub struct ElementMut<'a> {
     pub index: usize,
     coords: ArrayView2<'a, f64>,
-    pub connectivity: &'a [usize],
+    pub fields: Option<BTreeMap<&'a str, ArrayViewMutD<'a, f64>>>,
     pub family: &'a mut usize,
-    pub fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>>,
     groups: &'a BTreeMap<String, BTreeSet<usize>>, // safely shared across threads
+    pub connectivity: &'a mut [usize],
     pub element_type: ElementType,
     // element_coords_cache: OnceCell<Array2<f64>>,
     element_groups_cache: OnceCell<Vec<String>>,
@@ -552,7 +552,7 @@ impl<'a> ElementLike<'a> for ElementMut<'a> {
 
     #[inline(always)]
     fn coord(&self, i: usize) -> &[f64] {
-        let co = self.connectivity;
+        let co = &self.connectivity;
         self.coords.row(co[i]).to_slice().unwrap()
     }
 
@@ -591,19 +591,19 @@ impl<'a> ElementMut<'a> {
     pub fn new(
         index: usize,
         coords: ArrayView2<'a, f64>,
-        connectivity: &'a [usize],
+        fields: Option<BTreeMap<&'a str, ArrayViewMutD<'a, f64>>>,
         family: &'a mut usize,
-        fields: BTreeMap<&'a str, ArrayViewMutD<'a, f64>>,
         groups: &'a BTreeMap<String, BTreeSet<usize>>,
+        connectivity: &'a mut [usize],
         element_type: ElementType,
     ) -> ElementMut<'a> {
         ElementMut {
             index,
             coords,
-            connectivity,
-            family,
             fields,
+            family,
             groups,
+            connectivity,
             element_type,
             // element_coords_cache: OnceCell::new(),
             element_groups_cache: OnceCell::new(),

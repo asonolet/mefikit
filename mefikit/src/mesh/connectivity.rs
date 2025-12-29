@@ -178,6 +178,21 @@ impl Connectivity {
             }
         }
     }
+
+    pub fn get_mut(&mut self, index: usize) -> &mut [usize] {
+        match self {
+            ConnectivityBase::Regular(conn) => {
+                let start = conn.shape()[1] * index;
+                let end = conn.shape()[1] * (index + 1);
+                &mut conn.as_slice_mut().unwrap()[start..end]
+            }
+            ConnectivityBase::Poly { data, offsets } => {
+                let start = if index == 0 { 0 } else { offsets[index - 1] };
+                let end = offsets[index];
+                &mut data.as_slice_mut().unwrap()[start..end]
+            }
+        }
+    }
 }
 
 impl<C> ConnectivityBase<C>

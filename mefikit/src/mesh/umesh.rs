@@ -1,4 +1,6 @@
-use super::element::{Dimension, Element, ElementId, ElementIds, ElementType, Regularity};
+use super::element::{
+    Dimension, Element, ElementId, ElementIds, ElementMut, ElementType, Regularity,
+};
 
 use derive_where::derive_where;
 use ndarray as nd;
@@ -225,6 +227,20 @@ where
     pub fn replace(&self, _ids: &ElementIds, _replace_mesh: &UMesh) -> UMesh {
         todo!()
     }
+
+    pub fn used_nodes(&self) -> Vec<usize> {
+        let mut used_nodes = FxHashSet::default();
+        for element in self.elements() {
+            for &node in element.connectivity.iter() {
+                if !used_nodes.contains(&node) {
+                    used_nodes.insert(node);
+                }
+            }
+        }
+        let mut used_nodes: Vec<usize> = used_nodes.into_iter().collect();
+        used_nodes.sort_unstable();
+        used_nodes
+    }
 }
 
 impl<'a> UMeshView<'a> {
@@ -394,18 +410,11 @@ impl UMesh {
         extracted
     }
 
-    pub fn used_nodes(&self) -> Vec<usize> {
-        let mut used_nodes = FxHashSet::default();
-        for element in self.elements() {
-            for &node in element.connectivity.iter() {
-                if !used_nodes.contains(&node) {
-                    used_nodes.insert(node);
-                }
-            }
-        }
-        let mut used_nodes: Vec<usize> = used_nodes.into_iter().collect();
-        used_nodes.sort_unstable();
-        used_nodes
+    pub fn element_mut(&mut self, id: ElementId) -> ElementMut<'_> {
+        self.element_blocks
+            .get_mut(&id.element_type())
+            .unwrap()
+            .get_mut(id.index(), self.coords.view())
     }
 }
 
