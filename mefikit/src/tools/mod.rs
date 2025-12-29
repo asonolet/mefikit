@@ -1,4 +1,30 @@
 pub mod connected_components;
+/// Crack along
+///
+/// # Entrée
+///
+/// - soit des couples d'id de cellule, soit un maillage de faces
+/// - soit la consigne est de vérifier que la séparation est possible, soit on continue sans séparer
+///
+/// # Identification des faces/noeuds
+///
+/// - on identifie tous les couples cellule-cellule à séparer (facile, SortedNodes)
+/// - on identifie tous les noeuds appartenant à la frontière
+///
+/// # Parcours des noeuds à la frontière
+///
+/// - on construit le sous maillage qui contient les cellules adjacentes
+/// - on construit le graph c2c de ce maillage
+/// - on coupe les arrêtes qui sont dans la liste des arrêtes à séparer
+/// - on calcule le nombre de compo connexe du petit graphe
+/// - on duplique le noeud autant de fois qu'il y a de compo connexe, on le remplace dans chaque
+///   compo connexe par sa nouvelle valeur
+/// - on créé un vecteur de tuples pour marquer le remplacement
+///
+/// # Elements de dimension inférieure
+///
+/// - pour tous les noeuds dupliqués je récupère les éléments de dimension inférieure
+pub mod crack;
 pub mod grid;
 /// Module for intersecting meshes.
 ///
