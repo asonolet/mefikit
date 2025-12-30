@@ -143,7 +143,7 @@ pub fn compute_neighbours(
     }
     // Node is ElemId, edge is FaceId
     let mut elem_to_elem: UnGraphMap<ElementId, ElementId> =
-        UnGraphMap::with_capacity(mesh.num_elements(), mesh.coords.shape()[0]);
+        UnGraphMap::with_capacity(mesh.num_elements(), mesh.coords().nrows());
     for elem in mesh.elements_of_dim(src_dim) {
         elem_to_elem.add_node(elem.id());
     }
@@ -154,6 +154,59 @@ pub fn compute_neighbours(
     }
 
     (neighbors, elem_to_elem)
+}
+
+/// This method is used to compute the neighbours graph.
+///
+/// By default, the mesh computed as a codimension of 1 with the entry mesh. Meaning that there
+/// is a difference of 1 in their dimensions. Hence volumes gives faces mesh, faces gives edges
+/// mesh and edges mesh gives vertices.  If the codim asked for is too high, the function will
+/// panick.  For performance reason, two subentities are considered the same if they have the
+/// same nodes, regardless of their order.
+/// The output graph is a element to element graph (from input mesh), using subentities as edges (weight in
+/// petgraph lang)
+pub fn compute_neighbours_graph(
+    mesh: &UMesh,
+    src_dim: Option<Dimension>,
+    target_dim: Option<Dimension>,
+) -> UnGraphMap<ElementId, SortedVecKey> {
+    let src_dim = match src_dim {
+        Some(c) => c,
+        None => mesh.topological_dimension().unwrap(),
+    };
+    let codim = match target_dim {
+        Some(t) => src_dim - t,
+        None => Dimension::D1,
+    };
+    let mut subentities_hashmap: FxHashMap<SortedVecKey, SmallVec<[ElementId; 2]>> =
+        HashMap::default();
+
+    for elem in mesh.elements_of_dim(src_dim) {
+        for (_, conn) in elem.subentities(Some(codim)) {
+            for co in conn.iter() {
+                let key = SortedVecKey::new(co.into());
+
+                if let Some(eids) = subentities_hashmap.get_mut(&key) {
+                    eids.push(elem.id());
+                } else {
+                    subentities_hashmap.insert(key, smallvec![elem.id()]);
+                }
+            }
+        }
+    }
+    // Node is ElemId, edge is SortedVecKey
+    let mut elem_to_elem: UnGraphMap<ElementId, SortedVecKey> =
+        UnGraphMap::with_capacity(mesh.num_elements(), mesh.coords().nrows());
+    for elem in mesh.elements_of_dim(src_dim) {
+        elem_to_elem.add_node(elem.id());
+    }
+    for (fkey, eids) in subentities_hashmap {
+        eids.iter().tuple_combinations().for_each(|(eid_a, eid_b)| {
+            elem_to_elem.add_edge(*eid_a, *eid_b, fkey.clone());
+        });
+    }
+
+    elem_to_elem
 }
 
 /// This method is used to compute a subentity mesh.

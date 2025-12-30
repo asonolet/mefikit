@@ -1,6 +1,8 @@
+use itertools::Itertools;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
+use rustc_hash::FxBuildHasher;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -362,26 +364,52 @@ impl<'a> Selector<'a, NodeBasedSelector> {
     }
 
     fn any_id_in(self, nodes_ids: &[usize]) -> Self {
-        let nodes_ids: FxHashSet<usize> = nodes_ids.iter().cloned().collect();
+        let index = if nodes_ids.len() < 50 {
+            self.index
+                .into_iter()
+                .filter(|&e_id| {
+                    nodes_ids
+                        .iter()
+                        .any(|n| self.umesh.element(e_id).connectivity().contains(n))
+                })
+                .collect()
+        } else {
+            let mut nodes_ids: Vec<usize> = nodes_ids.to_vec();
+            nodes_ids.sort_unstable();
 
-        let index = self
-            .index
-            .into_par_iter()
-            .filter(|&e_id| {
-                self.umesh
-                    .element(e_id)
-                    .connectivity()
-                    .iter()
-                    .any(|n| nodes_ids.contains(n))
-            })
-            .collect();
-        let state = self.state;
-
+            self.index
+                .into_iter()
+                .filter(|&e_id| {
+                    self.umesh
+                        .element(e_id)
+                        .connectivity()
+                        .iter()
+                        .any(|n| nodes_ids.binary_search(n).is_ok())
+                })
+                .collect()
+        };
         Selector {
             umesh: self.umesh,
             index,
-            state,
+            state: self.state,
         }
+        // let mut node_to_elem: FxHashMap<usize, ElementIds> =
+        //     FxHashMap::with_capacity_and_hasher(self.umesh.used_nodes().len(), FxBuildHasher);
+        // for e_id in self.index.into_iter() {
+        //     for n in self.umesh.element(e_id).connectivity().iter() {
+        //         if let Some(elem_ids) = node_to_elem.get_mut(n) {
+        //             elem_ids.add(e_id.element_type(), e_id.index());
+        //         } else {
+        //             node_to_elem.insert(*n, std::iter::once(e_id).collect());
+        //         }
+        //     }
+        // }
+        // let index = nodes_ids
+        //     .iter()
+        //     .flat_map(|n| node_to_elem[n].iter())
+        //     .unique()
+        //     .collect();
+        // let nodes_ids: FxHashSet<usize> = nodes_ids.iter().cloned().collect();
     }
 
     fn all_id_in(self, nodes_ids: &[usize]) -> Self {

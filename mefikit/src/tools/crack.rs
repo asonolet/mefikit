@@ -2,8 +2,6 @@ use std::collections::HashMap;
 
 use petgraph::Direction::Outgoing;
 use petgraph::algo::tarjan_scc;
-use petgraph::data::FromElements;
-use petgraph::prelude::UnGraph;
 use petgraph::prelude::UnGraphMap;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -11,8 +9,7 @@ use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 // This algorithm duplicates some nodes in order to break connectivites between some cells.
 use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, UMesh, UMeshView};
-use crate::tools::compute_neighbours;
-use crate::tools::neighbours::compute_sub_to_elem;
+use crate::tools::neighbours::{compute_neighbours_graph, compute_sub_to_elem};
 use crate::tools::selector::Selector;
 use crate::topology::SortedVecKey;
 
@@ -40,20 +37,35 @@ fn find_equals(mesh_ref: UMeshView, partmesh: UMeshView) -> Vec<Option<ElementId
 }
 
 fn build_subgraph(
-    graph: &UnGraphMap<ElementId, ElementId>,
+    graph: &UnGraphMap<ElementId, SortedVecKey>,
     elements: &ElementIds,
-) -> UnGraphMap<ElementId, ElementId> {
+) -> UnGraphMap<ElementId, SortedVecKey> {
     let elements: FxHashSet<ElementId> = elements.iter().collect();
-    let mut subgraph: UnGraphMap<ElementId, ElementId> = UnGraphMap::default();
+    let mut subgraph: UnGraphMap<ElementId, SortedVecKey> = UnGraphMap::default();
     for e in &elements {
         subgraph.add_node(*e);
         for edge in graph.edges_directed(*e, Outgoing) {
             if elements.contains(&edge.1) {
-                subgraph.add_edge(edge.0, edge.1, *edge.2);
+                subgraph.add_edge(edge.0, edge.1, edge.2.clone());
             }
         }
     }
     subgraph
+}
+
+fn compute_node_to_elems(mesh: UMeshView) -> FxHashMap<usize, ElementIds> {
+    let mut node_to_elem: FxHashMap<usize, ElementIds> =
+        FxHashMap::with_capacity_and_hasher(mesh.used_nodes().len(), FxBuildHasher);
+    for e in mesh.elements() {
+        for n in e.connectivity().iter() {
+            if let Some(elem_ids) = node_to_elem.get_mut(n) {
+                elem_ids.add(e.element_type(), e.index());
+            } else {
+                node_to_elem.insert(*n, std::iter::once(e.id()).collect());
+            }
+        }
+    }
+    node_to_elem
 }
 
 pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
@@ -74,31 +86,30 @@ pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
         .map(|f_id| f2c[&f_id].clone().try_into().unwrap())
         .collect();
 
-    let (_, mut near_c2c) = compute_neighbours(&near_mesh, None, None);
+    let mut near_c2c = compute_neighbours_graph(&near_mesh, None, None);
     for edge in &cut_c2c {
         near_c2c.remove_edge(edge[0], edge[1]);
     }
 
     let mut new_node_id = mesh.coords().nrows();
     // I am gessing a capacity here as I cannot know it in advance
-    let mut n2o_nodes: FxHashMap<usize, usize> =
-        HashMap::with_capacity_and_hasher(2 * nodes.len(), FxBuildHasher);
+    // let mut n2o_nodes: FxHashMap<usize, usize> =
+    //     FxHashMap::with_capacity_and_hasher(2 * nodes.len(), FxBuildHasher);
+
+    let node_to_elem: FxHashMap<usize, ElementIds> = compute_node_to_elems(near_mesh.view());
+
     for n in nodes {
-        // 1. Build mesh of cells touching node n
-        let local_index = Selector::new(&near_mesh)
-            .nodes(false)
-            .id_in(&[n])
-            .index()
-            .clone();
-        let local_c2c = build_subgraph(&near_c2c, &local_index);
+        // 1. Build graph of cells touching node n
+        let local_c2c = build_subgraph(&near_c2c, &node_to_elem[&n]);
+        // 2. Find connex components
         let compos = tarjan_scc(&local_c2c);
         // The node is not duplicated
         if compos.len() <= 1 {
             continue;
         }
-        // 2. Duplicate the node if there is more than one connex compo
+        // 3. Duplicate the node if there is more than one connex compo
         for compo in compos[1..].iter() {
-            n2o_nodes.insert(new_node_id, n);
+            // n2o_nodes.insert(new_node_id, n);
             for &eid in compo {
                 let conn = near_mesh.element_mut(eid).connectivity;
                 for c in conn.iter_mut() {
