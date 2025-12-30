@@ -1,13 +1,16 @@
 use std::collections::HashMap;
 
-use itertools::Itertools;
+use petgraph::Direction::Outgoing;
 use petgraph::algo::tarjan_scc;
+use petgraph::data::FromElements;
+use petgraph::prelude::UnGraph;
+use petgraph::prelude::UnGraphMap;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 // This algorithm duplicates some nodes in order to break connectivites between some cells.
-use crate::mesh::{Dimension, ElementId, ElementLike, UMesh, UMeshView};
+use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, UMesh, UMeshView};
 use crate::tools::compute_neighbours;
 use crate::tools::neighbours::compute_sub_to_elem;
 use crate::tools::selector::Selector;
@@ -36,6 +39,23 @@ fn find_equals(mesh_ref: UMeshView, partmesh: UMeshView) -> Vec<Option<ElementId
         .collect()
 }
 
+fn build_subgraph(
+    graph: &UnGraphMap<ElementId, ElementId>,
+    elements: &ElementIds,
+) -> UnGraphMap<ElementId, ElementId> {
+    let elements: FxHashSet<ElementId> = elements.iter().collect();
+    let mut subgraph: UnGraphMap<ElementId, ElementId> = UnGraphMap::default();
+    for e in &elements {
+        subgraph.add_node(*e);
+        for edge in graph.edges_directed(*e, Outgoing) {
+            if elements.contains(&edge.1) {
+                subgraph.add_edge(edge.0, edge.1, *edge.2);
+            }
+        }
+    }
+    subgraph
+}
+
 pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
     // First extract the vicinity of the cut
     let nodes = cut.used_nodes();
@@ -53,6 +73,12 @@ pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
         .map(|x| x.expect("cut elements should be found in mesh submesh."))
         .map(|f_id| f2c[&f_id].clone().try_into().unwrap())
         .collect();
+
+    let (_, mut near_c2c) = compute_neighbours(&near_mesh, None, None);
+    for edge in &cut_c2c {
+        near_c2c.remove_edge(edge[0], edge[1]);
+    }
+
     let mut new_node_id = mesh.coords().nrows();
     // I am gessing a capacity here as I cannot know it in advance
     let mut n2o_nodes: FxHashMap<usize, usize> =
@@ -64,21 +90,17 @@ pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
             .id_in(&[n])
             .index()
             .clone();
-        let mut local_mesh = near_mesh.extract(&local_index);
-        let (_, mut local_c2c) = compute_neighbours(&local_mesh, None, None);
-        for edge in &cut_c2c {
-            local_c2c.remove_edge(edge[0], edge[1]);
-        }
+        let local_c2c = build_subgraph(&near_c2c, &local_index);
         let compos = tarjan_scc(&local_c2c);
         // The node is not duplicated
-        if compos.len() == 1 {
+        if compos.len() <= 1 {
             continue;
         }
         // 2. Duplicate the node if there is more than one connex compo
         for compo in compos[1..].iter() {
             n2o_nodes.insert(new_node_id, n);
             for &eid in compo {
-                let conn = local_mesh.element_mut(eid).connectivity;
+                let conn = near_mesh.element_mut(eid).connectivity;
                 for c in conn.iter_mut() {
                     if *c == n {
                         *c = new_node_id;
@@ -90,7 +112,6 @@ pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
             let _ = mesh.append_coord(new_coord.view());
             new_node_id += 1;
         }
-        near_mesh = near_mesh.replace(&local_index, local_mesh.view());
     }
     mesh.replace(&index, near_mesh.view())
 }
