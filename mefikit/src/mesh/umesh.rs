@@ -403,7 +403,7 @@ impl UMesh {
     /// issued from a Selector. Please use Selector API if possible.
     pub fn extract(&self, ids: &ElementIds) -> UMesh {
         let mut extracted = UMesh::new(self.coords.clone());
-        for (t, block) in ids.iter() {
+        for (t, block) in ids.iter_blocks() {
             if !self.element_blocks.contains_key(t) {
                 continue;
             }

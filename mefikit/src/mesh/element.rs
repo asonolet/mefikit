@@ -298,8 +298,13 @@ impl ElementIds {
             false
         }
     }
-    pub fn iter(&self) -> impl Iterator<Item = (&ElementType, &Vec<usize>)> {
+    pub fn iter_blocks(&self) -> impl Iterator<Item = (&ElementType, &Vec<usize>)> {
         self.0.iter()
+    }
+    pub fn iter(&self) -> impl Iterator<Item = ElementId> {
+        self.0
+            .iter()
+            .flat_map(|(et, indices)| indices.iter().map(|index| ElementId(*et, *index)))
     }
     pub fn into_iter(self) -> impl Iterator<Item = ElementId> {
         self.0
