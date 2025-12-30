@@ -1,3 +1,5 @@
+use crate::mesh::ElementLike;
+
 use super::element::{
     Dimension, Element, ElementId, ElementIds, ElementMut, ElementType, Regularity,
 };
@@ -215,19 +217,6 @@ where
     //     }
     // }
 
-    /// This method is used to replace elements in the current mesh with another mesh, producing a
-    /// new mesh.
-    ///
-    /// Please mind what you are doing, this method wont check for mesh consistency.
-    ///
-    /// The element number is potentially different, in which case we need to remove the elements
-    /// from the current mesh and add the elements from the replace mesh. This creates a new mesh
-    /// because everything needs to be reallocated to be copied either way.
-    /// `ElementIds` are invalid on the new mesh.
-    pub fn replace(&self, _ids: &ElementIds, _replace_mesh: &UMesh) -> UMesh {
-        todo!()
-    }
-
     pub fn used_nodes(&self) -> Vec<usize> {
         let mut used_nodes = FxHashSet::default();
         for element in self.elements() {
@@ -417,6 +406,28 @@ impl UMesh {
             };
         }
         extracted
+    }
+
+    /// This method is used to replace elements in the current mesh with another mesh, producing a
+    /// new mesh. The number of elements in ElementIds must be the number of elements in the
+    /// replace_mesh. With this method new nodes cannot be added into poly elements (all elements
+    /// must keep the same number of nodes).
+    ///
+    /// If you want to change the number of elements or the number of nodes in a mesh, please use
+    /// delete and add.
+    ///
+    /// Please mind what you are doing, this method wont check for mesh consistency.
+    pub fn replace(mut self, ids: &ElementIds, replace_mesh: UMeshView) -> UMesh {
+        for new_elem in replace_mesh.elements() {
+            let old_eid = ElementId::new(
+                new_elem.element_type(),
+                ids.get(&new_elem.element_type()).unwrap()[new_elem.index()],
+            );
+            let element = self.element_mut(old_eid);
+            element.connectivity.copy_from_slice(new_elem.connectivity);
+            *element.family = *new_elem.family;
+        }
+        self
     }
 
     pub fn element_mut(&mut self, id: ElementId) -> ElementMut<'_> {

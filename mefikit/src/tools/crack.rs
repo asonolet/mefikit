@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use petgraph::algo::tarjan_scc;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -52,13 +53,18 @@ pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
         .map(|x| x.expect("cut elements should be found in mesh submesh."))
         .map(|f_id| f2c[&f_id].clone().try_into().unwrap())
         .collect();
-    let mut new_node_id = mesh.coords().len();
+    let mut new_node_id = mesh.coords().nrows();
     // I am gessing a capacity here as I cannot know it in advance
     let mut n2o_nodes: FxHashMap<usize, usize> =
         HashMap::with_capacity_and_hasher(2 * nodes.len(), FxBuildHasher);
     for n in nodes {
         // 1. Build mesh of cells touching node n
-        let local_mesh = Selector::new(&near_mesh).nodes(false).id_in(&[n]).select();
+        let local_index = Selector::new(&near_mesh)
+            .nodes(false)
+            .id_in(&[n])
+            .index()
+            .clone();
+        let mut local_mesh = near_mesh.extract(&local_index);
         let (_, mut local_c2c) = compute_neighbours(&local_mesh, None, None);
         for edge in &cut_c2c {
             local_c2c.remove_edge(edge[0], edge[1]);
@@ -72,10 +78,11 @@ pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
         for compo in compos[1..].iter() {
             n2o_nodes.insert(new_node_id, n);
             for &eid in compo {
-                let conn = near_mesh.element_mut(eid).connectivity;
+                let conn = local_mesh.element_mut(eid).connectivity;
                 for c in conn.iter_mut() {
                     if *c == n {
                         *c = new_node_id;
+                        break;
                     }
                 }
             }
@@ -83,6 +90,7 @@ pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
             let _ = mesh.append_coord(new_coord.view());
             new_node_id += 1;
         }
+        near_mesh = near_mesh.replace(&local_index, local_mesh.view());
     }
-    mesh.replace(&index, &near_mesh)
+    mesh.replace(&index, near_mesh.view())
 }
