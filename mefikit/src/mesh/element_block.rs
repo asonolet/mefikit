@@ -145,7 +145,7 @@ impl ElementBlock {
         connectivity: nd::ArcArray2<usize>,
         families: Option<nd::ArcArray1<usize>>,
     ) -> Self {
-        let conn_len = connectivity.len();
+        let conn_len = connectivity.nrows();
         let families = match families {
             Some(fams) => Some(fams),
             None => Some(nd::ArcArray1::from(vec![0; conn_len])),
