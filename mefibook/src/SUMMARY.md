@@ -5,5 +5,5 @@
 - [Topological basic ops](./3_topology.md)
 - [Python Examples](./python_examples/SUMMARY.md)
   - [UMesh basics](./python_examples/umesh_basics.md)
-  - [Neighbours related tools](./python_examples/neighbours_utilities.md)
   - [Input/Output](./python_examples/input_output.md)
+  - [Neighbours related tools](./python_examples/topological_tools.md)

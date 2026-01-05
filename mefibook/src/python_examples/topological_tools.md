@@ -1,8 +1,4 @@
-# Neighbours related topological operations
-
-Here are some examples about the:
-- `submesh` method
-- `boundaries` method
+# Topological tools
 
 
 ```python
@@ -14,6 +10,8 @@ pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")
 ```
 
+## Submesh functionality
+
 
 ```python
 x = range(3)
@@ -22,7 +20,7 @@ z = np.logspace(-0.5, 1, 4, endpoint=True)
 volumes = mf.build_cmesh(x, y, z)
 ```
 
-## Submesh functionaly
+### Simple submesh
 
 This functionality is able to compute the descending connectivity of the porvided mesh.
 It can act on elements of dimension 1, 2 or 3.
@@ -45,11 +43,11 @@ plotter.show()
 
 
 
-![png](neighbours_utilities_files/neighbours_utilities_4_0.png)
+![png](topological_tools_files/topological_tools_5_0.png)
 
 
 
-## Submesh in one go
+### Submesh in one go
 
 You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining mutliple `.submesh()` calls.
 
@@ -68,7 +66,7 @@ plotter.show()
 
 
 
-![png](neighbours_utilities_files/neighbours_utilities_6_0.png)
+![png](topological_tools_files/topological_tools_7_0.png)
 
 
 
@@ -94,20 +92,23 @@ plotter.show()
 
 
 
-![png](neighbours_utilities_files/neighbours_utilities_8_0.png)
+![png](topological_tools_files/topological_tools_9_0.png)
 
 
 
-# Connected components
+## Connected components
 
 
 ```python
-x, y = np.meshgrid(np.linspace(0, 1, 5), np.linspace(0., 1., 5))
+x, y = np.meshgrid(np.linspace(0, 1, 5), np.linspace(0.0, 1.0, 5))
 coords = np.c_[x.flatten(), y.flatten()]
-conn = np.array([
-    [0, 1, 6, 5],
-    [6, 7, 12, 11],
-], dtype=np.uint)
+conn = np.array(
+    [
+        [0, 1, 6, 5],
+        [6, 7, 12, 11],
+    ],
+    dtype=np.uint,
+)
 mesh = mf.UMesh(coords)
 mesh.add_regular_block("QUAD4", conn)
 ```
@@ -141,32 +142,97 @@ groups = [
 plotter = pv.Plotter(shape=shape, groups=groups, row_weights=row_weights)
 plotter.subplot(0, 0)
 plotter.add_text("Original mesh")
-plotter.add_mesh(mesh.to_pyvista())
+plotter.add_mesh(mesh.to_pyvista(), show_edges=True)
 plotter.camera_position = "xy"
 
 for i, compo in enumerate(compos_link_edge):
-    plotter.subplot(i+1, 0)
+    plotter.subplot(i + 1, 0)
     plotter.add_text(f"Compo linked by edge: n°{i}")
     plotter.add_mesh(edges.to_pyvista())
-    plotter.add_mesh(compo.to_pyvista().shrink(0.9), show_edges=True)
+    plotter.add_mesh(compo.to_pyvista().shrink(0.9))
     plotter.camera_position = "xy"
 
 for i, compo in enumerate(compos_link_node):
-    plotter.subplot(i+1, 1)
+    plotter.subplot(i + 1, 1)
     plotter.add_text(f"Compo linked by node: n°{i}")
     plotter.add_mesh(edges.to_pyvista())
-    plotter.add_mesh(compo.to_pyvista().shrink(0.9), show_edges=True)
+    plotter.add_mesh(compo.to_pyvista().shrink(0.9))
     plotter.camera_position = "xy"
 plotter.show()
 ```
 
 
 
-![png](neighbours_utilities_files/neighbours_utilities_12_0.png)
+![png](topological_tools_files/topological_tools_13_0.png)
 
 
+
+## Crack
+
+This feature is the contrary of the `merge_nodes` feature. It duplicates nodes such that the resulting mesh does not connect on the submesh given.
 
 
 ```python
-
+x = range(2)
+y = np.linspace(0.0, 3.0, 3, endpoint=True)
+z = np.logspace(0.0, 1.0, 3, endpoint=True)
+volumes = mf.build_cmesh(x, y, z)
+faces = volumes.submesh()
 ```
+
+
+```python
+cracked = volumes.crack(faces)
+```
+
+
+```python
+edges = faces.submesh()
+compos_original = volumes.connected_components()
+compos_cracked = cracked.connected_components()
+
+assert len(compos_original) == 1
+
+n_compos = len(compos_cracked)
+
+shape = (3, n_compos + 1)
+groups = [
+    (0, 0),
+    (0, np.s_[1:]),
+    (np.s_[1:], 0),
+    (1, np.s_[1:]),
+    *((2, i + 1) for i in range(n_compos)),
+]
+row_weights = [1.0, 0.1, 1.0]
+col_weights = [1.5, *(0.5,) * n_compos]
+pv.set_jupyter_backend("static")
+plotter = pv.Plotter(
+    shape=shape, groups=groups, row_weights=row_weights, col_weights=col_weights
+)
+
+plotter.subplot(0, 0)
+plotter.add_text("Original mesh")
+plotter.add_mesh(volumes.to_pyvista(), show_edges=True)
+plotter.subplot(0, 1)
+plotter.add_text("Cut mesh used for the crack")
+plotter.add_mesh(faces.to_pyvista().shrink(0.8), show_edges=True)
+
+plotter.subplot(1, 0)
+plotter.add_text("Compo of original mesh")
+plotter.add_mesh(edges.to_pyvista())
+plotter.add_mesh(compos_original[0].to_pyvista().shrink(0.9))
+
+plotter.subplot(1, 1)
+plotter.add_text("Compos of cracked mesh")
+
+for i, compo in enumerate(compos_cracked):
+    plotter.subplot(2, i + 1)
+    plotter.add_mesh(edges.to_pyvista())
+    plotter.add_mesh(compo.to_pyvista().shrink(0.9))
+    plotter.camera.zoom(2)
+plotter.show()
+```
+
+
+
+![png](topological_tools_files/topological_tools_17_0.png)
