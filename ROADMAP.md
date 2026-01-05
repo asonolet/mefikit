@@ -34,12 +34,12 @@
 | Cell–cell neighbors               | ✔️    | ❌          |                                                                 |
 | face–cell neighbors               | ✔️    | ✔️          |                                                                 |
 | Node–element inverse connectivity | ⏳    | ✔️          |                                                                 |
-| Boundary extraction               | ⏳    | ✔️          |                                                                 |
+| Boundary extraction               | ✔️    | ✔️          |                                                                 |
 
 ➡ **Roadmap additions**:
 
 - [ ] Topological region-growing / connectivity queries
-- [ ] Connex components computation
+- [x] Connex components computation
 
 ---
 

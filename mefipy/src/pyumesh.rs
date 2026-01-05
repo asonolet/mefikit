@@ -4,10 +4,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use mefikit::{
-    mesh::{UMesh, UMeshView},
-    prelude as mf,
-};
+use mefikit::prelude as mf;
 
 use std::path::Path;
 
@@ -170,9 +167,12 @@ impl PyUMesh {
     }
 
     fn crack(&self, cut_mesh: &PyUMesh) -> Self {
-        let mesh: UMesh = self.inner.view().to_shared();
-        let cut: &UMesh = &cut_mesh.inner;
-        mf::crack::crack(mesh, cut.view()).into()
+        mf::crack(self.inner.clone(), cut_mesh.inner.view()).into()
+    }
+
+    #[pyo3(signature = (reference, eps=1e-12))]
+    fn snap(&self, reference: &PyUMesh, eps: f64) -> Self {
+        mf::snap(self.inner.clone(), reference.inner.view(), eps).into()
     }
 }
 

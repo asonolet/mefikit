@@ -3,8 +3,8 @@ use crate::mesh::{UMesh, UMeshView};
 use nalgebra as na;
 use rstar::RTree;
 
-pub fn snap_points<const T: usize>(subject: UMesh, reference: UMeshView, eps: f64) {
-    let mut coords = subject.coords;
+fn snap_dim_n<const T: usize>(mut subject: UMesh, reference: UMeshView, eps: f64) -> UMesh {
+    let coords = &mut subject.coords;
     let ref_points: Vec<[f64; T]> = reference
         .coords
         .rows()
@@ -34,5 +34,15 @@ pub fn snap_points<const T: usize>(subject: UMesh, reference: UMeshView, eps: f6
         if let Some(c) = closest {
             *coord = c
         }
+    }
+    subject
+}
+
+pub fn snap(subject: UMesh, reference: UMeshView, eps: f64) -> UMesh {
+    match subject.coords.ncols() {
+        1 => snap_dim_n::<1>(subject, reference, eps),
+        2 => snap_dim_n::<2>(subject, reference, eps),
+        3 => snap_dim_n::<3>(subject, reference, eps),
+        _ => panic!("Could not snap the mesh because of its dimension."),
     }
 }

@@ -83,6 +83,7 @@ pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
     let cut_c2c: Vec<[ElementId; 2]> = cut_ids
         .into_iter()
         .map(|x| x.expect("cut elements should be found in mesh submesh."))
+        .filter(|f_id| f2c[f_id].len() == 2)
         .map(|f_id| f2c[&f_id].clone().try_into().unwrap())
         .collect();
 

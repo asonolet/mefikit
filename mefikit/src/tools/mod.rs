@@ -60,6 +60,7 @@ pub mod selector;
 pub mod snap;
 
 pub use connected_components::*;
+pub use crack::*;
 pub use grid::*;
 pub use intersect::*;
 pub use measure::*;
