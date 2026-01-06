@@ -21,14 +21,13 @@ fn snap_dim_n<const T: usize>(mut subject: UMesh, reference: UMeshView, eps: f64
             .into_iter()
             .fold((f64::INFINITY, None), |acc, &p| {
                 let (min_d2, closest_p) = acc;
-                let closest_p = closest_p.unwrap();
                 let na_p = p.into();
                 let na_coord = (*coord).into();
                 let d2 = na::distance_squared(&na_p, &na_coord);
                 if d2 < min_d2 {
                     (d2, Some(p))
                 } else {
-                    (min_d2, Some(closest_p))
+                    (min_d2, closest_p)
                 }
             });
         if let Some(c) = closest {
