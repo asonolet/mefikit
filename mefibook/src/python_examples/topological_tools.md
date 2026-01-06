@@ -100,23 +100,27 @@ plotter.show()
 
 
 ```python
-x, y = np.meshgrid(np.linspace(0, 1, 5), np.linspace(0.0, 1.0, 5))
+x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
 coords = np.c_[x.flatten(), y.flatten()]
 conn = np.array(
     [
         [0, 1, 6, 5],
         [6, 7, 12, 11],
+        # [2, 3, 8, 7],
+        [11, 12, 17, 16],
+
     ],
     dtype=np.uint,
 )
 mesh = mf.UMesh(coords)
 mesh.add_regular_block("QUAD4", conn)
+mesh.add_regular_block("VERTEX", np.arange(len(coords), dtype=np.uint)[..., np.newaxis])
 ```
 
 
 ```python
-compos_link_edge = mesh.connected_components(src_dim=2, link_dim=1)
-compos_link_node = mesh.connected_components(src_dim=2, link_dim=0)
+compos_link_edge = mesh.connected_components(link_dim=1)
+compos_link_node = mesh.connected_components(link_dim=0)
 
 print(f"{len(compos_link_edge)=}")
 print(f"{len(compos_link_node)=}")
@@ -131,7 +135,7 @@ print(f"{len(compos_link_node)=}")
 edges = mesh.submesh()
 
 shape = (3, 2)
-row_weights = [1.5, 0.5, 0.5]
+row_weights = [1., 0.5, 0.5]
 groups = [
     (0, np.s_[:]),
     (1, 0),
@@ -149,14 +153,14 @@ for i, compo in enumerate(compos_link_edge):
     plotter.subplot(i + 1, 0)
     plotter.add_text(f"Compo linked by edge: n°{i}")
     plotter.add_mesh(edges.to_pyvista())
-    plotter.add_mesh(compo.to_pyvista().shrink(0.9))
+    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
     plotter.camera_position = "xy"
 
 for i, compo in enumerate(compos_link_node):
     plotter.subplot(i + 1, 1)
     plotter.add_text(f"Compo linked by node: n°{i}")
     plotter.add_mesh(edges.to_pyvista())
-    plotter.add_mesh(compo.to_pyvista().shrink(0.9))
+    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
     plotter.camera_position = "xy"
 plotter.show()
 ```
@@ -220,7 +224,7 @@ plotter.add_mesh(faces.to_pyvista().shrink(0.8), show_edges=True)
 plotter.subplot(1, 0)
 plotter.add_text("Compo of original mesh")
 plotter.add_mesh(edges.to_pyvista())
-plotter.add_mesh(compos_original[0].to_pyvista().shrink(0.9))
+plotter.add_mesh(compos_original[0].to_pyvista(), show_edges=True)
 
 plotter.subplot(1, 1)
 plotter.add_text("Compos of cracked mesh")
@@ -228,7 +232,7 @@ plotter.add_text("Compos of cracked mesh")
 for i, compo in enumerate(compos_cracked):
     plotter.subplot(2, i + 1)
     plotter.add_mesh(edges.to_pyvista())
-    plotter.add_mesh(compo.to_pyvista().shrink(0.9))
+    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
     plotter.camera.zoom(2)
 plotter.show()
 ```
