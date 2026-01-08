@@ -1,6 +1,6 @@
 # MeFiKit
 
-![Mefikit logo](./mefibook/src/logo/dessin_rouge_full.png)
+![Mefikit logo](./mefibook/src/logo/mefikit_logo_v2.png)
 
 **MeFiKit** (_Meshes and Fields Kit_) is a modern, high-performance library for
 manipulating unstructured meshes and associated fields and groups. It is

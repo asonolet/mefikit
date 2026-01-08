@@ -1,6 +1,6 @@
 # Introduction
 
-![Mefikit logo](./logo/dessin_rouge_full.png)
+![Mefikit logo](./logo/mefikit_logo_v2.png)
 
 ## About `mefikit`
 
