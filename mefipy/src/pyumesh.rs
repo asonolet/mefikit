@@ -174,6 +174,11 @@ impl PyUMesh {
     fn snap(&self, reference: &PyUMesh, eps: f64) -> Self {
         mf::snap(self.inner.clone(), reference.inner.view(), eps).into()
     }
+
+    #[pyo3(signature = (eps=1e-12))]
+    fn merge_nodes(&self, eps: f64) -> Self {
+        mf::merge_nodes(self.inner.clone(), eps).into()
+    }
 }
 
 impl Display for PyUMesh {
