@@ -33,15 +33,27 @@ bench = false
 
 # ref: https://bheisler.github.io/criterion.rs/book/getting_started.html#step-1---add-dependency-to-cargotoml
 [[bench]]
-name = "umesh"
+name = "neighbours"
 harness = false
 
 [[bench]]
-name = "umesh_analytics"
+name = "measure"
 harness = false
 
 [[bench]]
-name = "snap_bench"
+name = "snap"
+harness = false
+
+[[bench]]
+name = "select"
+harness = false
+
+[[bench]]
+name = "submesh_analytics"
+harness = false
+
+[[bench]]
+name = "snap_order"
 harness = false
 
 [dev-dependencies]

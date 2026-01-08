@@ -13,3 +13,4 @@ mefipy/python/mefikit/*.so
 mefipy/venv
 mefipy/.venv
 .ipynb_checkpoints
+mefikit/benches/target/
