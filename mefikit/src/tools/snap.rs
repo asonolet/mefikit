@@ -4,19 +4,29 @@ use nalgebra as na;
 use rstar::RTree;
 
 fn snap_dim_n<const T: usize>(mut subject: UMesh, reference: UMeshView, eps: f64) -> UMesh {
-    let coords = &mut subject.coords;
     let ref_points: Vec<[f64; T]> = reference
-        .coords
-        .rows()
+        .used_nodes()
         .into_iter()
-        .map(|e| e.to_slice().unwrap().try_into().unwrap())
+        .map(|i| {
+            reference
+                .coords()
+                .row(i)
+                .to_slice()
+                .unwrap()
+                .try_into()
+                .unwrap()
+        })
         .collect();
-    let rtree: RTree<[f64; T]> = RTree::bulk_load(ref_points);
-    for mut coo in coords.rows_mut() {
-        let coord: &mut [f64; T] = coo.as_slice_mut().unwrap().try_into().unwrap();
+    let rtree = RTree::bulk_load(ref_points);
+    for node in subject.used_nodes() {
+        let coord: &mut [f64; T] = subject
+            .coords
+            .row_mut(node)
+            .into_slice()
+            .unwrap()
+            .try_into()
+            .unwrap();
         let closest_points = rtree.locate_within_distance(*coord, f64::powi(eps, 2));
-        //TODO: compute the closest point from all matched points and replace subject coord with
-        //this match.
         let (_, closest) = closest_points
             .into_iter()
             .fold((f64::INFINITY, None), |acc, &p| {
@@ -31,14 +41,18 @@ fn snap_dim_n<const T: usize>(mut subject: UMesh, reference: UMeshView, eps: f64
                 }
             });
         if let Some(c) = closest {
-            *coord = c
+            coord.copy_from_slice(&c)
         }
     }
     subject
 }
 
+/// Snap coords of subject mesh onto used nodes of reference.
+///
+/// Be careful, the method could produce degenerated elements if eps is not lower than half the
+/// smallest distance between two points from the same element.
 pub fn snap(subject: UMesh, reference: UMeshView, eps: f64) -> UMesh {
-    match subject.coords.ncols() {
+    match subject.coords().ncols() {
         1 => snap_dim_n::<1>(subject, reference, eps),
         2 => snap_dim_n::<2>(subject, reference, eps),
         3 => snap_dim_n::<3>(subject, reference, eps),

@@ -611,6 +611,7 @@ dependencies = [
  "robust",
  "rstar",
  "rustc-hash",
+ "scaling",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1123,6 +1124,12 @@ checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
 ]
+
+[[package]]
+name = "scaling"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdae3600851ce884c21967661b682951ff63475e891c819e5609c5643cc1be2f"
 
 [[package]]
 name = "semver"
