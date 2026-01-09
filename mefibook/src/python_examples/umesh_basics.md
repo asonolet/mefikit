@@ -10,6 +10,8 @@ pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")
 ```
 
+## Building cartesian meshes
+
 
 ```python
 volumes = mf.build_cmesh(
@@ -21,7 +23,7 @@ volumes
 
 
 
-    <UMesh at 0x703beaf73630>
+    <UMesh at 0x736e340af750>
 
 
 
@@ -67,12 +69,14 @@ print(volumes)
                      [14, 15, 17, 16, 20, 21, 23, 22]], shape=[6, 8], strides=[8, 1], layout=Cc (0x5), const ndim=2,
                 ),
                 fields: {},
-                families: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], shape=[48], strides=[1], layout=CFcf (0xf), const ndim=1,
+                families: [0, 0, 0, 0, 0, 0], shape=[6], strides=[1], layout=CFcf (0xf), const ndim=1,
                 groups: {},
             },
         },
     }
 
+
+The mesh is composed of a coordinates array, and several blocks.
 
 
 ```python
@@ -81,11 +85,72 @@ volumes.to_pyvista().plot(show_edges=True)
 
 
 
-![png](umesh_basics_files/umesh_basics_4_0.png)
+![png](umesh_basics_files/umesh_basics_6_0.png)
 
 
 
-# Mesh *and* Fields
+## Building mesh with custom connectivity
+
+
+```python
+x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
+coords = np.c_[x.flatten(), y.flatten()]
+conn = np.array(
+    [
+        [0, 1],
+        [1, 6],
+        [6, 5],
+        [5, 0],
+        [6, 7],
+        [7, 12],
+        [12, 11],
+        [11, 6],
+        [12, 17],
+        [17, 16],
+        [16, 11],
+    ],
+    dtype=np.uint,
+)
+```
+
+
+```python
+mesh = mf.UMesh(coords)
+mesh.add_regular_block("VERTEX", np.arange(13, 22, dtype=np.uint)[..., np.newaxis])
+mesh.add_regular_block("SEG2", conn)
+mesh.add_regular_block("QUAD4", np.array([[3, 4, 9, 8]], dtype=np.uint))
+```
+
+
+```python
+mesh.to_pyvista().plot(cpos="xy", show_edges=True)
+```
+
+
+
+![png](umesh_basics_files/umesh_basics_10_0.png)
+
+
+
+## Build extruded mesh
+
+
+```python
+extruded = mesh.extrude(range(3))
+```
+
+
+```python
+extruded.to_pyvista().plot(show_edges=True)
+```
+
+
+
+![png](umesh_basics_files/umesh_basics_13_0.png)
+
+
+
+## Mesh *and* Fields
 
 
 ```python
@@ -124,4 +189,4 @@ pvm2.plot(cpos="xy", show_edges=True)
 
 
 
-![png](umesh_basics_files/umesh_basics_10_0.png)
+![png](umesh_basics_files/umesh_basics_19_0.png)

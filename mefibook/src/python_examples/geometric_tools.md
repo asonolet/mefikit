@@ -87,11 +87,11 @@ n_compos = len(compos_cracked)
 
 shape = (3, n_compos + 1)
 groups = [
-    (0, np.s_[:-1]), # cracked
-    (0, n_compos), # merged
-    (1, np.s_[:-1]), # cracked txt
-    (np.s_[1:], n_compos), # merged compos
-    *((2, i) for i in range(n_compos)), # cracked compos
+    (0, np.s_[:-1]),  # cracked
+    (0, n_compos),  # merged
+    (1, np.s_[:-1]),  # cracked txt
+    (np.s_[1:], n_compos),  # merged compos
+    *((2, i) for i in range(n_compos)),  # cracked compos
 ]
 row_weights = [1.0, 0.1, 1.0]
 col_weights = [*(0.5,) * n_compos, 1.5]

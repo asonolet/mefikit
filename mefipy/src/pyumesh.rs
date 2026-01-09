@@ -179,6 +179,12 @@ impl PyUMesh {
     fn merge_nodes(&self, eps: f64) -> Self {
         mf::merge_nodes(self.inner.clone(), eps).into()
     }
+
+    fn extrude(&self, along: &Bound<'_, PyAny>) -> PyResult<Self> {
+        let along: Vec<f64> = along.extract()?;
+        let new_mesh = mf::extrude(self.inner.view(), &along);
+        Ok(new_mesh.into())
+    }
 }
 
 impl Display for PyUMesh {

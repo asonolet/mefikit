@@ -16,10 +16,10 @@ mod mefipy {
 
     #[pyfunction]
     #[pyo3(signature = (*args))]
-    pub fn build_cmesh(py: Python, args: &Bound<'_, PyTuple>) -> PyResult<PyUMesh> {
+    pub fn build_cmesh(args: &Bound<'_, PyTuple>) -> PyResult<PyUMesh> {
         let mut builder = mf::RegularUMeshBuilder::new();
         for arg in args {
-            builder = builder.add_axis(arg.unbind().extract(py)?)
+            builder = builder.add_axis(arg.extract()?)
         }
         Ok(builder.build().into())
     }

@@ -25,6 +25,9 @@ pub mod connected_components;
 ///
 /// - pour tous les noeuds dupliqués je récupère les éléments de dimension inférieure
 pub mod crack;
+/// This module builds a mesh of one dimension higher than the input mesh by extuding it.
+/// Duplicated nodes are allowed, both in the original mesh and the 1d mesh.
+pub mod extrude;
 pub mod grid;
 /// Module for intersecting meshes.
 ///
@@ -61,6 +64,7 @@ pub mod snap;
 
 pub use connected_components::*;
 pub use crack::*;
+pub use extrude::*;
 pub use grid::*;
 pub use intersect::*;
 pub use measure::*;

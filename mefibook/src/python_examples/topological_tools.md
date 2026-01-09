@@ -108,7 +108,6 @@ conn = np.array(
         [6, 7, 12, 11],
         # [2, 3, 8, 7],
         [11, 12, 17, 16],
-
     ],
     dtype=np.uint,
 )
@@ -135,7 +134,7 @@ print(f"{len(compos_link_node)=}")
 edges = mesh.submesh()
 
 shape = (3, 2)
-row_weights = [1., 0.5, 0.5]
+row_weights = [1.0, 0.5, 0.5]
 groups = [
     (0, np.s_[:]),
     (1, 0),
