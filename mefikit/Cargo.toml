@@ -56,6 +56,14 @@ harness = false
 name = "snap_order"
 harness = false
 
+[[bench]]
+name = "crack"
+harness = false
+
+[[bench]]
+name = "merge_nodes"
+harness = false
+
 [dev-dependencies]
 approx = "0.5.1"
 criterion = "0.8.1"
