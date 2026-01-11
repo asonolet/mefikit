@@ -1,6 +1,7 @@
 mod connectivity;
 mod element;
 mod element_block;
+mod indirect_index;
 mod umesh;
 
 pub use self::element::{
