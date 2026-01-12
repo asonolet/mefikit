@@ -13,16 +13,17 @@
 
 ---
 
-### 🧠 Stage 2 — Selection & Filtering (similar to ParaView)
+### 🧠 Stage 2 — Selection & Filtering (similar to ParaView/Polars)
 
-| Functionality                       | UMesh                  | MEDCoupling    | Notes                                                        |
-| ----------------------------------- | ---------------------- | -------------- | ------------------------------------------------------------ |
-| Selection by ID                     | ✔️ (`filter()`)        | ✔️             |                                                              |
-| Field-based selection               | ✔️ (`SelectorBuilder`) | ✔️             | UMesh selection DSL is more ergonomic and idiomatic in Rust. |
-| Group-based selection               | ✔️                     | ✔️ (MEDLoader) |                                                              |
-| Selection by position (bbox, plane) | ✔️                     | ✔️             | UMesh needs pointwise or centroid-based spatial filtering.   |
-| Selection by connectivity patterns  | 🚧                     | ❌             |                                                              |
-| Combine selection criteria          | ✔️                     | ❌             | Simplifed by using AND only, which is reasonable.            |
+| Functionality                       | UMesh                  | MEDCoupling    | Notes                                                                                 |
+| ----------------------------------- | ---------------------- | -------------- | ------------------------------------------------------------------------------------- |
+| Selection by ID                     | ✔️ (`filter()`)        | ✔️             |                                                                                       |
+| Field-based selection               | ✔️ (`SelectorBuilder`) | ✔️             | UMesh selection DSL is more ergonomic and idiomatic in Rust.                          |
+| Group-based selection               | ✔️                     | ✔️ (MEDLoader) |                                                                                       |
+| Selection by position (bbox, plane) | ✔️                     | ✔️             | UMesh needs pointwise or centroid-based spatial filtering.                            |
+| Selection by connectivity patterns  | 🚧                     | ❌             |                                                                                       |
+| Combine selection criteria          | ✔️                     | ❌             | Simplifed by using AND only, which is reasonable.                                     |
+| Export to Polars                    | ⏳                     | ❌             | Unify metadata filter (families and fields) and bring polars speed over columnar data |
 
 ---
 
