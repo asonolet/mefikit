@@ -38,9 +38,9 @@ pub fn surf_tri2(a: Point2<f64>, b: Point2<f64>, c: Point2<f64>) -> f64 {
     0.5 * ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs()
 }
 
+/// ad - bc
+/// positive is counter clockwise
 pub fn surf_tri2_signed(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2]) -> f64 {
-    // ad - bc
-    // positive is counter clockwise
     let u0 = b[0] - a[0];
     let u1 = b[1] - a[1];
     let v0 = c[0] - a[0];
@@ -85,7 +85,6 @@ pub fn surf_quad2_signed(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2], d: &[f64; 2])
 }
 
 pub fn surf_quad3(_a: &[f64; 3], _b: &[f64; 3], _c: &[f64; 3], _d: &[f64; 3]) -> f64 {
-    // 1/2 || u ^ v ||
     todo!()
 }
 

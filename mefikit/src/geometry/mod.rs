@@ -71,17 +71,17 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => todo!(),
+            SEG2 => mes::dist3(self.coord3_ref(0), self.coord3_ref(1)),
             TRI3 => mes::surf_tri3(
                 self.coord3(0).into(),
                 self.coord3(1).into(),
                 self.coord3(2).into(),
             ),
             QUAD4 => mes::surf_quad3(
-                &self.coord3(0).into(),
-                &self.coord3(1).into(),
-                &self.coord3(2).into(),
-                &self.coord3(3).into(),
+                self.coord3_ref(0),
+                self.coord3_ref(1),
+                self.coord3_ref(2),
+                self.coord3_ref(3),
             ),
             _ => todo!(),
         }
