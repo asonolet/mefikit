@@ -8,8 +8,8 @@ use crate::element_traits::ElementGeo;
 use crate::element_traits::is_in as geo;
 use crate::mesh::{ElementIds, ElementLike, ElementType, UMesh};
 
-pub struct Selector<'a, State = ElementSelector> {
-    umesh: &'a UMesh,
+pub struct Selector<State = ElementSelector> {
+    umesh: UMesh,
     index: ElementIds,
     state: State,
 }
@@ -30,7 +30,7 @@ pub struct GroupBasedSelector {
 
 pub struct CentroidBasedSelector;
 
-impl<'a, State> Selector<'a, State> {
+impl<State> Selector<State> {
     pub fn index(&self) -> &ElementIds {
         &self.index
     }
@@ -39,7 +39,7 @@ impl<'a, State> Selector<'a, State> {
         self.umesh.extract(&self.index)
     }
 
-    fn into_groups(self) -> Selector<'a, GroupBasedSelector> {
+    fn into_groups(self) -> Selector<GroupBasedSelector> {
         let state = GroupBasedSelector {
             families: HashMap::default(),
         };
@@ -50,7 +50,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn into_field(self, name: &str) -> Selector<'a, FieldBasedSelector> {
+    fn into_field(self, name: &str) -> Selector<FieldBasedSelector> {
         let state = FieldBasedSelector {
             field_name: name.to_owned(),
         };
@@ -61,7 +61,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn into_elements(self) -> Selector<'a, ElementSelector> {
+    fn into_elements(self) -> Selector<ElementSelector> {
         let state = ElementSelector {};
         Selector {
             umesh: self.umesh,
@@ -70,7 +70,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn into_centroids(self) -> Selector<'a, CentroidBasedSelector> {
+    fn into_centroids(self) -> Selector<CentroidBasedSelector> {
         let state = CentroidBasedSelector {};
         Selector {
             umesh: self.umesh,
@@ -79,7 +79,7 @@ impl<'a, State> Selector<'a, State> {
         }
     }
 
-    fn into_nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    fn into_nodes(self, all: bool) -> Selector<NodeBasedSelector> {
         let state = NodeBasedSelector { all_nodes: all };
         Selector {
             umesh: self.umesh,
@@ -89,8 +89,8 @@ impl<'a, State> Selector<'a, State> {
     }
 }
 
-impl<'a> Selector<'a, ElementSelector> {
-    pub fn new(umesh: &'a UMesh) -> Self {
+impl<'a> Selector<ElementSelector> {
+    pub fn new(umesh: UMesh) -> Self {
         let index: BTreeMap<ElementType, Vec<usize>> = umesh
             .blocks()
             .map(|(k, v)| (*k, (0..v.len()).collect()))
@@ -129,21 +129,21 @@ impl<'a> Selector<'a, ElementSelector> {
         }
     }
 
-    pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
+    pub fn groups(self) -> Selector<GroupBasedSelector> {
         self.into_groups()
     }
-    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    pub fn nodes(self, all: bool) -> Selector<NodeBasedSelector> {
         self.into_nodes(all)
     }
-    pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
+    pub fn centroids(self) -> Selector<CentroidBasedSelector> {
         self.into_centroids()
     }
-    pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {
+    pub fn fields(self, name: &str) -> Selector<FieldBasedSelector> {
         self.into_field(name)
     }
 }
 
-impl<'a> Selector<'a, FieldBasedSelector> {
+impl Selector<FieldBasedSelector> {
     pub fn ge(self, val: f64) -> Self {
         let index: ElementIds = self
             .index
@@ -186,21 +186,21 @@ impl<'a> Selector<'a, FieldBasedSelector> {
         }
     }
 
-    pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
+    pub fn groups(self) -> Selector<GroupBasedSelector> {
         self.into_groups()
     }
-    pub fn elements(self) -> Selector<'a, ElementSelector> {
+    pub fn elements(self) -> Selector<ElementSelector> {
         self.into_elements()
     }
-    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    pub fn nodes(self, all: bool) -> Selector<NodeBasedSelector> {
         self.into_nodes(all)
     }
-    pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
+    pub fn centroids(self) -> Selector<CentroidBasedSelector> {
         self.into_centroids()
     }
 }
 
-impl<'a> Selector<'a, GroupBasedSelector> {
+impl Selector<GroupBasedSelector> {
     pub fn inside(self, name: &str) -> Self {
         let grp_fmies: FxHashMap<ElementType, BTreeSet<usize>> = self
             .umesh
@@ -253,7 +253,7 @@ impl<'a> Selector<'a, GroupBasedSelector> {
     }
 
     /// I have a set of families per element_type, I can now select the real elements
-    fn collect(self) -> Selector<'a, ElementSelector> {
+    fn collect(self) -> Selector<ElementSelector> {
         todo!();
         // let index = self.umesh.families(et);
         // let state = ElementTypeSelector{};
@@ -264,22 +264,22 @@ impl<'a> Selector<'a, GroupBasedSelector> {
         // }
     }
 
-    pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {
+    pub fn fields(self, name: &str) -> Selector<FieldBasedSelector> {
         self.collect().into_field(name)
     }
-    pub fn elements(self) -> Selector<'a, ElementSelector> {
+    pub fn elements(self) -> Selector<ElementSelector> {
         self.collect().into_elements()
     }
-    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    pub fn nodes(self, all: bool) -> Selector<NodeBasedSelector> {
         self.collect().into_nodes(all)
     }
-    pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
+    pub fn centroids(self) -> Selector<CentroidBasedSelector> {
         self.collect().into_centroids()
     }
 }
 
-impl<'a> Selector<'a, NodeBasedSelector> {
-    fn all_in<F0>(self, f: F0) -> Selector<'a, NodeBasedSelector>
+impl Selector<NodeBasedSelector> {
+    fn all_in<F0>(self, f: F0) -> Selector<NodeBasedSelector>
     where
         F0: Fn(&[f64]) -> bool + Sync,
     {
@@ -298,7 +298,7 @@ impl<'a> Selector<'a, NodeBasedSelector> {
         }
     }
 
-    fn any_in<F0>(self, f: F0) -> Selector<'a, NodeBasedSelector>
+    fn any_in<F0>(self, f: F0) -> Selector<NodeBasedSelector>
     where
         F0: Fn(&[f64]) -> bool + Sync,
     {
@@ -442,25 +442,25 @@ impl<'a> Selector<'a, NodeBasedSelector> {
         }
     }
 
-    pub fn elements(self) -> Selector<'a, ElementSelector> {
+    pub fn elements(self) -> Selector<ElementSelector> {
         self.into_elements()
     }
-    pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {
+    pub fn fields(self, name: &str) -> Selector<FieldBasedSelector> {
         self.into_field(name)
     }
-    pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
+    pub fn groups(self) -> Selector<GroupBasedSelector> {
         self.into_groups()
     }
-    pub fn centroids(self) -> Selector<'a, CentroidBasedSelector> {
+    pub fn centroids(self) -> Selector<CentroidBasedSelector> {
         self.into_centroids()
     }
-    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    pub fn nodes(self, all: bool) -> Selector<NodeBasedSelector> {
         self.into_nodes(all)
     }
 }
 
-impl<'a> Selector<'a, CentroidBasedSelector> {
-    pub fn is_in<F0>(self, f: F0) -> Selector<'a, CentroidBasedSelector>
+impl Selector<CentroidBasedSelector> {
+    pub fn is_in<F0>(self, f: F0) -> Selector<CentroidBasedSelector>
     where
         F0: Fn(&[f64]) -> bool + Sync,
     {
@@ -516,16 +516,16 @@ impl<'a> Selector<'a, CentroidBasedSelector> {
         })
     }
 
-    pub fn elements(self) -> Selector<'a, ElementSelector> {
+    pub fn elements(self) -> Selector<ElementSelector> {
         self.into_elements()
     }
-    pub fn fields(self, name: &str) -> Selector<'a, FieldBasedSelector> {
+    pub fn fields(self, name: &str) -> Selector<FieldBasedSelector> {
         self.into_field(name)
     }
-    pub fn groups(self) -> Selector<'a, GroupBasedSelector> {
+    pub fn groups(self) -> Selector<GroupBasedSelector> {
         self.into_groups()
     }
-    pub fn nodes(self, all: bool) -> Selector<'a, NodeBasedSelector> {
+    pub fn nodes(self, all: bool) -> Selector<NodeBasedSelector> {
         self.into_nodes(all)
     }
 }
@@ -539,7 +539,7 @@ mod tests {
     #[test]
     fn test_umesh_element_selection() {
         let mesh = me::make_mesh_2d_quad();
-        let selected_ids = Selector::new(&mesh)
+        let selected_ids = Selector::new(mesh)
             .centroids()
             .in_rectangle(&[0.0, 0.0], &[1.0, 1.0])
             .index;
