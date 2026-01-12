@@ -24,7 +24,7 @@ where
     C: nd::RawData<Elem = T> + nd::Data,
     D: nd::RawData<Elem = usize> + nd::Data,
 {
-    fn get(&self, i: usize) -> &[T] {
+    pub fn get(&self, i: usize) -> &[T] {
         let start = match i {
             0 => 0,
             i => self.offsets[i - 1],
@@ -32,7 +32,7 @@ where
         let stop = self.offsets[i];
         &self.data.as_slice().unwrap()[start..stop]
     }
-    fn iter(&self) -> IndirectIndexIter<'_, T> {
+    pub fn iter(&self) -> IndirectIndexIter<'_, T> {
         IndirectIndexIter {
             data: self.data.as_slice().unwrap(),
             offsets: self.offsets.as_slice().unwrap(),
@@ -47,7 +47,7 @@ where
     C: nd::RawDataClone<Elem = T> + nd::DataOwned + nd::DataMut,
     D: nd::RawDataClone<Elem = usize> + nd::DataOwned + nd::DataMut,
 {
-    fn get_mut(&mut self, i: usize) -> &mut [T] {
+    pub fn get_mut(&mut self, i: usize) -> &mut [T] {
         let start = match i {
             0 => 0,
             i => self.offsets[i - 1],
@@ -55,46 +55,72 @@ where
         let stop = self.offsets[i];
         &mut self.data.as_slice_mut().unwrap()[start..stop]
     }
-    fn iter_mut(&mut self) -> IndirectIndexIterMut<'_, T> {
+    pub fn iter_mut(&mut self) -> IndirectIndexIterMut<'_, T> {
         IndirectIndexIterMut {
             data: self.data.as_slice_mut().unwrap(),
             offsets: self.offsets.as_slice_mut().unwrap(),
             last_offset: 0,
         }
     }
-    // fn push(&mut self, elem: &[T])
-    // where
-    //     T: Clone,
-    // {
-    //     let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
-    //     self.data.extend(elem.iter().cloned());
-    //     self.offsets.push(self.data.len());
-    // }
-    // fn extend_from_slice(&mut self, data: &[T], offsets: &[usize])
-    // where
-    //     T: Clone,
-    // {
-    //     let num_elems = self.data.len();
-    //     self.data.extend_from_slice(data);
-    //     self.offsets.extend(offsets.iter().map(|o| o + num_elems));
-    // }
 }
 
-// impl<'a, T> Extend<&'a [T]> for IndirectIndex<T>
-// where
-//     T: Clone,
-// {
-//     fn extend<I>(&mut self, iter: I)
-//     where
-//         I: IntoIterator<Item = &'a [T]>,
-//     {
-//         let num_elems = self.data.len();
-//         let (data, offsets): (Vec<&[T]>, Vec<usize>) =
-//             iter.into_iter().map(|sl| (sl, sl.len())).collect();
-//         self.data.extend(data.into_iter().flatten().cloned());
-//         self.offsets.extend(offsets.iter().map(|o| o + num_elems));
-//     }
-// }
+impl<T> IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>
+where
+    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
+{
+    pub fn push(&mut self, elem: &[T])
+    where
+        T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
+    {
+        let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
+        let (mut vec_data, _) = data.into_raw_vec_and_offset();
+        let offsets = std::mem::replace(&mut self.offsets, nd::arr1(&[]));
+        let (mut vec_offsets, _) = offsets.into_raw_vec_and_offset();
+        vec_data.extend_from_slice(elem);
+        vec_offsets.push(self.data.len());
+        self.data = vec_data.into();
+        self.offsets = vec_offsets.into();
+    }
+    pub fn extend_from_raw_slices(&mut self, data_slice: &[T], offsets_slice: &[usize])
+    where
+        T: Clone,
+    {
+        let num_elems = self.data.len();
+        let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
+        let (mut vec_data, _) = data.into_raw_vec_and_offset();
+        let offsets = std::mem::replace(&mut self.offsets, nd::arr1(&[]));
+        let (mut vec_offsets, _) = offsets.into_raw_vec_and_offset();
+        vec_data.extend_from_slice(data_slice);
+        vec_offsets.extend(offsets_slice.iter().map(|of| of + num_elems));
+        self.data = vec_data.into();
+        self.offsets = vec_offsets.into();
+    }
+    pub fn reserve(&mut self, additional_data: usize, additional_offsets: usize) {
+        self.data.reserve(nd::Axis(0), additional_data).unwrap();
+        self.offsets
+            .reserve(nd::Axis(0), additional_offsets)
+            .unwrap();
+    }
+}
+
+impl<'a, T> Extend<&'a [T]> for IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>
+where
+    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
+{
+    fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = &'a [T]>,
+    {
+        // let iter = iter.into_iter();
+        // let vec_data: Vec<&[T]> = iter.into_iter().collect();
+        // self.reserve(vec_data.iter().map(|s| s.len()).sum(), vec_data.len());
+        // I cannot extend because I cannot know the data slice size without consuming by cloning
+        // all elements. This might be cheap for usize/floats but not cheap for more complex T types.
+        for elem in iter {
+            self.push(elem);
+        }
+    }
+}
 
 pub struct IndirectIndexIter<'a, T>
 where
