@@ -1,4 +1,7 @@
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    ops::{Index, IndexMut},
+};
 
 use derive_where::derive_where;
 use ndarray as nd;
@@ -24,14 +27,14 @@ where
     C: nd::RawData<Elem = T> + nd::Data,
     D: nd::RawData<Elem = usize> + nd::Data,
 {
-    pub fn get(&self, i: usize) -> &[T] {
-        let start = match i {
-            0 => 0,
-            i => self.offsets[i - 1],
-        };
-        let stop = self.offsets[i];
-        &self.data.as_slice().unwrap()[start..stop]
-    }
+    // pub fn get(&self, i: usize) -> &[T] {
+    //     let start = match i {
+    //         0 => 0,
+    //         i => self.offsets[i - 1],
+    //     };
+    //     let stop = self.offsets[i];
+    //     &self.data.as_slice().unwrap()[start..stop]
+    // }
     pub fn iter(&self) -> IndirectIndexIter<'_, T> {
         IndirectIndexIter {
             data: self.data.as_slice().unwrap(),
@@ -41,26 +44,59 @@ where
     }
 }
 
+impl<T, C, D> Index<usize> for IndirectIndex<T, C, D>
+where
+    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
+    C: nd::RawData<Elem = T> + nd::Data,
+    D: nd::RawData<Elem = usize> + nd::Data,
+{
+    type Output = [T];
+    fn index(&self, i: usize) -> &Self::Output {
+        let start = match i {
+            0 => 0,
+            i => self.offsets[i - 1],
+        };
+        let stop = self.offsets[i];
+        &self.data.as_slice().unwrap()[start..stop]
+    }
+}
+
 impl<T, C, D> IndirectIndex<T, C, D>
 where
     T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
     C: nd::RawDataClone<Elem = T> + nd::DataOwned + nd::DataMut,
     D: nd::RawDataClone<Elem = usize> + nd::DataOwned + nd::DataMut,
 {
-    pub fn get_mut(&mut self, i: usize) -> &mut [T] {
-        let start = match i {
-            0 => 0,
-            i => self.offsets[i - 1],
-        };
-        let stop = self.offsets[i];
-        &mut self.data.as_slice_mut().unwrap()[start..stop]
-    }
+    // pub fn get_mut(&mut self, i: usize) -> &mut [T] {
+    //     let start = match i {
+    //         0 => 0,
+    //         i => self.offsets[i - 1],
+    //     };
+    //     let stop = self.offsets[i];
+    //     &mut self.data.as_slice_mut().unwrap()[start..stop]
+    // }
     pub fn iter_mut(&mut self) -> IndirectIndexIterMut<'_, T> {
         IndirectIndexIterMut {
             data: self.data.as_slice_mut().unwrap(),
             offsets: self.offsets.as_slice_mut().unwrap(),
             last_offset: 0,
         }
+    }
+}
+
+impl<T, C, D> IndexMut<usize> for IndirectIndex<T, C, D>
+where
+    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
+    C: nd::RawDataClone<Elem = T> + nd::DataOwned + nd::DataMut,
+    D: nd::RawDataClone<Elem = usize> + nd::DataOwned + nd::DataMut,
+{
+    fn index_mut(&mut self, i: usize) -> &mut Self::Output {
+        let start = match i {
+            0 => 0,
+            i => self.offsets[i - 1],
+        };
+        let stop = self.offsets[i];
+        &mut self.data.as_slice_mut().unwrap()[start..stop]
     }
 }
 
