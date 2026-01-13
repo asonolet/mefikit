@@ -6,16 +6,18 @@ use std::{
 use derive_where::derive_where;
 use ndarray as nd;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
-#[derive_where(Clone; C: nd::RawDataClone, D: nd::RawDataClone)]
+//TODO: remove as many constraints as possible (Clone? Owned?)
+#[derive_where(Clone; C: nd::RawDataClone<Elem=T>, D: nd::RawDataClone<Elem=usize>, T: Clone)]
 #[derive_where(Debug, Serialize, PartialEq, Hash)]
 #[derive_where(Eq; T: Eq)]
-// #[derive_where(Deserialize; C: nd::DataOwned, D: nd::DataOwned, T: 'static + Deserialize)]
+#[derive_where(Deserialize; C: nd::Data<Elem=T> + nd::DataOwned, D: nd::Data<Elem=usize> + nd::DataOwned, T: DeserializeOwned)]
 pub struct IndirectIndex<T, C, D>
 where
     T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
-    C: nd::RawData<Elem = T> + nd::Data,
-    D: nd::RawData<Elem = usize> + nd::Data,
+    C: nd::Data<Elem = T>,
+    D: nd::Data<Elem = usize>,
 {
     data: nd::ArrayBase<C, nd::Ix1>,
     offsets: nd::ArrayBase<D, nd::Ix1>,
@@ -24,8 +26,8 @@ where
 impl<T, C, D> IndirectIndex<T, C, D>
 where
     T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
-    C: nd::RawData<Elem = T> + nd::Data,
-    D: nd::RawData<Elem = usize> + nd::Data,
+    C: nd::Data<Elem = T>,
+    D: nd::Data<Elem = usize>,
 {
     // pub fn get(&self, i: usize) -> &[T] {
     //     let start = match i {
@@ -42,13 +44,19 @@ where
             last_offset: 0,
         }
     }
+    pub fn len(&self) -> usize {
+        self.offsets.len()
+    }
+    pub fn num_elems_tot(&self) -> usize {
+        self.data.len()
+    }
 }
 
 impl<T, C, D> Index<usize> for IndirectIndex<T, C, D>
 where
     T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
-    C: nd::RawData<Elem = T> + nd::Data,
-    D: nd::RawData<Elem = usize> + nd::Data,
+    C: nd::Data<Elem = T>,
+    D: nd::Data<Elem = usize>,
 {
     type Output = [T];
     fn index(&self, i: usize) -> &Self::Output {
