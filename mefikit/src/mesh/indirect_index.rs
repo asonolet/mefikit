@@ -5,38 +5,25 @@ use std::{
 
 use derive_where::derive_where;
 use ndarray as nd;
-use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-//TODO: remove as many constraints as possible (Clone? Owned?)
 #[derive_where(Clone; C: nd::RawDataClone<Elem=T>, D: nd::RawDataClone<Elem=usize>, T: Clone)]
-#[derive_where(Debug, Serialize, PartialEq, Hash)]
-#[derive_where(Eq; T: Eq)]
+#[derive_where(Debug, Serialize, PartialEq, Eq, Hash; T)]
 #[derive_where(Deserialize; C: nd::Data<Elem=T> + nd::DataOwned, D: nd::Data<Elem=usize> + nd::DataOwned, T: DeserializeOwned)]
 pub struct IndirectIndex<T, C, D>
 where
-    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
     C: nd::Data<Elem = T>,
     D: nd::Data<Elem = usize>,
 {
-    data: nd::ArrayBase<C, nd::Ix1>,
-    offsets: nd::ArrayBase<D, nd::Ix1>,
+    pub data: nd::ArrayBase<C, nd::Ix1>,
+    pub offsets: nd::ArrayBase<D, nd::Ix1>,
 }
 
 impl<T, C, D> IndirectIndex<T, C, D>
 where
-    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
     C: nd::Data<Elem = T>,
     D: nd::Data<Elem = usize>,
 {
-    // pub fn get(&self, i: usize) -> &[T] {
-    //     let start = match i {
-    //         0 => 0,
-    //         i => self.offsets[i - 1],
-    //     };
-    //     let stop = self.offsets[i];
-    //     &self.data.as_slice().unwrap()[start..stop]
-    // }
     pub fn iter(&self) -> IndirectIndexIter<'_, T> {
         IndirectIndexIter {
             data: self.data.as_slice().unwrap(),
@@ -54,7 +41,6 @@ where
 
 impl<T, C, D> Index<usize> for IndirectIndex<T, C, D>
 where
-    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
     C: nd::Data<Elem = T>,
     D: nd::Data<Elem = usize>,
 {
@@ -71,18 +57,9 @@ where
 
 impl<T, C, D> IndirectIndex<T, C, D>
 where
-    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
     C: nd::RawDataClone<Elem = T> + nd::DataOwned + nd::DataMut,
     D: nd::RawDataClone<Elem = usize> + nd::DataOwned + nd::DataMut,
 {
-    // pub fn get_mut(&mut self, i: usize) -> &mut [T] {
-    //     let start = match i {
-    //         0 => 0,
-    //         i => self.offsets[i - 1],
-    //     };
-    //     let stop = self.offsets[i];
-    //     &mut self.data.as_slice_mut().unwrap()[start..stop]
-    // }
     pub fn iter_mut(&mut self) -> IndirectIndexIterMut<'_, T> {
         IndirectIndexIterMut {
             data: self.data.as_slice_mut().unwrap(),
@@ -94,7 +71,6 @@ where
 
 impl<T, C, D> IndexMut<usize> for IndirectIndex<T, C, D>
 where
-    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
     C: nd::RawDataClone<Elem = T> + nd::DataOwned + nd::DataMut,
     D: nd::RawDataClone<Elem = usize> + nd::DataOwned + nd::DataMut,
 {
@@ -110,12 +86,9 @@ where
 
 impl<T> IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>
 where
-    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
+    T: Clone,
 {
-    pub fn push(&mut self, elem: &[T])
-    where
-        T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
-    {
+    pub fn push(&mut self, elem: &[T]) {
         let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
         let (mut vec_data, _) = data.into_raw_vec_and_offset();
         let offsets = std::mem::replace(&mut self.offsets, nd::arr1(&[]));
@@ -125,10 +98,7 @@ where
         self.data = vec_data.into();
         self.offsets = vec_offsets.into();
     }
-    pub fn extend_from_raw_slices(&mut self, data_slice: &[T], offsets_slice: &[usize])
-    where
-        T: Clone,
-    {
+    pub fn extend_from_raw_slices(&mut self, data_slice: &[T], offsets_slice: &[usize]) {
         let num_elems = self.data.len();
         let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
         let (mut vec_data, _) = data.into_raw_vec_and_offset();
@@ -149,17 +119,12 @@ where
 
 impl<'a, T> Extend<&'a [T]> for IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>
 where
-    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
+    T: Clone,
 {
     fn extend<I>(&mut self, iter: I)
     where
         I: IntoIterator<Item = &'a [T]>,
     {
-        // let iter = iter.into_iter();
-        // let vec_data: Vec<&[T]> = iter.into_iter().collect();
-        // self.reserve(vec_data.iter().map(|s| s.len()).sum(), vec_data.len());
-        // I cannot extend because I cannot know the data slice size without consuming by cloning
-        // all elements. This might be cheap for usize/floats but not cheap for more complex T types.
         for elem in iter {
             self.push(elem);
         }
@@ -198,7 +163,6 @@ impl<'a, T> Iterator for IndirectIndexIter<'a, T> {
 
 impl<'a, T, C, D> IntoIterator for &'a IndirectIndex<T, C, D>
 where
-    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
     C: nd::RawDataClone<Elem = T> + nd::Data,
     D: nd::RawDataClone<Elem = usize> + nd::Data,
 {
@@ -218,10 +182,7 @@ where
     last_offset: usize,
 }
 
-impl<'a, T> Iterator for IndirectIndexIterMut<'a, T>
-where
-    T: Clone,
-{
+impl<'a, T> Iterator for IndirectIndexIterMut<'a, T> {
     type Item = &'a mut [T];
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -244,7 +205,7 @@ where
 
 impl<'a, T, C, D> IntoIterator for &'a mut IndirectIndex<T, C, D>
 where
-    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
+    T: Clone,
     C: nd::RawDataClone<Elem = T> + nd::DataOwned + nd::DataMut,
     D: nd::RawDataClone<Elem = usize> + nd::DataOwned + nd::DataMut,
 {
@@ -282,7 +243,7 @@ impl<T> Iterator for IndirectIndexIntoIter<T> {
 
 impl<T> IntoIterator for IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>
 where
-    T: Clone + Serialize + PartialEq + std::fmt::Debug + std::hash::Hash,
+    T: Clone,
 {
     type Item = Vec<T>;
     type IntoIter = IndirectIndexIntoIter<T>;
@@ -293,6 +254,50 @@ where
             data: vec_data.into(),
             offsets: vec_offsets.into(),
             last_offset: 0,
+        }
+    }
+}
+
+type IndirectIndexInt = IndirectIndex<usize, nd::OwnedArcRepr<usize>, nd::OwnedArcRepr<usize>>;
+
+impl IndirectIndexInt {
+    pub fn new() -> Self {
+        Self {
+            data: nd::arr1(&[]).into_shared(),
+            offsets: nd::arr1(&[]).into_shared(),
+        }
+    }
+    fn view(&self) -> IndirectIndexIntView<'_> {
+        IndirectIndexIntView {
+            data: self.data.view(),
+            offsets: self.offsets.view(),
+        }
+    }
+}
+
+impl Default for IndirectIndexInt {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<(nd::ArcArray1<usize>, nd::ArcArray1<usize>)> for IndirectIndexInt {
+    fn from(value: (nd::ArcArray1<usize>, nd::ArcArray1<usize>)) -> Self {
+        Self {
+            data: value.0,
+            offsets: value.1,
+        }
+    }
+}
+
+type IndirectIndexIntView<'a> =
+    IndirectIndex<usize, nd::ViewRepr<&'a usize>, nd::ViewRepr<&'a usize>>;
+
+impl<'a> From<(nd::ArrayView1<'a, usize>, nd::ArrayView1<'a, usize>)> for IndirectIndexIntView<'a> {
+    fn from(value: (nd::ArrayView1<'a, usize>, nd::ArrayView1<'a, usize>)) -> Self {
+        Self {
+            data: value.0,
+            offsets: value.1,
         }
     }
 }
