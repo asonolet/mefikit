@@ -1,8 +1,6 @@
-use itertools::Itertools;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-use rustc_hash::FxBuildHasher;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 

@@ -43,18 +43,16 @@ pub fn make_mesh_2d_multi() -> mf::UMesh {
 }
 
 pub fn make_imesh_2d(n: usize) -> mf::UMesh {
-    let mesh = mf::RegularUMeshBuilder::new()
+    mf::RegularUMeshBuilder::new()
         .add_axis((0..=n).map(|k| (k as f64) / (n as f64)).collect())
         .add_axis((0..=n).map(|k| (k as f64) / (n as f64)).collect())
-        .build();
-    mesh
+        .build()
 }
 
 pub fn make_imesh_3d(n: usize) -> mf::UMesh {
-    let mesh = mf::RegularUMeshBuilder::new()
+    mf::RegularUMeshBuilder::new()
         .add_axis((0..=n).map(|k| (k as f64) / (n as f64)).collect())
         .add_axis((0..=n).map(|k| (k as f64) / (n as f64)).collect())
         .add_axis((0..=n).map(|k| (k as f64) / (n as f64)).collect())
-        .build();
-    mesh
+        .build()
 }
