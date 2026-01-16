@@ -37,6 +37,12 @@ where
     pub fn num_elems_tot(&self) -> usize {
         self.data.len()
     }
+    pub fn view(&self) -> IndirectIndexView<'_, T> {
+        IndirectIndexView {
+            data: self.data.view(),
+            offsets: self.offsets.view(),
+        }
+    }
 }
 
 impl<T, C, D> Index<usize> for IndirectIndex<T, C, D>
@@ -81,53 +87,6 @@ where
         };
         let stop = self.offsets[i];
         &mut self.data.as_slice_mut().unwrap()[start..stop]
-    }
-}
-
-impl<T> IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>
-where
-    T: Clone,
-{
-    pub fn push(&mut self, elem: &[T]) {
-        let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
-        let (mut vec_data, _) = data.into_raw_vec_and_offset();
-        let offsets = std::mem::replace(&mut self.offsets, nd::arr1(&[]));
-        let (mut vec_offsets, _) = offsets.into_raw_vec_and_offset();
-        vec_data.extend_from_slice(elem);
-        vec_offsets.push(self.data.len());
-        self.data = vec_data.into();
-        self.offsets = vec_offsets.into();
-    }
-    pub fn extend_from_raw_slices(&mut self, data_slice: &[T], offsets_slice: &[usize]) {
-        let num_elems = self.data.len();
-        let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
-        let (mut vec_data, _) = data.into_raw_vec_and_offset();
-        let offsets = std::mem::replace(&mut self.offsets, nd::arr1(&[]));
-        let (mut vec_offsets, _) = offsets.into_raw_vec_and_offset();
-        vec_data.extend_from_slice(data_slice);
-        vec_offsets.extend(offsets_slice.iter().map(|of| of + num_elems));
-        self.data = vec_data.into();
-        self.offsets = vec_offsets.into();
-    }
-    pub fn reserve(&mut self, additional_data: usize, additional_offsets: usize) {
-        self.data.reserve(nd::Axis(0), additional_data).unwrap();
-        self.offsets
-            .reserve(nd::Axis(0), additional_offsets)
-            .unwrap();
-    }
-}
-
-impl<'a, T> Extend<&'a [T]> for IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>
-where
-    T: Clone,
-{
-    fn extend<I>(&mut self, iter: I)
-    where
-        I: IntoIterator<Item = &'a [T]>,
-    {
-        for elem in iter {
-            self.push(elem);
-        }
     }
 }
 
@@ -241,7 +200,79 @@ impl<T> Iterator for IndirectIndexIntoIter<T> {
     }
 }
 
-impl<T> IntoIterator for IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>
+type IndirectIndexOwned<T> = IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>;
+type IndirectIndexShared<T> = IndirectIndex<T, nd::OwnedArcRepr<T>, nd::OwnedArcRepr<usize>>;
+type IndirectIndexView<'a, T> = IndirectIndex<T, nd::ViewRepr<&'a T>, nd::ViewRepr<&'a usize>>;
+
+impl<T> IndirectIndexOwned<T>
+where
+    T: Clone,
+{
+    pub fn new() -> Self {
+        Self {
+            data: nd::arr1(&[]),
+            offsets: nd::arr1(&[]),
+        }
+    }
+    pub fn push(&mut self, elem: &[T]) {
+        let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
+        let (mut vec_data, _) = data.into_raw_vec_and_offset();
+        let offsets = std::mem::replace(&mut self.offsets, nd::arr1(&[]));
+        let (mut vec_offsets, _) = offsets.into_raw_vec_and_offset();
+        vec_data.extend_from_slice(elem);
+        vec_offsets.push(self.data.len());
+        self.data = vec_data.into();
+        self.offsets = vec_offsets.into();
+    }
+    pub fn push_conn(&mut self, elem: nd::ArrayView1<'_, T>) {
+        self.data.append(nd::Axis(0), elem).unwrap();
+        self.offsets
+            .push(nd::Axis(0), nd::arr0(self.data.len()).view())
+            .unwrap();
+    }
+    pub fn extend_from_raw_slices(&mut self, data_slice: &[T], offsets_slice: &[usize]) {
+        let num_elems = self.data.len();
+        let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
+        let (mut vec_data, _) = data.into_raw_vec_and_offset();
+        let offsets = std::mem::replace(&mut self.offsets, nd::arr1(&[]));
+        let (mut vec_offsets, _) = offsets.into_raw_vec_and_offset();
+        vec_data.extend_from_slice(data_slice);
+        vec_offsets.extend(offsets_slice.iter().map(|of| of + num_elems));
+        self.data = vec_data.into();
+        self.offsets = vec_offsets.into();
+    }
+    pub fn reserve(&mut self, additional_data: usize, additional_offsets: usize) {
+        self.data.reserve(nd::Axis(0), additional_data).unwrap();
+        self.offsets
+            .reserve(nd::Axis(0), additional_offsets)
+            .unwrap();
+    }
+    pub fn into_shared(self) -> IndirectIndexShared<T> {
+        IndirectIndexShared {
+            data: self.data.into_shared(),
+            offsets: self.offsets.into_shared(),
+        }
+    }
+}
+
+impl<'a, T> Extend<&'a [T]> for IndirectIndexOwned<T>
+where
+    T: Clone,
+{
+    fn extend<I>(&mut self, iter: I)
+    where
+        I: IntoIterator<Item = &'a [T]>,
+    {
+        let it = iter.into_iter();
+        let (len, _) = it.size_hint();
+        self.reserve(2 * len, len);
+        for elem in it {
+            self.push(elem);
+        }
+    }
+}
+
+impl<T> IntoIterator for IndirectIndexOwned<T>
 where
     T: Clone,
 {
@@ -258,46 +289,38 @@ where
     }
 }
 
-type IndirectIndexInt = IndirectIndex<usize, nd::OwnedArcRepr<usize>, nd::OwnedArcRepr<usize>>;
+impl<T> Default for IndirectIndexOwned<T>
+where
+    T: Clone,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-impl IndirectIndexInt {
+impl<T> IndirectIndexShared<T>
+where
+    T: Clone,
+{
     pub fn new() -> Self {
         Self {
             data: nd::arr1(&[]).into_shared(),
             offsets: nd::arr1(&[]).into_shared(),
         }
     }
-    fn view(&self) -> IndirectIndexIntView<'_> {
-        IndirectIndexIntView {
-            data: self.data.view(),
-            offsets: self.offsets.view(),
+    pub fn into_owned(self) -> IndirectIndexOwned<T> {
+        IndirectIndexOwned {
+            data: self.data.into_owned(),
+            offsets: self.offsets.into_owned(),
         }
     }
 }
 
-impl Default for IndirectIndexInt {
+impl<T> Default for IndirectIndexShared<T>
+where
+    T: Clone,
+{
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl From<(nd::ArcArray1<usize>, nd::ArcArray1<usize>)> for IndirectIndexInt {
-    fn from(value: (nd::ArcArray1<usize>, nd::ArcArray1<usize>)) -> Self {
-        Self {
-            data: value.0,
-            offsets: value.1,
-        }
-    }
-}
-
-type IndirectIndexIntView<'a> =
-    IndirectIndex<usize, nd::ViewRepr<&'a usize>, nd::ViewRepr<&'a usize>>;
-
-impl<'a> From<(nd::ArrayView1<'a, usize>, nd::ArrayView1<'a, usize>)> for IndirectIndexIntView<'a> {
-    fn from(value: (nd::ArrayView1<'a, usize>, nd::ArrayView1<'a, usize>)) -> Self {
-        Self {
-            data: value.0,
-            offsets: value.1,
-        }
     }
 }

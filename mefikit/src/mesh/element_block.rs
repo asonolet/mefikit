@@ -6,6 +6,8 @@ use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+use crate::mesh::indirect_index::IndirectIndex;
+
 use super::connectivity::{Connectivity, ConnectivityBase, ConnectivityView};
 use super::element::{Element, ElementMut, ElementType};
 
@@ -47,11 +49,10 @@ where
     }
 
     pub fn element_connectivity(&self, index: usize) -> &[usize] {
-        self.connectivity.get(index)
+        &self.connectivity[index]
     }
 
     pub fn get<'a>(&'a self, index: usize, coords: ArrayView2<'a, f64>) -> Element<'a> {
-        let connectivity = self.element_connectivity(index);
         // let fields = self
         //     .fields
         //     .iter()
@@ -63,7 +64,7 @@ where
             None,
             &self.families[index],
             &self.groups,
-            connectivity,
+            &self.connectivity[index],
             self.cell_type,
         )
     }
@@ -109,7 +110,6 @@ where
             .into_par_iter()
             .with_min_len(200)
             .map(move |i| {
-                let connectivity = self.element_connectivity(i);
                 // let fields = self
                 //     .fields
                 //     .iter()
@@ -122,7 +122,7 @@ where
                     None,
                     &self.families[i],
                     &self.groups,
-                    connectivity,
+                    &self.connectivity[i],
                     self.cell_type,
                 )
             })
@@ -190,7 +190,7 @@ impl ElementBlock {
         family: Option<usize>,
         fields: Option<BTreeMap<String, ArrayViewD<f64>>>,
     ) {
-        self.connectivity.append(connectivity);
+        self.connectivity.push(connectivity);
         let family = family.unwrap_or_default();
         let mut new_families = std::mem::take(&mut self.families).into_owned();
         new_families.append(Axis(0), array![family].view()).unwrap();
@@ -202,7 +202,6 @@ impl ElementBlock {
     }
 
     pub fn get_mut<'a>(&'a mut self, index: usize, coords: ArrayView2<'a, f64>) -> ElementMut<'a> {
-        let connectivity = self.connectivity.get_mut(index);
         // let fields = self
         //     .fields
         //     .iter()
@@ -214,7 +213,7 @@ impl ElementBlock {
             None,
             self.families.get_mut(index).unwrap(),
             &self.groups,
-            connectivity,
+            &mut self.connectivity[index],
             self.cell_type,
         )
     }
@@ -269,10 +268,10 @@ impl<'a> ElementBlockView<'a> {
         let reg_vec = Box::new(Array1::from(vec![0; conn_len]));
         Self {
             cell_type,
-            connectivity: ConnectivityView::Poly {
+            connectivity: ConnectivityView::Poly(IndirectIndex {
                 data: connectivity,
                 offsets,
-            },
+            }),
             fields: BTreeMap::new(),
             families: Box::leak(reg_vec).view(),
             groups: BTreeMap::new(),

@@ -99,9 +99,9 @@ impl PyUMesh {
                     mf::Connectivity::Regular(c) => {
                         PyConnectivity::Regular(np::PyArray2::from_array(py, c))
                     }
-                    mf::Connectivity::Poly { data, offsets } => PyConnectivity::Poly(
-                        np::PyArray1::from_array(py, data),
-                        np::PyArray1::from_array(py, offsets),
+                    mf::Connectivity::Poly(conn) => PyConnectivity::Poly(
+                        np::PyArray1::from_array(py, &conn.data),
+                        np::PyArray1::from_array(py, &conn.offsets),
                     ),
                 };
                 (et, conn)

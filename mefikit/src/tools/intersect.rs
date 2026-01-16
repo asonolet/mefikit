@@ -90,45 +90,45 @@ fn intersect_1d_elems(
     }
 }
 
-/// Cette méthode permet de découper un maillage 2d potentiellement non conforme avec un maillage
-/// de segments propres (sans noeuds non fusionnés).
-pub fn cut_2d_mesh_with_1d_mesh(mesh: &UMesh, tool_mesh: UMesh) -> Result<UMesh, String> {
-    // tool_mesh.merge_nodes();
-    let tool_mesh = tool_mesh.prepend_coords(mesh.coords());
-
-    let (m1d, mgraph) = compute_neighbours(mesh, Some(D2), None);
-
-    // build R*-tree with 1d tool mesh
-    let segs: Vec<_> = tool_mesh
-        .elements()
-        .map(|seg| Segment::from(&seg).0)
-        .collect();
-    let cutter_tree = RTree::bulk_load(segs);
-
-    // Maintenant je travaille uniquement en terme de connectivité, j'utilise la table de
-    // coordonnées suivante pour les identifiants de noeuds:
-    // Table de mesh + table de tool_mesh après merge + nouveaux noeuds différents
-    // Je créé la liste des segments de tool mesh découpés (avec les noeuds d'intersection)
-    let mut e2int: HashMap<ElementId, Vec<[usize; 2]>> = HashMap::new();
-    for el in mesh.elements_of_dim(D2) {
-        let segs_in_elem: Vec<_> = cutter_tree
-            .locate_in_envelope_intersecting(&el.to_aabb2())
-            .collect();
-        for (_, _, &eid) in mgraph.edges(el.id()) {
-            // TODO: edge could be SEG3!
-            let edge = m1d.element(eid);
-            let _intersections: &_ = e2int.entry(eid).or_insert_with(|| {
-                let intersections = Vec::new();
-                for seg in &segs_in_elem {
-                    let seg_elem = tool_mesh.element(seg.data);
-                    // Calcul des intersections avec edge
-                    // Une intersection est soit un Point, soit un Segment
-                    let _intersection_coords = intersect_1d_elems(&edge, &seg_elem, 4);
-                    todo!()
-                }
-                intersections
-            });
-        }
-    }
-    todo!()
-}
+// Cette méthode permet de découper un maillage 2d potentiellement non conforme avec un maillage
+// de segments propres (sans noeuds non fusionnés).
+// pub fn cut_2d_mesh_with_1d_mesh(mesh: &UMesh, tool_mesh: UMesh) -> Result<UMesh, String> {
+//     // tool_mesh.merge_nodes();
+//     let tool_mesh = tool_mesh.prepend_coords(mesh.coords());
+//
+//     let (m1d, mgraph) = compute_neighbours(mesh, Some(D2), None);
+//
+//     // build R*-tree with 1d tool mesh
+//     let segs: Vec<_> = tool_mesh
+//         .elements()
+//         .map(|seg| Segment::from(&seg).0)
+//         .collect();
+//     let cutter_tree = RTree::bulk_load(segs);
+//
+//     // Maintenant je travaille uniquement en terme de connectivité, j'utilise la table de
+//     // coordonnées suivante pour les identifiants de noeuds:
+//     // Table de mesh + table de tool_mesh après merge + nouveaux noeuds différents
+//     // Je créé la liste des segments de tool mesh découpés (avec les noeuds d'intersection)
+//     let mut e2int: HashMap<ElementId, Vec<[usize; 2]>> = HashMap::new();
+//     for el in mesh.elements_of_dim(D2) {
+//         let segs_in_elem: Vec<_> = cutter_tree
+//             .locate_in_envelope_intersecting(&el.to_aabb2())
+//             .collect();
+//         for (_, _, &eid) in mgraph.edges(el.id()) {
+//             // TODO: edge could be SEG3!
+//             let edge = m1d.element(eid);
+//             let _intersections: &_ = e2int.entry(eid).or_insert_with(|| {
+//                 let intersections = Vec::new();
+//                 for seg in &segs_in_elem {
+//                     let seg_elem = tool_mesh.element(seg.data);
+//                     // Calcul des intersections avec edge
+//                     // Une intersection est soit un Point, soit un Segment
+//                     let _intersection_coords = intersect_1d_elems(&edge, &seg_elem, 4);
+//                     todo!()
+//                 }
+//                 intersections
+//             });
+//         }
+//     }
+//     todo!()
+// }

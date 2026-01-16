@@ -63,8 +63,8 @@ where
                 ConnectivityBase::Regular(arr) => {
                     view.add_regular_block(et, arr.view(), Some(block.families.view()))
                 }
-                ConnectivityBase::Poly { data, offsets } => {
-                    view.add_poly_block(et, data.view(), offsets.view())
+                ConnectivityBase::Poly(conn) => {
+                    view.add_poly_block(et, conn.data.view(), conn.offsets.view())
                 }
             };
         }
@@ -108,7 +108,7 @@ where
             .ok_or_else(|| "Element is not in the mesh.".to_owned())?
             .connectivity
         {
-            ConnectivityBase::Poly { data, offsets } => Ok((data.view(), offsets.view())),
+            ConnectivityBase::Poly (conn) => Ok((conn.data.view(), conn.offsets.view())),
             _ => Err(
                 "This element type has regular connectivity, please use regular_connectivity(et) method."
                     .to_owned(),
@@ -244,10 +244,10 @@ impl<'a> UMeshView<'a> {
     pub fn to_shared(&self) -> UMesh {
         let mut umesh = UMesh::new(self.coords.to_shared());
         for (&et, eb) in &self.element_blocks {
-            match eb.connectivity {
+            match &eb.connectivity {
                 ConnectivityBase::Regular(r) => umesh.add_regular_block(et, r.to_shared()),
-                ConnectivityBase::Poly { data, offsets } => {
-                    umesh.add_poly_block(et, data.to_shared(), offsets.to_shared())
+                ConnectivityBase::Poly(conn) => {
+                    umesh.add_poly_block(et, conn.data.to_shared(), conn.offsets.to_shared())
                 }
             }
         }
@@ -371,19 +371,19 @@ impl UMesh {
         Ok(())
     }
 
-    /// This is kind of efficient: coordinates are reallocated and copied but connectivities are
-    /// modified in-place.
-    pub fn prepend_coords(mut self, added_coords: ArrayView2<'_, f64>) -> Self {
-        let n_coords = added_coords.len_of(Axis(0));
-        self.coords = nd::concatenate![Axis(0), added_coords, self.coords].into_shared();
-        for (_, eb) in self.element_blocks.iter_mut() {
-            match &mut eb.connectivity {
-                ConnectivityBase::Regular(c) => *c += n_coords,
-                ConnectivityBase::Poly { data, .. } => *data += n_coords,
-            }
-        }
-        self
-    }
+    // This is kind of efficient: coordinates are reallocated and copied but connectivities are
+    // modified in-place.
+    // pub fn prepend_coords(mut self, added_coords: ArrayView2<'_, f64>) -> Self {
+    //     let n_coords = added_coords.len_of(Axis(0));
+    //     self.coords = nd::concatenate![Axis(0), added_coords, self.coords].into_shared();
+    //     for (_, eb) in self.element_blocks.iter_mut() {
+    //         match &mut eb.connectivity {
+    //             ConnectivityBase::Regular(c) => *c += n_coords,
+    //             ConnectivityBase::Poly { data, .. } => *data += n_coords,
+    //         }
+    //     }
+    //     self
+    // }
 
     /// Extracts a sub-mesh from the current mesh based on the provided element IDs.
     ///
