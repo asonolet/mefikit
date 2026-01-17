@@ -1,16 +1,29 @@
+mod binary;
+mod centroid;
+mod element;
+mod field;
+mod group;
+mod node;
+
 use itertools::Itertools;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-use rustc_hash::{FxHashSet};
-use std::collections::{BTreeMap};
-use std::ops::{BitAnd, BitOr, Not};
+use rustc_hash::FxHashSet;
+use std::collections::BTreeMap;
+use std::ops::{BitAnd, BitOr, BitXor, Not};
 use std::sync::Arc;
-use std::thread;
 
 use crate::element_traits::ElementGeo;
 use crate::element_traits::is_in as geo;
 use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, ElementType, UMesh, UMeshView};
+
+use binary::{BinarayExpr, BooleanOp, NotExpr};
+use centroid::CentroidSelection;
+use element::ElementSelection;
+use field::FieldSelection;
+use group::GroupSelection;
+use node::NodeSelection;
 
 type ElementIdsSet = BTreeMap<ElementType, FxHashSet<usize>>;
 
@@ -61,19 +74,20 @@ impl<const N: usize> Selection<N> {
     fn optimize(&self) -> Self {
         todo!()
     }
-    fn nodes_in_bbox(all: bool, min: [f64; N], max: [f64; N]) -> Self {
+    fn nbbox(min: [f64; N], max: [f64; N], all: bool) -> Self {
         Self::NodeSelection(NodeSelection::InBBox { all, min, max })
     }
-    fn nodes_in_sphere(all: bool, center: [f64; N], r2: f64) -> Self {
+    /// This method filters upon nodes position.
+    fn nsphere(center: [f64; N], r2: f64, all: bool) -> Self {
         Self::NodeSelection(NodeSelection::InSphere { all, center, r2 })
     }
-    fn nodes_in_ids(all: bool, ids: Vec<usize>) -> Self {
-        Self::NodeSelection(NodeSelection::InIds { all, ids } )
+    fn nids(ids: Vec<usize>, all: bool) -> Self {
+        Self::NodeSelection(NodeSelection::InIds { all, ids })
     }
-    fn in_bbox(min: [f64; N], max: [f64; N]) -> Self {
+    fn bbox(min: [f64; N], max: [f64; N]) -> Self {
         Self::CentroidSelection(CentroidSelection::InBBox { min, max })
     }
-    fn in_sphere(center: [f64; N], r2: f64) -> Self {
+    fn sphere(center: [f64; N], r2: f64) -> Self {
         Self::CentroidSelection(CentroidSelection::InSphere { center, r2 })
     }
     fn types(elems: Vec<ElementType>) -> Self {
@@ -82,7 +96,7 @@ impl<const N: usize> Selection<N> {
     fn dimensions(dims: Vec<Dimension>) -> Self {
         Self::ElementSelection(ElementSelection::Dimensions(dims))
     }
-    fn in_ids(eids: ElementIdsSet) -> Self {
+    fn ids(eids: ElementIds) -> Self {
         Self::ElementSelection(ElementSelection::InIds(eids))
     }
 }
@@ -91,6 +105,7 @@ impl<const N: usize> Select for Selection<N> {
     fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
         match self {
             Selection::ElementSelection(elemt_expr) => elemt_expr.select(selection),
+            Selection::NodeSelection(nodes_expr) => nodes_expr.select(selection),
             Selection::BinarayExpr(binary) => binary.select(selection),
             _ => todo!(),
         }
@@ -121,6 +136,18 @@ impl<const N: usize> BitOr for Selection<N> {
     }
 }
 
+impl<const N: usize> BitXor for Selection<N> {
+    type Output = Selection<N>;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        Selection::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::Xor,
+            left: Arc::new(self),
+            right: Arc::new(rhs),
+        })
+    }
+}
+
 impl<const N: usize> Not for Selection<N> {
     type Output = Selection<N>;
 
@@ -129,243 +156,18 @@ impl<const N: usize> Not for Selection<N> {
     }
 }
 
-// Not leaf operations
-
-pub struct BinarayExpr<const N: usize> {
-    operator: BooleanOp,
-    left: Arc<Selection<N>>,
-    right: Arc<Selection<N>>,
-}
-pub struct NotExpr<const N: usize>(Arc<Selection<N>>);
-
 // Leaf operations
-
-enum NodeSelection<const N: usize> {
-    InBBox {
-        all: bool,
-        min: [f64; N],
-        max: [f64; N],
-    }, // Axis aligned BBox
-    InSphere {
-        all: bool,
-        center: [f64; N],
-        r2: f64,
-    }, // center and rayon
-    InIds {
-        all: bool,
-        ids: Vec<usize>,
-    },
-}
-
-enum CentroidSelection<const N: usize> {
-    InBBox { min: [f64; N], max: [f64; N] }, // Axis aligned BBox
-    InSphere { center: [f64; N], r2: f64 },  // center and rayon
-}
-
-enum ElementSelection {
-    Types(Vec<ElementType>),
-    InIds(ElementIdsSet),
-    Dimensions(Vec<Dimension>),
-}
-
-enum GroupSelection {
-    IncludeGroups(Vec<String>),
-    ExcludeGroups(Vec<String>),
-    IncludeFamilies(Vec<usize>),
-    ExcludeFamilies(Vec<usize>),
-}
-
-enum FieldSelection {
-    Gt(Arc<FieldExpr>, f64),
-    Geq(Arc<FieldExpr>, f64),
-    Eq {
-        field: Arc<FieldExpr>,
-        val: f64,
-        eps: f64,
-    },
-    Lt(Arc<FieldExpr>, f64),
-    Leq(Arc<FieldExpr>, f64),
-}
-
-pub enum FieldExpr {
-    Scalar(f64),
-    Field(String),
-    BinarayExpr {
-        operator: FieldOp,
-        left: Arc<FieldExpr>,
-        right: Arc<FieldExpr>,
-    },
-}
-
-#[derive(Copy, Clone)]
-pub enum FieldOp {
-    Add,
-    Mul,
-    Sub,
-    Div,
-    Pow,
-}
-
-#[derive(Copy, Clone)]
-pub enum BooleanOp {
-    Eq,
-    And,
-    Or,
-    Xor,
-}
 
 impl Select for ElementSelection {
     fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
         match self {
-            ElementSelection::Types(types) => {
-                let SelectedView(view, mut sel) = selection;
-                for k in types {
-                    sel.remove(k);
-                }
-                SelectedView(view, sel)
-            }
+            ElementSelection::Types(types) => Self::select_types(types.as_slice(), selection),
             ElementSelection::Dimensions(dims) => {
-                let SelectedView(view, mut sel) = selection;
-                let mut key_toremove = Vec::new();
-                for k in sel.keys() {
-                    if !dims.contains(&k.dimension()) {
-                        key_toremove.push(*k);
-                    }
-                }
-                for k in key_toremove {
-                    sel.remove(&k);
-                }
-                SelectedView(view, sel)
+                Self::select_dimensions(dims.as_slice(), selection)
             }
-            _ => todo!(),
+            ElementSelection::InIds(ids) => Self::select_ids(ids, selection),
         }
     }
-}
-
-impl<const N: usize> NodeSelection<N> {
-    // fn all_in<F0>(self, f: F0, selection: SelectedView) -> SelectedView
-    // where
-    //     F0: Fn(&[f64]) -> bool + Sync,
-    // {
-    //      let SelectedView(mview, index) = selection;
-    //     let index = index
-    //         .into_par_iter()
-    //         .filter(|&e_id| mview.element(e_id).coords().all(&f))
-    //         .collect();
-
-    //      SelectedView(mview, index)
-    // }
-
-    // fn any_in<F0>(self, f: F0, selection: SelectedView) -> SelectedView
-    // where
-    //     F0: Fn(&[f64]) -> bool + Sync,
-    // {
-    //     let SelectedView(mview, index) = selection;
-    //     let index = index
-    //         .into_iter()
-    //         .flat_map(|(t, eids)| std::iter::repeat(t).zip(eids))
-    //         .filter(|(&t, &eid)| mview.element(ElementId::new(t, eid)).coords().any(&f))
-    //         .collect();
-    //     SelectedView(mview, index)
-
-
-    // }
-
-    // pub fn in_shape<F0>(self, f: F0) -> Self
-    // where
-    //     F0: Fn(&[f64]) -> bool + Sync,
-    // {
-    //     if self.state.all_nodes {
-    //         self.all_in(f)
-    //     } else {
-    //         self.any_in(f)
-    //     }
-    // }
-
-    // pub fn in_sphere(self, p0: &[f64; 3], r: f64) -> Self {
-    //     self.in_shape(|x| {
-    //         debug_assert_eq!(x.len(), 3);
-    //         geo::in_sphere(
-    //             x.try_into().expect("Coords should have 3 components."),
-    //             p0,
-    //             r,
-    //         )
-    //     })
-    // }
-
-    // pub fn in_bbox(self, p0: &[f64; 3], p1: &[f64; 3]) -> Self {
-    //     self.in_shape(|x| {
-    //         debug_assert_eq!(x.len(), 3);
-    //         geo::in_aa_bbox(
-    //             x.try_into().expect("Coords should have 3 components."),
-    //             p0,
-    //             p1,
-    //         )
-    //     })
-    // }
-
-    // pub fn in_rectangle(self, p0: &[f64; 2], p1: &[f64; 2]) -> Self {
-    //     self.in_shape(|x| {
-    //         debug_assert_eq!(x.len(), 2);
-    //         geo::in_aa_rectangle(
-    //             x.try_into().expect("Coords should have 2 components."),
-    //             p0,
-    //             p1,
-    //         )
-    //     })
-    // }
-
-    // fn any_id_in(self, nodes_ids: &[usize]) -> Self {
-    //     let index = if nodes_ids.len() < 50 {
-    //         self.index
-    //             .into_iter()
-    //             .filter(|&e_id| {
-    //                 nodes_ids
-    //                     .iter()
-    //                     .any(|n| self.umesh.element(e_id).connectivity().contains(n))
-    //             })
-    //             .collect()
-    //     } else {
-    //         let mut nodes_ids: Vec<usize> = nodes_ids.to_vec();
-    //         nodes_ids.sort_unstable();
-
-    //         self.index
-    //             .into_iter()
-    //             .filter(|&e_id| {
-    //                 self.umesh
-    //                     .element(e_id)
-    //                     .connectivity()
-    //                     .iter()
-    //                     .any(|n| nodes_ids.binary_search(n).is_ok())
-    //             })
-    //             .collect()
-    //     };
-    // }
-
-    // fn all_id_in(self, nodes_ids: &[usize]) -> Self {
-    //     let nodes_ids: FxHashSet<usize> = nodes_ids.iter().cloned().collect();
-
-    //     let index = self
-    //         .index
-    //         .into_par_iter()
-    //         .filter(|&e_id| {
-    //             self.umesh
-    //                 .element(e_id)
-    //                 .connectivity()
-    //                 .iter()
-    //                 .all(|n| nodes_ids.contains(n))
-    //         })
-    //         .collect();
-    // }
-
-    // pub fn id_in(self, nodes_ids: &[usize]) -> Self {
-    //     let all = self.state.all_nodes;
-    //     if all {
-    //         self.all_id_in(nodes_ids)
-    //     } else {
-    //         self.any_id_in(nodes_ids)
-    //     }
-    // }
 }
 
 impl<const N: usize> Select for NodeSelection<N> {
@@ -374,24 +176,6 @@ impl<const N: usize> Select for NodeSelection<N> {
             NodeSelection::InBBox { all, min, max } => selection,
             _ => todo!(),
         }
-    }
-}
-
-impl<const N: usize> BinarayExpr<N> {
-    fn and_select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
-        if self.left.weight() < self.right.weight() {
-            let selection = self.left.select(selection);
-            self.right.select(selection)
-        } else {
-            let selection = self.right.select(selection);
-            self.left.select(selection)
-        }
-    }
-    fn or_select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
-        let selection1 = self.left.select(selection.clone());
-        let _selection2 = self.right.select(selection);
-        //TODO: return the union of both
-        selection1
     }
 }
 
@@ -405,86 +189,6 @@ impl<const N: usize> Select for BinarayExpr<N> {
     }
 }
 
-// pub struct Selector<State = ElementSelector> {
-//     selection: Box<dyn Fn(UMesh, ElementIds) -> (UMesh, ElementIds)>,
-//     state: State,
-// }
-//
-// pub struct FieldBasedSelector {
-//     pub field_name: String,
-// }
-//
-// pub struct ElementSelector;
-//
-// pub struct NodeBasedSelector {
-//     pub all_nodes: bool,
-// }
-//
-// pub struct GroupBasedSelector {
-//     pub families: FxHashMap<ElementType, BTreeSet<usize>>,
-// }
-//
-// pub struct CentroidBasedSelector;
-//
-// impl<State> Selector<State> {
-//     pub fn index(&self) -> &ElementIds {
-//         &self.index
-//     }
-//
-//     pub fn select(&self) -> UMesh {
-//         self.umesh.extract(&self.index)
-//     }
-//
-//     fn into_groups(self) -> Selector<GroupBasedSelector> {
-//         let state = GroupBasedSelector {
-//             families: HashMap::default(),
-//         };
-//         Selector {
-//             umesh: self.umesh,
-//             index: self.index,
-//             state,
-//         }
-//     }
-//
-//     fn into_field(self, name: &str) -> Selector<FieldBasedSelector> {
-//         let state = FieldBasedSelector {
-//             field_name: name.to_owned(),
-//         };
-//         Selector {
-//             umesh: self.umesh,
-//             index: self.index,
-//             state,
-//         }
-//     }
-//
-//     fn into_elements(self) -> Selector<ElementSelector> {
-//         let state = ElementSelector {};
-//         Selector {
-//             umesh: self.umesh,
-//             index: self.index,
-//             state,
-//         }
-//     }
-//
-//     fn into_centroids(self) -> Selector<CentroidBasedSelector> {
-//         let state = CentroidBasedSelector {};
-//         Selector {
-//             umesh: self.umesh,
-//             index: self.index,
-//             state,
-//         }
-//     }
-//
-//     fn into_nodes(self, all: bool) -> Selector<NodeBasedSelector> {
-//         let state = NodeBasedSelector { all_nodes: all };
-//         Selector {
-//             umesh: self.umesh,
-//             index: self.index,
-//             state,
-//         }
-//     }
-// }
-//
 // impl<'a> Selector<ElementSelector> {
 //     pub fn new(umesh: UMesh) -> Self {
 //         let index: BTreeMap<ElementType, Vec<usize>> = umesh
@@ -952,6 +656,7 @@ mod tests {
     use super::*;
     use crate::mesh::ElementType;
     use crate::mesh_examples as me;
+    use Selection as Sl;
 
     // #[test]
     // fn test_umesh_element_selection() {
@@ -966,11 +671,13 @@ mod tests {
 
     #[test]
     fn test_umesh_element_selection() {
-        use Selection as Sl;
+        use ElementType::*;
         let mesh = me::make_mesh_2d_multi();
-        let expr = Sl::in_bbox([0.0, 0.0], [1., 1.]) & Sl::types(vec![ElementType::QUAD4]);
-        let (eids, mesh_sel) = mesh.select(expr);
-        assert_eq!(mesh_sel.num_elements(), 1)
-        assert_eq!(eids.iter_blocks(), 1)
+        // Here is my cool expression !
+        let (eids, mesh_sel) = mesh.select(
+            (Sl::bbox([0.0, 0.0], [1., 1.]) | Sl::nsphere([0.0, 0.0], 1.0, false))
+                & Sl::types(vec![QUAD4]),
+        );
+        assert_eq!(mesh_sel.num_elements(), 1);
     }
 }
