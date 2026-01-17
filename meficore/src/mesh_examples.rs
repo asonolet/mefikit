@@ -23,6 +23,10 @@ pub fn make_mesh_3d_seg2() -> mf::UMesh {
     mesh
 }
 
+/// This 2d mesh holds:
+/// - two SEG2
+/// - one QUAD4
+/// - one PGON
 pub fn make_mesh_2d_multi() -> mf::UMesh {
     let coords = nd::Array2::from_shape_vec(
         (5, 2),
