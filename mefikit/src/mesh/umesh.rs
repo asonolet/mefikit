@@ -1,12 +1,11 @@
 use crate::mesh::ElementLike;
 
-use super::element::{
-    Dimension, Element, ElementId, ElementIds, ElementMut, ElementType, Regularity,
-};
+use super::dimension::Dimension;
+use super::element::{Element, ElementId, ElementMut, ElementType, Regularity};
+use super::element_ids::ElementIds;
 
 use derive_where::derive_where;
 use ndarray as nd;
-use ndarray::prelude::*;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
@@ -26,12 +25,12 @@ use super::element_block::{
 #[derive_where(Deserialize; N: nd::DataOwned, C: nd::DataOwned, F: nd::DataOwned, G: nd::DataOwned)]
 pub struct UMeshBase<N, C, F, G>
 where
-    N: nd::RawData<Elem = f64> + nd::Data,   // Nodes (Coords) data
-    C: nd::RawData<Elem = usize> + nd::Data, // Connectivity data
-    F: nd::RawData<Elem = f64> + nd::Data,   // Fields data
-    G: nd::RawData<Elem = usize> + nd::Data, // Groups data
+    N: nd::Data<Elem = f64>,   // Nodes (Coords) data
+    C: nd::Data<Elem = usize>, // Connectivity data
+    F: nd::Data<Elem = f64>,   // Fields data
+    G: nd::Data<Elem = usize>, // Groups data
 {
-    pub coords: ArrayBase<N, Ix2>,
+    pub coords: nd::ArrayBase<N, nd::Ix2>,
     element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
 }
 
@@ -51,10 +50,10 @@ pub type UMeshView<'a> = UMeshBase<
 
 impl<N, C, F, G> UMeshBase<N, C, F, G>
 where
-    N: nd::RawData<Elem = f64> + nd::Data,
-    C: nd::RawData<Elem = usize> + nd::Data,
-    F: nd::RawData<Elem = f64> + nd::Data,
-    G: nd::RawData<Elem = usize> + nd::Data,
+    N: nd::Data<Elem = f64>,
+    C: nd::Data<Elem = usize>,
+    F: nd::Data<Elem = f64>,
+    G: nd::Data<Elem = usize>,
 {
     pub fn view(&self) -> UMeshView<'_> {
         let mut view = UMeshView::new(self.coords.view());
@@ -71,7 +70,7 @@ where
         view
     }
 
-    pub fn coords(&self) -> ArrayView2<'_, f64> {
+    pub fn coords(&self) -> nd::ArrayView2<'_, f64> {
         self.coords.view()
     }
 
@@ -79,7 +78,10 @@ where
     ///
     /// Please consider using the elements() iterator which give the connectivity element by
     /// element with zero costs.
-    pub fn regular_connectivity(&self, et: ElementType) -> Result<ArrayView2<'_, usize>, String> {
+    pub fn regular_connectivity(
+        &self,
+        et: ElementType,
+    ) -> Result<nd::ArrayView2<'_, usize>, String> {
         match &self
             .element_blocks
             .get(&et)
@@ -101,7 +103,7 @@ where
     pub fn poly_connectivity(
         &self,
         et: ElementType,
-    ) -> Result<(ArrayView1<'_, usize>, ArrayView1<'_, usize>), String> {
+    ) -> Result<(nd::ArrayView1<'_, usize>, nd::ArrayView1<'_, usize>), String> {
         match &self
             .element_blocks
             .get(&et)
@@ -257,8 +259,8 @@ impl<'a> UMeshView<'a> {
     pub fn add_regular_block(
         &mut self,
         et: ElementType,
-        connectivity: ArrayView2<'a, usize>,
-        families: Option<ArrayView1<'a, usize>>,
+        connectivity: nd::ArrayView2<'a, usize>,
+        families: Option<nd::ArrayView1<'a, usize>>,
     ) {
         let block = ElementBlockView::new_regular(et, connectivity, families);
         let (key, wrapped) = block.into_entry();
@@ -268,8 +270,8 @@ impl<'a> UMeshView<'a> {
     pub fn add_poly_block(
         &mut self,
         et: ElementType,
-        conn: ArrayView1<'a, usize>,
-        offsets: ArrayView1<'a, usize>,
+        conn: nd::ArrayView1<'a, usize>,
+        offsets: nd::ArrayView1<'a, usize>,
     ) {
         let block = ElementBlockView::new_poly(et, conn, offsets);
         let (key, wrapped) = block.into_entry();
@@ -311,7 +313,7 @@ impl UMesh {
         element_type: ElementType,
         connectivity: &[usize],
         family: Option<usize>,
-        fields: Option<BTreeMap<String, ArrayViewD<f64>>>,
+        fields: Option<BTreeMap<String, nd::ArrayViewD<f64>>>,
     ) -> ElementId {
         match element_type.regularity() {
             Regularity::Regular => {
@@ -332,8 +334,8 @@ impl UMesh {
                 self.element_blocks.entry(element_type).or_insert_with(|| {
                     ElementBlock::new_poly(
                         element_type,
-                        arr1(&[]).into_shared(),
-                        arr1(&[]).into_shared(),
+                        nd::arr1(&[]).into_shared(),
+                        nd::arr1(&[]).into_shared(),
                     )
                 });
             }
@@ -342,7 +344,7 @@ impl UMesh {
         self.element_blocks
             .get_mut(&element_type)
             .unwrap() // This unwrap is safe because we just inserted the element type
-            .add_element(ArrayView1::from(connectivity), family, fields);
+            .add_element(nd::ArrayView1::from(connectivity), family, fields);
         ElementId::new(element_type, new_element_id)
     }
 
@@ -352,9 +354,12 @@ impl UMesh {
 
     /// This is the most efficient way because it does not copy coordinates if no reallocation is
     /// needed if coordinates are not shared. When coordinates are shared it is copied either way.
-    pub fn append_coord(&mut self, added_coord: ArrayView1<'_, f64>) -> Result<(), nd::ShapeError> {
+    pub fn append_coord(
+        &mut self,
+        added_coord: nd::ArrayView1<'_, f64>,
+    ) -> Result<(), nd::ShapeError> {
         let mut coords = std::mem::take(&mut self.coords).into_owned();
-        coords.push(Axis(0), added_coord)?;
+        coords.push(nd::Axis(0), added_coord)?;
         self.coords = coords.into_shared();
         Ok(())
     }
@@ -363,10 +368,10 @@ impl UMesh {
     /// needed if coordinates are not shared. When coordinates are shared it is copied either way.
     pub fn append_coords(
         &mut self,
-        added_coords: ArrayView2<'_, f64>,
+        added_coords: nd::ArrayView2<'_, f64>,
     ) -> Result<(), nd::ShapeError> {
         let mut coords = std::mem::take(&mut self.coords).into_owned();
-        coords.append(Axis(0), added_coords)?;
+        coords.append(nd::Axis(0), added_coords)?;
         self.coords = coords.into_shared();
         Ok(())
     }
@@ -402,7 +407,7 @@ impl UMesh {
                     connectivity: ConnectivityBase::Regular(arr),
                     ..
                 } => extracted
-                    .add_regular_block(*t, arr.select(Axis(0), block.as_slice()).into_shared()),
+                    .add_regular_block(*t, arr.select(nd::Axis(0), block.as_slice()).into_shared()),
                 _ => todo!(),
             };
         }

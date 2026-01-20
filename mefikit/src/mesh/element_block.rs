@@ -1,15 +1,13 @@
 use derive_where::derive_where;
 use ndarray as nd;
-use ndarray::prelude::*;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use crate::mesh::indirect_index::IndirectIndex;
-
 use super::connectivity::{Connectivity, ConnectivityBase, ConnectivityView};
 use super::element::{Element, ElementMut, ElementType};
+use super::indirect_index::IndirectIndex;
 
 /// The part of a mesh constituted by one kind of element.
 ///
@@ -21,14 +19,14 @@ use super::element::{Element, ElementMut, ElementType};
 #[derive_where(Deserialize; C: nd::DataOwned, F: nd::DataOwned, G: nd::DataOwned)]
 pub struct ElementBlockBase<C, F, G>
 where
-    C: nd::RawData<Elem = usize> + nd::Data,
-    F: nd::RawData<Elem = f64> + nd::Data,
-    G: nd::RawData<Elem = usize> + nd::Data,
+    C: nd::Data<Elem = usize>,
+    F: nd::Data<Elem = f64>,
+    G: nd::Data<Elem = usize>,
 {
     pub cell_type: ElementType,
     pub connectivity: ConnectivityBase<C>,
-    pub fields: BTreeMap<String, ArrayBase<F, nd::IxDyn>>,
-    pub families: ArrayBase<G, nd::Ix1>,
+    pub fields: BTreeMap<String, nd::ArrayBase<F, nd::IxDyn>>,
+    pub families: nd::ArrayBase<G, nd::Ix1>,
     pub groups: BTreeMap<String, BTreeSet<usize>>,
 }
 
@@ -40,9 +38,9 @@ pub type ElementBlockView<'a> =
 
 impl<C, F, G> ElementBlockBase<C, F, G>
 where
-    C: nd::RawData<Elem = usize> + nd::Data,
-    F: nd::RawData<Elem = f64> + nd::Data,
-    G: nd::RawData<Elem = usize> + nd::Data,
+    C: nd::Data<Elem = usize>,
+    F: nd::Data<Elem = f64>,
+    G: nd::Data<Elem = usize>,
 {
     pub fn len(&self) -> usize {
         self.connectivity.len()
@@ -52,7 +50,7 @@ where
         &self.connectivity[index]
     }
 
-    pub fn get<'a>(&'a self, index: usize, coords: ArrayView2<'a, f64>) -> Element<'a> {
+    pub fn get<'a>(&'a self, index: usize, coords: nd::ArrayView2<'a, f64>) -> Element<'a> {
         // let fields = self
         //     .fields
         //     .iter()
@@ -71,7 +69,7 @@ where
 
     pub fn iter<'a>(
         &'a self,
-        coords: ArrayView2<'a, f64>,
+        coords: nd::ArrayView2<'a, f64>,
     ) -> impl ExactSizeIterator<Item = Element<'a>> + 'a {
         self.connectivity
             .iter()
@@ -91,7 +89,7 @@ where
     #[cfg(not(feature = "rayon"))]
     pub fn par_iter<'a>(
         &'a self,
-        coords: ArrayView2<'a, f64>,
+        coords: nd::ArrayView2<'a, f64>,
     ) -> impl Iterator<Item = Element<'a>> + 'a {
         self.iter(coords)
     }
@@ -99,7 +97,7 @@ where
     #[cfg(feature = "rayon")]
     pub fn par_iter<'a>(
         &'a self,
-        coords: ArrayView2<'a, f64>,
+        coords: nd::ArrayView2<'a, f64>,
     ) -> impl ParallelIterator<Item = Element<'a>> + 'a
     where
         C: Sync,
@@ -186,14 +184,16 @@ impl ElementBlock {
 
     pub fn add_element(
         &mut self,
-        connectivity: ArrayView1<usize>,
+        connectivity: nd::ArrayView1<usize>,
         family: Option<usize>,
-        fields: Option<BTreeMap<String, ArrayViewD<f64>>>,
+        fields: Option<BTreeMap<String, nd::ArrayViewD<f64>>>,
     ) {
         self.connectivity.push(connectivity);
         let family = family.unwrap_or_default();
         let mut new_families = std::mem::take(&mut self.families).into_owned();
-        new_families.append(Axis(0), array![family].view()).unwrap();
+        new_families
+            .append(nd::Axis(0), nd::array![family].view())
+            .unwrap();
         self.families = new_families.into_shared();
 
         if let Some(_fields) = fields {
@@ -201,7 +201,11 @@ impl ElementBlock {
         }
     }
 
-    pub fn get_mut<'a>(&'a mut self, index: usize, coords: ArrayView2<'a, f64>) -> ElementMut<'a> {
+    pub fn get_mut<'a>(
+        &'a mut self,
+        index: usize,
+        coords: nd::ArrayView2<'a, f64>,
+    ) -> ElementMut<'a> {
         // let fields = self
         //     .fields
         //     .iter()
@@ -232,13 +236,13 @@ impl<'a> ElementBlockView<'a> {
     /// A new `ElementBlock` instance.
     pub fn new_regular(
         cell_type: ElementType,
-        connectivity: ArrayView2<'a, usize>,
-        families: Option<ArrayView1<'a, usize>>,
+        connectivity: nd::ArrayView2<'a, usize>,
+        families: Option<nd::ArrayView1<'a, usize>>,
     ) -> Self {
         let conn_len = connectivity.len();
         let families = match families {
             Some(fams) => Some(fams),
-            None => Some(Box::leak(Box::new(Array1::from(vec![0; conn_len]))).view()),
+            None => todo!("Implement something meaningful?"),
         };
         Self {
             cell_type,
@@ -261,11 +265,11 @@ impl<'a> ElementBlockView<'a> {
     /// A new `ElementBlock` instance.
     pub fn new_poly(
         cell_type: ElementType,
-        connectivity: ArrayView1<'a, usize>,
-        offsets: ArrayView1<'a, usize>,
+        connectivity: nd::ArrayView1<'a, usize>,
+        offsets: nd::ArrayView1<'a, usize>,
     ) -> Self {
         let conn_len = connectivity.len();
-        let reg_vec = Box::new(Array1::from(vec![0; conn_len]));
+        let reg_vec = Box::new(nd::Array1::from(vec![0; conn_len]));
         Self {
             cell_type,
             connectivity: ConnectivityView::Poly(IndirectIndex {

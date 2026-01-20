@@ -1,9 +1,12 @@
-use ndarray::prelude::*;
+use ndarray::prelude as nd;
 use once_cell::sync::OnceCell;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+
+use super::Dimension;
+use super::ElementIds;
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Regularity {
@@ -76,31 +79,33 @@ pub enum ElementType {
 
 impl From<PolyElemType> for ElementType {
     fn from(cell: PolyElemType) -> Self {
+        use PolyElemType::*;
         match cell {
-            PolyElemType::Spline => ElementType::SPLINE,
-            PolyElemType::Pgon => ElementType::PGON,
-            PolyElemType::Phed => ElementType::PHED,
+            Spline => Self::SPLINE,
+            Pgon => Self::PGON,
+            Phed => Self::PHED,
         }
     }
 }
 
 impl From<RegularElemType> for ElementType {
     fn from(cell: RegularElemType) -> Self {
+        use RegularElemType::*;
         match cell {
-            RegularElemType::Vertex => ElementType::VERTEX,
-            RegularElemType::Seg2 => ElementType::SEG2,
-            RegularElemType::Seg3 => ElementType::SEG3,
-            RegularElemType::Seg4 => ElementType::SEG4,
-            RegularElemType::Tri3 => ElementType::TRI3,
-            RegularElemType::Tri6 => ElementType::TRI6,
-            RegularElemType::Tri7 => ElementType::TRI7,
-            RegularElemType::Quad4 => ElementType::QUAD4,
-            RegularElemType::Quad8 => ElementType::QUAD8,
-            RegularElemType::Quad9 => ElementType::QUAD9,
-            RegularElemType::Tet4 => ElementType::TET4,
-            RegularElemType::Tet10 => ElementType::TET10,
-            RegularElemType::Hex8 => ElementType::HEX8,
-            RegularElemType::Hex21 => ElementType::HEX21,
+            Vertex => Self::VERTEX,
+            Seg2 => Self::SEG2,
+            Seg3 => Self::SEG3,
+            Seg4 => Self::SEG4,
+            Tri3 => Self::TRI3,
+            Tri6 => Self::TRI6,
+            Tri7 => Self::TRI7,
+            Quad4 => Self::QUAD4,
+            Quad8 => Self::QUAD8,
+            Quad9 => Self::QUAD9,
+            Tet4 => Self::TET4,
+            Tet10 => Self::TET10,
+            Hex8 => Self::HEX8,
+            Hex21 => Self::HEX21,
         }
     }
 }
@@ -158,93 +163,7 @@ impl ElementType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum Dimension {
-    D0,
-    D1,
-    D2,
-    D3,
-}
-
-impl From<Dimension> for u8 {
-    fn from(dim: Dimension) -> u8 {
-        match dim {
-            Dimension::D0 => 0,
-            Dimension::D1 => 1,
-            Dimension::D2 => 2,
-            Dimension::D3 => 3,
-        }
-    }
-}
-
-impl TryFrom<u8> for Dimension {
-    type Error = String;
-    fn try_from(i: u8) -> Result<Dimension, String> {
-        match i {
-            3 => Ok(Dimension::D3),
-            2 => Ok(Dimension::D2),
-            1 => Ok(Dimension::D1),
-            0 => Ok(Dimension::D0),
-            _ => Err("i is higher than 3, could not convert into a dimension".to_owned()),
-        }
-    }
-}
-
-impl TryFrom<usize> for Dimension {
-    type Error = String;
-    fn try_from(i: usize) -> Result<Dimension, String> {
-        match i {
-            3 => Ok(Dimension::D3),
-            2 => Ok(Dimension::D2),
-            1 => Ok(Dimension::D1),
-            0 => Ok(Dimension::D0),
-            _ => Err("i is higher than 3, could not convert into a dimension".to_owned()),
-        }
-    }
-}
-
-impl std::ops::Add<u8> for Dimension {
-    type Output = Dimension;
-    fn add(self, i: u8) -> Self {
-        let dim: u8 = self.into();
-        let sum = i + dim;
-        sum.try_into().unwrap()
-    }
-}
-
-impl std::ops::Sub<u8> for Dimension {
-    type Output = Dimension;
-    fn sub(self, i: u8) -> Self {
-        let dim: u8 = self.into();
-        let sub = dim - i;
-        sub.try_into().unwrap()
-    }
-}
-
-impl std::ops::Add for Dimension {
-    type Output = Dimension;
-    fn add(self, rhs: Self) -> Self {
-        let dim: u8 = self.into();
-        let rhs: u8 = rhs.into();
-        let sum = rhs + dim;
-        sum.try_into().unwrap()
-    }
-}
-
-impl std::ops::Sub for Dimension {
-    type Output = Dimension;
-    fn sub(self, rhs: Self) -> Self {
-        let rhs: u8 = rhs.into();
-        let dim: u8 = self.into();
-        let sub = dim - rhs;
-        sub.try_into().unwrap()
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct ElementId(ElementType, usize);
-
-#[derive(Debug, Clone)]
-pub struct ElementIds(BTreeMap<ElementType, Vec<usize>>);
 
 impl ElementId {
     pub fn new(element_type: ElementType, index: usize) -> Self {
@@ -260,121 +179,6 @@ impl ElementId {
     }
 }
 
-impl Default for ElementIds {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl ElementIds {
-    pub fn new() -> Self {
-        ElementIds(BTreeMap::new())
-    }
-
-    pub fn add(&mut self, element_type: ElementType, index: usize) {
-        self.0.entry(element_type).or_default().push(index);
-    }
-
-    pub fn remove(&mut self, element_type: ElementType, index: usize) -> Option<usize> {
-        if let Some(indices) = self.0.get_mut(&element_type)
-            && let Some(pos) = indices.iter().position(|&i| i == index)
-        {
-            return Some(indices.remove(pos));
-        }
-        None
-    }
-
-    pub fn get(&self, element_type: &ElementType) -> Option<&Vec<usize>> {
-        self.0.get(element_type)
-    }
-
-    pub fn contains_type(&self, element_type: ElementType) -> bool {
-        self.0.contains_key(&element_type)
-    }
-    pub fn contains(&self, element_id: ElementId) -> bool {
-        if let Some(indices) = self.0.get(&element_id.element_type()) {
-            indices.contains(&element_id.index())
-        } else {
-            false
-        }
-    }
-    pub fn iter_blocks(&self) -> impl Iterator<Item = (&ElementType, &Vec<usize>)> {
-        self.0.iter()
-    }
-    pub fn iter(&self) -> impl Iterator<Item = ElementId> {
-        self.0
-            .iter()
-            .flat_map(|(et, indices)| indices.iter().map(|index| ElementId(*et, *index)))
-    }
-    pub fn into_iter(self) -> impl Iterator<Item = ElementId> {
-        self.0
-            .into_iter()
-            .flat_map(|(et, indices)| indices.into_iter().map(move |index| ElementId(et, index)))
-    }
-
-    #[cfg(feature = "rayon")]
-    pub fn into_par_iter(self) -> impl ParallelIterator<Item = ElementId> {
-        self.0.into_par_iter().flat_map(|(et, indices)| {
-            indices
-                .into_par_iter()
-                .map(move |index| ElementId(et, index))
-        })
-    }
-    #[cfg(not(feature = "rayon"))]
-    pub fn into_par_iter(self) -> impl Iterator<Item = ElementId> {
-        self.into_iter()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-    pub fn len(&self) -> usize {
-        self.0.values().map(|v| v.len()).sum()
-    }
-    pub fn element_types(&self) -> Vec<ElementType> {
-        self.0.keys().cloned().collect()
-    }
-}
-
-impl From<BTreeMap<ElementType, Vec<usize>>> for ElementIds {
-    fn from(map: BTreeMap<ElementType, Vec<usize>>) -> Self {
-        ElementIds(map)
-    }
-}
-
-impl FromIterator<ElementId> for ElementIds {
-    fn from_iter<T: IntoIterator<Item = ElementId>>(iter: T) -> Self {
-        let mut ids = ElementIds::new();
-        for id in iter {
-            ids.add(id.element_type(), id.index());
-        }
-        ids
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl FromParallelIterator<ElementId> for ElementIds {
-    fn from_par_iter<T>(par_iter: T) -> Self
-    where
-        T: IntoParallelIterator<Item = ElementId>,
-    {
-        par_iter
-            .into_par_iter()
-            .fold(ElementIds::new, |mut acc, id| {
-                acc.add(id.element_type(), id.index());
-                acc
-            })
-            .reduce(ElementIds::new, |mut acc, other| {
-                for (et, indices) in other.0 {
-                    for index in indices {
-                        acc.add(et, index);
-                    }
-                }
-                acc
-            })
-    }
-}
-
 /// Imutable Item of an ElementBlock.
 ///
 /// This struct is used to read data on an element in an element block. Note that is is only a
@@ -384,8 +188,8 @@ impl FromParallelIterator<ElementId> for ElementIds {
 #[derive(Debug)]
 pub struct Element<'a> {
     pub index: usize,
-    coords: ArrayView2<'a, f64>,
-    pub fields: Option<BTreeMap<&'a str, ArrayViewD<'a, f64>>>,
+    coords: nd::ArrayView2<'a, f64>,
+    pub fields: Option<BTreeMap<&'a str, nd::ArrayViewD<'a, f64>>>,
     pub family: &'a usize,
     groups: &'a BTreeMap<String, BTreeSet<usize>>,
     pub connectivity: &'a [usize],
@@ -456,8 +260,8 @@ pub trait ElementLike<'a> {
 impl<'a> Element<'a> {
     pub fn new(
         index: usize,
-        coords: ArrayView2<'a, f64>,
-        fields: Option<BTreeMap<&'a str, ArrayViewD<'a, f64>>>,
+        coords: nd::ArrayView2<'a, f64>,
+        fields: Option<BTreeMap<&'a str, nd::ArrayViewD<'a, f64>>>,
         family: &'a usize,
         groups: &'a BTreeMap<String, BTreeSet<usize>>,
         connectivity: &'a [usize],
@@ -534,8 +338,8 @@ impl<'a> ElementLike<'a> for Element<'a> {
 /// nodes in this element.
 pub struct ElementMut<'a> {
     pub index: usize,
-    coords: ArrayView2<'a, f64>,
-    pub fields: Option<BTreeMap<&'a str, ArrayViewMutD<'a, f64>>>,
+    coords: nd::ArrayView2<'a, f64>,
+    pub fields: Option<BTreeMap<&'a str, nd::ArrayViewMutD<'a, f64>>>,
     pub family: &'a mut usize,
     groups: &'a BTreeMap<String, BTreeSet<usize>>, // safely shared across threads
     pub connectivity: &'a mut [usize],
@@ -595,8 +399,8 @@ impl<'a> ElementLike<'a> for ElementMut<'a> {
 impl<'a> ElementMut<'a> {
     pub fn new(
         index: usize,
-        coords: ArrayView2<'a, f64>,
-        fields: Option<BTreeMap<&'a str, ArrayViewMutD<'a, f64>>>,
+        coords: nd::ArrayView2<'a, f64>,
+        fields: Option<BTreeMap<&'a str, nd::ArrayViewMutD<'a, f64>>>,
         family: &'a mut usize,
         groups: &'a BTreeMap<String, BTreeSet<usize>>,
         connectivity: &'a mut [usize],
