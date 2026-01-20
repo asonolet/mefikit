@@ -1,8 +1,4 @@
-pub mod is_in;
-pub mod measures;
-pub mod seg_intersect;
-
-use self::measures as mes;
+use super::measures as mes;
 use crate::mesh::{ElementLike, ElementType};
 
 use nalgebra as na;

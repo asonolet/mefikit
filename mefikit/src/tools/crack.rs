@@ -8,10 +8,10 @@ use rayon::prelude::*;
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 // This algorithm duplicates some nodes in order to break connectivites between some cells.
+use crate::element_traits::SortedVecKey;
 use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, UMesh, UMeshView};
 use crate::tools::neighbours::{compute_neighbours_graph, compute_sub_to_elem};
 use crate::tools::selector::Selector;
-use crate::topology::SortedVecKey;
 
 /// Gets the ids of elements from partmesh which are in mesh_ref.
 ///

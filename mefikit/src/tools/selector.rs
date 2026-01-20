@@ -4,8 +4,8 @@ use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-use crate::geometry::ElementGeo;
-use crate::geometry::is_in as geo;
+use crate::element_traits::ElementGeo;
+use crate::element_traits::is_in as geo;
 use crate::mesh::{ElementIds, ElementLike, ElementType, UMesh};
 
 pub struct Selector<'a, State = ElementSelector> {

@@ -1,7 +1,7 @@
 /// This module defines geometrical operations on elements.
 ///
 /// The operations are provided through the `ElementGeo` trait.
-pub mod geometry;
+pub mod element_traits;
 /// This module defines a `read` and a `write` functions that can use various mesh formats
 mod io;
 /// This module serves as the **central container** for all mesh-related data and logic in the
@@ -230,18 +230,13 @@ pub mod mesh_examples;
 /// Most of the algorithms take a &UMesh when using optimizations (sharing coordinates) or a
 /// UMeshView when not needed and produce a new owned UMesh.
 pub mod tools;
-/// This module defines topological operations on elements.
-///
-/// The operations are provided through the `ElementTopo` trait.
-pub mod topology;
 
 pub mod prelude {
-    pub use crate::geometry::ElementGeo;
+    pub use crate::element_traits::{ElementGeo, ElementTopo};
     pub use crate::io::{read, write};
     pub use crate::mesh::{
         Connectivity, Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut,
         ElementType, Regularity, UMesh, UMeshBase, UMeshView,
     };
     pub use crate::tools::*;
-    pub use crate::topology::ElementTopo;
 }

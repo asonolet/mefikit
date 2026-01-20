@@ -6,11 +6,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::{SmallVec, smallvec};
 use std::collections::{HashMap, HashSet};
 
+use crate::element_traits::{ElementTopo, SortedVecKey};
 #[cfg(feature = "rayon")]
 use crate::mesh::ElementType;
 use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, UMesh};
-use crate::topology::ElementTopo;
-use crate::topology::SortedVecKey;
 
 /// This method is used to compute a subentity mesh in parallel.
 ///

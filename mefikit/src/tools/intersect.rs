@@ -1,4 +1,4 @@
-use crate::geometry::ElementGeo;
+use crate::element_traits::ElementGeo;
 use crate::mesh::Dimension::*;
 use crate::mesh::UMesh;
 use crate::mesh::{Element, ElementId, ElementLike, ElementType};

@@ -1,4 +1,4 @@
-use crate::geometry::measures as mes;
+use crate::element_traits::measures as mes;
 use arrayvec::ArrayVec;
 use std::convert::TryInto as _;
 
