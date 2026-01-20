@@ -1,8 +1,8 @@
 use rustc_hash::FxHashSet;
 use std::collections::BTreeMap;
 
-use super::SelectedView;
-use crate::mesh::{Dimension, ElementId, ElementIds, ElementType};
+use super::selection::SelectedView;
+use crate::mesh::{Dimension, ElementIds, ElementType};
 
 type ElementIdsSet = BTreeMap<ElementType, FxHashSet<usize>>;
 

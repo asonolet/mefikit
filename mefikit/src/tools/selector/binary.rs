@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::{Select, SelectedView, Selection};
+use super::selection::{Select, SelectedView, Selection};
 
 #[derive(Copy, Clone)]
 pub enum BooleanOp {
