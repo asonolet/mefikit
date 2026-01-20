@@ -1,12 +1,13 @@
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
+use rustc_hash::FxHashSet;
 use std::collections::BTreeMap;
 
 use crate::prelude::ElementId;
 use crate::prelude::ElementType;
 
 #[derive(Debug, Clone)]
-pub struct ElementIds(BTreeMap<ElementType, Vec<usize>>);
+pub struct ElementIds(pub BTreeMap<ElementType, Vec<usize>>);
 
 impl Default for ElementIds {
     fn default() -> Self {
