@@ -88,7 +88,7 @@ The `umesh` module provides building blocks for:
 
 ## 🔄 Mesh Ownership and Views: `UMesh`, `UMeshView`, and `UMeshBase`
 
-MeFiKit uses an internal very flexible ownership data model based on ndarray ownership
+Mefikit uses an internal very flexible ownership data model based on ndarray ownership
 model. Each array can be OwnedArcRepred, OwnedRepr or ViewRepr (for connectivity array,
 coordinates array, all fields and all groups). The following two variants are
 exposed : UMeshView, which only contains views, and UMesh, which only contains
@@ -178,7 +178,7 @@ reallocation of connectivity tables or geometry arrays.
 | `merge_close_nodes()`        | Mutates connectivity to merge nearby points |
 | `zip_coords()`               | Mutates coods to remove useless coords |
 | `renumber_cells()`         | In-place reordering of cells. Out-of-place because of Poly |
-| `build_submesh()`          | Returns a new mesh composed of subentities depending on codim |
+| `build_descend()`          | Returns a new mesh composed of subentities depending on codim |
 | `conformize(mesh)`         | Cleans internal inconsistencies, requires deep topology rewrite |
 | `split_by(mesh_a, mesh_b)` | Cuts mesh A using B's topology, creates new elements |
 | `fuse_meshes(a, b)`        | Boolean union with topological merging, produces a new mesh |

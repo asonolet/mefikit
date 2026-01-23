@@ -13,7 +13,7 @@ fn crack(c: &mut Criterion) {
                         .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
                         .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
                         .build();
-                    let cut = mf::compute_submesh(&m1, None, None);
+                    let cut = mf::compute_descending(&m1, None, None);
                     (m1, cut)
                 },
                 |(m1, cut)| {

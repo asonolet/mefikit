@@ -1,17 +1,17 @@
-# MeFiKit
+# Mefikit
 
 ![Mefikit logo](./mefibook/src/logo/mefikit_logo_v2.png)
 
-**MeFiKit** (_Meshes and Fields Kit_) is a modern, high-performance library for
+**Mefikit** (_Meshes and Fields Kit_) is a modern, high-performance library for
 manipulating unstructured meshes and associated fields and groups. It is
 designed with a minimal, clear, and efficient interface, focusing on
 flexibility, correctness, and integration in multi-physics simulations and
 mesh-based data processing pipelines.
 
-**MeFiKit** is in a very early development phase. You might want to check the [ROADMAP](./ROADMAP.md).
+**Mefikit** is in a very early development phase. You might want to check the [ROADMAP](./ROADMAP.md).
 
-If you are starting with **MeFiKit**, especially on the Python side, check for
-the [MeFiBook!](./mefibook/src/SUMMARY.md)
+If you are starting with **Mefikit**, especially on the Python side, check for
+the [Mefibook!](./mefibook/src/SUMMARY.md)
 
 ---
 
@@ -48,7 +48,7 @@ the [MeFiBook!](./mefibook/src/SUMMARY.md)
   - on fields values
   - etc
 - 🧠 Topological operations
-  - `submesh` – Build the descending connectivity mesh (faces from volumes, etc)
+  - `descend` – Build the descending connectivity mesh (faces from volumes, etc)
   - `boundaries` – Build the boundaries mesh
   - `crack` – Introduce topological cracks along internal faces.
   - `merge_nodes` - Merges duplicated nodes
@@ -84,7 +84,7 @@ the [MeFiBook!](./mefibook/src/SUMMARY.md)
 
 ### 🛠 Explicit is better than implicit
 
-- Out-of-place functional API for heavy op (`UMeshView` or `&UMesh`): `compute_submesh`,
+- Out-of-place functional API for heavy op (`UMeshView` or `&UMesh`): `compute_descending`,
   `intersect_meshes`, ...
 - In-place for metadata manipulations and non destructive op (`&mut UMesh`):
   `assign_field`, `merge_close_nodes`, `add_group`, `snap`, ...
@@ -100,11 +100,11 @@ the [MeFiBook!](./mefibook/src/SUMMARY.md)
 
 ---
 
-## 💡 Why `MeFiKit`?
+## 💡 Why `Mefikit`?
 
 The internal mesh representation is designed for **simplicity and
 performance**, closely matching the file format layout. Unlike other tools
-`MeFiKit` provides:
+`Mefikit` provides:
 
 - 🧼 **Simple interface**
 - ⚙️ Easy development, integration and debugging
@@ -126,7 +126,7 @@ And thrive to:
 mefikit/
 ├── mefikit/       # The rust core library. You can use it as a rust dependency
 ├── mefipy/        # PyO3 bindings and python package
-├── mefibook/      # The MeFiKit Book
+├── mefibook/      # The Mefikit Book
 ```
 
 ### Rust core library
@@ -182,7 +182,7 @@ uv run pytest
 `maturin` is the only one parametrized for this. Please run `maturin` each time
 rust `mefikit` or `mefipy` changed.
 
-### MeFiBook
+### Mefibook
 
 ```text
 mefibook/
@@ -226,7 +226,7 @@ the following command to automatically format the code:
 
 ### Benchmarks
 
-The `mefkit/benches/` directory contains `MeFiKit` benchmarks. They use the
+The `mefkit/benches/` directory contains `Mefikit` benchmarks. They use the
 [Criterion](https://bheisler.github.io/criterion.rs/book/getting_started.html)
 framework.
 

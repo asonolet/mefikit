@@ -33,8 +33,8 @@ snaped = mesh.snap(mesh2, eps=x[-1] / len(x))
 
 ```python
 pt = pv.Plotter()
-pt.add_mesh(mesh.submesh().to_pyvista())
-pt.add_mesh(mesh2.submesh(target_dim=0).to_pyvista())
+pt.add_mesh(mesh.descend().to_pyvista())
+pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista())
 pt.show(cpos="xy")
 ```
 
@@ -48,7 +48,7 @@ pt.show(cpos="xy")
 ```python
 pt = pv.Plotter()
 pt.add_mesh(snaped.to_pyvista(), show_edges=True)
-pt.add_mesh(mesh2.submesh(target_dim=0).to_pyvista())
+pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista())
 pt.show(cpos="xy")
 ```
 
@@ -66,7 +66,7 @@ x = range(2)
 y = np.linspace(0.0, 3.0, 3, endpoint=True)
 z = np.logspace(0.0, 1.0, 3, endpoint=True)
 volumes = mf.build_cmesh(x, y, z)
-faces = volumes.submesh()
+faces = volumes.descend()
 cracked = volumes.crack(faces)
 ```
 
@@ -77,7 +77,7 @@ merged = cracked.merge_nodes()
 
 
 ```python
-edges = faces.submesh()
+edges = faces.descend()
 compos_merged = merged.connected_components()
 compos_cracked = cracked.connected_components()
 

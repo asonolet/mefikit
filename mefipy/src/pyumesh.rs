@@ -136,10 +136,10 @@ impl PyUMesh {
     }
 
     #[pyo3(signature = (src_dim=None, target_dim=None))]
-    fn submesh(&self, src_dim: Option<usize>, target_dim: Option<usize>) -> Self {
+    fn descend(&self, src_dim: Option<usize>, target_dim: Option<usize>) -> Self {
         let src_dim = src_dim.map(|i| i.try_into().unwrap());
         let target_dim = target_dim.map(|i| i.try_into().unwrap());
-        mf::compute_submesh(&self.inner, src_dim, target_dim).into()
+        mf::compute_descending(&self.inner, src_dim, target_dim).into()
     }
 
     #[pyo3(signature = (src_dim=None, target_dim=None))]

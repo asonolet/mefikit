@@ -2,8 +2,8 @@ use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_ma
 
 use mefikit::prelude as mf;
 
-fn submesh(c: &mut Criterion) {
-    let mut group = c.benchmark_group("submesh");
+fn descending_mesh(c: &mut Criterion) {
+    let mut group = c.benchmark_group("descending_mesh");
 
     for i in [4, 60, 100] {
         let mesh = mf::RegularUMeshBuilder::new()
@@ -12,7 +12,7 @@ fn submesh(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i * i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mf::compute_submesh(&mesh, None, None));
+                std::hint::black_box(mf::compute_descending(&mesh, None, None));
             })
         });
     }
@@ -51,5 +51,5 @@ fn par_neighbours(c: &mut Criterion) {
     }
 }
 
-criterion_group!(bench, submesh, neighbours,);
+criterion_group!(bench, descending_mesh, neighbours,);
 criterion_main!(bench);

@@ -20,16 +20,16 @@ z = np.logspace(-0.5, 1, 4, endpoint=True)
 volumes = mf.build_cmesh(x, y, z)
 ```
 
-### Simple submesh
+### Simple descending_mesh
 
 This functionality is able to compute the descending connectivity of the porvided mesh.
 It can act on elements of dimension 1, 2 or 3.
 
 
 ```python
-faces = volumes.submesh()
-edges = faces.submesh()
-vertex = edges.submesh()
+faces = volumes.descend()
+edges = faces.descend()
+vertex = edges.descend()
 
 plotter = pv.Plotter(shape=(1, 3))
 plotter.subplot(0, 0)
@@ -49,12 +49,12 @@ plotter.show()
 
 ### Submesh in one go
 
-You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining mutliple `.submesh()` calls.
+You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining mutliple `.descend()` calls.
 
 
 ```python
-edges = volumes.submesh(target_dim=1)
-nodes = volumes.submesh(target_dim=0)
+edges = volumes.descend(target_dim=1)
+nodes = volumes.descend(target_dim=0)
 
 plotter = pv.Plotter(shape=(1, 2))
 plotter.subplot(0, 0)
@@ -131,7 +131,7 @@ print(f"{len(compos_link_node)=}")
 
 
 ```python
-edges = mesh.submesh()
+edges = mesh.descend()
 
 shape = (3, 2)
 row_weights = [1.0, 0.5, 0.5]
@@ -172,7 +172,7 @@ plotter.show()
 
 ## Crack
 
-This feature is the contrary of the `merge_nodes` feature. It duplicates nodes such that the resulting mesh does not connect on the submesh given.
+This feature is the contrary of the `merge_nodes` feature. It duplicates nodes such that the resulting mesh does not connect on the descending_mesh given.
 
 
 ```python
@@ -180,7 +180,7 @@ x = range(2)
 y = np.linspace(0.0, 3.0, 3, endpoint=True)
 z = np.logspace(0.0, 1.0, 3, endpoint=True)
 volumes = mf.build_cmesh(x, y, z)
-faces = volumes.submesh()
+faces = volumes.descend()
 ```
 
 
@@ -190,7 +190,7 @@ cracked = volumes.crack(faces)
 
 
 ```python
-edges = faces.submesh()
+edges = faces.descend()
 compos_original = volumes.connected_components()
 compos_cracked = cracked.connected_components()
 

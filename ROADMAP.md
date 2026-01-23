@@ -54,7 +54,7 @@
 | Pythonic Mesh Access (coords, conn) | ✔️    | ✔️          | Rust-style getter wrappers            |
 | C/C++ FFI Interface via `cbindgen`  | ⏳    | ✔️          | Exported symbols with C ABI           |
 | Rust in C/C++ via `extern "C"`      | ⏳    | ✔️          | Allows calling UMesh from legacy code |
-| Python Submesh Creation             | ✔️    | ✔️          | `mesh.to_submesh()`                   |
+| Python Submesh Creation             | ✔️    | ✔️          | `mesh.to_descend()`                   |
 | PyPI Distribution                   | ⏳    | ✔️          | Simple install with `pip install`     |
 
 ---

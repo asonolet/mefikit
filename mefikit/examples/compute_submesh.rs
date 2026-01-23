@@ -10,10 +10,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_axis((0..=10).map(|i| i as f64 / 10.0).collect::<Vec<f64>>())
         .add_axis((0..=10).map(|i| i as f64 / 10.0).collect::<Vec<f64>>())
         .build();
-    println!("Computing submesh");
+    println!("Computing descending_mesh");
     let now = time::Instant::now();
     for _ in 0..10 {
-        let _ = mf::compute_submesh(&mesh, None, None);
+        let _ = mf::compute_descending(&mesh, None, None);
     }
     let t_tot = now.elapsed().as_secs_f64() * 100.0;
 

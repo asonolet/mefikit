@@ -29,7 +29,7 @@ development.
   fields, and groups.
 - `io` modules for reading and writing meshes in various formats
   (e.g., VTK, serde_json, serde_yaml).
-- `topology` tools for analyzing mesh connectivity, computing submeshes,
+- `topology` tools for analyzing mesh connectivity, computing descending meshes,
   neighbours, domain frontier, etc.
 - `geometry` tools for computing element measures, centroids, etc.
 - `Selector` utilities for querying and filtering mesh elements

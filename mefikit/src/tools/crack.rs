@@ -77,12 +77,12 @@ pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
         .index()
         .clone();
     let mut near_mesh = mesh.extract(&index);
-    let (submesh, f2c) = compute_sub_to_elem(&near_mesh, None, None);
-    // Throws if some element in cut is not in submesh
-    let cut_ids = find_equals(submesh.view(), cut.view());
+    let (descending_mesh, f2c) = compute_sub_to_elem(&near_mesh, None, None);
+    // Throws if some element in cut is not in descending_mesh
+    let cut_ids = find_equals(descending_mesh.view(), cut.view());
     let cut_c2c: Vec<[ElementId; 2]> = cut_ids
         .into_iter()
-        .map(|x| x.expect("cut elements should be found in mesh submesh."))
+        .map(|x| x.expect("cut elements should be found in mesh descending_mesh."))
         .filter(|f_id| f2c[f_id].len() == 2)
         .map(|f_id| f2c[&f_id].clone().try_into().unwrap())
         .collect();

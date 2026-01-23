@@ -18,10 +18,10 @@ def cmesh3():
     umesh = mf.build_cmesh(
         np.linspace(0.0, 0.5, 10), np.linspace(0.0, 1.0, 20), range(3)
     )
-    smesh2 = umesh.submesh()
+    smesh2 = umesh.descend()
     for et, block in smesh2.blocks().items():
         umesh.add_regular_block(et, block)
-    smesh1 = smesh2.submesh()
+    smesh1 = smesh2.descend()
     for et, block in smesh1.blocks().items():
         umesh.add_regular_block(et, block)
     return umesh

@@ -101,7 +101,7 @@ mod io;
 ///
 /// ## 🔄 Mesh Ownership and Views: `UMesh`, `UMeshView`, and `UMeshBase`
 ///
-/// MeFiKit uses a very flexible ownership data model based on ndarray ownership
+/// Mefikit uses a very flexible ownership data model based on ndarray ownership
 /// model. Each array can be OwnedRepr or ViewRepr (for connectivity array,
 /// coordinates array, all fields and all groups). This makes integration with
 /// other systems (e.g., C or Python) simple and safe, while also enabling
@@ -192,7 +192,7 @@ mod io;
 /// | Operation                  | Description |
 /// |----------------------------|-------------|
 /// | `renumber_cells()`         | In-place reordering of cells. Out-of-place because of Poly |
-/// | `compute_submesh()`          | Returns a new mesh composed of subentities depending on codim |
+/// | `compute_descend()`          | Returns a new mesh composed of subentities depending on codim |
 /// | `conformize(mesh)`         | Cleans internal inconsistencies, requires deep topology rewrite |
 /// | `split_by(mesh_a, mesh_b)` | Cuts mesh A using B's topology, creates new elements |
 /// | `fuse_meshes(a, b)`        | Boolean union with topological merging, produces a new mesh |

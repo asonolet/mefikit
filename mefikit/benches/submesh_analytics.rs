@@ -15,13 +15,13 @@ fn regular_grid(n: usize) -> mf::UMesh {
 #[library_benchmark]
 #[bench::short(regular_grid(4))]
 #[bench::long(regular_grid(32))]
-fn bench_submesh(mesh: mf::UMesh) {
-    black_box(mf::compute_submesh(&mesh, None, None));
+fn bench_descending_mesh(mesh: mf::UMesh) {
+    black_box(mf::compute_descending(&mesh, None, None));
 }
 
 library_benchmark_group!(
     name = bench_umesh_group;
-    benchmarks = bench_submesh
+    benchmarks = bench_descending_mesh
 );
 
 main!(

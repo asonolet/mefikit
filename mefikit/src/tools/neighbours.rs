@@ -219,7 +219,7 @@ pub fn compute_neighbours_graph(
 /// same nodes, regardless of their order.
 /// The output graph is a element to element graph (from input mesh), using subentities as edges (weight in
 /// petgraph lang)
-pub fn compute_submesh(
+pub fn compute_descending(
     mesh: &UMesh,
     src_dim: Option<Dimension>,
     target_dim: Option<Dimension>,
@@ -251,7 +251,7 @@ pub fn compute_submesh(
     neighbors
 }
 
-/// This method is used to compute the submesh and the map sub_elem_id to elem ids.
+/// This method is used to compute the descending_mesh and the map sub_elem_id to elem ids.
 pub fn compute_sub_to_elem(
     mesh: &UMesh,
     src_dim: Option<Dimension>,
@@ -296,7 +296,7 @@ pub fn compute_boundaries(
     src_dim: Option<Dimension>,
     target_dim: Option<Dimension>,
 ) -> UMesh {
-    let (submesh, sub_to_elem) = compute_sub_to_elem(mesh, src_dim, target_dim);
+    let (descending_mesh, sub_to_elem) = compute_sub_to_elem(mesh, src_dim, target_dim);
     let boundaries_ids: ElementIds = sub_to_elem
         .iter()
         .filter_map(|(&sub, elems)| match elems.len() {
@@ -304,5 +304,5 @@ pub fn compute_boundaries(
             _ => None,
         })
         .collect();
-    submesh.extract(&boundaries_ids)
+    descending_mesh.extract(&boundaries_ids)
 }
