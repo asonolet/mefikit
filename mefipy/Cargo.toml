@@ -15,4 +15,4 @@ pyo3 = { workspace = true, features = ["extension-module"] }
 serde_yaml = { workspace = true }
 serde_json = { workspace = true }
 
-mefikit = { path = "../mefikit" }
+mefikit = { path = "../meficore" }
