@@ -8,3 +8,4 @@
   - [Input/Output](./python_examples/input_output.md)
   - [Topological tools](./python_examples/topological_tools.md)
   - [Geometric tools](./python_examples/geometric_tools.md)
+  - [Selection](./python_examples/selection.md)
