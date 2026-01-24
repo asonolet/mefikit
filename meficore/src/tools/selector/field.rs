@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+#[derive(Clone, Debug)]
 pub enum FieldSelection {
     Gt(Arc<FieldExpr>, f64),
     Geq(Arc<FieldExpr>, f64),
@@ -8,6 +9,7 @@ pub enum FieldSelection {
     Leq(Arc<FieldExpr>, f64),
 }
 
+#[derive(Clone, Debug)]
 pub enum FieldExpr {
     Scalar(f64),
     Field(String),
@@ -18,7 +20,7 @@ pub enum FieldExpr {
     },
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum FieldOp {
     Add,
     Mul,

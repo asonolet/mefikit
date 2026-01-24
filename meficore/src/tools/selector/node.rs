@@ -5,6 +5,7 @@ use crate::element_traits::ElementGeo;
 use crate::element_traits::is_in as geo;
 use crate::mesh::ElementLike;
 
+#[derive(Clone, Debug)]
 pub enum NodeSelection {
     BBox {
         all: bool,

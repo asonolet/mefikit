@@ -1,6 +1,7 @@
 use super::selection::SelectedView;
 use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType};
 
+#[derive(Clone, Debug)]
 pub enum ElementSelection {
     Types(Vec<ElementType>),
     InIds(ElementIds),

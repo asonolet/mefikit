@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::selection::{Select, SelectedView, Selection};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum BooleanOp {
     Eq,
     And,
@@ -10,12 +10,14 @@ pub enum BooleanOp {
     Xor,
 }
 
+#[derive(Clone, Debug)]
 pub struct BinarayExpr {
     pub operator: BooleanOp,
     pub left: Arc<Selection>,
     pub right: Arc<Selection>,
 }
 
+#[derive(Clone, Debug)]
 pub struct NotExpr(pub Arc<Selection>);
 
 impl BinarayExpr {

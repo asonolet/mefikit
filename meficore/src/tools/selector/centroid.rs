@@ -2,6 +2,7 @@ use super::selection::SelectedView;
 use crate::element_traits::ElementGeo;
 use crate::element_traits::is_in as geo;
 
+#[derive(Clone, Debug)]
 pub enum CentroidSelection {
     BBox { min: [f64; 3], max: [f64; 3] }, // Axis aligned BBox
     Rect { min: [f64; 2], max: [f64; 2] }, // Axis aligned BBox

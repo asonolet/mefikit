@@ -23,6 +23,7 @@ pub trait Select {
     fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a>;
 }
 
+#[derive(Clone, Debug)]
 pub enum Selection {
     ElementSelection(ElementSelection),
     GroupSelection(GroupSelection),
@@ -53,7 +54,7 @@ impl Selection {
         !matches!(self, Self::BinarayExpr(_) | Self::NotExpr(_))
     }
     /// Switch operations so that simpler/more selective operations are evaluated sooner
-    fn optimize(&self) -> Self {
+    fn _optimize(&self) -> Self {
         todo!()
     }
     pub fn nbbox(self, min: [f64; 3], max: [f64; 3], all: bool) -> Self {
