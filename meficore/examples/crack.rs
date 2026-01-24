@@ -1,4 +1,5 @@
 use mefikit::prelude as mf;
+use mefikit::prelude::MeshSelect;
 use std::path::Path;
 use std::time;
 
@@ -19,10 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("End:   building descending_mesh");
 
     println!("Start: building partdescending_mesh");
-    let partdescending_mesh = mf::Selector::new(&descending_mesh)
-        .nodes(false)
-        .in_sphere(&[0.5, 0.5, 0.5], 0.5)
-        .select();
+    let (_, partdescending_mesh) =
+        descending_mesh.select(mf::sel::nsphere([0.5, 0.5, 0.5], 0.5, false));
     // mf::write(Path::new("partdescending_mesh.vtk"), partdescending_mesh.view())?;
     println!("End:   building partdescending_mesh");
 

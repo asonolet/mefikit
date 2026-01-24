@@ -46,6 +46,7 @@ let mesh = builder.build();
 This produces:
 
 Nodes (in order):
+
 ```text
 (0.0, 0.0)
 (1.0, 0.0)
@@ -56,12 +57,14 @@ Nodes (in order):
 ```
 
 Elements (QUAD4):
+
 ```text
 (0, 3, 4, 1)
 (1, 4, 5, 2)
 ```
 
 Layout (indices of nodes):
+
 ```text
  3           4           5
  +-----------+-----------+
@@ -99,85 +102,28 @@ Layout (indices of nodes):
 - [`UMesh`] — Main mesh container structure
 - [`ElementBlock`] — Block-level data for mesh elements
 
+# Selection
 
-# SelectionBuilder
-
-## 🧱 Rust API Design
-
-Extend your `SelectionBuilder` with new methods like:
-
-```rust
-impl<'a> SelectionBuilder<'a> {
-    pub fn in_bounding_box(mut self, min: [f64; 3], max: [f64; 3]) -> Self { ... }
-
-    pub fn near_point(mut self, point: [f64; 3], tol: f64) -> Self { ... }
-
-    pub fn along_plane(mut self, point: [f64; 3], normal: [f64; 3], tol: f64) -> Self { ... }
-
-    pub fn along_segment(mut self, a: [f64; 3], b: [f64; 3], tol: f64) -> Self { ... }
-}
-```
-
-Each method would push a closure to a list of selection criteria, evaluated per cell (e.g., using the **cell centroid** as a proxy). Example:
-
-```rust
-self.criteria.push(Box::new(move |mesh, cell_id| {
-    let centroid = mesh.compute_centroid(cell_id);
-    centroid[0] >= min[0] && centroid[0] <= max[0] &&
-    centroid[1] >= min[1] && centroid[1] <= max[1] &&
-    centroid[2] >= min[2] && centroid[2] <= max[2]
-}))
-```
-
-You can later optimize with bounding boxes of full elements if needed.
-
----
-
-## 🐍 Python API Design
-
-Expose these methods through your `PySelectionBuilder`:
+## API Design
 
 ```python
-builder = umesh.select()
-    .in_bounding_box([0, 0, 0], [1, 1, 1])
-    .along_plane([0, 0, 0], [0, 1, 0], tol=1e-6)
-    .into_view()
-```
-
-### Optional: Named Criteria for Expressiveness
-
-```python
-builder = umesh.select()
-    .near_point([1.0, 0.0, 0.0], tol=0.01)
-    .filter_by_group("fluid")
+eids, mesh = umesh.select(
+    mf.sel.bbox([0, 0, 0], [1, 1, 1])
+    & mf.sel.types(["QUAD4"])
+)
 ```
 
 ---
 
 ## 🔎 Geometrical Criterion Implementation Notes
 
-| Method            | Implementation hint                  | Notes                                    |
-| ----------------- | ------------------------------------ | ---------------------------------------- |
-| `in_bounding_box` | Use centroid or bounding box overlap | Simple AABB test                         |
-| `near_point`      | Distance from centroid or nodes      | Use squared distance for performance     |
-| `along_plane`     | Point-to-plane distance              | Dot product + abs comparison             |
-| `along_segment`   | Project point, clamp, distance       | More complex but useful in CAD/CFD tools |
+| Method             | Implementation hint                  | Notes                                |
+| ------------------ | ------------------------------------ | ------------------------------------ |
+| `bbox`/`rectangle` | Use centroid or bounding box overlap | Simple AABB test                     |
+| `sphere`/`circle`  | Distance from centroid or nodes      | Use squared distance for performance |
 
 ---
 
 ## ⚠️ Considerations
 
-* For polyhedral cells or degenerate shapes, centroids might not be enough — but good for most use cases.
-* You may want a toggle to apply selection on **cells** vs. **nodes** in the future.
-* All geometric methods should take an optional `tol: f64` (with a default in Python).
-
----
-
-## ✅ Summary
-
-Adding `in_bounding_box`, `near_point`, `along_plane`, and `along_segment` to your `SelectionBuilder`:
-
-* Is idiomatic and composable in Rust
-* Maps cleanly to Python with `pyo3`
-* Provides powerful filtering UX, especially for preprocessing and subdomain analysis
-* Helps you stand out vs. more rigid tools like MEDCoupling
+- For polyhedral cells or degenerate shapes, centroids might not be enough — but good for most use cases.

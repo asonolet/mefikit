@@ -6,27 +6,27 @@ use crate::element_traits::is_in as geo;
 use crate::mesh::ElementLike;
 
 pub enum NodeSelection {
-    InBBox {
+    BBox {
         all: bool,
         min: [f64; 3],
         max: [f64; 3],
     }, // Axis aligned BBox
-    InRect {
+    Rect {
         all: bool,
         min: [f64; 2],
         max: [f64; 2],
     }, // Axis aligned BBox
-    InSphere {
+    Sphere {
         all: bool,
         center: [f64; 3],
         r2: f64,
     }, // center and rayon
-    InCircle {
+    Circle {
         all: bool,
         center: [f64; 2],
         r2: f64,
     }, // center and rayon
-    InIds {
+    Ids {
         all: bool,
         ids: Vec<usize>,
     },

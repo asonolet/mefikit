@@ -1,4 +1,5 @@
 use mefikit::prelude as mf;
+use mefikit::tools::selector::MeshSelect;
 use std::path::Path;
 use std::time;
 
@@ -11,10 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
     // mf::write(Path::new("mesh.vtk"), mesh.view())?;
     let descending_mesh = mf::compute_descending(&mesh, None, None);
-    let descending_mesh = mf::Selector::new(&descending_mesh)
-        .centroids()
-        .in_sphere(&[0.5, 0.5, 0.5], 0.5)
-        .select();
+    let (_, descending_mesh) = descending_mesh.select(mf::sel::sphere([0.5, 0.5, 0.5], 0.5));
 
     let cracked = mf::crack(mesh, descending_mesh.view());
 

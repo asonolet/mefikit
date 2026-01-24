@@ -50,53 +50,146 @@ impl Selection {
         }
     }
     pub fn is_leaf(&self) -> bool {
-        match self {
-            Self::BinarayExpr(_) => false,
-            Self::NotExpr(_) => false,
-            _ => true,
-        }
+        !matches!(self, Self::BinarayExpr(_) | Self::NotExpr(_))
     }
     /// Switch operations so that simpler/more selective operations are evaluated sooner
     fn optimize(&self) -> Self {
         todo!()
     }
-    pub fn nbbox(min: [f64; 3], max: [f64; 3], all: bool) -> Self {
-        Self::NodeSelection(NodeSelection::InBBox { all, min, max })
+    pub fn nbbox(self, min: [f64; 3], max: [f64; 3], all: bool) -> Self {
+        let right = Self::NodeSelection(NodeSelection::BBox { all, min, max });
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
-    pub fn nrect(min: [f64; 2], max: [f64; 2], all: bool) -> Self {
-        Self::NodeSelection(NodeSelection::InRect { all, min, max })
+    pub fn nrect(self, min: [f64; 2], max: [f64; 2], all: bool) -> Self {
+        let right = Self::NodeSelection(NodeSelection::Rect { all, min, max });
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
     /// This method filters upon nodes position.
-    pub fn nsphere(center: [f64; 3], r2: f64, all: bool) -> Self {
-        Self::NodeSelection(NodeSelection::InSphere { all, center, r2 })
+    pub fn nsphere(self, center: [f64; 3], r2: f64, all: bool) -> Self {
+        let right = Self::NodeSelection(NodeSelection::Sphere { all, center, r2 });
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
-    pub fn ncircle(center: [f64; 2], r2: f64, all: bool) -> Self {
-        Self::NodeSelection(NodeSelection::InCircle { all, center, r2 })
+    pub fn ncircle(self, center: [f64; 2], r2: f64, all: bool) -> Self {
+        let right = Self::NodeSelection(NodeSelection::Circle { all, center, r2 });
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
-    pub fn nids(ids: Vec<usize>, all: bool) -> Self {
-        Self::NodeSelection(NodeSelection::InIds { all, ids })
+    pub fn nids(self, ids: Vec<usize>, all: bool) -> Self {
+        let right = Self::NodeSelection(NodeSelection::Ids { all, ids });
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
-    pub fn bbox(min: [f64; 3], max: [f64; 3]) -> Self {
-        Self::CentroidSelection(CentroidSelection::InBBox { min, max })
+    pub fn bbox(self, min: [f64; 3], max: [f64; 3]) -> Self {
+        let right = Self::CentroidSelection(CentroidSelection::BBox { min, max });
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
-    pub fn rect(min: [f64; 2], max: [f64; 2]) -> Self {
-        Self::CentroidSelection(CentroidSelection::InRect { min, max })
+    pub fn rect(self, min: [f64; 2], max: [f64; 2]) -> Self {
+        let right = Self::CentroidSelection(CentroidSelection::Rect { min, max });
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
-    pub fn sphere(center: [f64; 3], r2: f64) -> Self {
-        Self::CentroidSelection(CentroidSelection::InSphere { center, r2 })
+    pub fn sphere(self, center: [f64; 3], r2: f64) -> Self {
+        let right = Self::CentroidSelection(CentroidSelection::Sphere { center, r2 });
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
-    pub fn circle(center: [f64; 2], r2: f64) -> Self {
-        Self::CentroidSelection(CentroidSelection::InCircle { center, r2 })
+    pub fn circle(self, center: [f64; 2], r2: f64) -> Self {
+        let right = Self::CentroidSelection(CentroidSelection::Circle { center, r2 });
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
-    pub fn types(elems: Vec<ElementType>) -> Self {
-        Self::ElementSelection(ElementSelection::Types(elems))
+    pub fn types(self, elems: Vec<ElementType>) -> Self {
+        let right = Self::ElementSelection(ElementSelection::Types(elems));
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
-    pub fn dimensions(dims: Vec<Dimension>) -> Self {
-        Self::ElementSelection(ElementSelection::Dimensions(dims))
+    pub fn dimensions(self, dims: Vec<Dimension>) -> Self {
+        let right = Self::ElementSelection(ElementSelection::Dimensions(dims));
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
-    pub fn ids(eids: ElementIds) -> Self {
-        Self::ElementSelection(ElementSelection::InIds(eids))
+    pub fn ids(self, eids: ElementIds) -> Self {
+        let right = Self::ElementSelection(ElementSelection::InIds(eids));
+        Self::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::And,
+            left: Arc::new(self),
+            right: Arc::new(right),
+        })
     }
+}
+pub fn nbbox(min: [f64; 3], max: [f64; 3], all: bool) -> Selection {
+    Selection::NodeSelection(NodeSelection::BBox { all, min, max })
+}
+pub fn nrect(min: [f64; 2], max: [f64; 2], all: bool) -> Selection {
+    Selection::NodeSelection(NodeSelection::Rect { all, min, max })
+}
+/// This method filters upon nodes position.
+pub fn nsphere(center: [f64; 3], r2: f64, all: bool) -> Selection {
+    Selection::NodeSelection(NodeSelection::Sphere { all, center, r2 })
+}
+pub fn ncircle(center: [f64; 2], r2: f64, all: bool) -> Selection {
+    Selection::NodeSelection(NodeSelection::Circle { all, center, r2 })
+}
+pub fn nids(ids: Vec<usize>, all: bool) -> Selection {
+    Selection::NodeSelection(NodeSelection::Ids { all, ids })
+}
+pub fn bbox(min: [f64; 3], max: [f64; 3]) -> Selection {
+    Selection::CentroidSelection(CentroidSelection::BBox { min, max })
+}
+pub fn rect(min: [f64; 2], max: [f64; 2]) -> Selection {
+    Selection::CentroidSelection(CentroidSelection::Rect { min, max })
+}
+pub fn sphere(center: [f64; 3], r2: f64) -> Selection {
+    Selection::CentroidSelection(CentroidSelection::Sphere { center, r2 })
+}
+pub fn circle(center: [f64; 2], r2: f64) -> Selection {
+    Selection::CentroidSelection(CentroidSelection::Circle { center, r2 })
+}
+pub fn types(elems: Vec<ElementType>) -> Selection {
+    Selection::ElementSelection(ElementSelection::Types(elems))
+}
+pub fn dimensions(dims: Vec<Dimension>) -> Selection {
+    Selection::ElementSelection(ElementSelection::Dimensions(dims))
+}
+pub fn ids(eids: ElementIds) -> Selection {
+    Selection::ElementSelection(ElementSelection::InIds(eids))
 }
 
 impl Select for Selection {
@@ -104,6 +197,7 @@ impl Select for Selection {
         match self {
             Selection::ElementSelection(elemt_expr) => elemt_expr.select(selection),
             Selection::NodeSelection(nodes_expr) => nodes_expr.select(selection),
+            Selection::CentroidSelection(centroid) => centroid.select(selection),
             Selection::BinarayExpr(binary) => binary.select(selection),
             _ => todo!(),
         }
@@ -171,19 +265,19 @@ impl Select for ElementSelection {
 impl Select for NodeSelection {
     fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
         match self {
-            NodeSelection::InBBox { all, min, max } => {
+            NodeSelection::BBox { all, min, max } => {
                 NodeSelection::in_bbox(*all, min, max, selection)
             }
-            NodeSelection::InRect { all, min, max } => {
+            NodeSelection::Rect { all, min, max } => {
                 NodeSelection::in_rectangle(*all, min, max, selection)
             }
-            NodeSelection::InSphere { all, center, r2 } => {
+            NodeSelection::Sphere { all, center, r2 } => {
                 NodeSelection::in_sphere(*all, center, *r2, selection)
             }
-            NodeSelection::InCircle { all, center, r2 } => {
+            NodeSelection::Circle { all, center, r2 } => {
                 NodeSelection::in_circle(*all, center, *r2, selection)
             }
-            NodeSelection::InIds { all, ids } => Self::id_in(*all, ids.as_slice(), selection),
+            NodeSelection::Ids { all, ids } => Self::id_in(*all, ids.as_slice(), selection),
         }
     }
 }
@@ -194,6 +288,23 @@ impl Select for BinarayExpr {
             BooleanOp::And => self.and_select(selection),
             BooleanOp::Or => self.or_select(selection),
             _ => todo!(),
+        }
+    }
+}
+
+impl Select for CentroidSelection {
+    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
+        match self {
+            CentroidSelection::BBox { min, max } => CentroidSelection::in_bbox(min, max, selection),
+            CentroidSelection::Rect { min, max } => {
+                CentroidSelection::in_rectangle(min, max, selection)
+            }
+            CentroidSelection::Sphere { center, r2 } => {
+                CentroidSelection::in_sphere(center, *r2, selection)
+            }
+            CentroidSelection::Circle { center, r2 } => {
+                CentroidSelection::in_circle(center, *r2, selection)
+            }
         }
     }
 }
@@ -332,91 +443,24 @@ impl Select for BinarayExpr {
 //         self.collect().into_centroids()
 //     }
 // }
-//
-// impl Selector<CentroidBasedSelector> {
-//     pub fn is_in<F0>(self, f: F0) -> Selector<CentroidBasedSelector>
-//     where
-//         F0: Fn(&[f64]) -> bool + Sync,
-//     {
-//         let index = self
-//             .index
-//             .into_par_iter()
-//             .filter(|&e_id| match self.umesh.space_dimension() {
-//                 2 => f(self.umesh.element(e_id).centroid2().as_slice()),
-//                 3 => f(self.umesh.element(e_id).centroid3().as_slice()),
-//                 _ => todo!(),
-//             })
-//             .collect();
-//
-//         let state = self.state;
-//
-//         Selector {
-//             umesh: self.umesh,
-//             index,
-//             state,
-//         }
-//     }
-//
-//     pub fn in_sphere(self, p0: &[f64; 3], r: f64) -> Self {
-//         self.is_in(|x| {
-//             debug_assert_eq!(x.len(), 3);
-//             geo::in_sphere(
-//                 x.try_into().expect("Coords should have 3 components."),
-//                 p0,
-//                 r,
-//             )
-//         })
-//     }
-//
-//     pub fn in_bbox(self, p0: &[f64; 3], p1: &[f64; 3]) -> Self {
-//         self.is_in(|x| {
-//             debug_assert_eq!(x.len(), 3);
-//             geo::in_aa_bbox(
-//                 x.try_into().expect("Coords should have 3 components."),
-//                 p0,
-//                 p1,
-//             )
-//         })
-//     }
-//
-//     pub fn in_rectangle(self, p0: &[f64; 2], p1: &[f64; 2]) -> Self {
-//         self.is_in(|x| {
-//             debug_assert_eq!(x.len(), 2);
-//             geo::in_aa_rectangle(
-//                 x.try_into().expect("Coords should have 2 components."),
-//                 p0,
-//                 p1,
-//             )
-//         })
-//     }
-//
-//     pub fn elements(self) -> Selector<ElementSelector> {
-//         self.into_elements()
-//     }
-//     pub fn fields(self, name: &str) -> Selector<FieldBasedSelector> {
-//         self.into_field(name)
-//     }
-//     pub fn groups(self) -> Selector<GroupBasedSelector> {
-//         self.into_groups()
-//     }
-//     pub fn nodes(self, all: bool) -> Selector<NodeBasedSelector> {
-//         self.into_nodes(all)
-//     }
-// }
 
 pub trait MeshSelect {
+    fn select_ids(&self, expr: Selection) -> ElementIds;
     fn select(&self, expr: Selection) -> (ElementIds, Self);
 }
 
 impl MeshSelect for UMesh {
-    fn select(&self, expr: Selection) -> (ElementIds, Self) {
+    fn select_ids(&self, expr: Selection) -> ElementIds {
         let index: ElementIdsSet = ElementIdsSet(
             self.blocks()
                 .map(|(k, v)| (*k, (0..v.len()).collect()))
                 .collect(),
         );
         let SelectedView(_, index) = expr.select(SelectedView(self.view(), index));
-        let eids: ElementIds = index.into();
+        index.into()
+    }
+    fn select(&self, expr: Selection) -> (ElementIds, Self) {
+        let eids = self.select_ids(expr);
         let extracted = self.extract(&eids);
         (eids, extracted)
     }
@@ -427,7 +471,6 @@ mod tests {
     use super::*;
     use crate::mesh::ElementType;
     use crate::mesh_examples as me;
-    use Selection as Sl;
 
     // #[test]
     // fn test_umesh_element_selection() {
@@ -446,8 +489,7 @@ mod tests {
         let mesh = me::make_mesh_2d_multi();
         // Here is my cool expression !
         let (_eids, mesh_sel) = mesh.select(
-            (Sl::rect([0.0, 0.0], [1., 1.]) | Sl::ncircle([0.0, 0.0], 1.0, false))
-                & Sl::types(vec![QUAD4]),
+            (rect([0.0, 0.0], [1., 1.]) | ncircle([0.0, 0.0], 1.0, false)) & types(vec![QUAD4]),
         );
         assert_eq!(mesh_sel.num_elements(), 1);
     }

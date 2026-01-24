@@ -4,6 +4,7 @@ mod element;
 mod field;
 mod group;
 mod node;
-mod selection;
+pub mod selection;
 
+pub use selection as sel;
 pub use selection::{MeshSelect, Selection};
