@@ -23,6 +23,9 @@ impl ElementIds {
     pub fn add(&mut self, element_type: ElementType, index: usize) {
         self.0.entry(element_type).or_default().push(index);
     }
+    pub fn add_block(&mut self, element_type: ElementType, indices: Vec<usize>) {
+        self.0.entry(element_type).or_default().extend(indices);
+    }
 
     pub fn remove(&mut self, element_type: ElementType, index: usize) -> Option<usize> {
         if let Some(indices) = self.0.get_mut(&element_type)
