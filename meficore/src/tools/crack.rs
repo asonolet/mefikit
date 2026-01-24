@@ -11,7 +11,7 @@ use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use crate::element_traits::SortedVecKey;
 use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, UMesh, UMeshView};
 use crate::tools::neighbours::{compute_neighbours_graph, compute_sub_to_elem};
-use crate::tools::selector::Selector;
+use crate::tools::selector::{MeshSelect, Selection as Sel};
 
 /// Gets the ids of elements from partmesh which are in mesh_ref.
 ///
@@ -71,11 +71,7 @@ fn compute_node_to_elems(mesh: UMeshView) -> FxHashMap<usize, ElementIds> {
 pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
     // First extract the vicinity of the cut
     let nodes = cut.used_nodes();
-    let index = Selector::new(&mesh)
-        .nodes(false)
-        .id_in(nodes.as_slice())
-        .index()
-        .clone();
+    let (index, _) = mesh.select(Sel::nids(nodes.clone(), false));
     let mut near_mesh = mesh.extract(&index);
     let (descending_mesh, f2c) = compute_sub_to_elem(&near_mesh, None, None);
     // Throws if some element in cut is not in descending_mesh

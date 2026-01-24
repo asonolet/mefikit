@@ -1,10 +1,5 @@
-use rustc_hash::FxHashSet;
-use std::collections::BTreeMap;
-
 use super::selection::SelectedView;
-use crate::mesh::{Dimension, ElementIds, ElementType};
-
-type ElementIdsSet = BTreeMap<ElementType, FxHashSet<usize>>;
+use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType};
 
 pub enum ElementSelection {
     Types(Vec<ElementType>),
@@ -19,7 +14,7 @@ impl ElementSelection {
     ) -> SelectedView<'a> {
         let SelectedView(view, mut sel) = selection;
         for k in types {
-            sel.remove(k);
+            sel.remove_type(*k);
         }
         SelectedView(view, sel)
     }
@@ -31,17 +26,18 @@ impl ElementSelection {
         let mut key_toremove = Vec::new();
         for k in sel.keys() {
             if !dims.contains(&k.dimension()) {
-                key_toremove.push(*k);
+                key_toremove.push(k);
             }
         }
         for k in key_toremove {
-            sel.remove(&k);
+            sel.remove_type(k);
         }
         SelectedView(view, sel)
     }
-    pub fn select_ids<'a>(ids: &ElementIds, selection: SelectedView<'a>) -> SelectedView<'a> {
-        let SelectedView(view, index) = selection;
-        // TODO: zip on keys and intersect on Ids
+    pub fn select_ids<'a>(ids: ElementIds, selection: SelectedView<'a>) -> SelectedView<'a> {
+        let SelectedView(view, mut index) = selection;
+        let ids: ElementIdsSet = ids.into();
+        index.intersection(&ids);
         SelectedView(view, index)
     }
 }

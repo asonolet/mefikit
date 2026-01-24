@@ -1,3 +1,4 @@
+use itertools::Itertools;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
@@ -13,10 +14,21 @@ impl From<ElementIdsSet> for ElementIds {
     fn from(ids_set: ElementIdsSet) -> Self {
         let mut ids = ElementIds::new();
         for (et, indices_set) in ids_set.0 {
-            let indices: Vec<usize> = indices_set.into_iter().collect();
+            let indices: Vec<usize> = indices_set.into_iter().sorted_unstable().collect();
             ids.0.insert(et, indices);
         }
         ids
+    }
+}
+
+impl FromIterator<ElementId> for ElementIdsSet {
+    fn from_iter<T: IntoIterator<Item = ElementId>>(iter: T) -> Self {
+        let mut ids_set = ElementIdsSet::new();
+        for element_id in iter {
+            let entry = ids_set.0.entry(element_id.element_type()).or_default();
+            entry.insert(element_id.index());
+        }
+        ids_set
     }
 }
 
@@ -41,8 +53,10 @@ impl ElementIdsSet {
     pub fn new() -> Self {
         ElementIdsSet(BTreeMap::new())
     }
-
-    pub fn union(&mut self, other: &ElementIdsSet) {
+    pub fn keys(&self) -> impl Iterator<Item = ElementType> + '_ {
+        self.0.keys().copied()
+    }
+    pub fn union(&mut self, other: &Self) {
         for (et, indices_set) in &other.0 {
             let entry = self.0.entry(*et).or_default();
             for index in indices_set {
@@ -50,8 +64,7 @@ impl ElementIdsSet {
             }
         }
     }
-
-    pub fn intersection(&mut self, other: &ElementIdsSet) {
+    pub fn intersection(&mut self, other: &Self) {
         self.0.retain(|et, indices_set| {
             if let Some(other_indices_set) = other.0.get(et) {
                 indices_set.retain(|index| other_indices_set.contains(index));
@@ -82,9 +95,15 @@ impl ElementIdsSet {
             false
         }
     }
+    pub fn contains_type(&self, element_type: ElementType) -> bool {
+        self.0.contains_key(&element_type)
+    }
     pub fn add(&mut self, element_id: ElementId) {
         let entry = self.0.entry(element_id.element_type()).or_default();
         entry.insert(element_id.index());
+    }
+    pub fn add_type(&mut self, element_type: ElementType) {
+        self.0.entry(element_type).or_default();
     }
     pub fn remove(&mut self, element_id: ElementId) -> bool {
         if let Some(indices_set) = self.0.get_mut(&element_id.element_type()) {
@@ -92,6 +111,9 @@ impl ElementIdsSet {
         } else {
             false
         }
+    }
+    pub fn remove_type(&mut self, element_type: ElementType) {
+        self.0.remove(&element_type);
     }
     pub fn len(&self) -> usize {
         self.0.values().map(|indices_set| indices_set.len()).sum()

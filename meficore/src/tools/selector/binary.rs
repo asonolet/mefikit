@@ -10,15 +10,15 @@ pub enum BooleanOp {
     Xor,
 }
 
-pub struct BinarayExpr<const N: usize> {
+pub struct BinarayExpr {
     pub operator: BooleanOp,
-    pub left: Arc<Selection<N>>,
-    pub right: Arc<Selection<N>>,
+    pub left: Arc<Selection>,
+    pub right: Arc<Selection>,
 }
 
-pub struct NotExpr<const N: usize>(pub Arc<Selection<N>>);
+pub struct NotExpr(pub Arc<Selection>);
 
-impl<const N: usize> BinarayExpr<N> {
+impl BinarayExpr {
     pub fn and_select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
         if self.left.weight() < self.right.weight() {
             let selection = self.left.select(selection);
