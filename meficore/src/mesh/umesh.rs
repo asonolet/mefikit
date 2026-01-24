@@ -186,6 +186,10 @@ where
         self.elements_of_dim(dim)
     }
 
+    pub fn element_types(&self) -> impl Iterator<Item = &ElementType> {
+        self.element_blocks.keys()
+    }
+
     pub fn blocks(&self) -> impl Iterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)> {
         self.element_blocks.iter()
     }

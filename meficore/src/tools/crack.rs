@@ -17,7 +17,7 @@ use crate::tools::selector::{MeshSelect, sel};
 ///
 /// Supposes that the coordinates array is the same.
 fn find_equals(mesh_ref: UMeshView, partmesh: UMeshView) -> Vec<Option<ElementId>> {
-    let dims: FxHashSet<Dimension> = partmesh.blocks().map(|(&et, _)| et.dimension()).collect();
+    let dims: FxHashSet<Dimension> = partmesh.element_types().map(|&et| et.dimension()).collect();
     let mut hash_to_ref: FxHashMap<SortedVecKey, ElementId> = HashMap::default();
     for dim in dims {
         let svk_eid: Vec<_> = mesh_ref

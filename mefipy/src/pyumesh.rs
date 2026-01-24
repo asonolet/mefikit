@@ -85,8 +85,8 @@ impl PyUMesh {
 
     fn block_types(&self) -> Vec<String> {
         self.inner
-            .blocks()
-            .map(|(&et, _)| etype_to_str(et))
+            .element_types()
+            .map(|&et| etype_to_str(et))
             .collect()
     }
 
