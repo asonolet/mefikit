@@ -8,7 +8,7 @@ mod select;
 #[pymodule]
 mod sel {
     #[pymodule_export]
-    use super::select::{bbox, ids, nbbox, ncircle, nids, nrect, nsphere, rect, sphere};
+    use super::select::{bbox, circle, ids, nbbox, ncircle, nids, nrect, nsphere, rect, sphere};
 }
 
 /// A Python module implemented in Rust. The name of this function must match

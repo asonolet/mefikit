@@ -94,6 +94,12 @@ impl PySelection {
     pub fn __xor__(&self, other: &PySelection) -> PySelection {
         (self.inner.clone() ^ other.inner.clone()).into()
     }
+    pub fn __sub__(&self, other: &PySelection) -> PySelection {
+        (self.inner.clone() - other.inner.clone()).into()
+    }
+    pub fn __invert__(&self) -> PySelection {
+        (!self.inner.clone()).into()
+    }
     pub fn nbbox(&self, min: [f64; 3], max: [f64; 3], all: bool) -> PySelection {
         self.inner.clone().nbbox(min, max, all).into()
     }

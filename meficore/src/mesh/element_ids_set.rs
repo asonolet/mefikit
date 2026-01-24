@@ -74,6 +74,30 @@ impl ElementIdsSet {
             }
         });
     }
+    pub fn difference(&mut self, other: &Self) {
+        for (et, other_indices_set) in &other.0 {
+            if let Some(indices_set) = self.0.remove(et) {
+                let diff: FxHashSet<usize> =
+                    indices_set.difference(other_indices_set).cloned().collect();
+                if !diff.is_empty() {
+                    self.0.insert(*et, diff);
+                }
+            }
+        }
+    }
+    pub fn symmetric_difference(&mut self, other: &Self) {
+        for (et, other_indices_set) in &other.0 {
+            if let Some(indices_set) = self.0.remove(et) {
+                let diff: FxHashSet<usize> = indices_set
+                    .symmetric_difference(other_indices_set)
+                    .cloned()
+                    .collect();
+                if !diff.is_empty() {
+                    self.0.insert(*et, diff);
+                }
+            }
+        }
+    }
     pub fn into_iter(self) -> impl Iterator<Item = ElementId> {
         self.0.into_iter().flat_map(|(et, indices_set)| {
             indices_set

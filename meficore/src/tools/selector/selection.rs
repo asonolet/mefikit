@@ -1,7 +1,7 @@
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-use std::ops::{BitAnd, BitOr, BitXor, Not};
+use std::ops::{BitAnd, BitOr, BitXor, Not, Sub};
 use std::sync::Arc;
 
 use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType, UMesh, UMeshView};
@@ -199,6 +199,8 @@ impl Select for Selection {
             Selection::ElementSelection(elemt_expr) => elemt_expr.select(selection),
             Selection::NodeSelection(nodes_expr) => nodes_expr.select(selection),
             Selection::CentroidSelection(centroid) => centroid.select(selection),
+            Selection::GroupSelection(group) => group.select(selection),
+            Selection::NotExpr(not) => not.select(selection),
             Selection::BinarayExpr(binary) => binary.select(selection),
             _ => todo!(),
         }
@@ -235,6 +237,18 @@ impl BitXor for Selection {
     fn bitxor(self, rhs: Self) -> Self::Output {
         Selection::BinarayExpr(BinarayExpr {
             operator: BooleanOp::Xor,
+            left: Arc::new(self),
+            right: Arc::new(rhs),
+        })
+    }
+}
+
+impl Sub for Selection {
+    type Output = Selection;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Selection::BinarayExpr(BinarayExpr {
+            operator: BooleanOp::Diff,
             left: Arc::new(self),
             right: Arc::new(rhs),
         })
@@ -283,12 +297,30 @@ impl Select for NodeSelection {
     }
 }
 
+impl Select for GroupSelection {
+    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
+        match self {
+            GroupSelection::IncludeGroup(name) => GroupSelection::include_group(name, selection),
+            GroupSelection::ExcludeGroup(name) => GroupSelection::exclude_group(name, selection),
+            GroupSelection::IncludeFamily(fid) => GroupSelection::include_family(*fid, selection),
+            GroupSelection::ExcludeFamily(fid) => GroupSelection::exclude_family(*fid, selection),
+        }
+    }
+}
+
+impl Select for NotExpr {
+    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
+        self.not_select(selection)
+    }
+}
+
 impl Select for BinarayExpr {
     fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
         match self.operator {
             BooleanOp::And => self.and_select(selection),
             BooleanOp::Or => self.or_select(selection),
-            _ => todo!(),
+            BooleanOp::Xor => self.xor_select(selection),
+            BooleanOp::Diff => self.diff_select(selection),
         }
     }
 }
