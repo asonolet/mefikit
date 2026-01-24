@@ -29,10 +29,10 @@ impl BinarayExpr {
         }
     }
     pub fn or_select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
-        // TODO: spawn one thread per selection
-        let selection1 = self.left.select(selection.clone());
-        let _selection2 = self.right.select(selection);
-        //TODO: return the union of both
-        selection1
+        // TODO: spawn one thread per selection so that they are computed in parallel
+        let SelectedView(mview, mut sel1) = self.left.select(selection.clone());
+        let SelectedView(_, sel2) = self.right.select(selection);
+        sel1.union(&sel2);
+        SelectedView(mview, sel1)
     }
 }
