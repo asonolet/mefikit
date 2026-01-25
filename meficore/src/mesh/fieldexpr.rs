@@ -1,12 +1,12 @@
-use ndarray::{self as nd, Dimension};
+use ndarray::{self as nd, ArrayBase};
 use smallvec::SmallVec;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     ops::{Add, Div, Mul, Sub},
     sync::Arc,
 };
 
-use crate::mesh::{ElementType, UMeshView};
+use crate::mesh::{Dimension, ElementType, UMeshView};
 
 #[derive(Clone, Debug)]
 pub enum FieldExpr {
@@ -28,29 +28,44 @@ pub enum FieldExpr {
     Index(Arc<FieldExpr>, SmallVec<[usize; 2]>),
 }
 
-pub struct Field<'a>(BTreeMap<ElementType, nd::CowArray<'a, f64, nd::IxDyn>>);
+pub struct FieldBase<S: nd::Data<Elem = f64>>(BTreeMap<ElementType, nd::ArrayBase<S, nd::IxDyn>>);
+type FieldView<'a> = FieldBase<nd::ViewRepr<&'a f64>>;
+type FieldOwned = FieldBase<nd::OwnedRepr<f64>>;
+type FieldArc = FieldBase<nd::OwnedArcRepr<f64>>;
+type FieldCow<'a> = FieldBase<nd::CowRepr<'a, f64>>;
 
-impl<'a> From<BTreeMap<ElementType, nd::CowArray<'a, f64, nd::IxDyn>>> for Field<'a> {
-    fn from(map: BTreeMap<ElementType, nd::CowArray<'a, f64, nd::IxDyn>>) -> Self {
-        Field(map)
+impl<S> FieldBase<S>
+where
+    S: nd::Data<Elem = f64>,
+{
+    fn new(map: BTreeMap<ElementType, nd::ArrayBase<S, nd::IxDyn>>) -> Self {
+        let res = Self(map);
+        res.is_coherent();
+        res
     }
-}
-
-impl Field<'_> {
-    pub fn view(&self) -> &BTreeMap<ElementType, nd::CowArray<'_, f64, nd::IxDyn>> {
-        &self.0
+    pub fn view(&self) -> FieldView<'_> {
+        FieldView::new(
+            self.0
+                .iter()
+                .map(|(k, v)| (*k, v.view()))
+                .collect::<BTreeMap<_, _>>(),
+        )
     }
     pub fn is_coherent(&self) -> bool {
-        let first_array = self.0.values().next().unwrap();
+        let first_array = self
+            .0
+            .values()
+            .next()
+            .expect("A field should not be empty.");
         let size_dim = &first_array.shape()[1..];
-        for (_elem_type, array) in &self.0 {
+        for array in self.0.values() {
             if &array.shape()[1..] != size_dim {
                 return false;
             }
         }
         true
     }
-    pub fn is_compatible_with(&self, other: &Field<'_>) -> bool {
+    pub fn is_strictly_compatible_with(&self, other: &Self) -> bool {
         for (elem_type, left_array) in &self.0 {
             match other.0.get(elem_type) {
                 Some(right_array) => {
@@ -63,49 +78,189 @@ impl Field<'_> {
         }
         true
     }
-}
-
-impl Add<&Field<'_>> for &Field<'_> {
-    type Output = Field<'static>;
-
-    fn add(self, rhs: &Field<'_>) -> Field<'static> {
-        let mut result = BTreeMap::new();
-        if !self.is_compatible_with(rhs) {
-            let dim0 = self
-                .0
-                .iter()
-                .map(|(k, a)| (*k, a.dim()))
-                .collect::<Vec<_>>();
-            let dim1 = rhs.0.iter().map(|(k, a)| (*k, a.dim())).collect::<Vec<_>>();
-            panic!("Fields with shapes {dim0:?}, {dim1:?} are not compatible for addition");
+    pub fn may_be_compatible_with(&self, other: &Self) -> bool {
+        let elems1 = self.0.keys().collect::<HashSet<_>>();
+        let elems2 = other.0.keys().collect::<HashSet<_>>();
+        elems1 == elems2
+    }
+    pub fn panic_if_not_strictly_compatible_with(&self, other: &Self) {
+        if !self.is_strictly_compatible_with(other) {
+            let dim0: Vec<_> = self.0.iter().map(|(k, a)| (*k, a.dim())).collect();
+            let dim1: Vec<_> = other.0.iter().map(|(k, a)| (*k, a.dim())).collect();
+            panic!("Fields with shapes {dim0:?}, {dim1:?} are not compatible for operation");
         }
+    }
+    pub fn panic_if_incompatible_with(&self, other: &Self) {
+        if !self.may_be_compatible_with(other) {
+            let elems1: Vec<_> = self.0.keys().collect();
+            let elems2: Vec<_> = other.0.keys().collect();
+            panic!(
+                "Fields with element types {elems1:?}, {elems2:?} are not compatible for operation"
+            );
+        }
+    }
+    pub fn mapv<F>(&self, mut f: F) -> FieldOwned
+    where
+        F: FnMut(f64) -> f64,
+    {
+        let mut result = BTreeMap::new();
+        for (elem_type, array) in &self.0 {
+            let mapped_array = array.mapv(|x| f(x));
+            result.insert(*elem_type, mapped_array.into_owned());
+        }
+        FieldOwned::new(result)
+    }
+    pub fn map_zip<F>(&self, other: &Self, mut f: F) -> FieldOwned
+    where
+        F: FnMut(f64, f64) -> f64,
+    {
+        self.panic_if_incompatible_with(other);
+        let mut result = BTreeMap::new();
+        let greatest_dim = if self.ndim() > other.ndim() {
+            self.dim()
+        } else {
+            other.dim()
+        };
         for (elem_type, left_array) in &self.0 {
-            if let Some(right_array) = rhs.0.get(elem_type) {
-                let sum_array = left_array + right_array;
-                result.insert(*elem_type, sum_array.into_owned().into());
+            if let Some(right_array) = other.0.get(elem_type) {
+                let mut res = nd::ArrayD::<f64>::zeros(greatest_dim.clone());
+                nd::Zip::from(&mut res)
+                    .and_broadcast(left_array)
+                    .and_broadcast(right_array)
+                    .for_each(|a, &b, &c| *a = f(b, c));
+                result.insert(*elem_type, res.into_owned());
             }
         }
-        Field(result)
+        FieldOwned::new(result)
+    }
+    pub fn ndim(&self) -> usize {
+        let first_array = self.0.values().next().unwrap();
+        first_array.ndim()
+    }
+
+    pub fn dim(&self) -> nd::IxDyn {
+        let first_array = self.0.values().next().unwrap();
+        nd::IxDyn(&first_array.shape()[1..])
+    }
+    pub fn to_owned(&self) -> FieldOwned {
+        let mut result = BTreeMap::new();
+        for (elem_type, array) in &self.0 {
+            result.insert(*elem_type, array.to_owned());
+        }
+        FieldOwned::new(result)
+    }
+    pub fn to_shared(&self) -> FieldArc {
+        let mut result = BTreeMap::new();
+        for (elem_type, array) in &self.0 {
+            result.insert(*elem_type, array.to_shared());
+        }
+        FieldArc::new(result)
+    }
+    pub fn from_array<T>(array: ArrayBase<T, nd::IxDyn>, elems: &[ElementType]) -> FieldBase<T>
+    where
+        T: nd::Data<Elem = f64> + nd::RawDataClone,
+    {
+        let mut result = BTreeMap::new();
+        for elem_type in elems {
+            result.insert(*elem_type, array.clone());
+        }
+        FieldBase::new(result)
     }
 }
 
-impl Sub<&Field<'_>> for &Field<'_> {
-    type Output = Field<'static>;
-
-    fn sub(self, rhs: &Field<'_>) -> Field<'static> {
-        if !self.is_compatible_with(rhs) {
-            let dim0: Vec<_> = self.0.iter().map(|(k, a)| (*k, a.dim())).collect();
-            let dim1: Vec<_> = rhs.0.iter().map(|(k, a)| (*k, a.dim())).collect();
-            panic!("Fields with shapes {dim0:?}, {dim1:?} are not compatible for addition");
+impl<'a> From<FieldView<'a>> for FieldCow<'a> {
+    fn from(value: FieldView<'a>) -> Self {
+        let mut result: BTreeMap<ElementType, nd::CowArray<_, _>> = BTreeMap::new();
+        for (elem_type, array) in value.0 {
+            result.insert(elem_type, array.into());
         }
+        FieldCow::new(result)
+    }
+}
+
+impl<'a> From<FieldOwned> for FieldCow<'a> {
+    fn from(value: FieldOwned) -> Self {
+        let mut result: BTreeMap<ElementType, nd::CowArray<_, _>> = BTreeMap::new();
+        for (elem_type, array) in value.0 {
+            result.insert(elem_type, array.into());
+        }
+        FieldCow::new(result)
+    }
+}
+
+impl<S> Add<&FieldBase<S>> for &FieldBase<S>
+where
+    S: nd::Data<Elem = f64>,
+{
+    type Output = FieldOwned;
+
+    fn add(self, rhs: &FieldBase<S>) -> Self::Output {
+        self.panic_if_incompatible_with(rhs);
+        let mut result = BTreeMap::new();
+        for (elem_type, left_array) in &self.0 {
+            if let Some(right_array) = rhs.0.get(elem_type) {
+                let sum_array = left_array + right_array;
+                result.insert(*elem_type, sum_array.into_owned());
+            }
+        }
+        FieldOwned::new(result)
+    }
+}
+
+impl<S> Sub<&FieldBase<S>> for &FieldBase<S>
+where
+    S: nd::Data<Elem = f64>,
+{
+    type Output = FieldOwned;
+
+    fn sub(self, rhs: &FieldBase<S>) -> Self::Output {
+        self.panic_if_incompatible_with(rhs);
         let mut result = BTreeMap::new();
         for (elem_type, left_array) in &self.0 {
             if let Some(right_array) = rhs.0.get(elem_type) {
                 let diff_array = left_array - right_array;
-                result.insert(*elem_type, diff_array.into_owned().into());
+                result.insert(*elem_type, diff_array.into_owned());
             }
         }
-        Field(result)
+        FieldOwned::new(result)
+    }
+}
+
+impl<S> Mul<&FieldBase<S>> for &FieldBase<S>
+where
+    S: nd::Data<Elem = f64>,
+{
+    type Output = FieldOwned;
+
+    fn mul(self, rhs: &FieldBase<S>) -> Self::Output {
+        self.panic_if_incompatible_with(rhs);
+        let mut result = BTreeMap::new();
+        for (elem_type, left_array) in &self.0 {
+            if let Some(right_array) = rhs.0.get(elem_type) {
+                let prod_array = left_array * right_array;
+                result.insert(*elem_type, prod_array.into_owned());
+            }
+        }
+        FieldOwned::new(result)
+    }
+}
+
+impl<S> Div<&FieldBase<S>> for &FieldBase<S>
+where
+    S: nd::Data<Elem = f64>,
+{
+    type Output = FieldOwned;
+
+    fn div(self, rhs: &FieldBase<S>) -> Self::Output {
+        self.panic_if_incompatible_with(rhs);
+        let mut result = BTreeMap::new();
+        for (elem_type, left_array) in &self.0 {
+            if let Some(right_array) = rhs.0.get(elem_type) {
+                let div_array = left_array / right_array;
+                result.insert(*elem_type, div_array.into_owned());
+            }
+        }
+        FieldOwned::new(result)
     }
 }
 
@@ -186,47 +341,40 @@ impl FieldExpr {
 }
 
 pub trait Evaluable {
-    fn evaluate<'a>(&'a self, mesh: UMeshView<'a>) -> nd::CowArray<'a, f64, nd::IxDyn>;
+    fn evaluate<'a>(&'a self, mesh: UMeshView<'a>, dim: Option<Dimension>) -> FieldCow<'a>;
 }
 
 impl Evaluable for FieldExpr {
-    fn evaluate<'a>(
-        &'a self,
-        mesh: UMeshView<'a>,
-    ) -> BTreeMap<ElementType, nd::CowArray<'a, f64, nd::IxDyn>> {
+    fn evaluate<'a>(&'a self, mesh: UMeshView<'a>, dim: Option<Dimension>) -> FieldCow<'a> {
+        let dim = match dim {
+            Some(d) => d,
+            None => mesh.topological_dimension().unwrap(),
+        };
+        let elems: Vec<_> = mesh
+            .element_types()
+            .filter(|et| et.dimension() == dim)
+            .cloned()
+            .collect();
         match self {
-            FieldExpr::Array(arr) => arr.view().into(),
+            FieldExpr::Array(arr) => FieldCow::from_array(arr.view().into(), elems.as_slice()),
             // FieldExpr::Field(name) => mesh.field(name).unwrap().to_owned(),
             FieldExpr::BinarayExpr {
                 operator,
                 left,
                 right,
             } => {
-                let left_eval = left.evaluate(mesh.clone());
-                let right_eval = right.evaluate(mesh.clone());
+                let left_eval = left.evaluate(mesh.clone(), Some(dim));
+                let right_eval = right.evaluate(mesh.clone(), Some(dim));
                 match operator {
                     BinaryOp::Add => (&left_eval + &right_eval).into(),
                     BinaryOp::Sub => (&left_eval - &right_eval).into(),
                     BinaryOp::Mul => (&left_eval * &right_eval).into(),
                     BinaryOp::Div => (&left_eval / &right_eval).into(),
-                    BinaryOp::Pow => {
-                        // find the greatest dimension and broadcast accordingly
-                        let greatest_dim = if left_eval.ndim() > right_eval.ndim() {
-                            left_eval.dim()
-                        } else {
-                            right_eval.dim()
-                        };
-                        let mut res = nd::ArrayD::<f64>::zeros(greatest_dim);
-                        nd::Zip::from(&mut res)
-                            .and_broadcast(&left_eval)
-                            .and_broadcast(&right_eval)
-                            .for_each(|a, &b, &c| *a = b.powf(c));
-                        res.into()
-                    }
+                    BinaryOp::Pow => left_eval.map_zip(&right_eval, |a, b| a.powf(b)).into(),
                 }
             }
             FieldExpr::UnaryExpr { operator, expr } => {
-                let expr_eval = expr.evaluate(mesh.clone());
+                let expr_eval = expr.evaluate(mesh.clone(), Some(dim));
                 match operator {
                     UnaryOp::Sin => expr_eval.mapv(|x| x.sin()).into(),
                     UnaryOp::Cos => expr_eval.mapv(|x| x.cos()).into(),
@@ -243,6 +391,10 @@ impl Evaluable for FieldExpr {
             // FieldExpr::X => mesh.coords().slice(nd::s![.., 0]).to_owned(),
             // FieldExpr::Y => mesh.coords().slice(nd::s![.., 1]).to_owned(),
             // FieldExpr::Z => mesh.coords().slice(nd::s![.., 2]).to_owned(),
+            // FieldExpr::Rcyl => mesh.coords().slice(nd::s![.., 0]).to_owned(),
+            // FieldExpr::Rsph => mesh.coords().slice(nd::s![.., 0]).to_owned(),
+            // FieldExpr::Theta => mesh.coords().slice(nd::s![.., 1]).to_owned(),
+            // FieldExpr::Phi => mesh.coords().slice(nd::s![.., 2]).to_owned(),
             // FieldExpr::Index(expr, index) => {
             //     let eval = expr.evaluate(mesh);
             //     eval[.., [index.try_into().unwrap()]].to_owned()
