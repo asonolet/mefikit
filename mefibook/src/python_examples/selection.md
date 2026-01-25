@@ -10,13 +10,12 @@ pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")
 ```
 
+## Element selection
 
-```python
-x = np.linspace(0.0, 1.0, 50, endpoint=True)
-volumes = mf.build_cmesh(x, x, x)
-```
-
-## Geometrical element selection
+Elements can be selected based on there:
+- types
+- ids
+- dimensions
 
 Elements can be selected based on there centroid position. The selection methods using centroids are :
 - bbox
@@ -26,40 +25,55 @@ Elements can be selected based on there centroid position. The selection methods
 
 As you can guess, bbox and sphere should be used for 3d meshes and rectangle and circle for 2d meshes.
 
+Elements can be selected based on the nodes position and a boolean : whether to select element with all nodes matching the coundition or any node matching the coundition.
+- nbbox
+- nsphere
+- nrect
+- ncircle
+- nids
+
+Elements can be selected based on their group appartenance :
+- inside
+- outside
+
+Elements can be selected based on their scalar fields values :
+- FieldExpr > FieldExpr
+- FieldExpr >= FieldExpr
+- FieldExpr < FieldExpr
+- FieldExpr <= FieldExpr
+- FieldExpr == FieldExpr
+
+
+### The Selection type
+
+Here the types manipulated are `Selection`. They are simple objects that know how to compose themselves.
+
 
 ```python
 clip = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.5])
+sphere = mf.sel.sphere([0.5, 0.5, 0.5], 0.5)
+```
+
+
+```python
+x = np.linspace(0.0, 1.0, 20, endpoint=True)
+volumes = mf.build_cmesh(x, x, x)
+```
+
+
+```python
 volumes.select(clip).to_pyvista().plot()
 ```
 
 
 
-![png](selection_files/selection_4_0.png)
+![png](selection_files/selection_6_0.png)
 
 
 
 
 ```python
-sphere1 = mf.sel.sphere([0.5, 0.5, 0.5], 0.5)
-volumes.select(sphere1).to_pyvista().plot()
-```
-
-
-
-![png](selection_files/selection_5_0.png)
-
-
-
-## Selection composition
-
-One of the great strength of the select method is its composability !
-Whatch by yourself.
-
-The operators `&`, `|`, `^` and `!` are available.
-
-
-```python
-volumes.select(sphere1 | clip).to_pyvista().plot()
+volumes.select(sphere).to_pyvista().plot()
 ```
 
 
@@ -68,48 +82,207 @@ volumes.select(sphere1 | clip).to_pyvista().plot()
 
 
 
+## Selection composition
+
+One of the great strength of the select method is its composability !
+Whatch by yourself.
+
+The operators `&`, `|`, `^`, `-` and `~` are available.
+
 
 ```python
-volumes.select(sphere1 & clip).to_pyvista().plot()
+x = np.linspace(0.0, 2.0, 100)
+y = np.linspace(0.0, 1.0, 50)
+faces = mf.build_cmesh(x, y)
+```
+
+
+```python
+circle1 = mf.sel.circle([0.75, 0.5], 0.5)
+circle2 = mf.sel.circle([1.25, 0.5], 0.5)
+```
+
+
+```python
+union = faces.select(circle1 | circle2)
+```
+
+
+```python
+pt = pv.Plotter()
+pt.add_mesh(faces.descend().to_pyvista())
+pt.add_mesh(union.to_pyvista())
+pt.camera_position = "xy"
+pt.show()
 ```
 
 
 
-![png](selection_files/selection_8_0.png)
+![png](selection_files/selection_12_0.png)
 
 
 
 
 ```python
-clip2 = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [0.5, np.inf, np.inf])
-volumes.select((clip & sphere1) | clip2).to_pyvista().plot()
+intersection = faces.select(circle1 & circle2)
+```
+
+
+```python
+pt = pv.Plotter()
+pt.add_mesh(faces.descend().to_pyvista())
+pt.add_mesh(intersection.to_pyvista())
+pt.camera_position = "xy"
+pt.show()
 ```
 
 
 
-![png](selection_files/selection_9_0.png)
+![png](selection_files/selection_14_0.png)
 
 
 
 
 ```python
-volumes.select((clip | sphere1) & clip2).to_pyvista().plot()
+sym_diff = faces.select(circle1 ^ circle2)
+```
+
+
+```python
+pt = pv.Plotter()
+pt.add_mesh(faces.descend().to_pyvista())
+pt.add_mesh(sym_diff.to_pyvista())
+pt.camera_position = "xy"
+pt.show()
 ```
 
 
 
-![png](selection_files/selection_10_0.png)
+![png](selection_files/selection_16_0.png)
 
 
 
-## Other selections kinds
 
-There are a few type of selection implemented, based on :
-- centroids positions (bbox, sphere, circle, rectangle)
-- nodes positions (idem, there is an extra boolean parameter to keep elements that have all of there nodes in the shape on any)
-- types
-- dimension
-- ids
-- nodes ids (with the boolean all nodes or any)
-- fields values
-- groups names
+```python
+diff = faces.select(circle1 - circle2)
+```
+
+
+```python
+pt = pv.Plotter()
+pt.add_mesh(faces.descend().to_pyvista())
+pt.add_mesh(diff.to_pyvista())
+pt.camera_position = "xy"
+pt.show()
+```
+
+
+
+![png](selection_files/selection_18_0.png)
+
+
+
+
+```python
+notsel = faces.select(~circle1)
+```
+
+
+```python
+pt = pv.Plotter()
+pt.add_mesh(faces.descend().to_pyvista())
+pt.add_mesh(notsel.to_pyvista())
+pt.camera_position = "xy"
+pt.show()
+```
+
+
+
+![png](selection_files/selection_20_0.png)
+
+
+
+## A 3D complex example
+
+
+```python
+sphere = mf.sel.sphere([0.5, 0.5, 0.5], 0.5)
+clip_x = mf.sel.bbox([0.5, -np.inf, -np.inf], [np.inf, np.inf, np.inf])  # x > 0.5
+clip_z = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.5])  # z < 0.5
+```
+
+
+```python
+volumes.select(
+    (clip_x & sphere & clip_z) | (sphere & ~clip_x & ~clip_z)
+).to_pyvista().plot()
+```
+
+
+
+![png](selection_files/selection_23_0.png)
+
+
+
+## How does it works ?
+
+Each objects generated by a selection function (a function from the mf.sel module) is of the `Selection` type. It implements operators so that it knows how to compose in an expression. That way an expression generates a new `Selection` which can be interpreted by the `.select(expr)` method.
+
+
+```python
+print(sphere)
+```
+
+    CentroidSelection(
+        Sphere {
+            center: [
+                0.5,
+                0.5,
+                0.5,
+            ],
+            r2: 0.5,
+        },
+    )
+
+
+
+```python
+print(~(sphere & clip_x))
+```
+
+    NotExpr(
+        NotExpr(
+            BinarayExpr(
+                BinarayExpr {
+                    operator: And,
+                    left: CentroidSelection(
+                        Sphere {
+                            center: [
+                                0.5,
+                                0.5,
+                                0.5,
+                            ],
+                            r2: 0.5,
+                        },
+                    ),
+                    right: CentroidSelection(
+                        BBox {
+                            min: [
+                                0.5,
+                                -inf,
+                                -inf,
+                            ],
+                            max: [
+                                inf,
+                                inf,
+                                inf,
+                            ],
+                        },
+                    ),
+                },
+            ),
+        ),
+    )
+
+
+You can see two layers of NotExpr and BinaryExpr. That is perfectly normal, it does not mean that the operation is applied twice, both NotExpr operations and both BinaryExpr op actually comes from different namespaces and it is just a form of encapsulation (first is a variant, second is an enum).

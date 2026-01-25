@@ -196,12 +196,12 @@ pub fn ids(eids: ElementIds) -> Selection {
 impl Select for Selection {
     fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
         match self {
-            Selection::ElementSelection(elemt_expr) => elemt_expr.select(selection),
-            Selection::NodeSelection(nodes_expr) => nodes_expr.select(selection),
-            Selection::CentroidSelection(centroid) => centroid.select(selection),
-            Selection::GroupSelection(group) => group.select(selection),
-            Selection::NotExpr(not) => not.select(selection),
-            Selection::BinarayExpr(binary) => binary.select(selection),
+            Self::ElementSelection(elemt_expr) => elemt_expr.select(selection),
+            Self::NodeSelection(nodes_expr) => nodes_expr.select(selection),
+            Self::CentroidSelection(centroid) => centroid.select(selection),
+            Self::GroupSelection(group) => group.select(selection),
+            Self::NotExpr(not) => not.select(selection),
+            Self::BinarayExpr(binary) => binary.select(selection),
             _ => todo!(),
         }
     }
@@ -211,7 +211,7 @@ impl BitAnd for Selection {
     type Output = Selection;
 
     fn bitand(self, rhs: Self) -> Self::Output {
-        Selection::BinarayExpr(BinarayExpr {
+        Self::BinarayExpr(BinarayExpr {
             operator: BooleanOp::And,
             left: Arc::new(self),
             right: Arc::new(rhs),
@@ -223,7 +223,7 @@ impl BitOr for Selection {
     type Output = Selection;
 
     fn bitor(self, rhs: Self) -> Self::Output {
-        Selection::BinarayExpr(BinarayExpr {
+        Self::BinarayExpr(BinarayExpr {
             operator: BooleanOp::Or,
             left: Arc::new(self),
             right: Arc::new(rhs),
@@ -235,7 +235,7 @@ impl BitXor for Selection {
     type Output = Selection;
 
     fn bitxor(self, rhs: Self) -> Self::Output {
-        Selection::BinarayExpr(BinarayExpr {
+        Self::BinarayExpr(BinarayExpr {
             operator: BooleanOp::Xor,
             left: Arc::new(self),
             right: Arc::new(rhs),
@@ -247,7 +247,7 @@ impl Sub for Selection {
     type Output = Selection;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        Selection::BinarayExpr(BinarayExpr {
+        Self::BinarayExpr(BinarayExpr {
             operator: BooleanOp::Diff,
             left: Arc::new(self),
             right: Arc::new(rhs),
@@ -259,7 +259,7 @@ impl Not for Selection {
     type Output = Selection;
 
     fn not(self) -> Self::Output {
-        Selection::NotExpr(NotExpr(Arc::new(self)))
+        Self::NotExpr(NotExpr(Arc::new(self)))
     }
 }
 
@@ -268,11 +268,9 @@ impl Not for Selection {
 impl Select for ElementSelection {
     fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
         match self {
-            ElementSelection::Types(types) => Self::select_types(types.as_slice(), selection),
-            ElementSelection::Dimensions(dims) => {
-                Self::select_dimensions(dims.as_slice(), selection)
-            }
-            ElementSelection::InIds(ids) => Self::select_ids(ids.clone(), selection),
+            Self::Types(types) => Self::select_types(types.as_slice(), selection),
+            Self::Dimensions(dims) => Self::select_dimensions(dims.as_slice(), selection),
+            Self::InIds(ids) => Self::select_ids(ids.clone(), selection),
         }
     }
 }
@@ -280,19 +278,11 @@ impl Select for ElementSelection {
 impl Select for NodeSelection {
     fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
         match self {
-            NodeSelection::BBox { all, min, max } => {
-                NodeSelection::in_bbox(*all, min, max, selection)
-            }
-            NodeSelection::Rect { all, min, max } => {
-                NodeSelection::in_rectangle(*all, min, max, selection)
-            }
-            NodeSelection::Sphere { all, center, r2 } => {
-                NodeSelection::in_sphere(*all, center, *r2, selection)
-            }
-            NodeSelection::Circle { all, center, r2 } => {
-                NodeSelection::in_circle(*all, center, *r2, selection)
-            }
-            NodeSelection::Ids { all, ids } => Self::id_in(*all, ids.as_slice(), selection),
+            Self::BBox { all, min, max } => Self::in_bbox(*all, min, max, selection),
+            Self::Rect { all, min, max } => Self::in_rectangle(*all, min, max, selection),
+            Self::Sphere { all, center, r2 } => Self::in_sphere(*all, center, *r2, selection),
+            Self::Circle { all, center, r2 } => Self::in_circle(*all, center, *r2, selection),
+            Self::Ids { all, ids } => Self::id_in(*all, ids.as_slice(), selection),
         }
     }
 }
@@ -300,10 +290,10 @@ impl Select for NodeSelection {
 impl Select for GroupSelection {
     fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
         match self {
-            GroupSelection::IncludeGroup(name) => GroupSelection::include_group(name, selection),
-            GroupSelection::ExcludeGroup(name) => GroupSelection::exclude_group(name, selection),
-            GroupSelection::IncludeFamily(fid) => GroupSelection::include_family(*fid, selection),
-            GroupSelection::ExcludeFamily(fid) => GroupSelection::exclude_family(*fid, selection),
+            Self::IncludeGroup(name) => Self::include_group(name, selection),
+            Self::ExcludeGroup(name) => Self::exclude_group(name, selection),
+            Self::IncludeFamily(fid) => Self::include_family(*fid, selection),
+            Self::ExcludeFamily(fid) => Self::exclude_family(*fid, selection),
         }
     }
 }
@@ -328,154 +318,13 @@ impl Select for BinarayExpr {
 impl Select for CentroidSelection {
     fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
         match self {
-            CentroidSelection::BBox { min, max } => CentroidSelection::in_bbox(min, max, selection),
-            CentroidSelection::Rect { min, max } => {
-                CentroidSelection::in_rectangle(min, max, selection)
-            }
-            CentroidSelection::Sphere { center, r2 } => {
-                CentroidSelection::in_sphere(center, *r2, selection)
-            }
-            CentroidSelection::Circle { center, r2 } => {
-                CentroidSelection::in_circle(center, *r2, selection)
-            }
+            Self::BBox { min, max } => Self::in_bbox(min, max, selection),
+            Self::Rect { min, max } => Self::in_rectangle(min, max, selection),
+            Self::Sphere { center, r2 } => Self::in_sphere(center, *r2, selection),
+            Self::Circle { center, r2 } => Self::in_circle(center, *r2, selection),
         }
     }
 }
-
-// impl Selector<FieldBasedSelector> {
-//     pub fn ge(self, val: f64) -> Self {
-//         let index: ElementIds = self
-//             .index
-//             .into_iter()
-//             .filter(|&e_id| {
-//                 self.umesh
-//                     .block(e_id.element_type())
-//                     .unwrap()
-//                     .fields
-//                     .get(self.state.field_name.as_str())
-//                     .unwrap()[[e_id.index()]]
-//                     >= val
-//             })
-//             .collect();
-//         Self {
-//             umesh: self.umesh,
-//             index,
-//             state: self.state,
-//         }
-//     }
-//
-//     pub fn lt(self, val: f64) -> Self {
-//         let index: ElementIds = self
-//             .index
-//             .into_iter()
-//             .filter(|&e_id| {
-//                 self.umesh
-//                     .block(e_id.element_type())
-//                     .unwrap()
-//                     .fields
-//                     .get(self.state.field_name.as_str())
-//                     .unwrap()[[e_id.index()]]
-//                     < val
-//             })
-//             .collect();
-//         Self {
-//             umesh: self.umesh,
-//             index,
-//             state: self.state,
-//         }
-//     }
-//
-//     pub fn groups(self) -> Selector<GroupBasedSelector> {
-//         self.into_groups()
-//     }
-//     pub fn elements(self) -> Selector<ElementSelector> {
-//         self.into_elements()
-//     }
-//     pub fn nodes(self, all: bool) -> Selector<NodeBasedSelector> {
-//         self.into_nodes(all)
-//     }
-//     pub fn centroids(self) -> Selector<CentroidBasedSelector> {
-//         self.into_centroids()
-//     }
-// }
-//
-// impl Selector<GroupBasedSelector> {
-//     pub fn inside(self, name: &str) -> Self {
-//         let grp_fmies: FxHashMap<ElementType, BTreeSet<usize>> = self
-//             .umesh
-//             .par_blocks()
-//             .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
-//             .collect();
-//         let intersection_fmies = self
-//             .state
-//             .families
-//             .into_iter()
-//             .map(|(et, fmies)| {
-//                 let inter = &fmies & grp_fmies.get(&et).unwrap_or(&BTreeSet::new());
-//                 (et, inter)
-//             })
-//             .collect();
-//         let state = GroupBasedSelector {
-//             families: intersection_fmies,
-//         };
-//         Self {
-//             umesh: self.umesh,
-//             index: self.index,
-//             state,
-//         }
-//     }
-//
-//     pub fn outside(self, name: &str) -> Self {
-//         let grp_fmies: FxHashMap<ElementType, BTreeSet<usize>> = self
-//             .umesh
-//             .par_blocks()
-//             .map(|(&k, v)| (k, v.groups.get(name).unwrap_or(&BTreeSet::new()).clone()))
-//             .collect();
-//         let intersection_fmies = self
-//             .state
-//             .families
-//             .into_iter()
-//             .map(|(et, fmies)| {
-//                 let inter = &fmies & grp_fmies.get(&et).unwrap_or(&BTreeSet::new());
-//                 let exclu = fmies.difference(&inter).cloned().collect();
-//                 (et, exclu)
-//             })
-//             .collect();
-//         let state = GroupBasedSelector {
-//             families: intersection_fmies,
-//         };
-//         Self {
-//             umesh: self.umesh,
-//             index: self.index,
-//             state,
-//         }
-//     }
-//
-//     /// I have a set of families per element_type, I can now select the real elements
-//     fn collect(self) -> Selector<ElementSelector> {
-//         todo!();
-//         // let index = self.umesh.families(et);
-//         // let state = ElementTypeSelector{};
-//         // Selector {
-//         //     umesh: self.umesh,
-//         //     index,
-//         //     state,
-//         // }
-//     }
-//
-//     pub fn fields(self, name: &str) -> Selector<FieldBasedSelector> {
-//         self.collect().into_field(name)
-//     }
-//     pub fn elements(self) -> Selector<ElementSelector> {
-//         self.collect().into_elements()
-//     }
-//     pub fn nodes(self, all: bool) -> Selector<NodeBasedSelector> {
-//         self.collect().into_nodes(all)
-//     }
-//     pub fn centroids(self) -> Selector<CentroidBasedSelector> {
-//         self.collect().into_centroids()
-//     }
-// }
 
 pub trait MeshSelect {
     fn select_ids(&self, expr: Selection) -> ElementIds;

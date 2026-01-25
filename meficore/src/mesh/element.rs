@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::Dimension;
-use super::ElementIds;
 
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Regularity {
