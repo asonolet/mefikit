@@ -30,8 +30,8 @@ where
     F: nd::Data<Elem = f64>,   // Fields data
     G: nd::Data<Elem = usize>, // Groups data
 {
-    pub coords: nd::ArrayBase<N, nd::Ix2>,
-    element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
+    pub(crate) coords: nd::ArrayBase<N, nd::Ix2>,
+    pub(crate) element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
 }
 
 pub type UMesh = UMeshBase<

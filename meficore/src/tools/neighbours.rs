@@ -29,14 +29,7 @@ pub fn par_compute_neighbours(
     UMesh,
     UnGraphMap<ElementId, ElementId>, // element to element with subelem as edges
 ) {
-    let src_dim = match src_dim {
-        Some(c) => c,
-        None => mesh.topological_dimension().unwrap(),
-    };
-    let codim = match target_dim {
-        Some(t) => src_dim - t,
-        None => Dimension::D1,
-    };
+    let (src_dim, _, codim) = compute_src_target_codim(mesh, src_dim, target_dim);
     // let mut subentities_hash: HashMap<SortedVecKey, [ElementId; 2]> =
     //     HashMap::with_capacity(self.coords.shape()[0]); // FaceId, ElemId
     let mut elem_to_elem: UnGraphMap<ElementId, ElementId> =
@@ -106,14 +99,7 @@ pub fn compute_neighbours(
     UMesh,
     UnGraphMap<ElementId, ElementId>, // element to element with subelem as edges
 ) {
-    let src_dim = match src_dim {
-        Some(c) => c,
-        None => mesh.topological_dimension().unwrap(),
-    };
-    let codim = match target_dim {
-        Some(t) => src_dim - t,
-        None => Dimension::D1,
-    };
+    let (src_dim, _, codim) = compute_src_target_codim(mesh, src_dim, target_dim);
     let mut subentities_hashmap: FxHashMap<SortedVecKey, (ElementId, SmallVec<[ElementId; 2]>)> =
         HashMap::default();
     let mut neighbors: UMesh = UMesh::new(mesh.coords.to_shared());
@@ -171,14 +157,7 @@ pub fn compute_neighbours_graph(
     src_dim: Option<Dimension>,
     target_dim: Option<Dimension>,
 ) -> UnGraphMap<ElementId, SortedVecKey> {
-    let src_dim = match src_dim {
-        Some(c) => c,
-        None => mesh.topological_dimension().unwrap(),
-    };
-    let codim = match target_dim {
-        Some(t) => src_dim - t,
-        None => Dimension::D1,
-    };
+    let (src_dim, _, codim) = compute_src_target_codim(mesh, src_dim, target_dim);
     let mut subentities_hashmap: FxHashMap<SortedVecKey, SmallVec<[ElementId; 2]>> =
         HashMap::default();
 
@@ -210,6 +189,26 @@ pub fn compute_neighbours_graph(
     elem_to_elem
 }
 
+fn compute_src_target_codim(
+    mesh: &UMesh,
+    src_dim: Option<Dimension>,
+    target_dim: Option<Dimension>,
+) -> (Dimension, Dimension, Dimension) {
+    let src_dim = match src_dim {
+        Some(c) => c,
+        None => mesh.topological_dimension().unwrap(),
+    };
+    let codim = match target_dim {
+        Some(t) => src_dim - t,
+        None => Dimension::D1,
+    };
+    let target_dim = match target_dim {
+        Some(t) => t,
+        None => src_dim - Dimension::D1,
+    };
+    (src_dim, target_dim, codim)
+}
+
 /// This method is used to compute a subentity mesh.
 ///
 /// By default, the mesh computed has a codimension of 1 with the entry mesh. Meaning that there
@@ -224,14 +223,7 @@ pub fn compute_descending(
     src_dim: Option<Dimension>,
     target_dim: Option<Dimension>,
 ) -> UMesh {
-    let src_dim = match src_dim {
-        Some(c) => c,
-        None => mesh.topological_dimension().unwrap(),
-    };
-    let codim = match target_dim {
-        Some(t) => src_dim - t,
-        None => Dimension::D1,
-    };
+    let (src_dim, _, codim) = compute_src_target_codim(mesh, src_dim, target_dim);
     let mut subentities_hash: FxHashSet<SortedVecKey> = HashSet::default(); // Face
     let mut neighbors: UMesh = UMesh::new(mesh.coords.to_shared());
 
@@ -257,14 +249,7 @@ pub fn compute_sub_to_elem(
     src_dim: Option<Dimension>,
     target_dim: Option<Dimension>,
 ) -> (UMesh, FxHashMap<ElementId, Vec<ElementId>>) {
-    let src_dim = match src_dim {
-        Some(c) => c,
-        None => mesh.topological_dimension().unwrap(),
-    };
-    let codim = match target_dim {
-        Some(t) => src_dim - t,
-        None => Dimension::D1,
-    };
+    let (src_dim, _, codim) = compute_src_target_codim(mesh, src_dim, target_dim);
     let mut hash_to_subid: FxHashMap<SortedVecKey, ElementId> = HashMap::default(); // Face
     let mut sub_to_elem: FxHashMap<ElementId, Vec<ElementId>> = HashMap::default(); // Face
     let mut neighbors: UMesh = UMesh::new(mesh.coords.to_shared());
@@ -305,4 +290,99 @@ pub fn compute_boundaries(
         })
         .collect();
     descending_mesh.extract(&boundaries_ids)
+}
+
+trait Descendable {
+    type Output;
+    fn descend(&self, src_dim: Option<Dimension>, target_dim: Option<Dimension>) -> Self::Output;
+    fn descend_update(
+        &mut self,
+        src_dim: Option<Dimension>,
+        target_dim: Option<Dimension>,
+    ) -> Option<Self::Output>;
+    fn boundaries(&self, src_dim: Option<Dimension>, target_dim: Option<Dimension>)
+    -> Self::Output;
+    fn boundaries_update(
+        &mut self,
+        src_dim: Option<Dimension>,
+        target_dim: Option<Dimension>,
+    ) -> Option<Self::Output>;
+}
+
+impl Descendable for UMesh {
+    type Output = UMesh;
+    fn descend(&self, src_dim: Option<Dimension>, target_dim: Option<Dimension>) -> Self::Output {
+        compute_descending(self, src_dim, target_dim)
+    }
+    /// Compute the descending mesh of the source dimension to the target dimension. This mesh is
+    /// added to the source mesh and if there are elements of the target dimension they are moved
+    /// to a new mesh which is returned.
+    fn descend_update(
+        &mut self,
+        src_dim: Option<Dimension>,
+        target_dim: Option<Dimension>,
+    ) -> Option<Self::Output> {
+        let (src_dim, target_dim, _) = compute_src_target_codim(self, src_dim, target_dim);
+        let mut descended_mesh = compute_descending(self, Some(src_dim), Some(target_dim));
+        let old_types: Vec<_> = self
+            .element_types()
+            .filter(|e| e.dimension() == target_dim)
+            .cloned()
+            .collect();
+        let new_elems: Vec<_> = descended_mesh.element_types().cloned().collect();
+        let old_mesh = if old_types.is_empty() {
+            None
+        } else {
+            let mut old_mesh = Self::Output::new(self.coords.clone());
+            for et in old_types {
+                let block = self.element_blocks.remove(&et).unwrap();
+                old_mesh.element_blocks.insert(et, block);
+            }
+            Some(old_mesh)
+        };
+        for et in new_elems {
+            let block = descended_mesh.element_blocks.remove(&et).unwrap();
+            self.element_blocks.insert(et, block);
+        }
+        old_mesh
+    }
+    fn boundaries(
+        &self,
+        src_dim: Option<Dimension>,
+        target_dim: Option<Dimension>,
+    ) -> Self::Output {
+        compute_boundaries(self, src_dim, target_dim)
+    }
+    /// Compute the boundaries mesh of the source dimension to the target dimension. This mesh is
+    /// added to the source mesh and if there are elements of the target dimension they are moved
+    /// to a new mesh which is returned.
+    fn boundaries_update(
+        &mut self,
+        src_dim: Option<Dimension>,
+        target_dim: Option<Dimension>,
+    ) -> Option<Self::Output> {
+        let (src_dim, target_dim, _) = compute_src_target_codim(self, src_dim, target_dim);
+        let mut new_mesh = compute_boundaries(self, Some(src_dim), Some(target_dim));
+        let old_types: Vec<_> = self
+            .element_types()
+            .filter(|e| e.dimension() == target_dim)
+            .cloned()
+            .collect();
+        let new_elems: Vec<_> = new_mesh.element_types().cloned().collect();
+        let old_mesh = if old_types.is_empty() {
+            None
+        } else {
+            let mut old_mesh = Self::Output::new(self.coords.clone());
+            for et in old_types {
+                let block = self.element_blocks.remove(&et).unwrap();
+                old_mesh.element_blocks.insert(et, block);
+            }
+            Some(old_mesh)
+        };
+        for et in new_elems {
+            let block = new_mesh.element_blocks.remove(&et).unwrap();
+            self.element_blocks.insert(et, block);
+        }
+        old_mesh
+    }
 }
