@@ -96,6 +96,48 @@ plotter.show()
 
 
 
+## Descend / boundaries update
+
+You can directly update the mesh inplace when computing the descending mesh or the boundaries mesh.
+
+
+```python
+volumes.boundaries_update()
+volumes.boundaries_update(target_dim=1)
+volumes.to_pyvista().shrink(0.8).plot(show_edges=True)
+```
+
+
+
+![png](topological_tools_files/topological_tools_11_0.png)
+
+
+
+When using the `_update` version, the elements of the same dimension of the generated mesh are returned as a new mesh.
+
+
+```python
+old_face_mesh = volumes.descend_update()
+volumes.to_pyvista().shrink(0.8).plot(show_edges=True)
+```
+
+
+
+![png](topological_tools_files/topological_tools_13_0.png)
+
+
+
+
+```python
+old_face_mesh.to_pyvista().shrink(0.8).plot(show_edges=True)
+```
+
+
+
+![png](topological_tools_files/topological_tools_14_0.png)
+
+
+
 ## Connected components
 
 
@@ -166,7 +208,7 @@ plotter.show()
 
 
 
-![png](topological_tools_files/topological_tools_13_0.png)
+![png](topological_tools_files/topological_tools_18_0.png)
 
 
 
@@ -238,4 +280,4 @@ plotter.show()
 
 
 
-![png](topological_tools_files/topological_tools_17_0.png)
+![png](topological_tools_files/topological_tools_22_0.png)

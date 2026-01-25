@@ -4,7 +4,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use mefikit::{prelude as mf, tools::MeshSelect};
+use mefikit::{prelude as mf, tools::Descendable, tools::MeshSelect};
 
 use std::path::Path;
 
@@ -97,14 +97,40 @@ impl PyUMesh {
     fn descend(&self, src_dim: Option<usize>, target_dim: Option<usize>) -> Self {
         let src_dim = src_dim.map(|i| i.try_into().unwrap());
         let target_dim = target_dim.map(|i| i.try_into().unwrap());
-        mf::compute_descending(&self.inner, src_dim, target_dim).into()
+        self.inner.descend(src_dim, target_dim).into()
+    }
+
+    #[pyo3(signature = (src_dim=None, target_dim=None))]
+    fn descend_update(
+        &mut self,
+        src_dim: Option<usize>,
+        target_dim: Option<usize>,
+    ) -> Option<Self> {
+        let src_dim = src_dim.map(|i| i.try_into().unwrap());
+        let target_dim = target_dim.map(|i| i.try_into().unwrap());
+        self.inner
+            .descend_update(src_dim, target_dim)
+            .map(|m| m.into())
     }
 
     #[pyo3(signature = (src_dim=None, target_dim=None))]
     fn boundaries(&self, src_dim: Option<usize>, target_dim: Option<usize>) -> Self {
         let src_dim = src_dim.map(|i| i.try_into().unwrap());
         let target_dim = target_dim.map(|i| i.try_into().unwrap());
-        mf::compute_boundaries(&self.inner, src_dim, target_dim).into()
+        self.inner.boundaries(src_dim, target_dim).into()
+    }
+
+    #[pyo3(signature = (src_dim=None, target_dim=None))]
+    fn boundaries_update(
+        &mut self,
+        src_dim: Option<usize>,
+        target_dim: Option<usize>,
+    ) -> Option<Self> {
+        let src_dim = src_dim.map(|i| i.try_into().unwrap());
+        let target_dim = target_dim.map(|i| i.try_into().unwrap());
+        self.inner
+            .boundaries_update(src_dim, target_dim)
+            .map(|m| m.into())
     }
 
     #[pyo3(signature = (src_dim=None, link_dim=None))]

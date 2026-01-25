@@ -292,7 +292,7 @@ pub fn compute_boundaries(
     descending_mesh.extract(&boundaries_ids)
 }
 
-trait Descendable {
+pub trait Descendable {
     type Output;
     fn descend(&self, src_dim: Option<Dimension>, target_dim: Option<Dimension>) -> Self::Output;
     fn descend_update(
@@ -322,29 +322,8 @@ impl Descendable for UMesh {
         src_dim: Option<Dimension>,
         target_dim: Option<Dimension>,
     ) -> Option<Self::Output> {
-        let (src_dim, target_dim, _) = compute_src_target_codim(self, src_dim, target_dim);
-        let mut descended_mesh = compute_descending(self, Some(src_dim), Some(target_dim));
-        let old_types: Vec<_> = self
-            .element_types()
-            .filter(|e| e.dimension() == target_dim)
-            .cloned()
-            .collect();
-        let new_elems: Vec<_> = descended_mesh.element_types().cloned().collect();
-        let old_mesh = if old_types.is_empty() {
-            None
-        } else {
-            let mut old_mesh = Self::Output::new(self.coords.clone());
-            for et in old_types {
-                let block = self.element_blocks.remove(&et).unwrap();
-                old_mesh.element_blocks.insert(et, block);
-            }
-            Some(old_mesh)
-        };
-        for et in new_elems {
-            let block = descended_mesh.element_blocks.remove(&et).unwrap();
-            self.element_blocks.insert(et, block);
-        }
-        old_mesh
+        let descended_mesh = compute_descending(self, src_dim, target_dim);
+        self.update(descended_mesh)
     }
     fn boundaries(
         &self,
@@ -361,28 +340,7 @@ impl Descendable for UMesh {
         src_dim: Option<Dimension>,
         target_dim: Option<Dimension>,
     ) -> Option<Self::Output> {
-        let (src_dim, target_dim, _) = compute_src_target_codim(self, src_dim, target_dim);
-        let mut new_mesh = compute_boundaries(self, Some(src_dim), Some(target_dim));
-        let old_types: Vec<_> = self
-            .element_types()
-            .filter(|e| e.dimension() == target_dim)
-            .cloned()
-            .collect();
-        let new_elems: Vec<_> = new_mesh.element_types().cloned().collect();
-        let old_mesh = if old_types.is_empty() {
-            None
-        } else {
-            let mut old_mesh = Self::Output::new(self.coords.clone());
-            for et in old_types {
-                let block = self.element_blocks.remove(&et).unwrap();
-                old_mesh.element_blocks.insert(et, block);
-            }
-            Some(old_mesh)
-        };
-        for et in new_elems {
-            let block = new_mesh.element_blocks.remove(&et).unwrap();
-            self.element_blocks.insert(et, block);
-        }
-        old_mesh
+        let new_mesh = compute_boundaries(self, src_dim, target_dim);
+        self.update(new_mesh)
     }
 }

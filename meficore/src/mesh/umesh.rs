@@ -380,20 +380,6 @@ impl UMesh {
         Ok(())
     }
 
-    // This is kind of efficient: coordinates are reallocated and copied but connectivities are
-    // modified in-place.
-    // pub fn prepend_coords(mut self, added_coords: ArrayView2<'_, f64>) -> Self {
-    //     let n_coords = added_coords.len_of(Axis(0));
-    //     self.coords = nd::concatenate![Axis(0), added_coords, self.coords].into_shared();
-    //     for (_, eb) in self.element_blocks.iter_mut() {
-    //         match &mut eb.connectivity {
-    //             ConnectivityBase::Regular(c) => *c += n_coords,
-    //             ConnectivityBase::Poly { data, .. } => *data += n_coords,
-    //         }
-    //     }
-    //     self
-    // }
-
     /// Extracts a sub-mesh from the current mesh based on the provided element IDs.
     ///
     /// This method creates a new `UMesh`, owning its data (with copy) containing only the elements
@@ -445,6 +431,37 @@ impl UMesh {
             .get_mut(&id.element_type())
             .unwrap()
             .get_mut(id.index(), self.coords.view())
+    }
+
+    /// This method takes all blocks from other mesh and add them to self. Before adding a block,
+    /// if blocks from the same dimension already exists in self, they are removed and returned in
+    /// a new UMesh.
+    pub fn update(&mut self, mut other: Self) -> Option<Self> {
+        let target_dims = other
+            .element_types()
+            .map(|et| et.dimension())
+            .collect::<FxHashSet<_>>();
+        let old_types: Vec<_> = self
+            .element_types()
+            .filter(|e| target_dims.contains(&e.dimension()))
+            .cloned()
+            .collect();
+        let new_elems: Vec<_> = other.element_types().cloned().collect();
+        let old_mesh = if old_types.is_empty() {
+            None
+        } else {
+            let mut old_mesh = Self::new(self.coords.clone());
+            for et in old_types {
+                let block = self.element_blocks.remove(&et).unwrap();
+                old_mesh.element_blocks.insert(et, block);
+            }
+            Some(old_mesh)
+        };
+        for et in new_elems {
+            let block = other.element_blocks.remove(&et).unwrap();
+            self.element_blocks.insert(et, block);
+        }
+        old_mesh
     }
 }
 
