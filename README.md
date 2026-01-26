@@ -42,7 +42,7 @@ the [Mefibook!](./mefibook/src/SUMMARY.md)
   - `extrude` - Create an extruded mesh (1d x 1d, 2d x 1d)
   - `duplicate` - Create a mesh by duplication (0d, 1d, 2d, 3d)
   - `aggregate` – Build a mesh from multiple non overlapping cell groups.
-- `Selector` - Element selection builder
+- `select` - Powerfull composable selection API (DSL)
   - on nodes position
   - on elements position
   - on fields values
@@ -51,23 +51,20 @@ the [Mefibook!](./mefibook/src/SUMMARY.md)
   - `descend` – Build the descending connectivity mesh (faces from volumes, etc)
   - `boundaries` – Build the boundaries mesh
   - `crack` – Introduce topological cracks along internal faces.
-  - `merge_nodes` - Merges duplicated nodes
+  - `connected_components` – Split the mesh in connected meshes
 - 📐 Geometric operations
   - `snap` - To snap nodes of one mesh on another mesh nodes
+  - `merge_nodes` - Merges duplicated nodes
   - `fuse` – Merge two meshes into one.
   - `intersect` – Compute boolean mesh intersection.
   - `split` – Cut a mesh using another.
   - `conformize` – Intersect shared faces, snap and merge near-nodes.
 
-### 🧠 Topological Toolbox (rust only)
+### 🧠 Element kit (rust only)
 
-- **Descending elements** (edges/faces of volumes, etc.)
-- **Equivalence classes** of elements
-- **Simplexization**
-- ...
-
-### 📐 Geometric Toolbox (rust only)
-
+- Descending elements (edges/faces of volumes, etc.)
+- Equivalence classes of elements
+- Simplexization
 - Bounding box trees
 - Element intersections
 - Normal and orientation computation
@@ -91,12 +88,8 @@ the [Mefibook!](./mefibook/src/SUMMARY.md)
 
 ### 🐍 Python Bindings
 
-- `mefipy`:
-  - All high level functionality is exposed via clean Python bindings in this
-    crate for rapid prototyping and integration in data pipelines.
-- `mefikit`:
-  - python package exposing `mefipy`.
-  - adding python conversions through `numpy` to `meshio`, `pyvista`, `medcoupling`.
+- All high level functionality is exposed via clean Python bindings for rapid prototyping and integration in data pipelines.
+- Adding python conversions through `numpy` to `meshio`, `pyvista`, `medcoupling`.
 
 ---
 
@@ -124,7 +117,7 @@ And thrive to:
 
 ```text
 mefikit/
-├── mefikit/       # The rust core library. You can use it as a rust dependency
+├── meficore/      # The rust core library. You can use it as a rust dependency
 ├── mefipy/        # PyO3 bindings and python package
 ├── mefibook/      # The Mefikit Book
 ```
@@ -136,8 +129,7 @@ src/
 ├── mesh/          # Mesh & field data model, the Element API
 ├── tools/         # The home to all high-level functionnalities
 ├── io/            # Readers/writers
-├── topology/      # Element topological toolbox used for higher level functionnalities
-├── geometry/      # Element and basic geometry toolbox
+├── element_kit/   # Element toolbox used to build higher level functionnalities
 ```
 
 To build the library, you need to have Rust installed. You can install Rust
@@ -180,7 +172,7 @@ uv run pytest
 
 `uv` won't build the package, it is only in charge of the dependencies.
 `maturin` is the only one parametrized for this. Please run `maturin` each time
-rust `mefikit` or `mefipy` changed.
+rust `meficore` or `mefipy` changed.
 
 ### Mefibook
 
