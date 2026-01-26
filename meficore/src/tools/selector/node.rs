@@ -20,12 +20,12 @@ pub enum NodeSelection {
     Sphere {
         all: bool,
         center: [f64; 3],
-        r2: f64,
+        r: f64,
     }, // center and rayon
     Circle {
         all: bool,
         center: [f64; 2],
-        r2: f64,
+        r: f64,
     }, // center and rayon
     Ids {
         all: bool,

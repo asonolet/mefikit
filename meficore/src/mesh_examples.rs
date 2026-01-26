@@ -42,7 +42,7 @@ pub fn make_mesh_2d_multi() -> mf::UMesh {
         mf::ElementType::QUAD4,
         nd::arr2(&[[0, 1, 3, 2]]).to_shared(),
     );
-    mesh.add_element(mf::ElementType::PGON, &[0, 1, 5, 3, 2], None, None);
+    mesh.add_element(mf::ElementType::PGON, &[0, 1, 4, 3, 2], None, None);
     mesh
 }
 
