@@ -23,7 +23,6 @@
 | Selection by position (bbox, plane) | ✔️                     | ✔️             | UMesh needs pointwise or centroid-based spatial filtering.                            |
 | Selection by connectivity patterns  | 🚧                     | ❌             |                                                                                       |
 | Combine selection criteria          | ✔️                     | ❌             | Simplifed by using AND only, which is reasonable.                                     |
-| Export to Polars                    | ⏳                     | ❌             | Unify metadata filter (families and fields) and bring polars speed over columnar data |
 
 ---
 
@@ -49,12 +48,12 @@
 | Feature                             | UMesh | MEDCoupling | Notes                                 |
 | ----------------------------------- | ----- | ----------- | ------------------------------------- |
 | Python Bindings via PyO3/maturin    | ✔️    | ✔️          | Rust-native API with PyO3/maturin     |
-| Field Selection API in Python       | ⏳    | ✔️          | Fluent `.field("temp").gt(...)`       |
+| Selection API in Python             | ⏳    | ✔️          | `mf.field("temp") >= 0.0`       |
 | Conversion to NumPy Arrays          | ✔️    | ✔️          | For coords, connectivity, fields      |
 | Pythonic Mesh Access (coords, conn) | ✔️    | ✔️          | Rust-style getter wrappers            |
 | C/C++ FFI Interface via `cbindgen`  | ⏳    | ✔️          | Exported symbols with C ABI           |
 | Rust in C/C++ via `extern "C"`      | ⏳    | ✔️          | Allows calling UMesh from legacy code |
-| Python Submesh Creation             | ✔️    | ✔️          | `mesh.to_descend()`                   |
+| Python Submesh Creation             | ✔️    | ✔️          | `mesh.descend()`                   |
 | PyPI Distribution                   | ⏳    | ✔️          | Simple install with `pip install`     |
 
 ---
