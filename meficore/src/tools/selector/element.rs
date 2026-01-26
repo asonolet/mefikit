@@ -1,3 +1,5 @@
+use rustc_hash::FxHashSet;
+
 use super::selection::SelectedView;
 use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType};
 
@@ -14,8 +16,12 @@ impl ElementSelection {
         selection: SelectedView<'a>,
     ) -> SelectedView<'a> {
         let SelectedView(view, mut sel) = selection;
-        for k in types {
-            sel.remove_type(*k);
+        let sel_types: Vec<_> = sel.keys().collect();
+        let types_to_match: FxHashSet<_> = types.iter().collect();
+        for k in sel_types {
+            if !types_to_match.contains(&k) {
+                sel.remove_type(k);
+            }
         }
         SelectedView(view, sel)
     }

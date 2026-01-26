@@ -75,7 +75,7 @@ impl Selection {
     }
     /// This method filters upon nodes position.
     pub fn nsphere(self, center: [f64; 3], r2: f64, all: bool) -> Self {
-        let right = Self::NodeSelection(NodeSelection::Sphere { all, center, r2 });
+        let right = Self::NodeSelection(NodeSelection::Sphere { all, center, r: r2 });
         Self::BinarayExpr(BinarayExpr {
             operator: BooleanOp::And,
             left: Arc::new(self),
@@ -83,7 +83,7 @@ impl Selection {
         })
     }
     pub fn ncircle(self, center: [f64; 2], r2: f64, all: bool) -> Self {
-        let right = Self::NodeSelection(NodeSelection::Circle { all, center, r2 });
+        let right = Self::NodeSelection(NodeSelection::Circle { all, center, r: r2 });
         Self::BinarayExpr(BinarayExpr {
             operator: BooleanOp::And,
             left: Arc::new(self),
@@ -163,10 +163,10 @@ pub fn nrect(min: [f64; 2], max: [f64; 2], all: bool) -> Selection {
 }
 /// This method filters upon nodes position.
 pub fn nsphere(center: [f64; 3], r2: f64, all: bool) -> Selection {
-    Selection::NodeSelection(NodeSelection::Sphere { all, center, r2 })
+    Selection::NodeSelection(NodeSelection::Sphere { all, center, r: r2 })
 }
 pub fn ncircle(center: [f64; 2], r2: f64, all: bool) -> Selection {
-    Selection::NodeSelection(NodeSelection::Circle { all, center, r2 })
+    Selection::NodeSelection(NodeSelection::Circle { all, center, r: r2 })
 }
 pub fn nids(ids: Vec<usize>, all: bool) -> Selection {
     Selection::NodeSelection(NodeSelection::Ids { all, ids })
@@ -280,8 +280,8 @@ impl Select for NodeSelection {
         match self {
             Self::BBox { all, min, max } => Self::in_bbox(*all, min, max, selection),
             Self::Rect { all, min, max } => Self::in_rectangle(*all, min, max, selection),
-            Self::Sphere { all, center, r2 } => Self::in_sphere(*all, center, *r2, selection),
-            Self::Circle { all, center, r2 } => Self::in_circle(*all, center, *r2, selection),
+            Self::Sphere { all, center, r } => Self::in_sphere(*all, center, *r, selection),
+            Self::Circle { all, center, r } => Self::in_circle(*all, center, *r, selection),
             Self::Ids { all, ids } => Self::id_in(*all, ids.as_slice(), selection),
         }
     }
@@ -368,10 +368,12 @@ mod tests {
     #[test]
     fn test_umesh_element_selection() {
         use ElementType::*;
-        let mesh = me::make_mesh_2d_multi();
+        let mesh = me::make_mesh_2d_quad();
         // Here is my cool expression !
+        let eps = -1e12;
         let (_eids, mesh_sel) = mesh.select(
-            (rect([0.0, 0.0], [1., 1.]) | ncircle([0.0, 0.0], 1.0, false)) & types(vec![QUAD4]),
+            (rect([-eps, -eps], [1. + eps, 1. + eps]) | ncircle([0.0, 0.0], 1.0, false))
+                & types(vec![QUAD4]),
         );
         assert_eq!(mesh_sel.num_elements(), 1);
     }

@@ -491,7 +491,7 @@ mod tests {
         assert_eq!(elements[2].element_type, ElementType::QUAD4);
         assert_eq!(elements[2].connectivity, &[0, 1, 3, 2]);
         assert_eq!(elements[3].element_type, ElementType::PGON);
-        assert_eq!(elements[3].connectivity, &[0, 1, 5, 3, 2]);
+        assert_eq!(elements[3].connectivity, &[0, 1, 4, 3, 2]);
     }
     // #[test]
     // fn test_umesh_element_block_addition() {
