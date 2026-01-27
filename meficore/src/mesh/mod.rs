@@ -5,6 +5,7 @@ mod element_block;
 mod element_ids;
 mod element_ids_set;
 mod fieldexpr;
+mod fields;
 mod indirect_index;
 mod umesh;
 
@@ -15,4 +16,5 @@ pub use self::element_ids_set::ElementIdsSet;
 
 pub use self::connectivity::Connectivity;
 pub use self::fieldexpr::*;
+pub use self::fields::*;
 pub use umesh::{UMesh, UMeshBase, UMeshView};
