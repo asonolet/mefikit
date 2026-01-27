@@ -1,3 +1,4 @@
+use derive_where::derive_where;
 use ndarray::{self as nd, ArrayBase};
 use smallvec::SmallVec;
 use std::{
@@ -28,7 +29,10 @@ pub enum FieldExpr {
     Index(Arc<FieldExpr>, SmallVec<[usize; 2]>),
 }
 
-pub struct FieldBase<S: nd::Data<Elem = f64>>(BTreeMap<ElementType, nd::ArrayBase<S, nd::IxDyn>>);
+#[derive_where(Clone, Debug; S: nd::RawDataClone)]
+pub struct FieldBase<S: nd::Data<Elem = f64>>(
+    pub BTreeMap<ElementType, nd::ArrayBase<S, nd::IxDyn>>,
+);
 type FieldView<'a> = FieldBase<nd::ViewRepr<&'a f64>>;
 type FieldOwned = FieldBase<nd::OwnedRepr<f64>>;
 type FieldArc = FieldBase<nd::OwnedArcRepr<f64>>;
@@ -38,7 +42,7 @@ impl<S> FieldBase<S>
 where
     S: nd::Data<Elem = f64>,
 {
-    fn new(map: BTreeMap<ElementType, nd::ArrayBase<S, nd::IxDyn>>) -> Self {
+    pub fn new(map: BTreeMap<ElementType, nd::ArrayBase<S, nd::IxDyn>>) -> Self {
         let res = Self(map);
         res.is_coherent();
         res
@@ -341,11 +345,11 @@ impl FieldExpr {
 }
 
 pub trait Evaluable {
-    fn evaluate<'a>(&'a self, mesh: UMeshView<'a>, dim: Option<Dimension>) -> FieldCow<'a>;
+    fn evaluate<'a>(&'a self, mesh: &'a UMeshView<'a>, dim: Option<Dimension>) -> FieldCow<'a>;
 }
 
 impl Evaluable for FieldExpr {
-    fn evaluate<'a>(&'a self, mesh: UMeshView<'a>, dim: Option<Dimension>) -> FieldCow<'a> {
+    fn evaluate<'a>(&'a self, mesh: &'a UMeshView<'a>, dim: Option<Dimension>) -> FieldCow<'a> {
         let dim = match dim {
             Some(d) => d,
             None => mesh.topological_dimension().unwrap(),
@@ -357,14 +361,14 @@ impl Evaluable for FieldExpr {
             .collect();
         match self {
             FieldExpr::Array(arr) => FieldCow::from_array(arr.view().into(), elems.as_slice()),
-            // FieldExpr::Field(name) => mesh.field(name).unwrap().to_owned(),
+            FieldExpr::Field(name) => mesh.field(name, None).unwrap().into(),
             FieldExpr::BinarayExpr {
                 operator,
                 left,
                 right,
             } => {
-                let left_eval = left.evaluate(mesh.clone(), Some(dim));
-                let right_eval = right.evaluate(mesh.clone(), Some(dim));
+                let left_eval = left.evaluate(mesh, Some(dim));
+                let right_eval = right.evaluate(mesh, Some(dim));
                 match operator {
                     BinaryOp::Add => (&left_eval + &right_eval).into(),
                     BinaryOp::Sub => (&left_eval - &right_eval).into(),
@@ -374,7 +378,7 @@ impl Evaluable for FieldExpr {
                 }
             }
             FieldExpr::UnaryExpr { operator, expr } => {
-                let expr_eval = expr.evaluate(mesh.clone(), Some(dim));
+                let expr_eval = expr.evaluate(mesh, Some(dim));
                 match operator {
                     UnaryOp::Sin => expr_eval.mapv(|x| x.sin()).into(),
                     UnaryOp::Cos => expr_eval.mapv(|x| x.cos()).into(),
