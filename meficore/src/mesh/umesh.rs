@@ -1,11 +1,11 @@
-use crate::mesh::ElementLike;
+use crate::mesh::{ElementLike, FieldBase};
 
 use super::dimension::Dimension;
 use super::element::{Element, ElementId, ElementMut, ElementType, Regularity};
 use super::element_ids::ElementIds;
 
 use derive_where::derive_where;
-use ndarray as nd;
+use ndarray::{self as nd, ViewRepr};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
@@ -236,6 +236,114 @@ where
         let mut used_nodes: Vec<usize> = used_nodes.into_iter().collect();
         used_nodes.sort_unstable();
         used_nodes
+    }
+
+    /// Get a view of a field if it exists in mesh.
+    /// By default (dim=None), the field is searched at the higher topological dimension of the
+    /// mesh. That means that if you query a field on a lower dimension you must give it
+    /// explicitly.
+    pub fn field<'a>(
+        &'a self,
+        name: &str,
+        dim: Option<Dimension>,
+    ) -> Option<FieldBase<nd::ViewRepr<&'a f64>>> {
+        let dim = match dim {
+            Some(d) => d,
+            None => self.topological_dimension().unwrap(),
+        };
+        let field_ok = self
+            .element_types()
+            .filter(|et| et.dimension() == dim)
+            .all(|et| self.element_blocks[et].fields.contains_key(name));
+        if !field_ok {
+            return None;
+        }
+        let field_map: BTreeMap<_, _> = self
+            .element_types()
+            .filter(|et| et.dimension() == dim)
+            .map(|et| (*et, self.element_blocks[et].fields[name].view()))
+            .collect();
+        Some(FieldBase::new(field_map))
+    }
+
+    pub fn remove_field(&mut self, name: &str, dim: Option<Dimension>) -> Option<FieldBase<F>> {
+        let dim = match dim {
+            Some(d) => d,
+            None => self.topological_dimension().unwrap(),
+        };
+        let etypes: Vec<_> = self
+            .element_types()
+            .filter(|et| et.dimension() == dim)
+            .cloned()
+            .collect();
+        let field_ok = etypes
+            .iter()
+            .all(|et| self.element_blocks[et].fields.contains_key(name));
+        if !field_ok {
+            return None;
+        }
+        let field_map: BTreeMap<_, _> = etypes
+            .into_iter()
+            .map(|et| {
+                (
+                    et,
+                    self.element_blocks
+                        .get_mut(&et)
+                        .unwrap()
+                        .fields
+                        .remove(name)
+                        .unwrap(),
+                )
+            })
+            .collect();
+        Some(FieldBase::new(field_map))
+    }
+
+    pub fn update_field(
+        &mut self,
+        name: &str,
+        mut field: FieldBase<F>,
+        dim: Option<Dimension>,
+    ) -> Option<FieldBase<F>> {
+        let dim = match dim {
+            Some(d) => d,
+            None => self
+                .topological_dimension()
+                .expect("This mesh should not be empty"),
+        };
+        let etypes: Vec<_> = self
+            .element_types()
+            .filter(|et| et.dimension() == dim)
+            .cloned()
+            .collect();
+        let field_replaced = etypes
+            .iter()
+            .all(|et| self.element_blocks[et].fields.contains_key(name));
+        if !field_replaced {
+            for et in etypes {
+                self.element_blocks
+                    .get_mut(&et)
+                    .unwrap()
+                    .fields
+                    .insert(name.to_owned(), field.0.remove(&et).unwrap());
+            }
+            return None;
+        }
+        let old_field_map: BTreeMap<_, _> = etypes
+            .into_iter()
+            .map(|et| {
+                (
+                    et,
+                    self.element_blocks
+                        .get_mut(&et)
+                        .unwrap()
+                        .fields
+                        .insert(name.to_owned(), field.0.remove(&et).unwrap())
+                        .unwrap(),
+                )
+            })
+            .collect();
+        Some(FieldBase::new(old_field_map))
     }
 }
 
