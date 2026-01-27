@@ -5,12 +5,11 @@ use std::{
     sync::Arc,
 };
 
-use crate::mesh::fields::*;
-use crate::mesh::{Dimension, UMeshView};
+use crate::mesh::{Dimension, FieldArcD, FieldCowD, FieldOwnedD, UMesh, UMeshBase, UMeshView};
 
 #[derive(Clone, Debug)]
 pub enum FieldExpr {
-    Array(nd::ArrayD<f64>), // This array is meant to be broadcasted
+    Array(nd::Array<f64, nd::IxDyn>), // This array is meant to be broadcasted
     Field(String),
     BinarayExpr {
         operator: BinaryOp,
@@ -118,8 +117,8 @@ pub fn field(name: &str) -> FieldExpr {
     FieldExpr::Field(name.to_owned())
 }
 
-pub fn arr(arr: nd::ArrayD<f64>) -> FieldExpr {
-    FieldExpr::Array(arr)
+pub fn arr<D: nd::Dimension>(arr: nd::Array<f64, D>) -> FieldExpr {
+    FieldExpr::Array(arr.into_dyn())
 }
 
 impl Add for FieldExpr {
@@ -177,11 +176,11 @@ impl FieldExpr {
 }
 
 pub trait Evaluable {
-    fn evaluate<'a>(&'a self, mesh: &'a UMeshView<'a>, dim: Option<Dimension>) -> FieldCow<'a>;
+    fn evaluate<'a>(&'a self, mesh: &'a UMeshView<'a>, dim: Option<Dimension>) -> FieldCowD<'a>;
 }
 
 impl Evaluable for FieldExpr {
-    fn evaluate<'a>(&'a self, mesh: &'a UMeshView<'a>, dim: Option<Dimension>) -> FieldCow<'a> {
+    fn evaluate<'a>(&'a self, mesh: &'a UMeshView<'a>, dim: Option<Dimension>) -> FieldCowD<'a> {
         let dim = match dim {
             Some(d) => d,
             None => mesh.topological_dimension().unwrap(),
@@ -192,8 +191,8 @@ impl Evaluable for FieldExpr {
             .cloned()
             .collect();
         match self {
-            FieldExpr::Array(arr) => FieldCow::from_array(arr.view().into(), elems.as_slice()),
-            FieldExpr::Field(name) => mesh.field(name, None).unwrap().into(),
+            FieldExpr::Array(arr) => FieldCowD::from_array(arr.view().into(), elems.as_slice()),
+            FieldExpr::Field(name) => mesh.field(name, Some(dim)).unwrap().into(),
             FieldExpr::BinarayExpr {
                 operator,
                 left,
@@ -223,6 +222,7 @@ impl Evaluable for FieldExpr {
                     UnaryOp::Abs => expr_eval.mapv(|x| x.abs()).into(),
                 }
             }
+            // FieldExpr::Measure => mesh.measure().to_owned(),
             // FieldExpr::Centroids => mesh.centroids().to_owned(),
             // FieldExpr::X => mesh.coords().slice(nd::s![.., 0]).to_owned(),
             // FieldExpr::Y => mesh.coords().slice(nd::s![.., 1]).to_owned(),
@@ -240,15 +240,64 @@ impl Evaluable for FieldExpr {
     }
 }
 
+pub trait MeshEvaluable {
+    fn eval_field(&self, dim: Option<Dimension>, expr: FieldExpr) -> FieldOwnedD;
+}
+
+pub trait MeshEvalUpdatable: MeshEvaluable {
+    fn eval_update_field(
+        &mut self,
+        name: &str,
+        dim: Option<Dimension>,
+        expr: FieldExpr,
+    ) -> Option<FieldArcD>;
+}
+
+impl<N, C, F, G> MeshEvaluable for UMeshBase<N, C, F, G>
+where
+    N: nd::Data<Elem = f64>,
+    C: nd::Data<Elem = usize>,
+    F: nd::Data<Elem = f64>,
+    G: nd::Data<Elem = usize>,
+{
+    fn eval_field(&self, dim: Option<Dimension>, expr: FieldExpr) -> FieldOwnedD {
+        expr.evaluate(&self.view(), dim).to_owned()
+    }
+}
+
+impl MeshEvalUpdatable for UMesh {
+    fn eval_update_field(
+        &mut self,
+        name: &str,
+        dim: Option<Dimension>,
+        expr: FieldExpr,
+    ) -> Option<FieldArcD> {
+        let field = self.eval_field(dim, expr);
+        self.update_field(name, field.into_shared(), dim)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::mesh::{FieldBase, FieldOwned};
+    use crate::mesh_examples as me;
+    use crate::tools::measure::measure;
 
     #[test]
     fn compose_expr() {
         let a = field("toto");
         let b = field("exponent");
-        let c = arr(nd::array![1.0].into_dyn());
+        let c = arr(nd::arr0(1.0));
         let _res = a.pow(b) + c;
+    }
+
+    #[test]
+    fn measure_squared() {
+        let mut m = me::make_imesh_2d(10);
+        let f = FieldOwned::new(measure(m.view()));
+        m.update_field("M", f.into_shared().into_dyn(), None);
+        let mes_squared5 = field("M").square() * arr(nd::arr0(5.));
+        let fs5 = m.eval_field(None, mes_squared5);
     }
 }
