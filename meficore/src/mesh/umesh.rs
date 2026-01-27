@@ -1,4 +1,4 @@
-use crate::mesh::{ElementLike, FieldBase};
+use crate::mesh::{ElementLike, FieldBase, FieldView};
 
 use super::dimension::Dimension;
 use super::element::{Element, ElementId, ElementMut, ElementType, Regularity};
@@ -55,7 +55,14 @@ where
     F: nd::Data<Elem = f64>,
     G: nd::Data<Elem = usize>,
 {
-    pub fn view(&self) -> UMeshView<'_> {
+    pub fn view(
+        &self,
+    ) -> UMeshBase<
+        nd::ViewRepr<&'_ f64>,
+        nd::ViewRepr<&'_ usize>,
+        nd::ViewRepr<&'_ f64>,
+        nd::ViewRepr<&'_ usize>,
+    > {
         let mut view = UMeshView::new(self.coords.view());
         for (&et, block) in self.element_blocks.iter() {
             match &block.connectivity {
@@ -66,6 +73,11 @@ where
                     view.add_poly_block(et, conn.data.view(), conn.offsets.view())
                 }
             };
+            view.element_blocks.get_mut(&et).unwrap().fields = block
+                .fields
+                .iter()
+                .map(|(k, v)| (k.clone(), v.view()))
+                .collect();
         }
         view
     }
@@ -246,11 +258,13 @@ where
         &'a self,
         name: &str,
         dim: Option<Dimension>,
-    ) -> Option<FieldBase<nd::ViewRepr<&'a f64>>> {
+    ) -> Option<FieldView<'a, nd::IxDyn>> {
         let dim = match dim {
             Some(d) => d,
             None => self.topological_dimension().unwrap(),
         };
+        let field = &self.element_blocks[&ElementType::QUAD4].fields;
+        println!("{field:?}");
         let field_ok = self
             .element_types()
             .filter(|et| et.dimension() == dim)
@@ -266,7 +280,11 @@ where
         Some(FieldBase::new(field_map))
     }
 
-    pub fn remove_field(&mut self, name: &str, dim: Option<Dimension>) -> Option<FieldBase<F>> {
+    pub fn remove_field(
+        &mut self,
+        name: &str,
+        dim: Option<Dimension>,
+    ) -> Option<FieldBase<F, nd::IxDyn>> {
         let dim = match dim {
             Some(d) => d,
             None => self.topological_dimension().unwrap(),
@@ -302,9 +320,9 @@ where
     pub fn update_field(
         &mut self,
         name: &str,
-        mut field: FieldBase<F>,
+        mut field: FieldBase<F, nd::IxDyn>,
         dim: Option<Dimension>,
-    ) -> Option<FieldBase<F>> {
+    ) -> Option<FieldBase<F, nd::IxDyn>> {
         let dim = match dim {
             Some(d) => d,
             None => self
