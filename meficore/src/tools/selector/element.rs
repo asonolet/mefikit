@@ -1,7 +1,7 @@
 use rustc_hash::FxHashSet;
 
 use super::selection::SelectedView;
-use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType};
+use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType, UMeshView};
 
 #[derive(Clone, Debug)]
 pub enum ElementSelection {
@@ -11,11 +11,7 @@ pub enum ElementSelection {
 }
 
 impl ElementSelection {
-    pub fn select_types<'a>(
-        types: &[ElementType],
-        selection: SelectedView<'a>,
-    ) -> SelectedView<'a> {
-        let SelectedView(view, mut sel) = selection;
+    pub fn select_types<'a>(types: &[ElementType], mut sel: ElementIdsSet) -> ElementIdsSet {
         let sel_types: Vec<_> = sel.keys().collect();
         let types_to_match: FxHashSet<_> = types.iter().collect();
         for k in sel_types {
@@ -23,13 +19,9 @@ impl ElementSelection {
                 sel.remove_type(k);
             }
         }
-        SelectedView(view, sel)
+        sel
     }
-    pub fn select_dimensions<'a>(
-        dims: &[Dimension],
-        selection: SelectedView<'a>,
-    ) -> SelectedView<'a> {
-        let SelectedView(view, mut sel) = selection;
+    pub fn select_dimensions<'a>(dims: &[Dimension], mut sel: ElementIdsSet) -> ElementIdsSet {
         let mut key_toremove = Vec::new();
         for k in sel.keys() {
             if !dims.contains(&k.dimension()) {
@@ -39,12 +31,11 @@ impl ElementSelection {
         for k in key_toremove {
             sel.remove_type(k);
         }
-        SelectedView(view, sel)
+        sel
     }
-    pub fn select_ids<'a>(ids: ElementIds, selection: SelectedView<'a>) -> SelectedView<'a> {
-        let SelectedView(view, mut index) = selection;
+    pub fn select_ids<'a>(ids: ElementIds, mut sel: ElementIdsSet) -> ElementIdsSet {
         let ids: ElementIdsSet = ids.into();
-        index.intersection(&ids);
-        SelectedView(view, index)
+        sel.intersection(&ids);
+        sel
     }
 }

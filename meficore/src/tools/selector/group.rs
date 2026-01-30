@@ -1,4 +1,4 @@
-use crate::mesh::ElementLike;
+use crate::mesh::{ElementIdsSet, ElementLike, UMeshView};
 use crate::tools::sel::SelectedView;
 
 #[derive(Clone, Debug)]
@@ -10,36 +10,32 @@ pub enum GroupSelection {
 }
 
 impl GroupSelection {
-    pub fn include_group<'a>(group: &str, selection: SelectedView<'a>) -> SelectedView<'a> {
-        let SelectedView(view, sel) = selection;
-        let index = sel
-            .into_iter()
+    pub fn include_group<'a>(group: &str, view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
+        sel.into_iter()
             .filter(|&eid| view.element(eid).in_group(group))
-            .collect();
-        SelectedView(view, index)
+            .collect()
     }
-    pub fn exclude_group<'a>(group: &str, selection: SelectedView<'a>) -> SelectedView<'a> {
-        let SelectedView(view, sel) = selection;
-        let index = sel
-            .into_iter()
+    pub fn exclude_group<'a>(group: &str, view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
+        sel.into_iter()
             .filter(|&eid| !view.element(eid).in_group(group))
-            .collect();
-        SelectedView(view, index)
+            .collect()
     }
-    pub fn include_family<'a>(family: usize, selection: SelectedView<'a>) -> SelectedView<'a> {
-        let SelectedView(view, sel) = selection;
-        let index = sel
-            .into_iter()
+    pub fn include_family<'a>(
+        family: usize,
+        view: &UMeshView,
+        sel: ElementIdsSet,
+    ) -> ElementIdsSet {
+        sel.into_iter()
             .filter(|&eid| *view.element(eid).family == family)
-            .collect();
-        SelectedView(view, index)
+            .collect()
     }
-    pub fn exclude_family<'a>(family: usize, selection: SelectedView<'a>) -> SelectedView<'a> {
-        let SelectedView(view, sel) = selection;
-        let index = sel
-            .into_iter()
+    pub fn exclude_family<'a>(
+        family: usize,
+        view: &UMeshView,
+        sel: ElementIdsSet,
+    ) -> ElementIdsSet {
+        sel.into_iter()
             .filter(|&eid| *view.element(eid).family != family)
-            .collect();
-        SelectedView(view, index)
+            .collect()
     }
 }

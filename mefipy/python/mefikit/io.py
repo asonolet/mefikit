@@ -140,9 +140,11 @@ def to_pyvista(umesh: UMesh):
 
     blocks = umesh.blocks()
     coords = umesh.coords()
+    # fields = umesh.fields()
 
     pv_conn = np.array([], dtype=int)
     pv_et_types = np.array([], dtype=int)
+    # pv_fields_dict = {f: np.array([], dtype=int) for f in fields.keys()}
 
     mf_types_to_pv = {
         "VERTEX": pv.CellType.VERTEX,
@@ -175,6 +177,9 @@ def to_pyvista(umesh: UMesh):
         conn, et_types = _mf_reg_to_pv_connectivity(et, blocks[et])
         pv_conn = np.hstack((pv_conn, conn), dtype=int)
         pv_et_types = np.hstack((pv_et_types, et_types), dtype=int)
+        # pv_fields_dict = {
+        #     f: np.hstack((pv_fields_dict[f], fields[f][et])) for f in fields.keys()
+        # }
 
     if coords.shape[1] == 1:
         pv_coords = np.hstack((coords, np.zeros((coords.shape[0], 2))))

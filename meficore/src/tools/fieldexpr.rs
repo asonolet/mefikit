@@ -280,9 +280,8 @@ impl MeshEvalUpdatable for UMesh {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::mesh::{FieldBase, FieldOwned};
     use crate::mesh_examples as me;
-    use crate::tools::measure::measure;
+    use crate::tools::Measurable;
 
     #[test]
     fn compose_expr() {
@@ -295,8 +294,7 @@ mod test {
     #[test]
     fn measure_squared() {
         let mut m = me::make_imesh_2d(10);
-        let f = FieldOwned::new(measure(m.view()));
-        m.update_field("M", f.into_shared().into_dyn(), None);
+        m.measure_update("M", None);
         let mes_squared5 = field("M").square() * arr(nd::arr0(5.));
         let fs5 = m.eval_field(None, mes_squared5);
     }

@@ -5,6 +5,7 @@ use std::ops::{BitAnd, BitOr, BitXor, Not, Sub};
 use std::sync::Arc;
 
 use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType, UMesh, UMeshView};
+use crate::tools::fieldexpr::Evaluable;
 
 use super::binary::{BinarayExpr, BooleanOp, NotExpr};
 use super::centroid::CentroidSelection;
@@ -20,7 +21,7 @@ use super::node::NodeSelection;
 pub struct SelectedView<'a>(pub UMeshView<'a>, pub ElementIdsSet);
 
 pub trait Select {
-    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a>;
+    fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids: ElementIdsSet) -> ElementIdsSet;
 }
 
 #[derive(Clone, Debug)]
@@ -194,15 +195,15 @@ pub fn ids(eids: ElementIds) -> Selection {
 }
 
 impl Select for Selection {
-    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
+    fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids_in: ElementIdsSet) -> ElementIdsSet {
         match self {
-            Self::ElementSelection(elemt_expr) => elemt_expr.select(selection),
-            Self::NodeSelection(nodes_expr) => nodes_expr.select(selection),
-            Self::CentroidSelection(centroid) => centroid.select(selection),
-            Self::GroupSelection(group) => group.select(selection),
-            Self::NotExpr(not) => not.select(selection),
-            Self::BinarayExpr(binary) => binary.select(selection),
-            _ => todo!(),
+            Self::ElementSelection(elemt_expr) => elemt_expr.select(view, eids_in),
+            Self::NodeSelection(nodes_expr) => nodes_expr.select(view, eids_in),
+            Self::CentroidSelection(centroid) => centroid.select(view, eids_in),
+            Self::GroupSelection(group) => group.select(view, eids_in),
+            Self::FieldSelection(field) => field.select(view, eids_in),
+            Self::NotExpr(not) => not.select(view, eids_in),
+            Self::BinarayExpr(binary) => binary.select(view, eids_in),
         }
     }
 }
@@ -266,62 +267,101 @@ impl Not for Selection {
 // Leaf operations
 
 impl Select for ElementSelection {
-    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
+    fn select<'a>(&'a self, _view: &'a UMeshView<'a>, mut eids_in: ElementIdsSet) -> ElementIdsSet {
         match self {
-            Self::Types(types) => Self::select_types(types.as_slice(), selection),
-            Self::Dimensions(dims) => Self::select_dimensions(dims.as_slice(), selection),
-            Self::InIds(ids) => Self::select_ids(ids.clone(), selection),
+            Self::Types(types) => Self::select_types(types.as_slice(), eids_in),
+            Self::Dimensions(dims) => Self::select_dimensions(dims.as_slice(), eids_in),
+            Self::InIds(ids) => Self::select_ids(ids.clone(), eids_in),
         }
     }
 }
 
 impl Select for NodeSelection {
-    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
+    fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids_in: ElementIdsSet) -> ElementIdsSet {
         match self {
-            Self::BBox { all, min, max } => Self::in_bbox(*all, min, max, selection),
-            Self::Rect { all, min, max } => Self::in_rectangle(*all, min, max, selection),
-            Self::Sphere { all, center, r } => Self::in_sphere(*all, center, *r, selection),
-            Self::Circle { all, center, r } => Self::in_circle(*all, center, *r, selection),
-            Self::Ids { all, ids } => Self::id_in(*all, ids.as_slice(), selection),
+            Self::BBox { all, min, max } => Self::in_bbox(*all, min, max, view, eids_in),
+            Self::Rect { all, min, max } => Self::in_rectangle(*all, min, max, view, eids_in),
+            Self::Sphere { all, center, r } => Self::in_sphere(*all, center, *r, view, eids_in),
+            Self::Circle { all, center, r } => Self::in_circle(*all, center, *r, view, eids_in),
+            Self::Ids { all, ids } => Self::id_in(*all, ids.as_slice(), view, eids_in),
         }
     }
 }
 
 impl Select for GroupSelection {
-    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
+    fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids_in: ElementIdsSet) -> ElementIdsSet {
         match self {
-            Self::IncludeGroup(name) => Self::include_group(name, selection),
-            Self::ExcludeGroup(name) => Self::exclude_group(name, selection),
-            Self::IncludeFamily(fid) => Self::include_family(*fid, selection),
-            Self::ExcludeFamily(fid) => Self::exclude_family(*fid, selection),
+            Self::IncludeGroup(name) => Self::include_group(name, view, eids_in),
+            Self::ExcludeGroup(name) => Self::exclude_group(name, view, eids_in),
+            Self::IncludeFamily(fid) => Self::include_family(*fid, view, eids_in),
+            Self::ExcludeFamily(fid) => Self::exclude_family(*fid, view, eids_in),
         }
     }
 }
 
+impl Select for FieldSelection {
+    fn select<'a>(&'a self, view: &'a UMeshView<'a>, mut eids_in: ElementIdsSet) -> ElementIdsSet {
+        let eids = match self {
+            Self::Gt(expr1, expr2) => {
+                let f1 = expr1.evaluate(view, None);
+                let f2 = &expr2.evaluate(view, None);
+                f1.gt(f2)
+            }
+            Self::Geq(expr1, expr2) => {
+                let f1 = expr1.evaluate(view, None);
+                let f2 = &expr2.evaluate(view, None);
+                f1.ge(f2)
+            }
+            Self::Lt(expr1, expr2) => {
+                let f1 = expr1.evaluate(view, None);
+                let f2 = &expr2.evaluate(view, None);
+                f1.lt(f2)
+            }
+            Self::Leq(expr1, expr2) => {
+                let f1 = expr1.evaluate(view, None);
+                let f2 = &expr2.evaluate(view, None);
+                f1.le(f2)
+            }
+            Self::Eq(expr1, expr2) => {
+                let f1 = expr1.evaluate(view, None);
+                let f2 = &expr2.evaluate(view, None);
+                f1.eq(f2)
+            }
+            Self::Neq(expr1, expr2) => {
+                let f1 = expr1.evaluate(view, None);
+                let f2 = &expr2.evaluate(view, None);
+                f1.neq(f2)
+            }
+        };
+        eids_in.intersection(&eids.into());
+        eids_in
+    }
+}
+
 impl Select for NotExpr {
-    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
-        self.not_select(selection)
+    fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids_in: ElementIdsSet) -> ElementIdsSet {
+        self.not_select(view, eids_in)
     }
 }
 
 impl Select for BinarayExpr {
-    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
+    fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids_in: ElementIdsSet) -> ElementIdsSet {
         match self.operator {
-            BooleanOp::And => self.and_select(selection),
-            BooleanOp::Or => self.or_select(selection),
-            BooleanOp::Xor => self.xor_select(selection),
-            BooleanOp::Diff => self.diff_select(selection),
+            BooleanOp::And => self.and_select(view, eids_in),
+            BooleanOp::Or => self.or_select(view, eids_in),
+            BooleanOp::Xor => self.xor_select(view, eids_in),
+            BooleanOp::Diff => self.diff_select(view, eids_in),
         }
     }
 }
 
 impl Select for CentroidSelection {
-    fn select<'a>(&self, selection: SelectedView<'a>) -> SelectedView<'a> {
+    fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids_in: ElementIdsSet) -> ElementIdsSet {
         match self {
-            Self::BBox { min, max } => Self::in_bbox(min, max, selection),
-            Self::Rect { min, max } => Self::in_rectangle(min, max, selection),
-            Self::Sphere { center, r2 } => Self::in_sphere(center, *r2, selection),
-            Self::Circle { center, r2 } => Self::in_circle(center, *r2, selection),
+            Self::BBox { min, max } => Self::in_bbox(min, max, view, eids_in),
+            Self::Rect { min, max } => Self::in_rectangle(min, max, view, eids_in),
+            Self::Sphere { center, r2 } => Self::in_sphere(center, *r2, view, eids_in),
+            Self::Circle { center, r2 } => Self::in_circle(center, *r2, view, eids_in),
         }
     }
 }
@@ -338,8 +378,7 @@ impl MeshSelect for UMesh {
                 .map(|(k, v)| (*k, (0..v.len()).collect()))
                 .collect(),
         );
-        let SelectedView(_, index) = expr.select(SelectedView(self.view(), index));
-        index.into()
+        expr.select(&self.view(), index).into()
     }
     fn select(&self, expr: Selection) -> (ElementIds, Self) {
         let eids = self.select_ids(expr);

@@ -1,11 +1,12 @@
 use derive_where::derive_where;
-use ndarray::{self as nd, ArrayBase};
+use itertools::Itertools;
+use ndarray::{self as nd, ArrayBase, ArrayD, ArrayViewD};
 use std::{
     collections::{BTreeMap, HashSet},
     ops::{Add, Div, Mul, Sub},
 };
 
-use crate::mesh::ElementType;
+use crate::mesh::{Dimension, ElementIds, ElementType};
 
 #[derive_where(Clone, Debug; S: nd::RawDataClone)]
 pub struct FieldBase<S: nd::Data<Elem = f64>, D: nd::Dimension>(
@@ -38,12 +39,22 @@ where
                 .collect::<BTreeMap<_, _>>(),
         )
     }
+    pub fn dimension(&self) -> Option<Dimension> {
+        self.0.keys().next().map(|e| e.dimension())
+    }
     pub fn is_coherent(&self) -> bool {
         let first_array = self
             .0
             .values()
             .next()
             .expect("A field should not be empty.");
+        if !self
+            .0
+            .keys()
+            .all(|e| e.dimension() == self.dimension().unwrap())
+        {
+            return false;
+        }
         if first_array.ndim() == 0 {
             for array in self.0.values() {
                 if array.ndim() != 0 {
@@ -127,6 +138,60 @@ where
             }
         }
         FieldOwned::new(result)
+    }
+    pub fn map_zip_where<F>(&self, other: &Self, mut f: F) -> ElementIds
+    where
+        F: FnMut(f64, f64) -> bool,
+    {
+        self.panic_if_incompatible_with(other);
+        let mut result = BTreeMap::new();
+        let greatest_dim = if self.ndim() > other.ndim() {
+            self.dim()
+        } else {
+            other.dim()
+        };
+        for (elem_type, left_array) in &self.0 {
+            if let Some(right_array) = other.0.get(elem_type) {
+                let mut res = nd::ArrayD::<bool>::from_elem(greatest_dim.clone(), false);
+                nd::Zip::from(&mut res)
+                    .and_broadcast(left_array)
+                    .and_broadcast(right_array)
+                    .for_each(|a, &b, &c| *a = f(b, c));
+                result.insert(
+                    *elem_type,
+                    res.rows()
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(i, b)| {
+                            if b.into_iter().all(|&x| x) {
+                                Some(i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect_vec(),
+                );
+            }
+        }
+        ElementIds(result)
+    }
+    pub fn gt(&self, other: &Self) -> ElementIds {
+        self.map_zip_where(other, |a, b| a > b)
+    }
+    pub fn ge(&self, other: &Self) -> ElementIds {
+        self.map_zip_where(other, |a, b| a >= b)
+    }
+    pub fn lt(&self, other: &Self) -> ElementIds {
+        self.map_zip_where(other, |a, b| a < b)
+    }
+    pub fn le(&self, other: &Self) -> ElementIds {
+        self.map_zip_where(other, |a, b| a <= b)
+    }
+    pub fn eq(&self, other: &Self) -> ElementIds {
+        self.map_zip_where(other, |a, b| a == b)
+    }
+    pub fn neq(&self, other: &Self) -> ElementIds {
+        self.map_zip_where(other, |a, b| a != b)
     }
     pub fn ndim(&self) -> usize {
         let first_array = self.0.values().next().unwrap();

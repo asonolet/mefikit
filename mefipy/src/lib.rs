@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 
 mod element;
 mod element_ids;
+mod pyfield;
 mod pyumesh;
 mod select;
 
@@ -25,6 +26,9 @@ mod mefipy {
 
     #[pymodule_export]
     use super::pyumesh::PyUMesh;
+
+    #[pymodule_export]
+    use super::pyfield::PyField;
 
     #[pyfunction]
     #[pyo3(signature = (*args))]

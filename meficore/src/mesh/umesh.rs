@@ -9,7 +9,7 @@ use ndarray::{self as nd, ViewRepr};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use super::connectivity::ConnectivityBase;
 use super::element_block::{
@@ -271,8 +271,6 @@ where
             Some(d) => d,
             None => self.topological_dimension().unwrap(),
         };
-        let field = &self.element_blocks[&ElementType::QUAD4].fields;
-        println!("{field:?}");
         let field_ok = self
             .element_types()
             .filter(|et| et.dimension() == dim)
@@ -286,6 +284,26 @@ where
             .map(|et| (*et, self.element_blocks[et].fields[name].view()))
             .collect();
         Some(FieldBase::new(field_map))
+    }
+
+    /// Get a view of a field if it exists in mesh.
+    /// By default (dim=None), the field is searched at the higher topological dimension of the
+    /// mesh. That means that if you query a field on a lower dimension you must give it
+    /// explicitly.
+    pub fn fields<'a>(&'a self) -> impl Iterator<Item = (String, FieldView<'a, nd::IxDyn>)> {
+        let field_names: FxHashSet<(String, Dimension)> = self
+            .blocks()
+            .flat_map(|(et, b)| {
+                b.fields
+                    .keys()
+                    .cloned()
+                    .zip(std::iter::repeat(et.dimension()))
+            })
+            .collect();
+        field_names.into_iter().map(|(f, dim)| {
+            let field = self.field(&f, Some(dim)).unwrap();
+            (f, field)
+        })
     }
 
     pub fn remove_field(
