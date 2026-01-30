@@ -167,6 +167,14 @@ where
         self.element_blocks.values().map(|block| block.len()).sum()
     }
 
+    pub fn num_elements_of_dim(&self, dim: Dimension) -> usize {
+        self.element_blocks
+            .iter()
+            .filter(|(k, _)| k.dimension() == dim)
+            .map(|(_, block)| block.len())
+            .sum()
+    }
+
     pub fn element(&self, id: ElementId) -> Element<'_> {
         let eb = self.element_blocks.get(&id.element_type()).unwrap();
         eb.get(id.index(), self.coords.view())

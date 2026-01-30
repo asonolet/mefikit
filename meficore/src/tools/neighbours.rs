@@ -2,14 +2,17 @@ use itertools::Itertools;
 use petgraph::prelude::UnGraphMap;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use smallvec::{SmallVec, smallvec};
 use std::collections::{HashMap, HashSet};
 
-use crate::element_traits::{ElementTopo, SortedVecKey};
 #[cfg(feature = "rayon")]
 use crate::mesh::ElementType;
 use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, UMesh};
+use crate::{
+    element_traits::{ElementTopo, SortedVecKey},
+    tools::neighbours,
+};
 
 /// This method is used to compute a subentity mesh in parallel.
 ///
@@ -250,8 +253,11 @@ pub fn compute_sub_to_elem(
     target_dim: Option<Dimension>,
 ) -> (UMesh, FxHashMap<ElementId, Vec<ElementId>>) {
     let (src_dim, _, codim) = compute_src_target_codim(mesh, src_dim, target_dim);
-    let mut hash_to_subid: FxHashMap<SortedVecKey, ElementId> = HashMap::default(); // Face
-    let mut sub_to_elem: FxHashMap<ElementId, Vec<ElementId>> = HashMap::default(); // Face
+    let n_new_elem_guess = (u8::from(src_dim) as usize) * mesh.num_elements_of_dim(src_dim);
+    let mut hash_to_subid: FxHashMap<SortedVecKey, ElementId> =
+        HashMap::with_capacity_and_hasher(n_new_elem_guess, FxBuildHasher);
+    let mut sub_to_elem: FxHashMap<ElementId, Vec<ElementId>> =
+        HashMap::with_capacity_and_hasher(n_new_elem_guess, FxBuildHasher); // Face
     let mut neighbors: UMesh = UMesh::new(mesh.coords.to_shared());
 
     for elem in mesh.elements_of_dim(src_dim) {
@@ -275,21 +281,90 @@ pub fn compute_sub_to_elem(
     (neighbors, sub_to_elem)
 }
 
+/// This method is used to compute the descending_mesh and the map sub_elem_id to elem ids.
+pub fn compute_hashsub_to_elem(
+    mesh: &UMesh,
+    src_dim: Option<Dimension>,
+    target_dim: Option<Dimension>,
+) -> (UMesh, FxHashMap<SortedVecKey, Vec<ElementId>>) {
+    let (src_dim, _, codim) = compute_src_target_codim(mesh, src_dim, target_dim);
+    let n_new_elem_guess = (u8::from(src_dim) as usize) * mesh.num_elements_of_dim(src_dim);
+    let mut sub_to_elem: FxHashMap<SortedVecKey, Vec<ElementId>> =
+        HashMap::with_capacity_and_hasher(n_new_elem_guess, FxBuildHasher); // Face
+    // let mut subid_hash = Vec::with_capacity(n_new_elem_guess);
+    let mut neighbors: UMesh = UMesh::new(mesh.coords.to_shared());
+
+    for elem in mesh.elements_of_dim(src_dim) {
+        for (et, conn) in elem.subentities(Some(codim)) {
+            for co in conn.iter() {
+                let key = SortedVecKey::new(co.into());
+                if let Some(eids) = sub_to_elem.get_mut(&key) {
+                    // The subentity is already in the mesh
+                    eids.push(elem.id());
+                } else {
+                    // The subentity is new
+                    let _subid = neighbors.add_element(et, co, None, None);
+                    sub_to_elem.insert(key.clone(), vec![elem.id()]);
+                    // subid_hash.push((subid, key));
+                }
+            }
+        }
+    }
+    (neighbors, sub_to_elem)
+}
+
 /// This method is used to compute the boundaries of a mesh.
 pub fn compute_boundaries(
     mesh: &UMesh,
     src_dim: Option<Dimension>,
     target_dim: Option<Dimension>,
 ) -> UMesh {
-    let (descending_mesh, sub_to_elem) = compute_sub_to_elem(mesh, src_dim, target_dim);
-    let boundaries_ids: ElementIds = sub_to_elem
-        .iter()
-        .filter_map(|(&sub, elems)| match elems.len() {
-            1 => Some(sub),
-            _ => None,
-        })
-        .collect();
-    descending_mesh.extract(&boundaries_ids)
+    compute_submesh_with_n_neighbours(mesh, 1, src_dim, target_dim)
+}
+
+/// This method is used to compute the boundaries of a mesh.
+pub fn compute_submesh_with_n_neighbours(
+    mesh: &UMesh,
+    n_neighbours: usize,
+    src_dim: Option<Dimension>,
+    target_dim: Option<Dimension>,
+) -> UMesh {
+    let (src_dim, _, codim) = compute_src_target_codim(mesh, src_dim, target_dim);
+    let mut sub_to_elem: FxHashMap<SortedVecKey, (ElementId, usize)> = FxHashMap::default(); // Face
+    let mut neighbours: UMesh = UMesh::new(mesh.coords.to_shared());
+
+    for elem in mesh.elements_of_dim(src_dim) {
+        for (_, conn) in elem.subentities(Some(codim)) {
+            for co in conn.iter() {
+                let key = SortedVecKey::new(co.into());
+                if let Some((_, n_elems)) = sub_to_elem.get_mut(&key) {
+                    // The subentity is already in the mesh
+                    *n_elems += 1;
+                } else {
+                    // The subentity is new, I keep track of the element which generates it so I
+                    // can generate it back again.
+                    sub_to_elem.insert(key.clone(), (elem.id(), 1));
+                }
+            }
+        }
+    }
+    let eid_subhash_with_n_elems = sub_to_elem.into_iter().filter_map(|(k, (eid, n))| {
+        if n == n_neighbours {
+            Some((eid, k))
+        } else {
+            None
+        }
+    });
+    for (eid, subhash) in eid_subhash_with_n_elems {
+        for (et, conn) in mesh.element(eid).subentities(Some(codim)) {
+            for co in conn.iter() {
+                if SortedVecKey::new(co.into()) == subhash {
+                    neighbours.add_element(et, co, None, None);
+                }
+            }
+        }
+    }
+    neighbours
 }
 
 pub trait Descendable {
