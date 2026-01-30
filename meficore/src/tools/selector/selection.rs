@@ -7,18 +7,11 @@ use std::sync::Arc;
 use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType, UMesh, UMeshView};
 use crate::tools::fieldexpr::Evaluable;
 
-use super::binary::{BinarayExpr, BooleanOp, NotExpr};
 use super::centroid::CentroidSelection;
 use super::element::ElementSelection;
 use super::field::FieldSelection;
 use super::group::GroupSelection;
 use super::node::NodeSelection;
-
-/// This object is the one that will be evaluated by unitary selection_ops.
-/// The UMeshView is always passed as the same, whereas the ElementsIds are updated. Each unitary
-/// op takes a previous ElementsIds list and returns a new one (shorter).
-#[derive(Clone, Debug)]
-pub struct SelectedView<'a>(pub UMeshView<'a>, pub ElementIdsSet);
 
 pub trait Select {
     fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids: ElementIdsSet) -> ElementIdsSet;
@@ -34,6 +27,24 @@ pub enum Selection {
     BinarayExpr(BinarayExpr),
     NotExpr(NotExpr),
 }
+
+#[derive(Copy, Clone, Debug)]
+pub enum BooleanOp {
+    And,
+    Or,
+    Xor,
+    Diff,
+}
+
+#[derive(Clone, Debug)]
+pub struct BinarayExpr {
+    pub operator: BooleanOp,
+    pub left: Arc<Selection>,
+    pub right: Arc<Selection>,
+}
+
+#[derive(Clone, Debug)]
+pub struct NotExpr(pub Arc<Selection>);
 
 impl Selection {
     /// The lower, the simpler it is to compute and then should be computed first.
@@ -339,18 +350,51 @@ impl Select for FieldSelection {
 }
 
 impl Select for NotExpr {
-    fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids_in: ElementIdsSet) -> ElementIdsSet {
-        self.not_select(view, eids_in)
+    fn select<'a>(&'a self, view: &'a UMeshView<'a>, mut eids_in: ElementIdsSet) -> ElementIdsSet {
+        let all_ids: ElementIdsSet = ElementIdsSet(
+            view.blocks()
+                .map(|(k, v)| (*k, (0..v.len()).collect()))
+                .collect(),
+        );
+        let not_sel = self.0.select(view, all_ids);
+        // let mut not_sel = all_ids;
+        // not_sel.difference(&sel);
+        // sel0.intersection(&not_sel);
+        eids_in.difference(&not_sel);
+        eids_in
     }
 }
 
 impl Select for BinarayExpr {
     fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids_in: ElementIdsSet) -> ElementIdsSet {
         match self.operator {
-            BooleanOp::And => self.and_select(view, eids_in),
-            BooleanOp::Or => self.or_select(view, eids_in),
-            BooleanOp::Xor => self.xor_select(view, eids_in),
-            BooleanOp::Diff => self.diff_select(view, eids_in),
+            BooleanOp::And => {
+                if self.left.weight() < self.right.weight() {
+                    let selection = self.left.select(view, eids_in);
+                    self.right.select(view, selection)
+                } else {
+                    let selection = self.right.select(view, eids_in);
+                    self.left.select(view, selection)
+                }
+            }
+            BooleanOp::Or => {
+                let mut sel1 = self.left.select(view, eids_in.clone());
+                let sel2 = self.right.select(view, eids_in);
+                sel1.union(&sel2);
+                sel1
+            }
+            BooleanOp::Xor => {
+                let mut sel1 = self.left.select(view, eids_in.clone());
+                let sel2 = self.right.select(view, eids_in);
+                sel1.symmetric_difference(&sel2);
+                sel1
+            }
+            BooleanOp::Diff => {
+                let mut sel1 = self.left.select(view, eids_in.clone());
+                let sel2 = self.right.select(view, eids_in);
+                sel1.difference(&sel2);
+                sel1
+            }
         }
     }
 }

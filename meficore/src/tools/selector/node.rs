@@ -1,6 +1,5 @@
 use rustc_hash::FxHashSet;
 
-use super::selection::SelectedView;
 use crate::element_traits::ElementGeo;
 use crate::element_traits::is_in as geo;
 use crate::mesh::ElementIds;

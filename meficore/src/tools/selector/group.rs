@@ -1,5 +1,4 @@
 use crate::mesh::{ElementIdsSet, ElementLike, UMeshView};
-use crate::tools::sel::SelectedView;
 
 #[derive(Clone, Debug)]
 pub enum GroupSelection {

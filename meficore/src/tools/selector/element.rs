@@ -1,7 +1,6 @@
 use rustc_hash::FxHashSet;
 
-use super::selection::SelectedView;
-use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType, UMeshView};
+use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType};
 
 #[derive(Clone, Debug)]
 pub enum ElementSelection {

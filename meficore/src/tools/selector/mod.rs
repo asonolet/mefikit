@@ -1,4 +1,3 @@
-mod binary;
 mod centroid;
 mod element;
 mod field;
