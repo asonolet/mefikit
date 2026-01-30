@@ -79,19 +79,17 @@ cracked.boundaries().to_pyvista().plot(opacity=0.4)
 
 
 ```python
-compos = cracked.connected_components()
-fluid = compos[-1]
-bubbles = compos[:-1]
+bubble_groups = inner_bubbles.connected_components()
 ```
 
 
 ```python
 pv.global_theme.color_cycler = "default"
 pl = pv.Plotter()
-for c in bubbles:
+for c in bubble_groups:
     compo = c.to_pyvista()
     pl.add_mesh(compo)
-pl.add_mesh(fluid.boundaries(target_dim=1).to_pyvista())
+pl.add_mesh(volumes.boundaries(target_dim=1).to_pyvista())
 pl.show()
 pv.global_theme.color_cycler = None
 ```
@@ -104,8 +102,11 @@ pv.global_theme.color_cycler = None
 
 
 ```python
-clip1 = mf.sel.bbox([-np.inf]*3, [np.inf, ymax/2., np.inf])
-fluid.select(clip1).to_pyvista().plot()
+clip1 = mf.sel.bbox([-np.inf] * 3, [np.inf, ymax / 3.0, np.inf])
+pl = pv.Plotter()
+pl.add_mesh(volumes.select(clip1 & ~sphere_union).to_pyvista())
+pl.add_mesh(interface.to_pyvista(), opacity=0.4)
+pl.show()
 ```
 
 
