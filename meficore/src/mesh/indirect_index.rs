@@ -200,9 +200,9 @@ impl<T> Iterator for IndirectIndexIntoIter<T> {
     }
 }
 
-type IndirectIndexOwned<T> = IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>;
-type IndirectIndexShared<T> = IndirectIndex<T, nd::OwnedArcRepr<T>, nd::OwnedArcRepr<usize>>;
-type IndirectIndexView<'a, T> = IndirectIndex<T, nd::ViewRepr<&'a T>, nd::ViewRepr<&'a usize>>;
+pub type IndirectIndexOwned<T> = IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>;
+pub type IndirectIndexShared<T> = IndirectIndex<T, nd::OwnedArcRepr<T>, nd::OwnedArcRepr<usize>>;
+pub type IndirectIndexView<'a, T> = IndirectIndex<T, nd::ViewRepr<&'a T>, nd::ViewRepr<&'a usize>>;
 
 impl<T> IndirectIndexOwned<T>
 where

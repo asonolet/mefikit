@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mesh2 = mesh1.clone();
             (mesh1, mesh2)
         },
-        |(m1, m2)| mf::snap::snap(m1.view().to_shared(), m2.view(), 1e-12),
+        |(m1, m2)| mf::snap::snap(m1, m2.view(), 1e-12),
         10000,
     );
     println!("snapping bench: {benched_snap}");

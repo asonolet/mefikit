@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let n = 100;
     for _ in 0..n {
         let now = time::Instant::now();
-        let _ = mf::measure(mesh.view());
+        let _ = mf::measure(mesh.view(), None);
         let elapsed = now.elapsed();
         t_tot += elapsed.as_secs_f64();
     }

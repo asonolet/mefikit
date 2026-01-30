@@ -4,7 +4,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use mefikit::{prelude as mf, tools::Descendable, tools::MeshSelect};
+use mefikit::{prelude as mf, tools::Descendable, tools::MeshSelect, tools::NodeDuplicates};
 
 use std::path::Path;
 
@@ -144,11 +144,22 @@ impl PyUMesh {
     }
 
     fn measure<'py>(&self, py: Python<'py>) -> BTreeMap<String, Bound<'py, np::PyArray1<f64>>> {
-        mf::measure(self.inner.view())
+        mf::measure(self.inner.view(), None)
             .iter()
             .map(|(&et, arr)| (etype_to_str(et), np::PyArray1::from_array(py, arr)))
             .collect()
     }
+
+    // Returns a copy owned by python of the array coordinates
+    // fn fields<'py>(&self, py: Python<'py>) -> BTreeMap<String, np::PyField<f64>> {
+    //     self.inner
+    //         .fields()
+    //         .map(|(n, f)| {
+    //             let pyf = np::PyArray::from_array(py, f.into());
+    //             (n, pyf)
+    //         })
+    //         .collect()
+    // }
 
     fn crack(&self, cut_mesh: &PyUMesh) -> Self {
         mf::crack(self.inner.clone(), cut_mesh.inner.view()).into()
@@ -156,12 +167,16 @@ impl PyUMesh {
 
     #[pyo3(signature = (reference, eps=1e-12))]
     fn snap(&self, reference: &PyUMesh, eps: f64) -> Self {
-        mf::snap(self.inner.clone(), reference.inner.view(), eps).into()
+        let mut snapped = self.inner.clone();
+        snapped.snap_on(reference.inner.view(), eps);
+        snapped.into()
     }
 
     #[pyo3(signature = (eps=1e-12))]
     fn merge_nodes(&self, eps: f64) -> Self {
-        mf::merge_nodes(self.inner.clone(), eps).into()
+        let mut merged = self.inner.clone();
+        merged.merge_nodes(eps);
+        merged.into()
     }
 
     fn extrude(&self, along: &Bound<'_, PyAny>) -> PyResult<Self> {

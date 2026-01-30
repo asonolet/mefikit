@@ -16,8 +16,8 @@ fn merge_nodes(c: &mut Criterion) {
                     let cut = mf::compute_descending(&m1, None, None);
                     mf::crack(m1, cut.view())
                 },
-                |cracked| {
-                    std::hint::black_box(mf::merge_nodes(cracked, 1e-12));
+                |mut cracked| {
+                    std::hint::black_box(mf::merge_nodes(&mut cracked, 1e-12));
                 },
                 BatchSize::LargeInput,
             )

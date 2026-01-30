@@ -1,10 +1,10 @@
-use crate::mesh::{ElementLike, UMesh, UMeshView};
+use crate::mesh::{ElementLike, IndirectIndexOwned, UMesh, UMeshView};
 
 use itertools::Itertools;
 use nalgebra as na;
 use rstar::{RTree, primitives::GeomWithData};
 
-fn snap_dim_n<const T: usize>(mut subject: UMesh, reference: UMeshView, eps: f64) -> UMesh {
+fn snap_dim_n<const T: usize>(subject: &mut UMesh, reference: UMeshView, eps: f64) {
     let ref_points: Vec<[f64; T]> = reference
         .used_nodes()
         .into_iter()
@@ -45,14 +45,13 @@ fn snap_dim_n<const T: usize>(mut subject: UMesh, reference: UMeshView, eps: f64
             coord.copy_from_slice(&c)
         }
     }
-    subject
 }
 
 /// Snap coords of subject mesh onto used nodes of reference.
 ///
 /// Be careful, the method could produce degenerated elements if eps is not lower than half the
 /// smallest distance between two points from the same element.
-pub fn snap(subject: UMesh, reference: UMeshView, eps: f64) -> UMesh {
+pub fn snap(subject: &mut UMesh, reference: UMeshView, eps: f64) {
     match subject.coords().ncols() {
         1 => snap_dim_n::<1>(subject, reference, eps),
         2 => snap_dim_n::<2>(subject, reference, eps),
@@ -64,7 +63,7 @@ pub fn snap(subject: UMesh, reference: UMeshView, eps: f64) -> UMesh {
 //TODO: replace Vec<Vec<usize>> with proper IndirectIndex type.
 // This would allow for cache friendly linear search of data.
 
-fn duplicates_dim_n<const T: usize>(mesh: UMeshView, eps: f64) -> Vec<Vec<usize>> {
+fn duplicates_dim_n<const T: usize>(mesh: UMeshView, eps: f64) -> IndirectIndexOwned<usize> {
     let used_nodes = mesh.used_nodes();
     let points: Vec<GeomWithData<[f64; T], usize>> = used_nodes
         .iter()
@@ -76,7 +75,7 @@ fn duplicates_dim_n<const T: usize>(mesh: UMeshView, eps: f64) -> Vec<Vec<usize>
         })
         .collect();
     let mut rtree = RTree::bulk_load(points);
-    let mut res: Vec<Vec<usize>> = Vec::new();
+    let mut res = IndirectIndexOwned::new();
     for &node in &used_nodes {
         let coord: [f64; T] = mesh
             .coords()
@@ -89,13 +88,13 @@ fn duplicates_dim_n<const T: usize>(mesh: UMeshView, eps: f64) -> Vec<Vec<usize>
         let closest_points = rtree.drain_within_distance(coord, f64::powi(eps, 2));
         let node_group: Vec<usize> = closest_points.map(|p| p.data).sorted_unstable().collect();
         if node_group.len() > 1 {
-            res.push(node_group);
+            res.push(&node_group);
         }
     }
     res
 }
 
-pub fn duplicates(mesh: UMeshView, eps: f64) -> Vec<Vec<usize>> {
+pub fn duplicates(mesh: UMeshView, eps: f64) -> IndirectIndexOwned<usize> {
     match mesh.coords().ncols() {
         1 => duplicates_dim_n::<1>(mesh, eps),
         2 => duplicates_dim_n::<2>(mesh, eps),
@@ -115,7 +114,7 @@ fn find_group(n: &usize, nodes: &[usize], groups: &[usize]) -> Option<usize> {
 ///
 /// Be careful, this method can produce degenerated elements if used with an epsilon greater than
 /// the distance between two nodes of the same element.
-pub fn merge_nodes(mut mesh: UMesh, eps: f64) -> UMesh {
+pub fn merge_nodes(mesh: &mut UMesh, eps: f64) {
     let dups = duplicates(mesh.view(), eps);
     let sorted_nodes_dup: Vec<(usize, usize)> = dups
         .iter()
@@ -139,5 +138,19 @@ pub fn merge_nodes(mut mesh: UMesh, eps: f64) -> UMesh {
             }
         }
     }
-    mesh
+}
+
+pub trait NodeDuplicates {
+    fn merge_nodes(&mut self, eps: f64);
+    fn snap_on(&mut self, other: UMeshView, eps: f64);
+}
+
+impl NodeDuplicates for UMesh {
+    fn merge_nodes(&mut self, eps: f64) {
+        merge_nodes(self, eps)
+    }
+
+    fn snap_on(&mut self, other: UMeshView, eps: f64) {
+        snap(self, other, eps)
+    }
 }

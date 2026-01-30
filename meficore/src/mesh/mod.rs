@@ -17,4 +17,8 @@ pub use fields::{
     FieldArc, FieldArcD, FieldBase, FieldCow, FieldCowD, FieldOwned, FieldOwnedD, FieldView,
     FieldViewD,
 };
+pub use indirect_index::{
+    IndirectIndexIntoIter, IndirectIndexIter, IndirectIndexIterMut, IndirectIndexOwned,
+    IndirectIndexShared, IndirectIndexView,
+};
 pub use umesh::{UMesh, UMeshBase, UMeshView};
