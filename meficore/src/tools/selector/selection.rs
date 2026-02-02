@@ -3,6 +3,7 @@ use rayon::prelude::*;
 
 use std::ops::{BitAnd, BitOr, BitXor, Not, Sub};
 use std::sync::Arc;
+use std::thread;
 
 use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType, UMesh, UMeshView};
 use crate::tools::fieldexpr::Evaluable;
@@ -378,8 +379,12 @@ impl Select for BinarayExpr {
                 }
             }
             BooleanOp::Or => {
-                let mut sel1 = self.left.select(view, eids_in.clone());
-                let sel2 = self.right.select(view, eids_in);
+                let (mut sel1, sel2) = thread::scope(move |s| {
+                    let eids_clone = eids_in.clone();
+                    let h1 = s.spawn(|| self.left.select(view, eids_clone));
+                    let h2 = s.spawn(|| self.right.select(view, eids_in));
+                    (h1.join().unwrap(), h2.join().unwrap())
+                });
                 sel1.union(&sel2);
                 sel1
             }
