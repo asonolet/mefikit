@@ -14,6 +14,8 @@ use super::field::FieldSelection;
 use super::group::GroupSelection;
 use super::node::NodeSelection;
 
+pub use super::field::Comparable;
+
 pub trait Select {
     fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids: ElementIdsSet) -> ElementIdsSet;
 }
@@ -279,7 +281,7 @@ impl Not for Selection {
 // Leaf operations
 
 impl Select for ElementSelection {
-    fn select<'a>(&'a self, _view: &'a UMeshView<'a>, mut eids_in: ElementIdsSet) -> ElementIdsSet {
+    fn select<'a>(&'a self, _view: &'a UMeshView<'a>, eids_in: ElementIdsSet) -> ElementIdsSet {
         match self {
             Self::Types(types) => Self::select_types(types.as_slice(), eids_in),
             Self::Dimensions(dims) => Self::select_dimensions(dims.as_slice(), eids_in),
@@ -438,20 +440,13 @@ impl MeshSelect for UMesh {
 
 #[cfg(test)]
 mod tests {
+    use ndarray::arr0;
+
     use super::*;
     use crate::mesh::ElementType;
     use crate::mesh_examples as me;
-
-    // #[test]
-    // fn test_umesh_element_selection() {
-    //     let mesh = me::make_mesh_2d_quad();
-    //     let selected_ids = Selector::new(mesh)
-    //         .centroids()
-    //         .in_rectangle(&[0.0, 0.0], &[1.0, 1.0])
-    //         .index;
-    //     assert_eq!(selected_ids.len(), 1);
-    //     assert_eq!(selected_ids.get(&ElementType::QUAD4).unwrap(), &vec![0]);
-    // }
+    use crate::tools::fieldexpr::{arr, field};
+    use crate::tools::{Measurable, RegularUMeshBuilder};
 
     #[test]
     fn test_umesh_element_selection() {
@@ -464,5 +459,21 @@ mod tests {
                 & types(vec![QUAD4]),
         );
         assert_eq!(mesh_sel.num_elements(), 1);
+    }
+
+    #[test]
+    fn test_umesh_measure() {
+        let mut mesh = RegularUMeshBuilder::new()
+            .add_axis((0..=10).map(|k| ((k * k) as f64) / 100.0).collect())
+            .add_axis((0..=10).map(|k| ((k * k) as f64) / 100.0).collect())
+            .build();
+        mesh.measure_update("M", None);
+        let two_surf = field("M") * arr(arr0(2.0));
+        let threshold = arr(arr0(0.001));
+        let expr = two_surf.gt(threshold);
+        let (eids, partmesh) = mesh.select(Selection::FieldSelection(expr));
+        dbg!(eids);
+        dbg!(partmesh);
+        panic!()
     }
 }

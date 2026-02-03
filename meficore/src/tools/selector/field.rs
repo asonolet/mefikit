@@ -11,23 +11,32 @@ pub enum FieldSelection {
     Neq(Arc<FieldExpr>, Arc<FieldExpr>),
 }
 
-impl FieldExpr {
-    pub fn gt(self, other: Self) -> FieldSelection {
+pub trait Comparable {
+    fn gt(self, other: Self) -> FieldSelection;
+    fn geq(self, other: Self) -> FieldSelection;
+    fn lt(self, other: Self) -> FieldSelection;
+    fn leq(self, other: Self) -> FieldSelection;
+    fn eq(self, other: Self) -> FieldSelection;
+    fn neq(self, other: Self) -> FieldSelection;
+}
+
+impl Comparable for FieldExpr {
+    fn gt(self, other: Self) -> FieldSelection {
         FieldSelection::Gt(Arc::new(self), Arc::new(other))
     }
-    pub fn geq(self, other: Self) -> FieldSelection {
+    fn geq(self, other: Self) -> FieldSelection {
         FieldSelection::Geq(Arc::new(self), Arc::new(other))
     }
-    pub fn lt(self, other: Self) -> FieldSelection {
+    fn lt(self, other: Self) -> FieldSelection {
         FieldSelection::Lt(Arc::new(self), Arc::new(other))
     }
-    pub fn leq(self, other: Self) -> FieldSelection {
+    fn leq(self, other: Self) -> FieldSelection {
         FieldSelection::Leq(Arc::new(self), Arc::new(other))
     }
-    pub fn eq(self, other: Self) -> FieldSelection {
+    fn eq(self, other: Self) -> FieldSelection {
         FieldSelection::Eq(Arc::new(self), Arc::new(other))
     }
-    pub fn neq(self, other: Self) -> FieldSelection {
+    fn neq(self, other: Self) -> FieldSelection {
         FieldSelection::Neq(Arc::new(self), Arc::new(other))
     }
 }

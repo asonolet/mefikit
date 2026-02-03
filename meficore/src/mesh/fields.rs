@@ -1,6 +1,6 @@
 use derive_where::derive_where;
 use itertools::Itertools;
-use ndarray::{self as nd, ArrayBase, ArrayD, ArrayViewD};
+use ndarray::{self as nd, ArrayBase};
 use std::{
     collections::{BTreeMap, HashSet},
     ops::{Add, Div, Mul, Sub},
@@ -146,13 +146,13 @@ where
         self.panic_if_incompatible_with(other);
         let mut result = BTreeMap::new();
         let greatest_dim = if self.ndim() > other.ndim() {
-            self.dim()
+            dbg!(self.dim())
         } else {
             other.dim()
         };
         for (elem_type, left_array) in &self.0 {
             if let Some(right_array) = other.0.get(elem_type) {
-                let mut res = nd::ArrayD::<bool>::from_elem(greatest_dim.clone(), false);
+                let mut res = nd::ArrayD::<bool>::from_elem(dbg!(greatest_dim.clone()), false);
                 nd::Zip::from(&mut res)
                     .and_broadcast(left_array)
                     .and_broadcast(right_array)
