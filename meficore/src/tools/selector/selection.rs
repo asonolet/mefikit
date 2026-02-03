@@ -469,11 +469,9 @@ mod tests {
             .build();
         mesh.measure_update("M", None);
         let two_surf = field("M") * arr(arr0(2.0));
-        let threshold = arr(arr0(0.001));
+        let threshold = arr(arr0(0.01));
         let expr = two_surf.gt(threshold);
-        let (eids, partmesh) = mesh.select(Selection::FieldSelection(expr));
-        dbg!(eids);
-        dbg!(partmesh);
-        panic!()
+        let (eids, _) = mesh.select(Selection::FieldSelection(expr));
+        assert_eq!(eids.len(), 62)
     }
 }
