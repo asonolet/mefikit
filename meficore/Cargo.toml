@@ -30,6 +30,7 @@ rayon = ["dep:rayon"]
 
 [lib]
 bench = false
+doctest = false
 
 # ref: https://bheisler.github.io/criterion.rs/book/getting_started.html#step-1---add-dependency-to-cargotoml
 [[bench]]
