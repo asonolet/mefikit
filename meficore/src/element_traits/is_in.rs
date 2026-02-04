@@ -286,6 +286,232 @@ pub fn in_bezier_polygon(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
     inside
 }
 
+pub fn point_in_phed(point: &[f64; 3], coords: &[[f64; 3]], connectivity: &[usize]) -> bool {
+    let px = point[0];
+    let py = point[1];
+    let pz = point[2];
+
+    let mut inside = false;
+
+    let mut face_start = 0;
+    let nconn = connectivity.len();
+
+    while face_start < nconn {
+        let mut face_end = face_start;
+        while face_end < nconn && connectivity[face_end] != usize::MAX {
+            face_end += 1;
+        }
+
+        // Face has at least 3 vertices
+        if face_end - face_start >= 3 {
+            let v0 = coords[connectivity[face_start]];
+
+            // Fan triangulation: (v0, vi, vi+1)
+            for i in face_start + 1..face_end - 1 {
+                let v1 = coords[connectivity[i]];
+                let v2 = coords[connectivity[i + 1]];
+
+                if ray_intersects_triangle(px, py, pz, v0, v1, v2) {
+                    inside = !inside;
+                }
+            }
+        }
+
+        face_start = face_end + 1;
+    }
+
+    inside
+}
+
+fn point_in_triangle_3d(
+    px: f64,
+    py: f64,
+    pz: f64,
+    v0: [f64; 3],
+    v1: [f64; 3],
+    v2: [f64; 3],
+) -> bool {
+    let c0 = cross(
+        [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]],
+        [px - v0[0], py - v0[1], pz - v0[2]],
+    );
+    let c1 = cross(
+        [v2[0] - v1[0], v2[1] - v1[1], v2[2] - v1[2]],
+        [px - v1[0], py - v1[1], pz - v1[2]],
+    );
+    let c2 = cross(
+        [v0[0] - v2[0], v0[1] - v2[1], v0[2] - v2[2]],
+        [px - v2[0], py - v2[1], pz - v2[2]],
+    );
+
+    let d0 = dot(c0, c1);
+    let d1 = dot(c1, c2);
+
+    d0 >= 0.0 && d1 >= 0.0
+}
+
+fn cross(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
+
+fn dot(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+fn ray_intersects_triangle(
+    px: f64,
+    py: f64,
+    pz: f64,
+    v0: [f64; 3],
+    v1: [f64; 3],
+    v2: [f64; 3],
+) -> bool {
+    // Fast reject: all triangle vertices are behind the ray
+    if v0[0] <= px && v1[0] <= px && v2[0] <= px {
+        return false;
+    }
+
+    // Compute triangle normal
+    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+
+    let n = [
+        e1[1] * e2[2] - e1[2] * e2[1],
+        e1[2] * e2[0] - e1[0] * e2[2],
+        e1[0] * e2[1] - e1[1] * e2[0],
+    ];
+
+    let scale = e1[0].abs().max(e1[1].abs()).max(e1[2].abs())
+        * e2[0].abs().max(e2[1].abs()).max(e2[2].abs());
+    let eps = 64.0 * f64::EPSILON * scale.max(1.0);
+
+    // Ray direction is (1, 0, 0)
+    let denom = n[0];
+    if denom.abs() < eps {
+        // Triangle is parallel to ray
+        return false;
+    }
+
+    let t = (n[0] * (v0[0] - px) + n[1] * (v0[1] - py) + n[2] * (v0[2] - pz)) / denom;
+
+    if t <= 0.0 {
+        return false;
+    }
+
+    // Intersection point
+    let iy = py;
+    let iz = pz;
+    let ix = px + t;
+
+    // Barycentric test in 3D (projected)
+    point_in_triangle_3d(ix, iy, iz, v0, v1, v2)
+}
+
+pub fn point_in_phed2(point: &[f64; 3], coords: &[[f64; 3]], connectivity: &[usize]) -> bool {
+    let px = point[0];
+    let py = point[1];
+    let pz = point[2];
+
+    let mut inside = false;
+
+    let mut face_start = 0;
+    let nconn = connectivity.len();
+
+    while face_start < nconn {
+        let mut face_end = face_start;
+        while face_end < nconn && connectivity[face_end] != usize::MAX {
+            face_end += 1;
+        }
+
+        if face_end - face_start >= 3 {
+            let v0 = coords[connectivity[face_start]];
+
+            // Fan triangulation
+            for i in face_start + 1..face_end - 1 {
+                let v1 = coords[connectivity[i]];
+                let v2 = coords[connectivity[i + 1]];
+
+                if ray_intersects_triangle_half_open(px, py, pz, v0, v1, v2) {
+                    inside = !inside;
+                }
+            }
+        }
+
+        face_start = face_end + 1;
+    }
+
+    inside
+}
+
+fn ray_intersects_triangle_half_open(
+    px: f64,
+    py: f64,
+    pz: f64,
+    v0: [f64; 3],
+    v1: [f64; 3],
+    v2: [f64; 3],
+) -> bool {
+    // Fast reject: triangle entirely behind ray
+    if v0[0] <= px && v1[0] <= px && v2[0] <= px {
+        return false;
+    }
+
+    // Edges
+    let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+    let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+
+    // Triangle normal
+    let n = cross(e1, e2);
+
+    // Ray direction = (1, 0, 0)
+    let denom = n[0];
+
+    // Geometry-scaled epsilon
+    let scale = e1[0].abs().max(e1[1].abs()).max(e1[2].abs())
+        * e2[0].abs().max(e2[1].abs()).max(e2[2].abs());
+
+    let eps = 64.0 * f64::EPSILON * scale.max(1.0);
+
+    if denom.abs() <= eps {
+        // Triangle parallel to ray
+        return false;
+    }
+
+    // Solve for intersection parameter t
+    let t = (n[0] * (v0[0] - px) + n[1] * (v0[1] - py) + n[2] * (v0[2] - pz)) / denom;
+
+    if t <= 0.0 {
+        return false;
+    }
+
+    // Intersection point
+    let ix = px + t;
+    let iy = py;
+    let iz = pz;
+
+    // Half-open rule (symbolic perturbation)
+    let ymin = v0[1].min(v1[1]).min(v2[1]);
+    let ymax = v0[1].max(v1[1]).max(v2[1]);
+
+    if !(iy > ymin && iy <= ymax) {
+        return false;
+    }
+
+    let zmin = v0[2].min(v1[2]).min(v2[2]);
+    let zmax = v0[2].max(v1[2]).max(v2[2]);
+
+    if !(iz > zmin && iz <= zmax) {
+        return false;
+    }
+
+    // Inside-triangle test
+    point_in_triangle_3d(ix, iy, iz, v0, v1, v2)
+}
+
 #[cfg(test)]
 mod tests {
     use super::in_polygon;
