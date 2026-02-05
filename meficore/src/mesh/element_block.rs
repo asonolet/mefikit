@@ -239,7 +239,6 @@ impl<'a> ElementBlockView<'a> {
         connectivity: nd::ArrayView2<'a, usize>,
         families: Option<nd::ArrayView1<'a, usize>>,
     ) -> Self {
-        let conn_len = connectivity.len();
         let families = match families {
             Some(fams) => Some(fams),
             None => todo!("Implement something meaningful?"),

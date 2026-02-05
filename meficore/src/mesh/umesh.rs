@@ -5,11 +5,11 @@ use super::element::{Element, ElementId, ElementMut, ElementType, Regularity};
 use super::element_ids::ElementIds;
 
 use derive_where::derive_where;
-use ndarray::{self as nd, ViewRepr};
+use ndarray::{self as nd};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 
 use super::connectivity::ConnectivityBase;
 use super::element_block::{

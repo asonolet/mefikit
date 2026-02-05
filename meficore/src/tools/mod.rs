@@ -67,7 +67,6 @@ pub use connected_components::*;
 pub use crack::*;
 pub use extrude::*;
 pub use grid::*;
-pub use intersect::*;
 pub use measure::*;
 pub use neighbours::*;
 pub use selector::*;

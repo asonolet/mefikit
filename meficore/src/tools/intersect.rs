@@ -1,13 +1,7 @@
 use crate::element_traits::ElementGeo;
-use crate::mesh::Dimension::*;
-use crate::mesh::UMesh;
 use crate::mesh::{Element, ElementId, ElementLike, ElementType};
-use crate::tools::compute_neighbours;
-
-use std::collections::HashMap;
 
 use arrayvec::ArrayVec;
-use rstar::RTree;
 use rstar::primitives::{GeomWithData, Line};
 
 /// A wrapper struct representing a geometric line segment with associated element ID data.

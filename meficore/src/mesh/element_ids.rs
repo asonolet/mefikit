@@ -1,6 +1,5 @@
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
-use rustc_hash::FxHashSet;
 use std::collections::BTreeMap;
 
 use crate::prelude::ElementId;

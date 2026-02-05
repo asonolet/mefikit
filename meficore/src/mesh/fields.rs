@@ -110,7 +110,7 @@ where
     {
         let mut result = BTreeMap::new();
         for (elem_type, array) in &self.0 {
-            let mapped_array = array.mapv(|x| f(x));
+            let mapped_array = array.mapv(&mut f);
             result.insert(*elem_type, mapped_array.into_owned());
         }
         FieldOwned::new(result)

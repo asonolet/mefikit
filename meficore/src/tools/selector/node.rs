@@ -2,7 +2,6 @@ use rustc_hash::FxHashSet;
 
 use crate::element_traits::ElementGeo;
 use crate::element_traits::is_in as geo;
-use crate::mesh::ElementIds;
 use crate::mesh::ElementIdsSet;
 use crate::mesh::ElementLike;
 use crate::mesh::UMeshView;
@@ -176,16 +175,14 @@ impl NodeSelection {
     fn all_id_in<'a>(nodes_ids: &[usize], view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
         let nodes_ids: FxHashSet<usize> = nodes_ids.iter().cloned().collect();
 
-        let index = sel
-            .into_iter()
+        sel.into_iter()
             .filter(|&e_id| {
                 view.element(e_id)
                     .connectivity()
                     .iter()
                     .all(|n| nodes_ids.contains(n))
             })
-            .collect();
-        index
+            .collect()
     }
 
     pub fn id_in<'a>(
