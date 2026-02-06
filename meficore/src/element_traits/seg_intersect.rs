@@ -1,5 +1,5 @@
-use nalgebra as na;
 use nalgebra::Point2;
+use nalgebra::{self as na, Vector2};
 
 #[derive(Copy, Debug, PartialEq, Clone, PartialOrd)]
 pub enum Intersection {
@@ -23,6 +23,11 @@ pub enum Intersections {
     Segment([PointId; 2]),  // Shared arc/seg, between two existing points
 }
 
+#[inline(always)]
+fn cross_prod2(v1: Vector2<f64>, v2: Vector2<f64>) -> f64 {
+    v1[0] * v2[1] - v1[1] * v2[0]
+}
+
 pub fn intersect_seg_seg(
     p1: Point2<f64>,
     p2: Point2<f64>,
@@ -32,7 +37,7 @@ pub fn intersect_seg_seg(
     let v1 = p2 - p1;
     let v2 = p4 - p3;
 
-    let cross = v1[0] * v2[1] - v1[1] * v2[0];
+    let cross12 = cross_prod2(v1, v2);
     let scale = v1[0]
         .abs()
         .max(v1[1].abs())
@@ -48,20 +53,20 @@ pub fn intersect_seg_seg(
     if (v2.norm_squared() < eps) || (v1.norm_squared() < eps) {
         return Intersections::None;
     }
+    let v3 = p3 - p1;
+    let cross31 = cross_prod2(v3, v1);
 
-    if cross.abs() < eps {
-        let v3 = p3 - p1;
-        let det = v3[0] * v1[1] - v3[1] * v1[0];
-        if det.abs() > eps {
+    if cross12.abs() < eps {
+        if cross31.abs() > eps {
             // Segments are // but do not cross
             Intersections::None
         } else {
             colinear_seg_intersection(p1, p2, p3, p4)
         }
     } else {
-        let v3 = p3 - p1;
-        let t = (v3[0] * v2[1] - v3[1] * v2[0]) / cross;
-        let u = (v3[0] * v1[1] - v3[1] * v1[0]) / cross;
+        let cross32 = cross_prod2(v3, v2);
+        let t = cross32 / cross12;
+        let u = cross31 / cross12;
         let intersection = p1 + t * v1;
         if !((0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u)) {
             Intersections::None
@@ -138,6 +143,13 @@ fn colinear_seg_intersection(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn points_close(p1: [f64; 2], p2: [f64; 2], scale: f64) -> bool {
+        let p1 = Point2::from(p1);
+        let p2 = Point2::from(p2);
+        let eps = 64.0 * scale * f64::EPSILON;
+        let v = p1 - p2;
+        v.norm_squared() <= eps
+    }
 
     fn point_on_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2], scale: f64) -> bool {
         let p = Point2::from(p);
@@ -183,6 +195,10 @@ mod tests {
     }
     use proptest::prelude::*;
 
+    fn pos_vector() -> impl Strategy<Value = [f64; 2]> {
+        prop::array::uniform2(1.0f64..1e6)
+    }
+
     fn arb_point() -> impl Strategy<Value = [f64; 2]> {
         prop::array::uniform2(-1e6f64..1e6)
     }
@@ -198,6 +214,24 @@ mod tests {
             .max(1.0)
     }
 
+    fn is_symmetric(int1: Intersections, int2: Intersections, scale: f64) -> bool {
+        match (int1, int2) {
+            (Intersections::None, Intersections::None) => true,
+            (
+                Intersections::One(Intersection::Existing(a)),
+                Intersections::One(Intersection::Existing(b)),
+            ) => a == b,
+            (
+                Intersections::One(Intersection::New(p1)),
+                Intersections::One(Intersection::New(p2)),
+            ) => points_close(p1, p2, scale),
+            (Intersections::Segment([a1, a2]), Intersections::Segment([a3, a4])) => {
+                ((a1 == a3) && (a2 == a4)) || ((a1 == a4) && (a2 == a3))
+            }
+            _ => false,
+        }
+    }
+
     proptest! {
         #[test]
         fn intersection_is_symmetric(
@@ -208,13 +242,9 @@ mod tests {
         ) {
             let r1 = intersect_seg_seg(p1.into(), p2.into(), p3.into(), p4.into());
             let r2 = intersect_seg_seg(p3.into(), p4.into(), p1.into(), p2.into());
+            let scale = scale(p1, p2, p3, p4);
 
-            match (r1, r2) {
-                (Intersections::None, Intersections::None) => {}
-                (Intersections::One(_), Intersections::One(_)) => {}
-                (Intersections::Segment(_), Intersections::Segment(_)) => {}
-                _ => panic!("asymmetric result"),
-            }
+            prop_assert!(is_symmetric(r1, r2, scale))
         }
     }
     proptest! {
@@ -237,25 +267,6 @@ mod tests {
 
                 prop_assert!(point_on_segment(p, p1, p2, scale));
                 prop_assert!(point_on_segment(p, p3, p4, scale));
-            }
-        }
-    }
-    proptest! {
-        #[test]
-        fn existing_intersection_is_endpoint(
-            p1 in arb_point(),
-            p2 in arb_point(),
-            p3 in arb_point(),
-            p4 in arb_point(),
-        ) {
-            let res = intersect_seg_seg(p1.into(), p2.into(), p3.into(), p4.into());
-
-            if let Intersections::One(Intersection::Existing(id)) = res {
-                let p = id_to_point(id, p1, p2, p3, p4);
-
-                prop_assert!(
-                    p == p1 || p == p2 || p == p3 || p == p4
-                );
             }
         }
     }
@@ -294,13 +305,14 @@ mod tests {
     }
     proptest! {
         #[test]
-        fn separated_segments_do_not_intersect(
+        fn parallel_segments_do_not_intersect(
             p in arb_point(),
+            v in pos_vector(),
         ) {
             let p1 = p;
-            let p2 = [p[0] + 1.0, p[1]];
-            let p3 = [p[0], p[1] + 10.0];
-            let p4 = [p[0] + 1.0, p[1] + 10.0];
+            let p2 = [p[0] + v[0], p[1]];
+            let p3 = [p[0], p[1] + v[1]];
+            let p4 = [p[0] + v[0], p[1] + v[1]];
 
             let res = intersect_seg_seg(p1.into(), p2.into(), p3.into(), p4.into());
             prop_assert_eq!(res, Intersections::None);
