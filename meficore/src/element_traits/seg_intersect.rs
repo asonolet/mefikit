@@ -1,6 +1,5 @@
-use itertools::Itertools;
 use nalgebra as na;
-use nalgebra::{Point2, Vector2};
+use nalgebra::Point2;
 
 #[derive(Copy, Debug, PartialEq, Clone, PartialOrd)]
 pub enum Intersection {
@@ -42,6 +41,11 @@ pub fn intersect_seg_seg(
     let eps = 64.0 * scale * f64::EPSILON;
     let eps_squared = eps * eps;
 
+    // If one of the edges is degenerated, there is no intersection
+    if (v2.norm_squared() < eps_squared) | (v1.norm_squared() < eps_squared) {
+        return Intersections::None;
+    }
+
     if alpha.abs() < eps {
         colinear_seg_intersection(p1, p2, p3, p4, eps)
     } else {
@@ -49,7 +53,9 @@ pub fn intersect_seg_seg(
         let dy = p3[1] - p1[1];
         let t = (dx * v2[1] - dy * v2[0]) / alpha;
         let u = (dx * v1[1] - dy * v1[0]) / alpha;
-        let intersection = Point2::new(p1[0] + t * v1[0], p1[1] + t * v1[1]);
+        let intersection1 = p1 + t * v1;
+        let intersection2 = p3 + u * v2;
+        let intersection = intersection1 + (intersection2 - intersection1) / 2.0;
         if !((0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u)) {
             Intersections::None
         } else if (p1 - intersection).norm_squared() < eps_squared {
@@ -79,7 +85,7 @@ fn colinear_seg_intersection(
     let d1 = p3 - p2;
     let d2 = p4 - p1;
     let det = d1[0] * d2[1] - d1[1] * d2[0];
-    if det > eps {
+    if det.abs() > eps {
         return Intersections::None;
     }
     let or = na::Point2::origin();
@@ -118,47 +124,48 @@ fn colinear_seg_intersection(
     }
 }
 
-/// Computes the squared distance of point p to the line defined by origin and dir.
-fn compute_distance2_to_line(o: Point2<f64>, dir: Vector2<f64>, p: Point2<f64>) -> f64 {
-    let op = p - o;
-    let len2 = dir.norm_squared();
-    let eps = 32.0 * f64::EPSILON.powi(2);
-    if len2 < eps {
-        return op.norm_squared();
-    }
-    let t = op.dot(&dir) / len2;
-    let proj = o + t * dir;
-
-    (p - proj).norm_squared()
-}
+// /// Computes the squared distance of point p to the line defined by origin and dir.
+// fn compute_distance2_to_line(o: Point2<f64>, dir: Vector2<f64>, p: Point2<f64>) -> f64 {
+//     let op = p - o;
+//     let len2 = dir.norm_squared();
+//     let eps = 32.0 * f64::EPSILON.powi(2);
+//     if len2 < eps {
+//         return op.norm_squared();
+//     }
+//     let t = op.dot(&dir) / len2;
+//     let proj = o + t * dir;
+//
+//     (p - proj).norm_squared()
+// }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn point_on_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> bool {
-        let v1 = [p[0] - a[0], p[1] - a[1]];
-        let v2 = [p[0] - b[0], p[1] - b[1]];
-        let cross = dbg!(v1[0] * v2[1] - v1[1] * v2[0]);
-        let scale = v1[0]
-            .abs()
-            .max(v1[1].abs())
-            .max(v2[0].abs())
-            .max(v2[1].abs())
-            .max(1.0);
-        let eps = dbg!(64.0 * scale * f64::EPSILON);
+        let p = Point2::from(p);
+        let a = Point2::from(a);
+        let b = Point2::from(b);
+        let ap = p - a;
+        let bp = p - b;
+        let ab = b - a;
+
+        let cross = dbg!(ap[0] * bp[1] - ap[1] * bp[0]);
+
+        let scale = ab[0].abs().max(ab[1].abs()).max(1.0);
+        let eps = dbg!(64.0 * scale.powi(2) * f64::EPSILON);
 
         if cross.abs() > eps {
             return false;
         }
 
-        let dot = (p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1]);
+        let dot = dbg!(ap.dot(&ab));
 
         if dot < 0.0 {
             return false;
         }
 
-        let len_sq = (b[0] - a[0]).powi(2) + (b[1] - a[1]).powi(2);
+        let len_sq = ab.norm_squared();
 
         dot <= len_sq
     }
@@ -276,6 +283,37 @@ mod tests {
 
             let res = intersect_seg_seg(p1.into(), p2.into(), p3.into(), p4.into());
             prop_assert_eq!(res, Intersections::None);
+        }
+    }
+
+    #[test]
+    fn test_1separated_seg_do_not_intersect() {
+        let p1 = [0.0, 0.0];
+        let p2 = [1.0, 0.0];
+        let p3 = [0.0, 10.0];
+        let p4 = [1.0, 10.0];
+
+        let res = intersect_seg_seg(p1.into(), p2.into(), p3.into(), p4.into());
+        assert_eq!(res, Intersections::None);
+    }
+
+    #[test]
+    fn test_2both_seg() {
+        let p1 = [-730405.1992762072, 0.0];
+        let p2 = [0.0, 0.0];
+        let p3 = [0.0, -805700.7903997403];
+        let p4 = [-65840.31658583878, 990202.9211195839];
+        let res = intersect_seg_seg(p1.into(), p2.into(), p3.into(), p4.into());
+
+        if let Intersections::One(int) = res {
+            let p = match int {
+                Intersection::Existing(id) => id_to_point(id, p1, p2, p3, p4),
+                Intersection::New(p) => p,
+            };
+            println!("{p:?}");
+
+            assert!(point_on_segment(p, p1, p2));
+            assert!(point_on_segment(p, p3, p4));
         }
     }
 }
