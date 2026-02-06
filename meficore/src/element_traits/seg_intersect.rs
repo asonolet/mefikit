@@ -18,8 +18,9 @@ pub enum PointId {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Intersections {
     None,
-    One(Intersection),
-    Segment([PointId; 2]),
+    One(Intersection),      // classic one intersection
+    Two([Intersection; 2]), // Two intersections only possible with arc
+    Segment([PointId; 2]),  // Shared arc/seg, between two existing points
 }
 
 pub fn intersect_seg_seg(
@@ -31,44 +32,48 @@ pub fn intersect_seg_seg(
     let v1 = p2 - p1;
     let v2 = p4 - p3;
 
-    let alpha = v1[0] * v2[1] - v1[1] * v2[0];
+    let cross = v1[0] * v2[1] - v1[1] * v2[0];
     let scale = v1[0]
         .abs()
         .max(v1[1].abs())
         .max(v2[0].abs())
         .max(v2[1].abs())
         .max(1.0);
+    // As this error is used on cross or dot product, it should scale with the length of the
+    // segments.
     let eps = 64.0 * scale * f64::EPSILON;
-    let eps_squared = eps * eps;
 
-    // If one of the edges is degenerated, there is no intersection
-    if (v2.norm_squared() < eps_squared) | (v1.norm_squared() < eps_squared) {
+    // If one of the edges is degenerated, there is no intersection. This is simplist, but there
+    // should be no degenerated segments in a proper mesh.
+    if (v2.norm_squared() < eps) || (v1.norm_squared() < eps) {
         return Intersections::None;
     }
 
-    if alpha.abs() < eps {
-        colinear_seg_intersection(p1, p2, p3, p4, eps)
+    if cross.abs() < eps {
+        let v3 = p3 - p1;
+        let det = v3[0] * v1[1] - v3[1] * v1[0];
+        if det.abs() > eps {
+            // Segments are // but do not cross
+            Intersections::None
+        } else {
+            colinear_seg_intersection(p1, p2, p3, p4)
+        }
     } else {
-        let dx = p3[0] - p1[0];
-        let dy = p3[1] - p1[1];
-        let t = (dx * v2[1] - dy * v2[0]) / alpha;
-        let u = (dx * v1[1] - dy * v1[0]) / alpha;
-        let intersection1 = p1 + t * v1;
-        let intersection2 = p3 + u * v2;
-        let intersection = intersection1 + (intersection2 - intersection1) / 2.0;
+        let v3 = p3 - p1;
+        let t = (v3[0] * v2[1] - v3[1] * v2[0]) / cross;
+        let u = (v3[0] * v1[1] - v3[1] * v1[0]) / cross;
+        let intersection = p1 + t * v1;
         if !((0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u)) {
             Intersections::None
-        } else if (p1 - intersection).norm_squared() < eps_squared {
+        } else if (p1 - intersection).norm_squared() < eps {
             Intersections::One(Intersection::Existing(PointId::P1))
-        } else if (p2 - intersection).norm_squared() < eps_squared {
+        } else if (p2 - intersection).norm_squared() < eps {
             Intersections::One(Intersection::Existing(PointId::P2))
-        } else if (p3 - intersection).norm_squared() < eps_squared {
+        } else if (p3 - intersection).norm_squared() < eps {
             Intersections::One(Intersection::Existing(PointId::P3))
-        } else if (p4 - intersection).norm_squared() < eps_squared {
+        } else if (p4 - intersection).norm_squared() < eps {
             Intersections::One(Intersection::Existing(PointId::P4))
         } else {
-            dbg!(t);
-            dbg!(u);
             Intersections::One(Intersection::New(intersection.into()))
         }
     }
@@ -79,15 +84,7 @@ fn colinear_seg_intersection(
     p2: Point2<f64>,
     p3: Point2<f64>,
     p4: Point2<f64>,
-    eps: f64,
 ) -> Intersections {
-    // Check if points are aligned.
-    let d1 = p3 - p2;
-    let d2 = p4 - p1;
-    let det = d1[0] * d2[1] - d1[1] * d2[0];
-    if det.abs() > eps {
-        return Intersections::None;
-    }
     let or = na::Point2::origin();
     let o = or + ((p1 - or) + (p2 - or) + (p3 - or) + (p4 - or)) / 4.0;
     let dir = p2 - p1;
@@ -142,7 +139,7 @@ fn colinear_seg_intersection(
 mod tests {
     use super::*;
 
-    fn point_on_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> bool {
+    fn point_on_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2], scale: f64) -> bool {
         let p = Point2::from(p);
         let a = Point2::from(a);
         let b = Point2::from(b);
@@ -150,16 +147,16 @@ mod tests {
         let bp = p - b;
         let ab = b - a;
 
-        let cross = dbg!(ap[0] * bp[1] - ap[1] * bp[0]);
+        let cross = ap[0] * bp[1] - ap[1] * bp[0];
 
-        let scale = ab[0].abs().max(ab[1].abs()).max(1.0);
-        let eps = dbg!(64.0 * scale.powi(2) * f64::EPSILON);
+        // This error depends on scale^2 because it comes from the computation of the intersection.
+        let eps = 64.0 * scale * scale * f64::EPSILON;
 
         if cross.abs() > eps {
             return false;
         }
 
-        let dot = dbg!(ap.dot(&ab));
+        let dot = ap.dot(&ab);
 
         if dot < 0.0 {
             return false;
@@ -190,6 +187,17 @@ mod tests {
         prop::array::uniform2(-1e6f64..1e6)
     }
 
+    fn scale(p1: [f64; 2], p2: [f64; 2], p3: [f64; 2], p4: [f64; 2]) -> f64 {
+        let v1 = [p2[0] - p1[0], p2[1] - p1[1]];
+        let v2 = [p4[0] - p3[0], p4[1] - p3[1]];
+        v1[0]
+            .abs()
+            .max(v1[1].abs())
+            .max(v2[0].abs())
+            .max(v2[1].abs())
+            .max(1.0)
+    }
+
     proptest! {
         #[test]
         fn intersection_is_symmetric(
@@ -218,6 +226,7 @@ mod tests {
             p4 in arb_point(),
         ) {
             let res = intersect_seg_seg(p1.into(), p2.into(), p3.into(), p4.into());
+            let scale = scale(p1, p2, p3, p4);
 
             if let Intersections::One(int) = res {
                 let p = match int {
@@ -226,8 +235,8 @@ mod tests {
                     Intersection::New(p) => p,
                 };
 
-                prop_assert!(point_on_segment(p, p1, p2));
-                prop_assert!(point_on_segment(p, p3, p4));
+                prop_assert!(point_on_segment(p, p1, p2, scale));
+                prop_assert!(point_on_segment(p, p3, p4, scale));
             }
         }
     }
@@ -259,16 +268,28 @@ mod tests {
             p4 in arb_point(),
         ) {
             let res = intersect_seg_seg(p1.into(), p2.into(), p3.into(), p4.into());
+            let scale = scale(p1, p2, p3, p4);
 
             if let Intersections::Segment([a, b]) = res {
                 let pa = id_to_point(a, p1, p2, p3, p4);
                 let pb = id_to_point(b, p1, p2, p3, p4);
 
-                prop_assert!(point_on_segment(pa, p1, p2));
-                prop_assert!(point_on_segment(pa, p3, p4));
-                prop_assert!(point_on_segment(pb, p1, p2));
-                prop_assert!(point_on_segment(pb, p3, p4));
+                prop_assert!(point_on_segment(pa, p1, p2, scale));
+                prop_assert!(point_on_segment(pa, p3, p4, scale));
+                prop_assert!(point_on_segment(pb, p1, p2, scale));
+                prop_assert!(point_on_segment(pb, p3, p4, scale));
             }
+        }
+    }
+    proptest! {
+        #[test]
+        fn segment_with_common_point_intersect(
+            p1 in arb_point(),
+            p2 in arb_point(),
+            p3 in arb_point(),
+        ) {
+            let res = intersect_seg_seg(p1.into(), p2.into(), p1.into(), p3.into());
+            matches!(res, Intersections::One(_) | Intersections::Segment(_));
         }
     }
     proptest! {
@@ -304,6 +325,7 @@ mod tests {
         let p3 = [0.0, -805700.7903997403];
         let p4 = [-65840.31658583878, 990202.9211195839];
         let res = intersect_seg_seg(p1.into(), p2.into(), p3.into(), p4.into());
+        let scale = scale(p1, p2, p3, p4);
 
         if let Intersections::One(int) = res {
             let p = match int {
@@ -312,8 +334,29 @@ mod tests {
             };
             println!("{p:?}");
 
-            assert!(point_on_segment(p, p1, p2));
-            assert!(point_on_segment(p, p3, p4));
+            assert!(point_on_segment(p, p1, p2, scale));
+            assert!(point_on_segment(p, p3, p4, scale));
+        }
+    }
+
+    #[test]
+    fn test_3both_seg() {
+        let p1 = [809224.6799957141, -235808.925127813];
+        let p2 = [-901882.3353661865, 570278.1374180546];
+        let p3 = [270416.52282510285, 15443.5513155427];
+        let p4 = [269544.0152902226, 23150.45387644443];
+        let res = intersect_seg_seg(p1.into(), p2.into(), p3.into(), p4.into());
+        let scale = scale(p1, p2, p3, p4);
+
+        if let Intersections::One(int) = res {
+            let p = match int {
+                Intersection::Existing(id) => id_to_point(id, p1, p2, p3, p4),
+                Intersection::New(p) => p,
+            };
+            println!("{p:?}");
+
+            assert!(point_on_segment(p, p1, p2, scale));
+            assert!(point_on_segment(p, p3, p4, scale));
         }
     }
 }
