@@ -1,7 +1,7 @@
 use bvh::aabb::{Aabb, Bounded};
 use bvh::bounding_hierarchy::{BHShape, BoundingHierarchy};
 use bvh::bvh::Bvh;
-use nalgebra::{Point2, Vector2};
+#[cfg(feature = "rayon")]
 use rayon::iter::ParallelIterator;
 
 use crate::mesh::{ElementId, ElementIds, ElementLike, UMeshView};
@@ -15,7 +15,7 @@ pub struct ElementBbox<const D: usize> {
 
 impl<const D: usize> Bounded<f32, D> for ElementBbox<D> {
     fn aabb(&self) -> Aabb<f32, D> {
-        self.aabb.clone()
+        self.aabb
     }
 }
 
@@ -38,7 +38,7 @@ pub struct SpatialIndex<const D: usize> {
 }
 
 impl SpatialIndex<2> {
-    fn in_bounds(&self, min: [f64; 2], max: [f64; 2]) -> ElementIds {
+    pub fn in_bounds(&self, min: [f64; 2], max: [f64; 2]) -> ElementIds {
         let bbox = Aabb::with_bounds(
             [min[0] as f32, min[1] as f32].into(),
             [max[0] as f32, max[1] as f32].into(),
@@ -52,7 +52,7 @@ impl SpatialIndex<2> {
 }
 
 impl SpatialIndex<3> {
-    fn in_bounds(&self, min: [f64; 3], max: [f64; 3]) -> ElementIds {
+    pub fn in_bounds(&self, min: [f64; 3], max: [f64; 3]) -> ElementIds {
         let bbox = Aabb::with_bounds(
             [min[0] as f32, min[1] as f32, min[2] as f32].into(),
             [max[0] as f32, max[1] as f32, max[2] as f32].into(),
@@ -65,8 +65,8 @@ impl SpatialIndex<3> {
     }
 }
 
-type SpIdx2 = SpatialIndex<2>;
-type SpIdx3 = SpatialIndex<3>;
+pub type SpIdx2 = SpatialIndex<2>;
+pub type SpIdx3 = SpatialIndex<3>;
 
 pub trait SpatiallyIndexable {
     fn bvh2(&self) -> SpIdx2;

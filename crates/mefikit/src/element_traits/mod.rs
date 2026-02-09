@@ -4,6 +4,7 @@
 //! (coordinates, measures, centroids) and topological operations
 //! (subentities, simplex decomposition).
 
+mod cut;
 mod element_geo;
 mod element_topo;
 pub mod is_in;
@@ -12,6 +13,7 @@ mod seg_intersect;
 mod symmetry;
 mod utils;
 
+pub use cut::Cutable;
 pub use element_geo::ElementGeo;
 pub use element_topo::ElementTopo;
 pub use seg_intersect::{Intersection, Intersections, PointId, intersect_seg_seg};
