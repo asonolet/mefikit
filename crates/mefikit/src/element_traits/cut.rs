@@ -1,14 +1,32 @@
 use super::Intersections;
+use crate::mesh::ElementId;
 use crate::mesh::ElementIds;
 use crate::mesh::ElementLike;
 use crate::mesh::UMesh;
 use crate::mesh::UMeshView;
 
 type VertexId = usize;
+type PGSegId = usize;
+type NodeId = usize;
 
-type EdgeId = usize;
+struct PlanarGraph {
+    segs: Vec<PGSeg>,
+}
 
-struct LocalGraph {}
+struct SegPart {
+    m: bool, // if the seg comes from m1 or m2
+    eid: ElementId,
+    start: NodeId,
+    end: NodeId,
+}
+
+struct PGSeg {
+    seg: SegPart,
+    start_segs: Vec<PGSegId>,
+    end_segs: Vec<PGSegId>,
+    angle: f32,
+    visited: u8,
+}
 
 /// Builds a local planar graph for a cell.
 ///
@@ -27,7 +45,7 @@ fn build_local_planar_graph<'a, E: ElementLike<'a>>(
     cell: &E,
     mesh1: UMeshView,
     intersections: &[Intersections],
-) -> LocalGraph {
+) -> PlanarGraph {
     todo!("vertex creation, edge splitting, half-edge linkage")
 }
 
@@ -39,7 +57,7 @@ fn build_local_planar_graph<'a, E: ElementLike<'a>>(
 ///
 /// # Output
 /// - Valid polygonal cells
-fn extract_faces_from_graph(graph: LocalGraph) -> Vec<Vec<VertexId>> {
+fn extract_faces_from_graph(graph: PlanarGraph) -> Vec<Vec<VertexId>> {
     todo!("DCEL traversal, loop detection, orientation check")
 }
 
