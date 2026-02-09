@@ -62,6 +62,7 @@ pub mod measure;
 pub mod neighbours;
 pub mod selector;
 pub mod snap;
+pub mod spatial_index;
 
 pub use connected_components::*;
 pub use crack::*;
