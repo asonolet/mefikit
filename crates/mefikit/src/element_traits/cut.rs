@@ -77,6 +77,10 @@ fn assemble_mesh(cells: Vec<Vec<VertexId>>) -> UMesh {
     todo!("vertex unification, topology validation")
 }
 
+type M1SgId = SortedVecKey;
+type M2SgId = ElementId;
+type M1M2Intersections = FxHashMap<M1SgId, Vec<(M2SgId, Intersections)>>;
+
 pub trait Cutable {
     // fn cut_with_edges(
     //     &self,
@@ -90,19 +94,25 @@ pub trait Cutable {
     // ) -> Vec<Intersections>;
     fn cut_with_intersections(
         &self,
-        intersections: &FxHashMap<SortedVecKey, Vec<(ElementId, Intersections)>>,
+        intersections: &M1M2Intersections,
         m2_edges: UMeshView,
         added_intersection: &mut usize,
     ) -> Vec<Vec<VertexId>>;
 }
 
 impl<'a, T: ElementLike<'a>> Cutable for T {
+    //TODO: replace added_intersection with a full mutable coords table.
     fn cut_with_intersections(
         &self,
-        intersections: &FxHashMap<SortedVecKey, Vec<(ElementId, Intersections)>>,
+        intersections: &M1M2Intersections,
         m2_edges: UMeshView,
         added_intersection: &mut usize,
     ) -> Vec<Vec<VertexId>> {
+        for (_, seg) in self.subentities(None) {
+            //TODO: get m1 seg ends (0 and 1 index)
+            //find intersections with m2_seg in intersections
+            //create SegParts and add them to the PlanarGraph.
+        }
         todo!()
     }
     // /// Intersects a single mesh1 cell with relevant mesh2 edges.
