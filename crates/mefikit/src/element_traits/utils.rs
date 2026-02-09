@@ -1,6 +1,7 @@
 //! Utility types for element operations.
 
 use smallvec::SmallVec;
+use std::ops::Index;
 
 /// A wrapper that ensures a vector of indices is always sorted.
 ///
@@ -16,6 +17,14 @@ impl SortedVecKey {
     pub fn new(mut vec: SmallVec<[usize; 4]>) -> Self {
         vec.sort_unstable();
         SortedVecKey(vec)
+    }
+}
+
+impl Index<usize> for SortedVecKey {
+    type Output = usize;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
     }
 }
 

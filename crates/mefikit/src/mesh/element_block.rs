@@ -27,6 +27,7 @@ where
     pub connectivity: ConnectivityBase<C>,
     pub fields: BTreeMap<String, nd::ArrayBase<F, nd::IxDyn>>,
     pub families: nd::ArrayBase<G, nd::Ix1>,
+    //TODO: replace the BTreeSet with an ArrayBase<usize> which can be a view
     pub groups: BTreeMap<String, BTreeSet<usize>>,
 }
 
@@ -50,6 +51,10 @@ where
     /// Returns the connectivity (node indices) for the element at `index`.
     pub fn element_connectivity(&self, index: usize) -> &[usize] {
         &self.connectivity[index]
+    }
+
+    pub fn element_type(&self) -> ElementType {
+        self.cell_type
     }
 
     /// Returns an immutable view of the element at `index`.
@@ -132,6 +137,20 @@ where
                 )
             })
     }
+    pub fn view(&self) -> ElementBlockView {
+        ElementBlockView {
+            cell_type: self.cell_type,
+            connectivity: self.connectivity.view(),
+            fields: self
+                .fields
+                .iter()
+                .map(|(n, f)| (n.clone(), f.view()))
+                .collect(),
+            families: self.families.view(),
+            //TODO: replace this clone with a shallow clone ?
+            groups: self.groups.clone(),
+        }
+    }
 }
 
 impl ElementBlock {
@@ -201,7 +220,7 @@ impl ElementBlock {
         &mut self,
         connectivity: nd::ArrayView1<usize>,
         family: Option<usize>,
-        fields: Option<BTreeMap<String, nd::ArrayViewD<f64>>>,
+        fields: Option<BTreeMap<&str, nd::ArrayViewD<f64>>>,
     ) {
         self.connectivity.push(connectivity);
         let family = family.unwrap_or_default();
