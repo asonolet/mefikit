@@ -4,10 +4,8 @@ use bvh::bvh::Bvh;
 use nalgebra::{Point2, Vector2};
 use rayon::iter::ParallelIterator;
 
-use crate::mesh::{ElementId, ElementLike, UMeshView};
+use crate::mesh::{ElementId, ElementIds, ElementLike, UMeshView};
 use crate::prelude::ElementGeo;
-
-struct SpatialIndex {}
 
 pub struct ElementBbox<const D: usize> {
     aabb: Aabb<f32, D>,
@@ -33,16 +31,50 @@ impl<const D: usize> BHShape<f32, D> for ElementBbox<D> {
 
 type EBox2 = ElementBbox<2>;
 type EBox3 = ElementBbox<3>;
-type Bvh2 = Bvh<f32, 2>;
-type Bvh3 = Bvh<f32, 3>;
+
+pub struct SpatialIndex<const D: usize> {
+    elems: Vec<ElementBbox<D>>,
+    bvh: Bvh<f32, D>,
+}
+
+impl SpatialIndex<2> {
+    fn in_bounds(&self, min: [f64; 2], max: [f64; 2]) -> ElementIds {
+        let bbox = Aabb::with_bounds(
+            [min[0] as f32, min[1] as f32].into(),
+            [max[0] as f32, max[1] as f32].into(),
+        );
+        self.bvh
+            .traverse(&bbox, &self.elems)
+            .into_iter()
+            .map(|eb| eb.eid)
+            .collect()
+    }
+}
+
+impl SpatialIndex<3> {
+    fn in_bounds(&self, min: [f64; 3], max: [f64; 3]) -> ElementIds {
+        let bbox = Aabb::with_bounds(
+            [min[0] as f32, min[1] as f32, min[2] as f32].into(),
+            [max[0] as f32, max[1] as f32, max[2] as f32].into(),
+        );
+        self.bvh
+            .traverse(&bbox, &self.elems)
+            .into_iter()
+            .map(|eb| eb.eid)
+            .collect()
+    }
+}
+
+type SpIdx2 = SpatialIndex<2>;
+type SpIdx3 = SpatialIndex<3>;
 
 pub trait SpatiallyIndexable {
-    fn bvh2(&self) -> (Vec<EBox2>, Bvh2);
-    fn bvh3(&self) -> (Vec<EBox3>, Bvh3);
+    fn bvh2(&self) -> SpIdx2;
+    fn bvh3(&self) -> SpIdx3;
 }
 
 impl SpatiallyIndexable for UMeshView<'_> {
-    fn bvh2(&self) -> (Vec<EBox2>, Bvh2) {
+    fn bvh2(&self) -> SpIdx2 {
         assert_eq!(self.space_dimension(), 2);
         let mut ebox2: Vec<_> = self
             .par_elements()
@@ -62,10 +94,10 @@ impl SpatiallyIndexable for UMeshView<'_> {
         let bvh = Bvh::build_par(&mut ebox2);
         #[cfg(not(feature = "rayon"))]
         let bvh = Bvh::build(&mut ebox2);
-        (ebox2, bvh)
+        SpIdx2 { elems: ebox2, bvh }
     }
 
-    fn bvh3(&self) -> (Vec<EBox3>, Bvh3) {
+    fn bvh3(&self) -> SpIdx3 {
         assert_eq!(self.space_dimension(), 3);
         let mut ebox3: Vec<_> = self
             .par_elements()
@@ -85,6 +117,6 @@ impl SpatiallyIndexable for UMeshView<'_> {
         let bvh = Bvh::build_par(&mut ebox3);
         #[cfg(not(feature = "rayon"))]
         let bvh = Bvh::build(&mut ebox3);
-        (ebox3, bvh)
+        SpIdx3 { elems: ebox3, bvh }
     }
 }
