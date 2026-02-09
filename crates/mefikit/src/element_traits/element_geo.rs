@@ -155,6 +155,34 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         AABB::from_points(self.coords3())
     }
 
+    fn bounds2(&self) -> [[f64; 2]; 2] {
+        self.coords2()
+            .fold([[f64::INFINITY; 2], [-f64::INFINITY; 2]], |a, c| {
+                [
+                    [f64::min(a[0][0], c[0]), f64::min(a[0][1], c[1])],
+                    [f64::max(a[1][0], c[0]), f64::max(a[1][1], c[1])],
+                ]
+            })
+    }
+
+    fn bounds3(&self) -> [[f64; 3]; 2] {
+        self.coords3()
+            .fold([[f64::INFINITY; 3], [-f64::INFINITY; 3]], |a, c| {
+                [
+                    [
+                        f64::min(a[0][0], c[0]),
+                        f64::min(a[0][1], c[1]),
+                        f64::min(a[0][2], c[2]),
+                    ],
+                    [
+                        f64::max(a[1][0], c[0]),
+                        f64::max(a[1][1], c[1]),
+                        f64::max(a[1][2], c[2]),
+                    ],
+                ]
+            })
+    }
+
     /// Computes the 2D centroid of the element.
     fn centroid2(&self) -> [f64; 2] {
         let mut p: na::Point2<f64> = na::Point2::origin();

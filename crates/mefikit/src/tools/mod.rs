@@ -85,6 +85,7 @@ pub mod neighbours;
 pub mod selector;
 /// Node snapping to merge nearby nodes.
 pub mod snap;
+pub mod spatial_index;
 
 pub use connected_components::*;
 pub use crack::*;
