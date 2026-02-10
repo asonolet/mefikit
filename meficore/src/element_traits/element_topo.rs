@@ -7,6 +7,8 @@ use crate::mesh::{Dimension, ElementLike, ElementType};
 
 pub trait ElementTopo<'a>: ElementLike<'a> {
     /// This function returns the subentities of the element based on the codimension.
+    /// The returned type is a vec because in case of prism elements, faces have different element
+    /// types.
     fn subentities(&self, codim: Option<Dimension>) -> Vec<(ElementType, Connectivity)> {
         use ElementType::*;
         let codim = match codim {
