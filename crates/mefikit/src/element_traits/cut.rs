@@ -48,10 +48,17 @@ struct PGSeg {
 /// - Graph is planar
 /// - All edges are paired (half-edges)
 fn build_local_planar_graph<'a, E: ElementLike<'a>>(
-    _cell: &E,
-    _mesh1: UMeshView,
-    _intersections: &[Intersections],
+    cell: &E,
+    mesh2: UMeshView,
+    intersections: &M1M2Intersections,
 ) -> PlanarGraph {
+    let subs = cell.subentities(None);
+    for (et, cos) in &subs {
+        for co in cos.iter() {
+            let key = SortedVecKey::new(co.into());
+            let ints = &intersections[&key];
+        }
+    }
     todo!("vertex creation, edge splitting, half-edge linkage")
 }
 
