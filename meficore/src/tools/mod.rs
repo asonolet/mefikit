@@ -66,6 +66,7 @@ pub mod snap;
 pub use connected_components::*;
 pub use crack::*;
 pub use extrude::*;
+pub use fieldexpr::*;
 pub use grid::*;
 pub use measure::*;
 pub use neighbours::*;
