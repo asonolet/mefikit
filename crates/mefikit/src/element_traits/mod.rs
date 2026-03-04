@@ -4,7 +4,7 @@
 //! (coordinates, measures, centroids) and topological operations
 //! (subentities, simplex decomposition).
 
-mod cut;
+pub mod cut;
 mod element_geo;
 mod element_topo;
 pub mod is_in;

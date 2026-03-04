@@ -1,16 +1,39 @@
 use rustc_hash::FxHashMap;
 
-use crate::element_traits::{Cutable, Intersections, SortedVecKey, intersect_seg_seg};
-use crate::mesh::{Dimension, ElementId, ElementLike, ElementType, UMesh};
+use ndarray as nd;
+
+use crate::element_traits::cut::{self, M1SgId, M2SgId};
+use crate::element_traits::{
+    Cutable, Intersection, Intersections, PointId, SortedVecKey, intersect_seg_seg,
+};
+use crate::mesh::{Dimension, ElementLike, ElementType, UMesh, UMeshView};
 use crate::prelude::ElementGeo;
 use crate::tools::spatial_index::SpIdx2;
 use crate::tools::{Descendable, snap, spatial_index::SpatiallyIndexable};
-use crate::tools::{compute_hashsub_to_elem, compute_sub_to_elem};
+use crate::tools::{compute_hashsub_to_elem, compute_sub_to_elem, duplicates_from};
 
-type VertexId = usize;
-type M1SgId = SortedVecKey;
-type M2SgId = ElementId;
-type M1M2Intersections = FxHashMap<M1SgId, Vec<(M2SgId, Intersections)>>;
+type M1M2Intersections = FxHashMap<cut::M1SgId, Vec<(cut::M2SgId, cut::NodeId)>>;
+
+fn concat_merge_on_ref_coords(subject: UMesh, reference: UMeshView) -> UMesh {
+    let m1_to_m2_nodes = duplicates_from(subject.view(), reference.clone(), 1e-12);
+    let shift = reference.coords().nrows();
+    let mut m2_to_m1_nodes: FxHashMap<usize, usize> = FxHashMap::default();
+    for (n1, ns2) in m1_to_m2_nodes {
+        for n2 in ns2 {
+            m2_to_m1_nodes.insert(n2 + shift, n1);
+        }
+    }
+    let new_coords = nd::concatenate![nd::Axis(0), reference.coords(), subject.coords()];
+    let mut new_mesh2 = UMesh::new(new_coords.into_shared());
+    for (&et, b) in subject.blocks() {
+        let mut new_block = b.clone();
+        let co = &mut new_block.connectivity;
+        co.shift_index(shift);
+        co.replace(&m2_to_m1_nodes);
+        new_mesh2.element_blocks.insert(et, new_block);
+    }
+    new_mesh2
+}
 
 /// Computes the geometric intersection (overlay) of two 2D meshes.
 ///
@@ -22,38 +45,37 @@ type M1M2Intersections = FxHashMap<M1SgId, Vec<(M2SgId, Intersections)>>;
 /// # Assumptions
 /// - Input meshes are valid (non-self-intersecting)
 /// - Coordinates are in the same plane
-pub fn intersect_meshes(mesh1: UMesh, mut mesh2: UMesh) -> UMesh {
-    snap(&mut mesh2, mesh1.view(), 1e-12);
+pub fn intersect_meshes(mesh1: UMesh, mesh2: UMesh) -> UMesh {
+    //NOTE: must be before the compute_intersections because mesh2 coords indexing is used.
+    let mesh2 = concat_merge_on_ref_coords(mesh2, mesh1.view());
 
     let m1_edges = mesh1.descend(Some(Dimension::D2), Some(Dimension::D1));
     let m2_edges = mesh2.descend(Some(Dimension::D2), Some(Dimension::D1));
 
-    //TODO: compute new stacked coords array with all coords from m1, then all coords except merged
-    //coords from m2. This should almost entirely rewrite m2. It gives a common coordinates array
-    //base. m1 does not really need to lye on this new array. m2 needs.
-
     let m2bvh = m2_edges.view().bvh2();
 
-    let intersections = compute_intersections(&m1_edges, &m2_edges, &m2bvh);
+    let (intersections, added_coords) = compute_intersections(&m1_edges, &m2_edges, &m2bvh);
 
-    let mut cutted_mesh = UMesh::new(m1_edges.coords);
+    // Concatenates m1 coords, m2 coords, new intersections coords
+    let new_coords = nd::concatenate![nd::Axis(0), mesh2.coords(), added_coords];
 
-    //TODO: this should be replaced with an owned version of the coords table (so I can add many
-    //coords to it).
-    let mut intersection_added_points = 0;
+    let mut cutted_mesh = UMesh::new(new_coords.into_shared());
 
     for cell in mesh1.elements() {
-        //TODO: there should be a short circuit if cell is not touched.
-        let reconstructed = cell.cut_with_intersections(
-            &intersections,
-            m2_edges.view(),
-            &mut intersection_added_points,
-        );
+        let reconstructed = cell.cut_with_intersections(&intersections, m2_edges.view());
 
-        // Whether the cell was modified or not, I should add it to the new mesh.
-        // TODO: add the family and fields of the old cell when creating the new elements.
-        for new_cell in reconstructed {
-            cutted_mesh.add_element(ElementType::PGON, &new_cell, Some(*cell.family), None);
+        // If the cell was cut, I add new polys from the cut
+        if let Some(polys) = reconstructed {
+            for new_cell in polys {
+                cutted_mesh.add_element(ElementType::PGON, &new_cell, Some(*cell.family), None);
+            }
+        } else {
+            cutted_mesh.add_element(
+                cell.element_type(),
+                cell.connectivity(),
+                Some(*cell.family),
+                cell.fields.clone(),
+            );
         }
     }
     cutted_mesh
@@ -64,8 +86,14 @@ pub fn intersect_meshes(mesh1: UMesh, mut mesh2: UMesh) -> UMesh {
 /// intersecting edges.
 /// The returned map can map back to segments from m1.
 // TODO: easy to write as a rayon parallelized closure.
-fn compute_intersections(m1_edges: &UMesh, m2_edges: &UMesh, m2bvh: &SpIdx2) -> M1M2Intersections {
+fn compute_intersections(
+    m1_edges: &UMesh,
+    m2_edges: &UMesh,
+    m2bvh: &SpIdx2,
+) -> (M1M2Intersections, nd::ArcArray2<f64>) {
     let mut intersections: M1M2Intersections = FxHashMap::default();
+    let mut new_coords = Vec::new();
+    let mut new_coord_id = m2_edges.coords().nrows();
 
     for edge in m1_edges.elements() {
         let [min, max] = edge.bounds2();
@@ -82,23 +110,37 @@ fn compute_intersections(m1_edges: &UMesh, m2_edges: &UMesh, m2bvh: &SpIdx2) -> 
                 ),
                 _ => todo!("Intersection with SEG3 is not yet implemented"),
             };
-            let m1sgid = SortedVecKey::new(edge.connectivity().into());
-            if let Some(v) = intersections.get_mut(&m1sgid) {
-                v.push((c, int));
-            } else {
-                intersections.insert(m1sgid, vec![(c, int)]);
+            match int {
+                Intersections::None => (),
+                Intersections::One(i) => {
+                    let m1sgid = cut::M1SgId(SortedVecKey::new(edge.connectivity().into()));
+                    let v = intersections.entry(m1sgid).or_default();
+                    match i {
+                        Intersection::Existing(PointId::P1) => {
+                            v.push((cut::M2SgId(c), cut::NodeId(edge.connectivity[0])));
+                        }
+                        Intersection::Existing(PointId::P2) => {
+                            v.push((cut::M2SgId(c), cut::NodeId(edge.connectivity[1])));
+                        }
+                        Intersection::Existing(PointId::P3) => {
+                            v.push((cut::M2SgId(c), cut::NodeId(edge2.connectivity[0])));
+                        }
+                        Intersection::Existing(PointId::P4) => {
+                            v.push((cut::M2SgId(c), cut::NodeId(edge2.connectivity[1])));
+                        }
+                        Intersection::New(coord) => {
+                            v.push((cut::M2SgId(c), cut::NodeId(new_coord_id)));
+                            new_coord_id += 1;
+                            new_coords.extend_from_slice(&coord);
+                        }
+                    }
+                }
+                Intersections::Two([i1, i2]) => todo!(),
+                Intersections::Segment([i1, i2]) => todo!(),
             }
         }
     }
-    intersections
-}
-
-/// Assembles reconstructed cells into a global mesh.
-///
-/// # Responsibilities
-/// - Merge identical vertices
-/// - Assign new IDs
-/// - Validate manifoldness
-fn assemble_mesh(_cells: Vec<Vec<VertexId>>) -> UMesh {
-    todo!("vertex unification, topology validation")
+    let nb_new_points = new_coords.len() / 2;
+    let new_coords = nd::Array2::from_shape_vec((nb_new_points, 2), new_coords).unwrap();
+    (intersections, new_coords.into_shared())
 }
