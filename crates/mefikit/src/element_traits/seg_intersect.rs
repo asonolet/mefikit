@@ -1,3 +1,4 @@
+use arrayvec::ArrayVec;
 use nalgebra::Point2;
 use nalgebra::{self as na, Vector2};
 
@@ -21,6 +22,17 @@ pub enum Intersections {
     One(Intersection),      // classic one intersection
     Two([Intersection; 2]), // Two intersections only possible with arc
     Segment([PointId; 2]),  // Shared arc/seg, between two existing points
+}
+
+impl Intersections {
+    pub fn len(&self) -> usize {
+        match self {
+            Self::None => 0,
+            Self::One(_) => 1,
+            Self::Two(_) => 2,
+            Self::Segment(_) => 2,
+        }
+    }
 }
 
 #[inline(always)]

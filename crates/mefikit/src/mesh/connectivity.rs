@@ -2,6 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use derive_where::derive_where;
 use ndarray as nd;
+use rustc_hash::FxHashMap;
 
 use crate::mesh::indirect_index::{IndirectIndex, IndirectIndexIter};
 // use rayon::prelude::*;
@@ -69,6 +70,47 @@ impl Connectivity {
                 let conn = std::mem::take(conn);
                 let mut conn = conn.into_owned();
                 conn.push_conn(connectivity);
+                let _ = std::mem::replace(self, Connectivity::Poly(conn.into_shared()));
+            }
+        }
+    }
+
+    pub fn shift_index(&mut self, shift: usize) {
+        match self {
+            Connectivity::Regular(conn) => {
+                let mut conn = std::mem::take(conn).into_owned();
+                conn += shift;
+                let _ = std::mem::replace(self, Connectivity::Regular(conn.into_shared()));
+            }
+            Connectivity::Poly(conn) => {
+                let conn = std::mem::take(conn);
+                let mut conn = conn.into_owned();
+                conn.data += shift;
+                let _ = std::mem::replace(self, Connectivity::Poly(conn.into_shared()));
+            }
+        }
+    }
+
+    pub fn replace(&mut self, old_to_new: &FxHashMap<usize, usize>) {
+        match self {
+            Connectivity::Regular(conn) => {
+                let mut conn = std::mem::take(conn).into_owned();
+                for n in &mut conn {
+                    if let Some(new_n) = old_to_new.get(n) {
+                        *n = *new_n;
+                    }
+                }
+                let _ = std::mem::replace(self, Connectivity::Regular(conn.into_shared()));
+            }
+            Connectivity::Poly(conn) => {
+                let conn = std::mem::take(conn);
+                let mut conn = conn.into_owned();
+                for n in &mut conn.data {
+                    if let Some(new_n) = old_to_new.get(n) {
+                        *n = *new_n;
+                    }
+                }
+
                 let _ = std::mem::replace(self, Connectivity::Poly(conn.into_shared()));
             }
         }
