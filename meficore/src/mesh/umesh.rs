@@ -480,7 +480,7 @@ impl UMesh {
         element_type: ElementType,
         connectivity: &[usize],
         family: Option<usize>,
-        fields: Option<BTreeMap<String, nd::ArrayViewD<f64>>>,
+        fields: Option<BTreeMap<&str, nd::ArrayViewD<f64>>>,
     ) -> ElementId {
         match element_type.regularity() {
             Regularity::Regular => {
