@@ -3,6 +3,7 @@ use crate::mesh::{ElementLike, IndirectIndexOwned, UMesh, UMeshView};
 use itertools::Itertools;
 use nalgebra as na;
 use rstar::{RTree, primitives::GeomWithData};
+use rustc_hash::FxHashMap;
 
 fn snap_dim_n<const T: usize>(subject: &mut UMesh, reference: UMeshView, eps: f64) {
     let ref_points: Vec<[f64; T]> = reference
@@ -47,6 +48,73 @@ fn snap_dim_n<const T: usize>(subject: &mut UMesh, reference: UMeshView, eps: f6
     }
 }
 
+fn duplicates_from_dim_n<const T: usize>(
+    subject: UMeshView,
+    reference: UMeshView,
+    eps: f64,
+) -> FxHashMap<usize, Vec<usize>> {
+    let mut res: FxHashMap<usize, Vec<usize>> = FxHashMap::default();
+    let ref_points: Vec<GeomWithData<[f64; T], usize>> = reference
+        .used_nodes()
+        .iter()
+        .map(|&i| {
+            GeomWithData::new(
+                reference
+                    .coords()
+                    .row(i)
+                    .to_slice()
+                    .unwrap()
+                    .try_into()
+                    .unwrap(),
+                i,
+            )
+        })
+        .collect();
+    let rtree = RTree::bulk_load(ref_points);
+    for node in subject.used_nodes() {
+        let coord: &[f64; T] = subject
+            .coords
+            .row(node)
+            .to_slice()
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let closest_points = rtree.locate_within_distance(*coord, f64::powi(eps, 2));
+        let (_, closest) = closest_points
+            .into_iter()
+            .fold((f64::INFINITY, None), |acc, &p| {
+                let (min_d2, closest_p) = acc;
+                let na_p = p.geom().clone().into();
+                let na_coord = (*coord).into();
+                let d2 = na::distance_squared(&na_p, &na_coord);
+                if d2 < min_d2 {
+                    (d2, Some(p))
+                } else {
+                    (min_d2, closest_p)
+                }
+            });
+        if let Some(c) = closest {
+            let close_nodes = res.entry(c.data).or_default();
+            close_nodes.push(node);
+        }
+    }
+    res
+}
+
+/// Find duplicates coords of subject mesh onto used nodes of reference.
+pub fn duplicates_from(
+    subject: UMeshView,
+    reference: UMeshView,
+    eps: f64,
+) -> FxHashMap<usize, Vec<usize>> {
+    match subject.coords().ncols() {
+        1 => duplicates_from_dim_n::<1>(subject, reference, eps),
+        2 => duplicates_from_dim_n::<2>(subject, reference, eps),
+        3 => duplicates_from_dim_n::<3>(subject, reference, eps),
+        _ => panic!("Could not snap the mesh because of its dimension."),
+    }
+}
+
 /// Snap coords of subject mesh onto used nodes of reference.
 ///
 /// Be careful, the method could produce degenerated elements if eps is not lower than half the
@@ -59,9 +127,6 @@ pub fn snap(subject: &mut UMesh, reference: UMeshView, eps: f64) {
         _ => panic!("Could not snap the mesh because of its dimension."),
     }
 }
-
-//TODO: replace Vec<Vec<usize>> with proper IndirectIndex type.
-// This would allow for cache friendly linear search of data.
 
 fn duplicates_dim_n<const T: usize>(mesh: UMeshView, eps: f64) -> IndirectIndexOwned<usize> {
     let used_nodes = mesh.used_nodes();
@@ -151,6 +216,6 @@ impl NodeDuplicates for UMesh {
     }
 
     fn snap_on(&mut self, other: UMeshView, eps: f64) {
-        snap(self, other, eps)
+        snap(self, other, eps);
     }
 }
