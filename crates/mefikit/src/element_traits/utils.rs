@@ -1,4 +1,5 @@
 //! Utility types for element operations.
+use std::ops::Index;
 
 use smallvec::SmallVec;
 
@@ -16,6 +17,14 @@ impl SortedVecKey {
     pub fn new(mut vec: SmallVec<[usize; 4]>) -> Self {
         vec.sort_unstable();
         SortedVecKey(vec)
+    }
+}
+
+impl Index<usize> for SortedVecKey {
+    type Output = usize;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
     }
 }
 
