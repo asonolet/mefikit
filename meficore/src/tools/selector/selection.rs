@@ -419,7 +419,7 @@ impl Select for CentroidSelection {
 
 pub trait MeshSelect {
     fn select_ids(&self, expr: Selection) -> ElementIds;
-    fn select(&self, expr: Selection) -> (ElementIds, Self);
+    fn select(&self, expr: Selection, with_fields: bool) -> (ElementIds, Self);
 }
 
 impl MeshSelect for UMesh {
@@ -431,9 +431,9 @@ impl MeshSelect for UMesh {
         );
         expr.select(&self.view(), index).into()
     }
-    fn select(&self, expr: Selection) -> (ElementIds, Self) {
+    fn select(&self, expr: Selection, with_fields: bool) -> (ElementIds, Self) {
         let eids = self.select_ids(expr);
-        let extracted = self.extract(&eids);
+        let extracted = self.extract(&eids, with_fields);
         (eids, extracted)
     }
 }
@@ -457,6 +457,7 @@ mod tests {
         let (_eids, mesh_sel) = mesh.select(
             (rect([-eps, -eps], [1. + eps, 1. + eps]) | ncircle([0.0, 0.0], 1.0, false))
                 & types(vec![QUAD4]),
+            false,
         );
         assert_eq!(mesh_sel.num_elements(), 1);
     }
@@ -471,7 +472,7 @@ mod tests {
         let two_surf = field("M") * arr(arr0(2.0));
         let threshold = arr(arr0(0.01));
         let expr = two_surf.gt(threshold);
-        let (eids, _) = mesh.select(Selection::FieldSelection(expr));
+        let eids = mesh.select_ids(Selection::FieldSelection(expr));
         assert_eq!(eids.len(), 62)
     }
 }

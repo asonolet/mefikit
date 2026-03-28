@@ -9,6 +9,7 @@ pub fn make_mesh_2d_quad() -> mf::UMesh {
     mesh.add_regular_block(
         mf::ElementType::QUAD4,
         nd::arr2(&[[0, 1, 3, 2]]).to_shared(),
+        None,
     );
     mesh
 }
@@ -19,6 +20,7 @@ pub fn make_mesh_3d_seg2() -> mf::UMesh {
     mesh.add_regular_block(
         mf::ElementType::SEG2,
         nd::arr2(&[[0, 1], [1, 2]]).to_shared(),
+        None,
     );
     mesh
 }
@@ -37,10 +39,12 @@ pub fn make_mesh_2d_multi() -> mf::UMesh {
     mesh.add_regular_block(
         mf::ElementType::SEG2,
         nd::arr2(&[[0, 1], [1, 3]]).to_shared(),
+        None,
     );
     mesh.add_regular_block(
         mf::ElementType::QUAD4,
         nd::arr2(&[[0, 1, 3, 2]]).to_shared(),
+        None,
     );
     mesh.add_element(mf::ElementType::PGON, &[0, 1, 4, 3, 2], None, None);
     mesh

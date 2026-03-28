@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Start: building partdescending_mesh");
     let (_, partdescending_mesh) =
-        descending_mesh.select(mf::sel::nsphere([0.5, 0.5, 0.5], 0.5, false));
+        descending_mesh.select(mf::sel::nsphere([0.5, 0.5, 0.5], 0.5, false), false);
     // mf::write(Path::new("partdescending_mesh.vtk"), partdescending_mesh.view())?;
     println!("End:   building partdescending_mesh");
 

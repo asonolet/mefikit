@@ -142,16 +142,21 @@ impl ElementBlock {
         cell_type: ElementType,
         connectivity: nd::ArcArray2<usize>,
         families: Option<nd::ArcArray1<usize>>,
+        fields: Option<BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>>>,
     ) -> Self {
         let conn_len = connectivity.nrows();
         let families = match families {
             Some(fams) => Some(fams),
             None => Some(nd::ArcArray1::from(vec![0; conn_len])),
         };
+        let fields = match fields {
+            Some(fds) => fds,
+            None => BTreeMap::new(),
+        };
         Self {
             cell_type,
             connectivity: Connectivity::Regular(connectivity),
-            fields: BTreeMap::new(),
+            fields,
             families: families.unwrap(),
             groups: BTreeMap::new(),
         }

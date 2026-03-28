@@ -106,9 +106,20 @@ impl PyUMesh {
     }
 
     /// Add a regular block of elements to the mesh.
-    fn add_regular_block(&mut self, et: &str, block: np::PyReadonlyArray2<'_, usize>) {
+    #[pyo3(signature = (et, block, fields=None))]
+    fn add_regular_block(
+        &mut self,
+        et: &str,
+        block: np::PyReadonlyArray2<'_, usize>,
+        fields: Option<BTreeMap<String, np::PyReadonlyArray<'_, f64, nd::IxDyn>>>,
+    ) {
+        let fields = fields.map(|f| {
+            f.iter()
+                .map(|(n, f)| (n.to_owned(), f.as_array().to_shared()))
+                .collect()
+        });
         self.inner
-            .add_regular_block(str_to_etype(et), block.as_array().to_shared());
+            .add_regular_block(str_to_etype(et), block.as_array().to_shared(), fields);
     }
 
     #[staticmethod]
@@ -163,11 +174,16 @@ impl PyUMesh {
             .map(|m| m.into())
     }
 
-    #[pyo3(signature = (src_dim=None, link_dim=None))]
-    fn connected_components(&self, src_dim: Option<usize>, link_dim: Option<usize>) -> Vec<Self> {
+    #[pyo3(signature = (src_dim=None, link_dim=None, with_fields=true))]
+    fn connected_components(
+        &self,
+        src_dim: Option<usize>,
+        link_dim: Option<usize>,
+        with_fields: bool,
+    ) -> Vec<Self> {
         let src_dim = src_dim.map(|i| i.try_into().unwrap());
         let link_dim = link_dim.map(|i| i.try_into().unwrap());
-        mf::compute_connected_components(&self.inner, src_dim, link_dim)
+        mf::compute_connected_components(&self.inner, src_dim, link_dim, with_fields)
             .into_iter()
             .map(|m| m.into())
             .collect()
@@ -219,8 +235,9 @@ impl PyUMesh {
         Ok(new_mesh.into())
     }
 
-    fn select(&self, expr: PySelection) -> Self {
-        let (_, submesh) = self.inner.select(expr.into());
+    #[pyo3(signature = (expr, with_fields=true))]
+    fn select(&self, expr: PySelection, with_fields: bool) -> Self {
+        let (_, submesh) = self.inner.select(expr.into(), with_fields);
         submesh.into()
     }
 

@@ -9,18 +9,19 @@ pub fn compute_connected_components(
     mesh: &UMesh,
     src_dim: Option<Dimension>,
     link_dim: Option<Dimension>,
+    with_fields: bool,
 ) -> Vec<UMesh> {
     let graph = compute_neighbours_graph(mesh, src_dim, link_dim);
     let compos = kosaraju_scc(&graph);
     #[cfg(feature = "rayon")]
     let res = compos
         .into_par_iter()
-        .map(|compo| mesh.extract(&compo.into_iter().collect()))
+        .map(|compo| mesh.extract(&compo.into_iter().collect(), with_fields))
         .collect();
     #[cfg(not(feature = "rayon"))]
     let res = compos
         .into_iter()
-        .map(|compo| mesh.extract(&compo.into_iter().collect()))
+        .map(|compo| mesh.extract(&compo.into_iter().collect(), with_fields))
         .collect();
     res
 }
@@ -38,10 +39,10 @@ mod tests {
         let sphere1 = sel::sphere([0.35, 0.5, 0.5], 0.2);
         let sphere2 = sel::sphere([0.65, 0.5, 0.5], 0.2);
         let sphere3 = sel::sphere([0.5, 0.2, 0.2], 0.15);
-        let (_, spheres) = mesh.select(sphere1 | sphere2 | sphere3);
+        let (_, spheres) = mesh.select(sphere1 | sphere2 | sphere3, false);
         let bounds = spheres.boundaries(None, None);
         let cracked = mf::crack(mesh, bounds.view());
-        let components = compute_connected_components(&cracked, None, None);
+        let components = compute_connected_components(&cracked, None, None, false);
         assert_eq!(components.len(), 3);
     }
 }

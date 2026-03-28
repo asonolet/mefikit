@@ -83,14 +83,17 @@ pub fn extrude(mesh: UMeshView, along: &[f64]) -> UMesh {
             VERTEX => extruded_mesh.add_regular_block(
                 SEG2,
                 extrude_dup_connectivity(mesh.view(), et, along.len() - 1).into_shared(),
+                None,
             ),
             SEG2 => extruded_mesh.add_regular_block(
                 QUAD4,
                 extrude_inv_connectivity(mesh.view(), et, along.len() - 1).into_shared(),
+                None,
             ),
             QUAD4 => extruded_mesh.add_regular_block(
                 HEX8,
                 extrude_dup_connectivity(mesh.view(), et, along.len() - 1).into_shared(),
+                None,
             ),
             _ => todo!("Extrusion of {et:?} is not implemented yet"),
         };

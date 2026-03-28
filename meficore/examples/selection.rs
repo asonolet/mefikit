@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Selecting in sphere.");
     let now = time::Instant::now();
     for _ in 0..10 {
-        let _ = mesh.select(mf::sel::sphere([0.5, 0.5, 0.5], 0.5));
+        let _ = mesh.select(mf::sel::sphere([0.5, 0.5, 0.5], 0.5), false);
     }
     let t_tot = now.elapsed().as_secs_f64() * 100.0;
 

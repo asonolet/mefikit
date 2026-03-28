@@ -14,7 +14,7 @@ fn selection_sphere(c: &mut Criterion) {
             .build();
         group.bench_with_input(BenchmarkId::new("mesh_size", i * i * i), &i, |b, _| {
             b.iter(|| {
-                std::hint::black_box(mesh.select(mf::sel::sphere([0.5, 0.5, 0.5], 0.25)));
+                std::hint::black_box(mesh.select(mf::sel::sphere([0.5, 0.5, 0.5], 0.25), false));
             })
         });
     }

@@ -403,7 +403,8 @@ impl<'a> UMeshView<'a> {
         let mut umesh = UMesh::new(self.coords.to_shared());
         for (&et, eb) in &self.element_blocks {
             match &eb.connectivity {
-                ConnectivityBase::Regular(r) => umesh.add_regular_block(et, r.to_shared()),
+                // TODO: pass fields and families
+                ConnectivityBase::Regular(r) => umesh.add_regular_block(et, r.to_shared(), None),
                 ConnectivityBase::Poly(conn) => {
                     umesh.add_poly_block(et, conn.data.to_shared(), conn.offsets.to_shared())
                 }
@@ -443,8 +444,18 @@ impl UMesh {
         }
     }
 
-    pub fn add_regular_block(&mut self, et: ElementType, block: nd::ArcArray2<usize>) {
-        let block = ElementBlock::new_regular(et, block, None);
+    /// Add a full regular block to the mesh (inplace)
+    ///
+    /// If the et given already has a block, this block is replaced with the new one.
+    /// This method has a low level API to manage a mesh content blockwise.
+    pub fn add_regular_block(
+        &mut self,
+        et: ElementType,
+        connectivity: nd::ArcArray2<usize>,
+        fields: Option<BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>>>,
+    ) {
+        // TODO: optionnaly add families and fields
+        let block = ElementBlock::new_regular(et, connectivity, None, fields);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -482,6 +493,7 @@ impl UMesh {
                     ElementBlock::new_regular(
                         element_type,
                         nd::ArcArray2::zeros((0, element_type.num_nodes().unwrap())),
+                        None,
                         None,
                     )
                 });
@@ -538,8 +550,9 @@ impl UMesh {
     /// specified by the IDs.
     /// This method is low level and error prone in the case where `ElementsIds` are not directly
     /// issued from a Selector. Please use Selector API if possible.
-    pub fn extract(&self, ids: &ElementIds) -> UMesh {
+    pub fn extract(&self, ids: &ElementIds, with_fields: bool) -> UMesh {
         let mut extracted = UMesh::new(self.coords.clone());
+        // TODO: conditionnaly extract fields
         for (t, block) in ids.iter_blocks() {
             if !self.element_blocks.contains_key(t) {
                 continue;
@@ -547,9 +560,26 @@ impl UMesh {
             match &self.element_blocks[t] {
                 ElementBlockBase {
                     connectivity: ConnectivityBase::Regular(arr),
+                    fields: fields,
                     ..
-                } => extracted
-                    .add_regular_block(*t, arr.select(nd::Axis(0), block.as_slice()).into_shared()),
+                } => extracted.add_regular_block(
+                    *t,
+                    arr.select(nd::Axis(0), block.as_slice()).into_shared(),
+                    match with_fields {
+                        true => Some(
+                            fields
+                                .iter()
+                                .map(|(n, f)| {
+                                    (
+                                        n.clone(),
+                                        f.select(nd::Axis(0), block.as_slice()).into_shared(),
+                                    )
+                                })
+                                .collect(),
+                        ),
+                        false => None,
+                    },
+                ),
                 _ => todo!(),
             };
         }
