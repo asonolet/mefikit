@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+
 import numpy as np
 
 from mefikit import UMesh
@@ -135,12 +139,19 @@ def to_mc(umesh: UMesh, lev=None):
 UMesh.to_mc = to_mc
 
 
-def to_pyvista(umesh: UMesh, dim: str | int | None = None):
+def to_pyvista(
+    umesh: UMesh, dim: str | int | None = None, with_fields: Sequence[str] | bool = True
+):
     import pyvista as pv
 
     blocks = umesh.blocks()
     coords = umesh.coords()
-    fields = umesh.fields()
+    if not with_fields:
+        fields = {}
+    else:
+        fields = umesh.fields()
+        if not isinstance(with_fields, bool):
+            fields = {n: f for n, f in fields.items() if n in with_fields}
 
     mf_types_to_pv = {
         "VERTEX": pv.CellType.VERTEX,
