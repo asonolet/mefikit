@@ -135,16 +135,12 @@ def to_mc(umesh: UMesh, lev=None):
 UMesh.to_mc = to_mc
 
 
-def to_pyvista(umesh: UMesh):
+def to_pyvista(umesh: UMesh, dim: str | int | None = None):
     import pyvista as pv
 
     blocks = umesh.blocks()
     coords = umesh.coords()
-    # fields = umesh.fields()
-
-    pv_conn = np.array([], dtype=int)
-    pv_et_types = np.array([], dtype=int)
-    # pv_fields_dict = {f: np.array([], dtype=int) for f in fields.keys()}
+    fields = umesh.fields()
 
     mf_types_to_pv = {
         "VERTEX": pv.CellType.VERTEX,
@@ -160,6 +156,9 @@ def to_pyvista(umesh: UMesh):
         "HEX20": pv.CellType.QUADRATIC_HEXAHEDRON,
     }
 
+    if dim is None:
+        dim = max(mf_types_dim[et] for et in blocks)
+
     def _mf_reg_to_pv_connectivity(et: str, conn: np.ndarray):
         num_nodes = conn.shape[1]
         n_elem = conn.shape[0]
@@ -170,16 +169,23 @@ def to_pyvista(umesh: UMesh):
         elems_type = np.array([mf_types_to_pv[et]] * n_elem)
         return new_connectivity, elems_type
 
+    conns = []
+    et_typess = []
+    fields_dict = {f: [] for f in fields}
     for et in type_order:
-        if et not in blocks:
+        if et not in blocks or (dim != "all" and mf_types_dim[et] != dim):
             continue
 
         conn, et_types = _mf_reg_to_pv_connectivity(et, blocks[et])
-        pv_conn = np.hstack((pv_conn, conn), dtype=int)
-        pv_et_types = np.hstack((pv_et_types, et_types), dtype=int)
-        # pv_fields_dict = {
-        #     f: np.hstack((pv_fields_dict[f], fields[f][et])) for f in fields.keys()
-        # }
+        conns.append(conn)
+        et_typess.append(et_types)
+        for f, v in fields.items():
+            fields_dict[f].append(v[et])
+
+    pv_conn = np.hstack(conns, dtype=int)
+    pv_et_types = np.hstack(et_typess, dtype=int)
+
+    pv_fields_dict = {f: np.hstack(fields_dict[f], dtype=float) for f in fields}
 
     if coords.shape[1] == 1:
         pv_coords = np.hstack((coords, np.zeros((coords.shape[0], 2))))
@@ -189,6 +195,8 @@ def to_pyvista(umesh: UMesh):
         pv_coords = coords
 
     res = pv.UnstructuredGrid(pv_conn, pv_et_types, pv_coords)
+    for f, v in pv_fields_dict.items():
+        res.cell_data[f] = v
     return res
 
 

@@ -4,14 +4,21 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use mefikit::{prelude as mf, tools::Descendable, tools::MeshSelect, tools::NodeDuplicates};
+use mefikit::{
+    prelude as mf,
+    tools::{
+        Descendable, Measurable, MeshSelect, NodeDuplicates,
+        fieldexpr::{MeshEvalUpdatable, MeshEvaluable},
+    },
+};
 
 use std::path::Path;
 
 use numpy as np;
+use numpy::ndarray as nd;
 
 use super::element::{etype_to_str, str_to_etype};
-use crate::select::PySelection;
+use crate::{pyfield::PyField, select::PySelection};
 
 #[pyclass(str)]
 #[pyo3(name = "UMesh")]
@@ -63,6 +70,29 @@ impl PyUMesh {
                     ),
                 };
                 (et, conn)
+            })
+            .collect()
+    }
+
+    fn fields<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> BTreeMap<String, BTreeMap<String, Bound<'py, np::PyArray<f64, nd::IxDyn>>>> {
+        self.inner
+            .fields()
+            .map(|(field_name, field)| {
+                (
+                    field_name,
+                    field
+                        .0
+                        .iter()
+                        .map(|(&et, block)| {
+                            let et = etype_to_str(et);
+                            let arr = np::PyArray::from_array(py, block);
+                            (et, arr)
+                        })
+                        .collect(),
+                )
             })
             .collect()
     }
@@ -150,6 +180,10 @@ impl PyUMesh {
             .collect()
     }
 
+    fn measure_update(&mut self) {
+        self.inner.measure_update("Measure", None);
+    }
+
     // Returns a copy owned by python of the array coordinates
     // fn fields<'py>(&self, py: Python<'py>) -> BTreeMap<String, np::PyField<f64>> {
     //     self.inner
@@ -188,6 +222,22 @@ impl PyUMesh {
     fn select(&self, expr: PySelection) -> Self {
         let (_, submesh) = self.inner.select(expr.into());
         submesh.into()
+    }
+
+    fn eval<'py>(
+        &self,
+        py: Python<'py>,
+        expr: PyField,
+    ) -> BTreeMap<String, Bound<'py, np::PyArray<f64, nd::IxDyn>>> {
+        // TODO: manage level
+        let f = self.inner.eval_field(None, expr.into());
+        f.0.into_iter()
+            .map(|(et, v)| (etype_to_str(et), np::PyArray::from_owned_array(py, v)))
+            .collect()
+    }
+
+    fn eval_update(&mut self, name: &str, expr: PyField) {
+        self.inner.eval_update_field(name, None, expr.into());
     }
 }
 
