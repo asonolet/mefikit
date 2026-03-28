@@ -62,7 +62,7 @@ impl NodeSelection {
             Self::any_in(f, view, sel)
         }
     }
-    pub fn in_sphere<'a>(
+    pub fn in_sphere(
         all: bool,
         p0: &[f64; 3],
         r: f64,
@@ -84,7 +84,7 @@ impl NodeSelection {
         )
     }
 
-    pub fn in_bbox<'a>(
+    pub fn in_bbox(
         all: bool,
         p0: &[f64; 3],
         p1: &[f64; 3],
@@ -105,7 +105,7 @@ impl NodeSelection {
             sel,
         )
     }
-    pub fn in_circle<'a>(
+    pub fn in_circle(
         all: bool,
         p0: &[f64; 2],
         r: f64,
@@ -127,7 +127,7 @@ impl NodeSelection {
         )
     }
 
-    pub fn in_rectangle<'a>(
+    pub fn in_rectangle(
         all: bool,
         p0: &[f64; 2],
         p1: &[f64; 2],
@@ -148,7 +148,7 @@ impl NodeSelection {
             sel,
         )
     }
-    fn any_id_in<'a>(nodes_ids: &[usize], view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
+    fn any_id_in(nodes_ids: &[usize], view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
         if nodes_ids.len() < 50 {
             sel.into_iter()
                 .filter(|&e_id| {
@@ -172,7 +172,7 @@ impl NodeSelection {
         }
     }
 
-    fn all_id_in<'a>(nodes_ids: &[usize], view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
+    fn all_id_in(nodes_ids: &[usize], view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
         let nodes_ids: FxHashSet<usize> = nodes_ids.iter().cloned().collect();
 
         sel.into_iter()
@@ -185,7 +185,7 @@ impl NodeSelection {
             .collect()
     }
 
-    pub fn id_in<'a>(
+    pub fn id_in(
         all: bool,
         nodes_ids: &[usize],
         view: &UMeshView,

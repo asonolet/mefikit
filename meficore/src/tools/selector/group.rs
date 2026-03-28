@@ -9,30 +9,22 @@ pub enum GroupSelection {
 }
 
 impl GroupSelection {
-    pub fn include_group<'a>(group: &str, view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
+    pub fn include_group(group: &str, view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
         sel.into_iter()
             .filter(|&eid| view.element(eid).in_group(group))
             .collect()
     }
-    pub fn exclude_group<'a>(group: &str, view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
+    pub fn exclude_group(group: &str, view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
         sel.into_iter()
             .filter(|&eid| !view.element(eid).in_group(group))
             .collect()
     }
-    pub fn include_family<'a>(
-        family: usize,
-        view: &UMeshView,
-        sel: ElementIdsSet,
-    ) -> ElementIdsSet {
+    pub fn include_family(family: usize, view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
         sel.into_iter()
             .filter(|&eid| *view.element(eid).family == family)
             .collect()
     }
-    pub fn exclude_family<'a>(
-        family: usize,
-        view: &UMeshView,
-        sel: ElementIdsSet,
-    ) -> ElementIdsSet {
+    pub fn exclude_family(family: usize, view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
         sel.into_iter()
             .filter(|&eid| *view.element(eid).family != family)
             .collect()

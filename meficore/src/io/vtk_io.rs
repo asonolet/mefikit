@@ -109,9 +109,9 @@ fn extract_connectivity(connectivity: &[u64], offsets: &[u64], i: usize) -> Vec<
     let lower_bound = if i > 0 { offsets[i - 1] as usize } else { 0 };
     let higher_bound = offsets[i] as usize;
     let mut cell_connectivity = Vec::with_capacity(higher_bound - lower_bound);
-    for k in lower_bound..higher_bound {
+    (lower_bound..higher_bound).for_each(|k| {
         cell_connectivity.push(connectivity[k] as usize);
-    }
+    });
     cell_connectivity
 }
 
