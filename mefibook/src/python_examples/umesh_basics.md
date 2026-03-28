@@ -23,7 +23,7 @@ volumes
 
 
 
-    <UMesh at 0x736e340af750>
+    <UMesh at 0x78999013b6f0>
 
 
 
@@ -123,7 +123,7 @@ mesh.add_regular_block("QUAD4", np.array([[3, 4, 9, 8]], dtype=np.uint))
 
 
 ```python
-mesh.to_pyvista().plot(cpos="xy", show_edges=True)
+mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 ```
 
 
@@ -141,7 +141,7 @@ extruded = mesh.extrude(range(3))
 
 
 ```python
-extruded.to_pyvista().plot(show_edges=True)
+extruded.to_pyvista(dim="all").plot(show_edges=True)
 ```
 
 
@@ -174,19 +174,14 @@ mes
 
 
 ```python
-pvm2 = mesh2.to_pyvista()
+mesh2.measure_update()
 ```
 
 
 ```python
-pvm2.cell_data["QUAD_surf"] = mes["QUAD4"]
-```
-
-
-```python
-pvm2.plot(cpos="xy", show_edges=True)
+mesh2.to_pyvista().plot()
 ```
 
 
 
-![png](umesh_basics_files/umesh_basics_19_0.png)
+![png](umesh_basics_files/umesh_basics_18_0.png)

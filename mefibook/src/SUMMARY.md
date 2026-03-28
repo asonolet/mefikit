@@ -9,4 +9,5 @@
   - [Topological tools](./python_examples/topological_tools.md)
   - [Geometric tools](./python_examples/geometric_tools.md)
   - [Selection](./python_examples/selection.md)
+  - [Fields](./python_examples/fields.md)
   - [Bubbles](./python_examples/example_bubbles.md)
