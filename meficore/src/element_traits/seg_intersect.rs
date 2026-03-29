@@ -1,4 +1,3 @@
-use arrayvec::ArrayVec;
 use nalgebra::Point2;
 use nalgebra::{self as na, Vector2};
 
