@@ -46,8 +46,10 @@ struct Dart {
 type SortedSegIntersections = FxHashMap<SortedVecKey, Vec<(SortedVecKey, NodeId)>>;
 
 /// Build edge to sorted intersections map.
-/// The key of the map is independent from mesh1/mesh2 distinction.
-/// Hence the rest of the algorithm is independent from it.
+/// Sort order is taken from the SortedVecKey order (from node with lower id to node with higer
+/// id).
+/// The SortedVecKey of the map is independent from mesh1/mesh2 distinction as NodeIds are common
+/// between the two meshes.
 fn edge_to_intersections<'a, E: ElementLike<'a>>(
     intersections: &M1M2Intersections,
 ) -> SortedSegIntersections {
@@ -85,66 +87,80 @@ fn build_local_node_planar_graph<'a, E: ElementLike<'a>>(
                 .as_slice()
                 .into(),
         );
-        let seg_int = &intersections[&e1];
-        let mut i = 0;
         // A chaque intersection je construis tous les darts
-        while i < seg_int.len() {
-            let mut darts = vec![];
-            let int_node = seg_int[i].1;
-            if i > 0 {
-                // J'ajoute en darts le lien vers le noeud précédent sur le segment que je parcours
-                let bfore = Dart {
-                    angle: 0.0,
-                    end: seg_int[i - 1].1,
-                    edge: e1.clone(),
-                    m: MeshId::M1,
-                };
-                darts.push(bfore);
-            }
-            // J'ajoute successivement les liens version les autres segments
-            while seg_int[i].1 == int_node {
-                let s = &seg_int[i].0;
-                let seg_s = &intersections[&s];
-                // TODO: Attention, ici c'est le cas d'une intersection pure, pas d'un noeud tangent donc
-                // fusionné !
-                let k = seg_s
-                    .iter()
-                    .find_position(|int| int.1 == int_node)
-                    .unwrap()
-                    .0;
-                darts.push(Dart {
-                    angle: 0.0,
-                    end: seg_s[k - 1].1,
-                    edge: s.clone(),
-                    m: MeshId::M2,
-                });
-                darts.push(Dart {
-                    angle: 0.0,
-                    end: seg_s[k + 1].1,
-                    edge: s.clone(),
-                    m: MeshId::M2,
-                });
-                i += 1;
-            }
-            // J'ajout le lien avec le noeud suivant
-            if i < seg_int.len() {
-                darts.push(Dart {
-                    angle: 0.0,
-                    end: seg_int[i].1,
-                    edge: e1.clone(),
-                    m: MeshId::M1,
-                });
-            }
-
-            let pgn = PGNode { darts };
-            pgl.insert(int_node, pgn);
-        }
+        add_seg_to_pgl(intersections, &mut pgl, e1);
     }
     // Identifier les noeuds qui sont à l'intérieur du PGON
     // Créer les PGNodes associées à ces noeuds :
     // - je regarde la connectivité nodale n2n
     // - j'en déduis un segment, et donc un id, donc je remonte aux intersections triées
     PlanarGraphNode { nodes: pgl }
+}
+
+fn add_seg_to_pgl(
+    intersections: &SortedSegIntersections,
+    pgl: &mut std::collections::HashMap<NodeId, PGNode, rustc_hash::FxBuildHasher>,
+    e1: SortedVecKey,
+) {
+    let seg_int = &intersections[&e1];
+    let mut i = 0;
+    while i < seg_int.len() {
+        let mut darts = vec![];
+        let int_node = seg_int[i].1;
+        if i > 0 {
+            // J'ajoute en darts le lien vers le noeud précédent sur le segment que je parcours
+            let bfore = Dart {
+                angle: 0.0,
+                end: seg_int[i - 1].1,
+                edge: e1.clone(),
+                m: MeshId::M1,
+            };
+            darts.push(bfore);
+        }
+        // J'ajoute successivement les liens version les autres segments
+        while seg_int[i].1 == int_node {
+            let s = &seg_int[i].0;
+            let seg_s = &intersections[s];
+            let k = seg_s
+                .iter()
+                .find_position(|int| int.1 == int_node)
+                .unwrap()
+                .0;
+            // Le noeud d'interesction est potentiellement au début du segment, auquel cas il n'y a
+            // qu'un seul Dart
+            if k > 0 {
+                darts.push(Dart {
+                    angle: 0.0,
+                    end: seg_s[k - 1].1,
+                    edge: s.clone(),
+                    m: MeshId::M2,
+                });
+            }
+            // Le noeud d'interesction est potentiellement à la fin du segment, auquel cas il n'y a
+            // qu'un seul Dart
+            if k < seg_s.len() - 1 {
+                darts.push(Dart {
+                    angle: 0.0,
+                    end: seg_s[k + 1].1,
+                    edge: s.clone(),
+                    m: MeshId::M2,
+                });
+            }
+            i += 1;
+        }
+        // J'ajout le lien avec le noeud suivant
+        if i < seg_int.len() {
+            darts.push(Dart {
+                angle: 0.0,
+                end: seg_int[i].1,
+                edge: e1.clone(),
+                m: MeshId::M1,
+            });
+        }
+
+        let pgn = PGNode { darts };
+        pgl.insert(int_node, pgn);
+    }
 }
 
 /// Extracts closed CCW faces from a local planar graph.
