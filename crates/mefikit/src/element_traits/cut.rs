@@ -1,4 +1,6 @@
 use itertools::Itertools;
+use nalgebra::Point2;
+use nalgebra::Vector2;
 use ndarray as nd;
 
 use rustc_hash::FxHashMap;
@@ -50,10 +52,35 @@ type SortedSegIntersections = FxHashMap<SortedVecKey, Vec<(SortedVecKey, NodeId)
 /// id).
 /// The SortedVecKey of the map is independent from mesh1/mesh2 distinction as NodeIds are common
 /// between the two meshes.
-fn edge_to_intersections<'a, E: ElementLike<'a>>(
+fn to_sorted_intersections(
     intersections: &M1M2Intersections,
+    mesh2: UMeshView,
 ) -> SortedSegIntersections {
-    todo!()
+    let coords = mesh2.coords();
+    let mut sorted_intersections: SortedSegIntersections = FxHashMap::default();
+    for (seg1_id, seg2_ints) in intersections {
+        let p1: Point2<f64> = Point2::from_slice(coords.row(seg1_id.0[0]).as_slice().unwrap());
+        let p2: Point2<f64> = Point2::from_slice(coords.row(seg1_id.0[1]).as_slice().unwrap());
+        let oriented_vec: Vector2<f64> = p2 - p1;
+        let mut sorted_ints: Vec<(SortedVecKey, NodeId)> = seg2_ints
+            .iter()
+            .map(|(seg2_id, node_id)| {
+                (
+                    SortedVecKey::new(mesh2.element(seg2_id.0).connectivity().into()),
+                    *node_id,
+                )
+            })
+            .collect();
+        sorted_ints.sort_by(|a, b| {
+            let va: Vector2<f64> = Point2::from_slice(coords.row(a.1.0).as_slice().unwrap()) - p1;
+            let vb: Vector2<f64> = Point2::from_slice(coords.row(b.1.0).as_slice().unwrap()) - p1;
+            let da = oriented_vec.dot(&va);
+            let db = oriented_vec.dot(&vb);
+            da.total_cmp(&db)
+        });
+        sorted_intersections.insert(seg1_id.0.clone(), sorted_ints);
+    }
+    sorted_intersections
 }
 
 /// Builds a local node planar graph for a cell.
@@ -119,6 +146,7 @@ fn add_seg_to_pgl(
         }
         // J'ajoute successivement les liens version les autres segments
         while seg_int[i].1 == int_node {
+            // TODO: n'ajouter ici que les darts qui partent vers l'intérieur du polygon.
             let s = &seg_int[i].0;
             let seg_s = &intersections[s];
             let k = seg_s
