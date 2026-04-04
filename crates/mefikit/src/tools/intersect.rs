@@ -60,8 +60,14 @@ pub fn intersect_meshes(mesh1: UMesh, mesh2: UMesh) -> UMesh {
     let mut cutted_mesh = UMesh::new(new_coords.into_shared());
 
     for cell in mesh1.elements() {
-        let reconstructed =
-            cell.cut_with_intersections(&intersections, m2_edges.view(), cutted_mesh.coords());
+        let [bmin, bmax] = cell.bounds2();
+        let candidates = m2bvh.in_bounds(bmin, bmax);
+        let reconstructed = cell.cut_with_intersections(
+            &intersections,
+            m2_edges.view(),
+            cutted_mesh.coords(),
+            &candidates,
+        );
 
         // If the cell was cut, I add new polys from the cut
         if let Some(polys) = reconstructed {
