@@ -7,6 +7,7 @@ use rustc_hash::FxHashMap;
 
 use crate::element_traits::SortedVecKey;
 use crate::mesh::ElementId;
+use crate::mesh::ElementIds;
 use crate::mesh::ElementLike;
 use crate::mesh::IndirectIndexOwned;
 use crate::mesh::UMeshView;
@@ -55,8 +56,9 @@ type SortedSegIntersections = FxHashMap<SortedVecKey, Vec<(SortedVecKey, NodeId)
 fn to_sorted_intersections(
     intersections: &M1M2Intersections,
     mesh2: UMeshView,
+    global_coords: nd::ArrayView2<'_, f64>,
 ) -> SortedSegIntersections {
-    let coords = mesh2.coords();
+    let coords = global_coords;
     let mut sorted_intersections: SortedSegIntersections = FxHashMap::default();
     for (seg1_id, seg2_ints) in intersections {
         let p1: Point2<f64> = Point2::from_slice(coords.row(seg1_id.0[0]).as_slice().unwrap());
@@ -100,6 +102,7 @@ fn build_local_node_planar_graph<'a, E: ElementLike<'a>>(
     cell: &E,
     mesh2: UMeshView,
     intersections: &SortedSegIntersections,
+    m2_seg_candidates: &ElementIds,
 ) -> PlanarGraphNode {
     let mut pgl: FxHashMap<NodeId, PGNode> = FxHashMap::default();
     let conn_cell = cell.connectivity();
@@ -229,6 +232,7 @@ pub trait Cutable {
         intersections: &M1M2Intersections,
         m2_edges: UMeshView,
         coords: nd::ArrayView2<'_, f64>,
+        m2_candidates: &ElementIds,
     ) -> Option<IndirectIndexOwned<usize>>;
 }
 
@@ -239,7 +243,9 @@ impl<'a, T: ElementLike<'a>> Cutable for T {
         intersections: &M1M2Intersections,
         m2_edges: UMeshView,
         coords: nd::ArrayView2<'_, f64>,
+        m2_candidates: &ElementIds,
     ) -> Option<IndirectIndexOwned<usize>> {
-        todo!()
+        let seg_intersections = to_sorted_intersections(intersections, m2_edges, coords);
+        todo!("build local node planar graph, extract faces, assemble mesh")
     }
 }
