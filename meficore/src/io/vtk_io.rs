@@ -134,7 +134,7 @@ pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
     let cell_type = piece.cells.types;
 
     // TODO: for efficiency I could preallocate the connectivities vectors
-    for i in 0..cell_type.len() {
+    for (i, _) in cell_type.iter().enumerate() {
         let cell_connectivity =
             extract_connectivity(connectivity.as_slice(), offsets.as_slice(), i);
         mesh.add_element(

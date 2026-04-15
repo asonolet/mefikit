@@ -7,12 +7,16 @@ use rstar::primitives::{GeomWithData, Line};
 /// A wrapper struct representing a geometric line segment with associated element ID data.
 ///
 /// The segment is defined by a `Line<[f64; 2]>` geometry and an `ElementId` for identification.
+#[allow(unused)]
 struct Segment(GeomWithData<Line<[f64; 2]>, ElementId>);
 
 impl Segment {
+    #[allow(unused)]
     pub fn new(p1: [f64; 2], p2: [f64; 2], eid: ElementId) -> Self {
         Self(GeomWithData::new(Line { from: p1, to: p2 }, eid))
     }
+
+    #[allow(unused)]
     fn from(el: &Element) -> Self {
         let p1: [f64; 2] = *el.coord2_ref(0);
         let p2: [f64; 2] = *el.coord2_ref(1);
@@ -20,9 +24,11 @@ impl Segment {
     }
 }
 
+#[allow(unused)]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 struct DirectedEdge(usize, usize);
 
+#[allow(unused)]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 struct UndirectedEdge(usize, usize);
 
@@ -44,6 +50,7 @@ impl From<DirectedEdge> for UndirectedEdge {
 //     }
 // }
 
+#[allow(unused)]
 fn point_on_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2], eps: f64) -> bool {
     let cross = ((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])).abs();
     if cross > eps {
@@ -64,6 +71,7 @@ fn point_on_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2], eps: f64) -> bool {
 /// SEG3).
 ///
 /// The implementation should be completly symmetric for it to be correct.
+#[allow(unused)]
 fn intersect_1d_elems(
     e1: &Element,
     e2: &Element,

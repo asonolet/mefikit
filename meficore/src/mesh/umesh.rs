@@ -560,7 +560,7 @@ impl UMesh {
             match &self.element_blocks[t] {
                 ElementBlockBase {
                     connectivity: ConnectivityBase::Regular(arr),
-                    fields: fields,
+                    fields,
                     ..
                 } => extracted.add_regular_block(
                     *t,

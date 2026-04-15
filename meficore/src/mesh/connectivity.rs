@@ -211,7 +211,7 @@ mod tests {
         let conn = arr2(&[[0, 1], [1, 2], [2, 3]]);
         let connectivity = Connectivity::new_regular(conn.into_shared());
         let result = std::panic::catch_unwind(|| {
-            &connectivity[3];
+            let _ = &connectivity[3];
         });
         assert!(result.is_err());
     }

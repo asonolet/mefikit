@@ -67,6 +67,7 @@ impl ElementIds {
         })
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn into_iter(self) -> impl Iterator<Item = ElementId> {
         self.0.into_iter().flat_map(|(et, indices)| {
             indices

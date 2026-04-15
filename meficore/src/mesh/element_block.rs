@@ -149,10 +149,9 @@ impl ElementBlock {
             Some(fams) => Some(fams),
             None => Some(nd::ArcArray1::from(vec![0; conn_len])),
         };
-        let fields = match fields {
-            Some(fds) => fds,
-            None => BTreeMap::new(),
-        };
+
+        let fields = fields.unwrap_or_default();
+
         Self {
             cell_type,
             connectivity: Connectivity::Regular(connectivity),

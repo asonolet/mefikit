@@ -1,4 +1,5 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
+use std::hint::black_box;
 
 use mefikit::prelude as mf;
 
@@ -19,7 +20,7 @@ fn snap(c: &mut Criterion) {
                 |(m1, m2)| {
                     let mut m1 = m1.clone();
                     let m2_view = m2.view();
-                    std::hint::black_box(mf::snap(&mut m1, m2_view, 1e-12));
+                    mf::snap(black_box(&mut m1), black_box(m2_view), 1e-12);
                 },
                 BatchSize::LargeInput,
             )
