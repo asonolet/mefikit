@@ -27,3 +27,16 @@ repos:
       - id: ruff-check
       # Run the formatter.
       - id: ruff-format
+  - repo: local
+    hooks:
+      - id: cargo-clippy
+        name: Lint Rust extensively
+        types_or: [rust]
+        language: system
+        pass_filenames: false
+        entry: "cargo clippy -- --deny warnings"
+        # NOTE: It's impossible to use `--fix --allow-dirty` below as it
+        # deactivates `--deny warnings` (see [this discussion] for more
+        # information).
+        #
+        # [this discussion]: https://github.com/rust-lang/rust-clippy/discussions/9979
