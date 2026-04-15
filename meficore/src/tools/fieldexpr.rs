@@ -296,6 +296,6 @@ mod test {
         let mut m = me::make_imesh_2d(10);
         m.measure_update("M", None);
         let mes_squared5 = field("M").square() * arr(nd::arr0(5.));
-        let fs5 = m.eval_field(None, mes_squared5);
+        m.eval_field(None, mes_squared5);
     }
 }

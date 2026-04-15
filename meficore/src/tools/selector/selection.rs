@@ -1,6 +1,3 @@
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
-
 use std::ops::{BitAnd, BitOr, BitXor, Not, Sub};
 use std::sync::Arc;
 use std::thread;

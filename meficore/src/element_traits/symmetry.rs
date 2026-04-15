@@ -1,6 +1,7 @@
 use crate::mesh::ElementLike;
 use rustc_hash::FxHashSet as HashSet;
 
+#[allow(unused)]
 pub trait ElementEquality<'a>: ElementLike<'a> {
     fn strict_equality(&self, other: &Self) -> bool {
         if self.connectivity().len() != other.connectivity().len() {

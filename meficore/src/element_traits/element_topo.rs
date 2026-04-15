@@ -1,6 +1,4 @@
 use ndarray::prelude::*;
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
 
 use crate::mesh::Connectivity;
 use crate::mesh::{Dimension, ElementLike, ElementType};

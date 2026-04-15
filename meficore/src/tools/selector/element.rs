@@ -10,7 +10,7 @@ pub enum ElementSelection {
 }
 
 impl ElementSelection {
-    pub fn select_types<'a>(types: &[ElementType], mut sel: ElementIdsSet) -> ElementIdsSet {
+    pub fn select_types(types: &[ElementType], mut sel: ElementIdsSet) -> ElementIdsSet {
         let sel_types: Vec<_> = sel.keys().collect();
         let types_to_match: FxHashSet<_> = types.iter().collect();
         for k in sel_types {
@@ -20,7 +20,7 @@ impl ElementSelection {
         }
         sel
     }
-    pub fn select_dimensions<'a>(dims: &[Dimension], mut sel: ElementIdsSet) -> ElementIdsSet {
+    pub fn select_dimensions(dims: &[Dimension], mut sel: ElementIdsSet) -> ElementIdsSet {
         let mut key_toremove = Vec::new();
         for k in sel.keys() {
             if !dims.contains(&k.dimension()) {
@@ -32,7 +32,7 @@ impl ElementSelection {
         }
         sel
     }
-    pub fn select_ids<'a>(ids: ElementIds, mut sel: ElementIdsSet) -> ElementIdsSet {
+    pub fn select_ids(ids: ElementIds, mut sel: ElementIdsSet) -> ElementIdsSet {
         let ids: ElementIdsSet = ids.into();
         sel.intersection(&ids);
         sel

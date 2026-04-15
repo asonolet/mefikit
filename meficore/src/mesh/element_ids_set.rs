@@ -1,6 +1,4 @@
 use itertools::Itertools;
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use std::collections::BTreeMap;
 
@@ -98,6 +96,7 @@ impl ElementIdsSet {
             }
         }
     }
+    #[allow(clippy::should_implement_trait)]
     pub fn into_iter(self) -> impl Iterator<Item = ElementId> {
         self.0.into_iter().flat_map(|(et, indices_set)| {
             indices_set
@@ -183,6 +182,6 @@ mod tests {
         set1.intersection(&set2);
 
         assert_eq!(set1.0.get(&ElementType::TRI3).unwrap().len(), 1);
-        assert!(set1.0.get(&ElementType::QUAD4).is_none());
+        assert!(!set1.0.contains_key(&ElementType::QUAD4));
     }
 }
