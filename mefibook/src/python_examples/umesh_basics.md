@@ -1,4 +1,4 @@
-# `mefikit.UMesh`
+# UMesh basics
 
 
 ```python
@@ -23,7 +23,7 @@ volumes
 
 
 
-    <UMesh at 0x78999013b6f0>
+    <UMesh at 0x7474980e7750>
 
 
 
@@ -132,24 +132,6 @@ mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 
 
 
-## Build extruded mesh
-
-
-```python
-extruded = mesh.extrude(range(3))
-```
-
-
-```python
-extruded.to_pyvista(dim="all").plot(show_edges=True)
-```
-
-
-
-![png](umesh_basics_files/umesh_basics_13_0.png)
-
-
-
 ## Mesh *and* Fields
 
 
@@ -184,4 +166,4 @@ mesh2.to_pyvista().plot()
 
 
 
-![png](umesh_basics_files/umesh_basics_18_0.png)
+![png](umesh_basics_files/umesh_basics_15_0.png)

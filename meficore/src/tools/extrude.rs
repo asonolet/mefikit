@@ -93,16 +93,20 @@ fn extrude_coords_curvilinear(
     let dir_vec =
         offsets_vecs.slice(nd::s![1.., ..]).to_owned() - offsets_vecs.slice(nd::s![..-1, ..]);
     let normal_vecs = dir_vec.slice(nd::s![1.., ..]).to_owned() - dir_vec.slice(nd::s![..-1, ..]);
-    let first_vec = dir_vec.slice(nd::s![0..1, ..]).to_owned();
+    let first_vec = dir_vec.slice(nd::s![..1, ..]).to_owned();
     let last_vec = dir_vec.slice(nd::s![-1.., ..]).to_owned();
 
     let normal_vecs = nd::concatenate![nd::Axis(0), first_vec, normal_vecs, last_vec];
 
     let mut new_coords: Vec<_> = Vec::with_capacity(along.nrows());
+    new_coords.push(coords);
     for (offset, normal) in offsets_vecs.rows().into_iter().zip(normal_vecs.rows()) {
-        let mut coord_i = coords.clone();
+        // let mut coord_i = coords.clone();
+        // TOOD: use quaternion to compute new coords
+        // TOOD: compute from previous coords so that the U turn issue is not encountered
         todo!("Translate and rotate coord_i with center, offset and normal.");
-        new_coords.push(coord_i);
+        let rotated_coords = &center + (&coords - &center) + offset;
+        new_coords.push(rotated_coords);
     }
     let new_coords_views: Vec<_> = new_coords.iter().map(|c| c.view()).collect();
     nd::concatenate(nd::Axis(0), &new_coords_views).unwrap()
@@ -245,13 +249,33 @@ pub fn extrude_parallel(mesh: UMeshView, along: nd::ArrayView2<'_, f64>) -> UMes
         extruded_mesh.coords = new_coords.into_shared();
         return extruded_mesh;
     }
-    extrude_connectivity(mesh, along.len() - 1, new_coords)
+    extrude_connectivity(mesh, along.nrows() - 1, new_coords)
 }
 
 pub trait Extrudable {
     fn extrude(&self, along: &[f64]) -> UMesh;
-    fn extrude_curv(&self, along: nd::ArrayView2<'_, f64>) -> UMesh;
+    // fn extrude_curv(&self, along: nd::ArrayView2<'_, f64>) -> UMesh;
     fn extrude_parallel(&self, along: nd::ArrayView2<'_, f64>) -> UMesh;
-    fn extrude_grow_normal_dir(&self, along: &[f64]) -> UMesh;
-    fn extrude_grow_with_focal(&self, along: &[f64], focal: f64, normal: &[f64]);
+    // fn extrude_grow_normal_dir(&self, along: &[f64]) -> UMesh;
+    // fn extrude_grow_with_focal(&self, along: &[f64], focal: f64, normal: &[f64]);
+}
+
+impl Extrudable for UMeshView<'_> {
+    fn extrude(&self, along: &[f64]) -> UMesh {
+        extrude(self.clone(), along)
+    }
+
+    fn extrude_parallel(&self, along: ndarray::ArrayView2<'_, f64>) -> UMesh {
+        extrude_parallel(self.clone(), along)
+    }
+}
+
+impl Extrudable for UMesh {
+    fn extrude(&self, along: &[f64]) -> UMesh {
+        extrude(self.view(), along)
+    }
+
+    fn extrude_parallel(&self, along: ndarray::ArrayView2<'_, f64>) -> UMesh {
+        extrude_parallel(self.view(), along)
+    }
 }

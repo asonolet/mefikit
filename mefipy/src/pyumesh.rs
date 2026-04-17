@@ -1,3 +1,4 @@
+use ndarray::ArrayView2;
 use pyo3::prelude::*;
 use std::{
     collections::BTreeMap,
@@ -14,8 +15,8 @@ use mefikit::{
 
 use std::path::Path;
 
-use numpy as np;
 use numpy::ndarray as nd;
+use numpy::{self as np, PyReadonlyArray2};
 
 use super::element::{etype_to_str, str_to_etype};
 use crate::{pyfield::PyField, select::PySelection};
@@ -233,6 +234,11 @@ impl PyUMesh {
         let along: Vec<f64> = along.extract()?;
         let new_mesh = mf::extrude(self.inner.view(), &along);
         Ok(new_mesh.into())
+    }
+
+    fn extrude_parallel(&self, along: PyReadonlyArray2<'_, f64>) -> Self {
+        let new_mesh = mf::extrude_parallel(self.inner.view(), along.as_array());
+        new_mesh.into()
     }
 
     #[pyo3(signature = (expr, with_fields=true))]
