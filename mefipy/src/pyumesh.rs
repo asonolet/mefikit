@@ -1,4 +1,3 @@
-use ndarray::ArrayView2;
 use pyo3::prelude::*;
 use std::{
     collections::BTreeMap,
