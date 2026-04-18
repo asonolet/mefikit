@@ -1,0 +1,1274 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Mefikit Book</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-2459343d.css">
+        <link rel="stylesheet" href="css/chrome-ae938929.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "searchindex-914c0c81.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-a77cfc60.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Mefikit Book</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
+<p><img src="logo/mefikit_logo_v2.png" alt="Mefikit logo"></p>
+<h2 id="about-mefikit"><a class="header" href="#about-mefikit">About <code>mefikit</code></a></h2>
+<p><strong><code>mefikit</code></strong> — short for <strong>Mesh and Field Kit</strong> — is a comprehensive library for
+generating, manipulating, and analyzing unstructured meshes together with
+associated scalar, vector, and tensor fields. Its goal is to provide a unified
+in-memory representation of meshes and fields, along with a set of robust,
+efficient tools that support numerical simulation workflows in research,
+engineering, and scientific computing.</p>
+<p><code>mefikit</code> focuses on three core principles:</p>
+<ol>
+<li><strong>A flexible mesh model</strong> capable of representing mixed-element unstructured
+meshes.</li>
+<li><strong>A consistent field and group architecture</strong> that attaches data to mesh
+entities across dimensions.</li>
+<li><strong>Zero-copy, iterator-based access patterns</strong> to efficiently navigate and
+process large meshes.</li>
+</ol>
+<p>This design positions <code>mefikit</code> as a modern core library for algorithm
+development.</p>
+<h2 id="mefikit-provides"><a class="header" href="#mefikit-provides"><code>mefikit</code> provides</a></h2>
+<ul>
+<li><code>umesh</code> the unstructured mesh container supporting mixed element types,
+fields, and groups.</li>
+<li><code>io</code> modules for reading and writing meshes in various formats
+(e.g., VTK, serde_json, serde_yaml).</li>
+<li><code>topology</code> tools for analyzing mesh connectivity, computing descending meshes,
+neighbours, domain frontier, etc.</li>
+<li><code>geometry</code> tools for computing element measures, centroids, etc.</li>
+<li><code>Selector</code> utilities for querying and filtering mesh elements
+based on geometric or topological criteria.</li>
+</ul>
+<h2 id="definitions"><a class="header" href="#definitions">Definitions</a></h2>
+<h3 id="element"><a class="header" href="#element"><strong>Element</strong></a></h3>
+<p>An <strong>element</strong> is an abstract mesh entity specified by:</p>
+<ul>
+<li><strong>its type</strong> (e.g., triangle, hexahedron, polygon, polyhedron)</li>
+<li><strong>its connectivity</strong> (indices referencing the global coordinate array)</li>
+</ul>
+<p>In <code>mefikit</code>, elements are <strong>ephemeral, zero-copy views</strong> constructed on the fly
+when iterating through a mesh block. They do not own memory; instead they refer
+to underlying index and coordinate buffers. This behavior mirrors VTK’s “cell
+iterator” pattern while improving cache locality and reducing overhead.</p>
+<p>It is only accessible through the rust API. The python bindings do not expose
+elements directly because python is only intended to be used for high-level
+scripting. Do not fear of going to the rust side for performance critical code,
+<code>mefikit</code> was designed to be simple to use for rust newcommers.</p>
+<h3 id="topological-dimension"><a class="header" href="#topological-dimension"><strong>Topological Dimension</strong></a></h3>
+<p>The <strong>topological dimension</strong> of an element is the dimension of the
+mathematical object it represents:</p>
+<ul>
+<li>0D → vertices</li>
+<li>1D → edges / segments</li>
+<li>2D → faces</li>
+<li>3D → volumes</li>
+</ul>
+<p>This categorization is independent of the embedding space and is central for
+field association and mesh validity checks.</p>
+<h3 id="spatial-dimension"><a class="header" href="#spatial-dimension"><strong>Spatial Dimension</strong></a></h3>
+<p>The <strong>spatial dimension</strong> is the dimension of the coordinate system in which
+the mesh is embedded, typically <strong>2D or 3D</strong>. All element coordinates must be
+consistent with this spatial dimension. For example, one may have:</p>
+<ul>
+<li>2D elements in 2D (pure surface mesh)</li>
+<li>2D elements in 3D (surface embedded in 3D)</li>
+<li>3D volumetric elements in 3D</li>
+</ul>
+<p><code>mefikit</code> does not assume a fixed coordinate system beyond this requirement.</p>
+<h3 id="mesh"><a class="header" href="#mesh"><strong>Mesh</strong></a></h3>
+<p>A <strong>mesh</strong> in <code>mefikit</code> is a container that holds:</p>
+<ul>
+<li>the global node coordinate array,</li>
+<li>a set of <strong>blocks</strong>, each containing elements of a given type,</li>
+<li><strong>fields</strong> (scalar/vector/tensor) attached to elements of a given topological dimension,</li>
+<li><strong>groups</strong>, i.e., labeled subsets of elements for boundary conditions,
+materials, or post-processing.</li>
+</ul>
+<p>Properties:</p>
+<ul>
+<li>You may attach <strong>any number of fields or groups</strong>.</li>
+<li><strong>Groups</strong> may overlap arbitrarily.</li>
+<li>A <strong>field must cover all elements</strong> of its associated topological dimension
+(similar to Gmsh’s “node data” or “element data” consistency).</li>
+</ul>
+<p>If these constraints seem restrictive, <code>mefikit</code> encourages using <strong>multiple
+meshes</strong> (e.g., one per partition, or one per physical domain) to better match
+specialized workflows.</p>
+<h3 id="topologically-valid-mesh"><a class="header" href="#topologically-valid-mesh">Topologically Valid Mesh</a></h3>
+<p>A <strong>topologically valid mesh</strong> in <code>mefikit</code> satisfies the following conditions:</p>
+<ol>
+<li>
+<p><strong>No overlapping higher-dimensional elements</strong>
+Two 3D elements may share faces or edges, but they must not occupy the same
+region of space. (Duplicate faces in a hex-dominant mesh are allowed and
+interpreted in context.)</p>
+</li>
+<li>
+<p><strong>Lower-dimensional entities derive consistently from higher-dimensional ones</strong></p>
+<ul>
+<li>All edges must be edges of some face or volume.</li>
+<li>All faces must be boundaries of some volume.</li>
+<li>No “floating” or orphaned lower-dimension elements are allowed.
+This is consistent with the expectations of many finite-element and
+finite-volume codes.</li>
+</ul>
+</li>
+<li>
+<p><strong>Non-degenerate geometry</strong>
+Elements must not be geometrically degenerate:</p>
+<ul>
+<li>triangles must have non-zero area,</li>
+<li>tetrahedra must have non-zero volume,</li>
+<li>polygons must be well-defined and non-self-intersecting, etc.
+These checks are similar to the geometric validation steps performed by
+MeshGems and various meshing libraries.</li>
+</ul>
+</li>
+</ol>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="mefikit-mesh-format"><a class="header" href="#mefikit-mesh-format"><code>mefikit</code> Mesh Format</a></h1>
+<p>The <strong><code>mefikit</code> format</strong> defines a compact, extensible, and expressive way to
+represent unstructured meshes composed of heterogeneous elements — including
+vertices, edges, faces, and volumetric cells. Supported element types include,
+but are not limited to:</p>
+<ul>
+<li><strong>0D:</strong> vertices</li>
+<li><strong>1D:</strong> segments, polylines</li>
+<li><strong>2D:</strong> triangles, quadrilaterals, polygons</li>
+<li><strong>3D:</strong> tetrahedra, hexahedra, prisms, pyramids, polyhedra</li>
+</ul>
+<p>In addition, any element can carry fields (scalar, vector, or tensor) that
+reside directly on its topological dimension. This enables workflows akin to
+VTK field data. Fields must be defined upon all elements of a given topological dimension.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="topological-basic-operations"><a class="header" href="#topological-basic-operations">Topological basic operations</a></h1>
+<h2 id="subgraph-and-neighbours-computation"><a class="header" href="#subgraph-and-neighbours-computation">Subgraph and neighbours computation</a></h2>
+<p>The subgraph computation is done supposing that the mesh is topologically
+valid. The subgraph of a volume mesh is defined by a set of either faces, edges
+or vertices elements depending on the subgraph relative dimension.</p>
+<p>The subgraph computation and the neighbours computation are tightly linked. The
+neighbours are defined as the elements that share a common lower dimensional
+element. For example, two volumes are neighbours if they share a common face,
+two faces are neighbours if they share a common edge, and so on.</p>
+<p>In <code>mefikit</code>, the neighbours computation builds an adjacency graph, having as
+nodes the elements of the mesh and as edges the shared lower dimensional
+elements. Then, the neighbours of an element can be found by looking at its
+adjacent nodes in the graph.</p>
+<h2 id="connectivity-equivalence"><a class="header" href="#connectivity-equivalence">Connectivity equivalence</a></h2>
+<p>There is different ways to represent the connectivity of an element. Here are
+the different class of equivalence:</p>
+<ul>
+<li>exact representation equality: two elements are equivalent if their
+connectivity is exactly the same, including the order of the nodes.</li>
+<li>rotational equivalence: two elements are equivalent if their connectivity can
+be made the same by rotating the order of the nodes. The topological shape is
+strictly equivalent under all operations, preserving the measure orientation.</li>
+<li>chiral equivalence: two elements are equivalent if their connectivity can be made
+the same by reversing the order of the nodes and rotating the nodes. This
+equivalence does not preserve the measure orientation (if it is positive or
+negative).</li>
+<li>node set equivalence: two elements are equivalent if they have the same set
+of nodes, regardless of the order. This equivalence is theoretical only, as
+it does not preserve the shape of the element. But it is very useful to detect
+duplicate elements in a mesh.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="python-examples"><a class="header" href="#python-examples">Python Examples</a></h1>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="umesh-basics"><a class="header" href="#umesh-basics">UMesh basics</a></h1>
+<pre><code class="language-python">import mefikit as mf
+import numpy as np
+import pyvista as pv
+
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
+</code></pre>
+<h2 id="building-cartesian-meshes"><a class="header" href="#building-cartesian-meshes">Building cartesian meshes</a></h2>
+<pre><code class="language-python">volumes = mf.build_cmesh(
+    range(2), np.linspace(0.0, 1.0, 3), np.logspace(0.0, 1.0, 4) / 10.0
+)
+volumes
+</code></pre>
+<pre><code>&lt;UMesh at 0x7474980e7750&gt;
+</code></pre>
+<pre><code class="language-python">print(volumes)
+</code></pre>
+<pre><code>UMeshBase {
+    coords: [[0.0, 0.0, 0.1],
+     [1.0, 0.0, 0.1],
+     [0.0, 0.5, 0.1],
+     [1.0, 0.5, 0.1],
+     [0.0, 1.0, 0.1],
+     [1.0, 1.0, 0.1],
+     [0.0, 0.0, 0.2154434690031884],
+     [1.0, 0.0, 0.2154434690031884],
+     [0.0, 0.5, 0.2154434690031884],
+     [1.0, 0.5, 0.2154434690031884],
+     [0.0, 1.0, 0.2154434690031884],
+     [1.0, 1.0, 0.2154434690031884],
+     [0.0, 0.0, 0.46415888336127786],
+     [1.0, 0.0, 0.46415888336127786],
+     [0.0, 0.5, 0.46415888336127786],
+     [1.0, 0.5, 0.46415888336127786],
+     [0.0, 1.0, 0.46415888336127786],
+     [1.0, 1.0, 0.46415888336127786],
+     [0.0, 0.0, 1.0],
+     [1.0, 0.0, 1.0],
+     [0.0, 0.5, 1.0],
+     [1.0, 0.5, 1.0],
+     [0.0, 1.0, 1.0],
+     [1.0, 1.0, 1.0]], shape=[24, 3], strides=[3, 1], layout=Cc (0x5), const ndim=2,
+    element_blocks: {
+        HEX8: ElementBlockBase {
+            cell_type: HEX8,
+            connectivity: Regular(
+                [[0, 1, 3, 2, 6, 7, 9, 8],
+                 [2, 3, 5, 4, 8, 9, 11, 10],
+                 [6, 7, 9, 8, 12, 13, 15, 14],
+                 [8, 9, 11, 10, 14, 15, 17, 16],
+                 [12, 13, 15, 14, 18, 19, 21, 20],
+                 [14, 15, 17, 16, 20, 21, 23, 22]], shape=[6, 8], strides=[8, 1], layout=Cc (0x5), const ndim=2,
+            ),
+            fields: {},
+            families: [0, 0, 0, 0, 0, 0], shape=[6], strides=[1], layout=CFcf (0xf), const ndim=1,
+            groups: {},
+        },
+    },
+}
+</code></pre>
+<p>The mesh is composed of a coordinates array, and several blocks.</p>
+<pre><code class="language-python">volumes.to_pyvista().plot(show_edges=True)
+</code></pre>
+<p><img src="python_examples/umesh_basics_files/umesh_basics_6_0.png" alt="png"></p>
+<h2 id="building-mesh-with-custom-connectivity"><a class="header" href="#building-mesh-with-custom-connectivity">Building mesh with custom connectivity</a></h2>
+<pre><code class="language-python">x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
+coords = np.c_[x.flatten(), y.flatten()]
+conn = np.array(
+    [
+        [0, 1],
+        [1, 6],
+        [6, 5],
+        [5, 0],
+        [6, 7],
+        [7, 12],
+        [12, 11],
+        [11, 6],
+        [12, 17],
+        [17, 16],
+        [16, 11],
+    ],
+    dtype=np.uint,
+)
+</code></pre>
+<pre><code class="language-python">mesh = mf.UMesh(coords)
+mesh.add_regular_block("VERTEX", np.arange(13, 22, dtype=np.uint)[..., np.newaxis])
+mesh.add_regular_block("SEG2", conn)
+mesh.add_regular_block("QUAD4", np.array([[3, 4, 9, 8]], dtype=np.uint))
+</code></pre>
+<pre><code class="language-python">mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
+</code></pre>
+<p><img src="python_examples/umesh_basics_files/umesh_basics_10_0.png" alt="png"></p>
+<h2 id="mesh-and-fields"><a class="header" href="#mesh-and-fields">Mesh <em>and</em> Fields</a></h2>
+<pre><code class="language-python">x = np.logspace(-5, 0.0)
+mesh2 = mf.build_cmesh(x, x)
+</code></pre>
+<pre><code class="language-python">mes = mesh2.measure()
+mes
+</code></pre>
+<pre><code>{'QUAD4': array([7.01482859e-12, 8.87274254e-12, 1.12227347e-11, ...,
+        2.74065140e-02, 3.46652722e-02, 4.38465503e-02], shape=(2401,))}
+</code></pre>
+<pre><code class="language-python">mesh2.measure_update()
+</code></pre>
+<pre><code class="language-python">mesh2.to_pyvista().plot()
+</code></pre>
+<p><img src="python_examples/umesh_basics_files/umesh_basics_15_0.png" alt="png"></p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="intput--output"><a class="header" href="#intput--output">Intput / Output</a></h1>
+<pre><code class="language-python">import mefikit as mf
+import numpy as np
+</code></pre>
+<pre><code class="language-python">volumes = mf.build_cmesh(
+    range(2), np.linspace(0.0, 1.0, 5), np.logspace(0.0, 1.0, 5) / 10.0
+)
+</code></pre>
+<h2 id="memory-exports"><a class="header" href="#memory-exports">Memory exports</a></h2>
+<ul>
+<li>Through numpy arrays manipulations:
+<ul>
+<li>medcoupling</li>
+<li>meshio</li>
+<li>pyvista</li>
+</ul>
+</li>
+<li>Through <code>string</code> translation to <code>Python</code>:
+<ul>
+<li>json</li>
+</ul>
+</li>
+</ul>
+<pre><code class="language-python">volumes.to_mc()
+</code></pre>
+<pre><code>MEDCouplingUMesh C++ instance at 0x2e9f50f0. Name : "mf_UMesh". Not set !
+</code></pre>
+<pre><code class="language-python">volumes.to_pyvista()
+</code></pre>
+<table style="width: 100%;">
+<tr><th>UnstructuredGrid</th><th>Information</th></tr>
+
+<tr><td>N Cells</td><td>16</td></tr>
+
+<tr><td>N Points</td><td>50</td></tr>
+
+<tr><td>X Bounds</td><td>0.000e+00, 1.000e+00</td></tr>
+
+<tr><td>Y Bounds</td><td>0.000e+00, 1.000e+00</td></tr>
+
+<tr><td>Z Bounds</td><td>1.000e-01, 1.000e+00</td></tr>
+
+<tr><td>N Arrays</td><td>0</td></tr>
+
+</table>
+
+<pre><code class="language-python">volumes.to_meshio()
+</code></pre>
+<pre><code>&lt;meshio mesh object&gt;
+  Number of points: 50
+  Number of cells:
+    hexahedron: 16
+</code></pre>
+<pre><code class="language-python">volumes.to_json()
+</code></pre>
+<pre><code>'{"coords":{"v":1,"dim":[50,3],"data":[0.0,0.0,0.1,1.0,0.0,0.1,0.0,0.25,0.1,1.0,0.25,0.1,0.0,0.5,0.1,1.0,0.5,0.1,0.0,0.75,0.1,1.0,0.75,0.1,0.0,1.0,0.1,1.0,1.0,0.1,0.0,0.0,0.17782794100389226,1.0,0.0,0.17782794100389226,0.0,0.25,0.17782794100389226,1.0,0.25,0.17782794100389226,0.0,0.5,0.17782794100389226,1.0,0.5,0.17782794100389226,0.0,0.75,0.17782794100389226,1.0,0.75,0.17782794100389226,0.0,1.0,0.17782794100389226,1.0,1.0,0.17782794100389226,0.0,0.0,0.31622776601683794,1.0,0.0,0.31622776601683794,0.0,0.25,0.31622776601683794,1.0,0.25,0.31622776601683794,0.0,0.5,0.31622776601683794,1.0,0.5,0.31622776601683794,0.0,0.75,0.31622776601683794,1.0,0.75,0.31622776601683794,0.0,1.0,0.31622776601683794,1.0,1.0,0.31622776601683794,0.0,0.0,0.5623413251903491,1.0,0.0,0.5623413251903491,0.0,0.25,0.5623413251903491,1.0,0.25,0.5623413251903491,0.0,0.5,0.5623413251903491,1.0,0.5,0.5623413251903491,0.0,0.75,0.5623413251903491,1.0,0.75,0.5623413251903491,0.0,1.0,0.5623413251903491,1.0,1.0,0.5623413251903491,0.0,0.0,1.0,1.0,0.0,1.0,0.0,0.25,1.0,1.0,0.25,1.0,0.0,0.5,1.0,1.0,0.5,1.0,0.0,0.75,1.0,1.0,0.75,1.0,0.0,1.0,1.0,1.0,1.0,1.0]},"element_blocks":{"HEX8":{"cell_type":"HEX8","connectivity":{"Regular":{"v":1,"dim":[16,8],"data":[0,1,3,2,10,11,13,12,2,3,5,4,12,13,15,14,4,5,7,6,14,15,17,16,6,7,9,8,16,17,19,18,10,11,13,12,20,21,23,22,12,13,15,14,22,23,25,24,14,15,17,16,24,25,27,26,16,17,19,18,26,27,29,28,20,21,23,22,30,31,33,32,22,23,25,24,32,33,35,34,24,25,27,26,34,35,37,36,26,27,29,28,36,37,39,38,30,31,33,32,40,41,43,42,32,33,35,34,42,43,45,44,34,35,37,36,44,45,47,46,36,37,39,38,46,47,49,48]}},"fields":{},"families":{"v":1,"dim":[16],"data":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]},"groups":{}}}}'
+</code></pre>
+<h2 id="file-readwrite"><a class="header" href="#file-readwrite">File read/write</a></h2>
+<ul>
+<li>On rust side, file I/O with the <code>read</code>/<code>write</code> methods:
+<ul>
+<li>vtk</li>
+<li>yaml</li>
+<li>json</li>
+</ul>
+</li>
+</ul>
+<p>Note that for now the vtk reader/writer is only based on the binary vtk 2.0 file format (which is quite old). No rust crate is doing better. I am planning on implementing a HDF5/CGNS compliant rust reader/writer (based on the hdf5 lib) in order to support a more HPC file format.</p>
+<pre><code class="language-python">for ext in ("vtk", "yaml", "json"):
+    volumes.write(f"data/volumes.{ext}")
+    volumes_from_disk = mf.UMesh.read("data/volumes.vtk")
+    assert volumes_from_disk
+    assert (
+        volumes != volumes_from_disk
+    )  # this is a new instance, with a different memory adress
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="mesh-extrusions"><a class="header" href="#mesh-extrusions">Mesh extrusions</a></h1>
+<pre><code class="language-python">import mefikit as mf
+import numpy as np
+import pyvista as pv
+
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
+</code></pre>
+<h3 id="building-mesh-with-custom-connectivity-1"><a class="header" href="#building-mesh-with-custom-connectivity-1">Building mesh with custom connectivity</a></h3>
+<p>First let’s build a 2D mesh wich will by used to demonstrate extrusions.</p>
+<pre><code class="language-python">x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
+coords = np.c_[x.flatten(), y.flatten()]
+conn = np.array(
+    [
+        [0, 1],
+        [1, 6],
+        [6, 5],
+        [5, 0],
+        [6, 7],
+        [7, 12],
+        [12, 11],
+        [11, 6],
+        [12, 17],
+        [17, 16],
+        [16, 11],
+    ],
+    dtype=np.uint,
+)
+</code></pre>
+<pre><code class="language-python">mesh = mf.UMesh(coords)
+mesh.add_regular_block("VERTEX", np.arange(13, 22, dtype=np.uint)[..., np.newaxis])
+mesh.add_regular_block("SEG2", conn)
+mesh.add_regular_block("QUAD4", np.array([[3, 4, 9, 8]], dtype=np.uint))
+</code></pre>
+<pre><code class="language-python">mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
+</code></pre>
+<p><img src="python_examples/extrusions_files/extrusions_5_0.png" alt="png"></p>
+<h2 id="extrusion-along-an-existing-axis"><a class="header" href="#extrusion-along-an-existing-axis">Extrusion along an existing axis</a></h2>
+<h3 id="build-simple-extruded-mesh"><a class="header" href="#build-simple-extruded-mesh">Build simple extruded mesh</a></h3>
+<pre><code class="language-python">extruded = mesh.extrude(range(3))
+</code></pre>
+<pre><code class="language-python">extruded.to_pyvista(dim="all").plot(show_edges=True)
+</code></pre>
+<p><img src="python_examples/extrusions_files/extrusions_9_0.png" alt="png"></p>
+<h3 id="build-extruded-mesh-along-a-3d-line-with-parallel-z-faces"><a class="header" href="#build-extruded-mesh-along-a-3d-line-with-parallel-z-faces">Build extruded mesh along a 3d line with parallel z faces</a></h3>
+<pre><code class="language-python">n = 50
+x = np.sin(np.linspace(0.0, np.pi, n))
+y = np.cos(np.linspace(0.0, np.pi, n))
+z = np.linspace(0.0, 4.0, n)
+line = np.c_[x, y, z]
+
+extruded_par = mesh.extrude_parallel(line)
+</code></pre>
+<pre><code class="language-python">extruded_par.to_pyvista(dim="all").plot(show_edges=True)
+</code></pre>
+<p><img src="python_examples/extrusions_files/extrusions_12_0.png" alt="png"></p>
+<h3 id="build-curviliear-extrusion-mesh"><a class="header" href="#build-curviliear-extrusion-mesh">Build curviliear extrusion mesh</a></h3>
+<pre><code class="language-python">mesh = mf.build_cmesh(range(2), range(2))
+n = 20
+# x = np.linspace(0, 4, n)
+x = np.zeros((n,))
+# x = np.sin(np.linspace(0.0, np.pi, n))
+y = np.cos(np.linspace(0.0, np.pi, n))
+z = np.sin(np.linspace(0.0, np.pi, n))
+line = np.c_[x, y, z]
+
+extruded_curv = mesh.extrude_curv(line)
+</code></pre>
+<pre><code class="language-python">extruded_curv.to_pyvista(dim="all").plot(show_edges=True)
+</code></pre>
+<p><img src="python_examples/extrusions_files/extrusions_15_0.png" alt="png"></p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="topological-tools"><a class="header" href="#topological-tools">Topological tools</a></h1>
+<pre><code class="language-python">import mefikit as mf
+import numpy as np
+import pyvista as pv
+
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
+</code></pre>
+<h2 id="submesh-functionality"><a class="header" href="#submesh-functionality">Submesh functionality</a></h2>
+<pre><code class="language-python">x = range(3)
+y = np.linspace(0.0, 3.0, 5, endpoint=True)
+z = np.logspace(-0.5, 1, 4, endpoint=True)
+volumes = mf.build_cmesh(x, y, z)
+</code></pre>
+<h3 id="simple-descending_mesh"><a class="header" href="#simple-descending_mesh">Simple descending_mesh</a></h3>
+<p>This functionality is able to compute the descending connectivity of the porvided mesh.
+It can act on elements of dimension 1, 2 or 3.</p>
+<pre><code class="language-python">faces = volumes.descend()
+edges = faces.descend()
+vertex = edges.descend()
+
+plotter = pv.Plotter(shape=(1, 3))
+plotter.subplot(0, 0)
+plotter.add_mesh(faces.to_pyvista().shrink(0.8), show_edges=True)
+plotter.subplot(0, 1)
+plotter.add_mesh(edges.to_pyvista().shrink(0.8))
+plotter.subplot(0, 2)
+plotter.add_mesh(vertex.to_pyvista())
+plotter.show()
+</code></pre>
+<p><img src="python_examples/topological_tools_files/topological_tools_5_0.png" alt="png"></p>
+<h3 id="submesh-in-one-go"><a class="header" href="#submesh-in-one-go">Submesh in one go</a></h3>
+<p>You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining mutliple <code>.descend()</code> calls.</p>
+<pre><code class="language-python">edges = volumes.descend(target_dim=1)
+nodes = volumes.descend(target_dim=0)
+
+plotter = pv.Plotter(shape=(1, 2))
+plotter.subplot(0, 0)
+plotter.add_mesh(edges.to_pyvista().shrink(0.8))
+plotter.subplot(0, 1)
+plotter.add_mesh(vertex.to_pyvista())
+plotter.show()
+</code></pre>
+<p><img src="python_examples/topological_tools_files/topological_tools_7_0.png" alt="png"></p>
+<h2 id="boundaries-computation"><a class="header" href="#boundaries-computation">Boundaries computation</a></h2>
+<p>As it is very common to compute boundaries on a mesh (for boundary counditions for ex), there is a custom <code>boundaries</code> computation method.</p>
+<pre><code class="language-python">face_bounds = volumes.boundaries()
+edge_bounds = volumes.boundaries(target_dim=1)
+vertex_bounds = volumes.boundaries(target_dim=0)
+
+plotter = pv.Plotter(shape=(1, 3))
+plotter.subplot(0, 0)
+plotter.add_mesh(face_bounds.to_pyvista().shrink(0.8), show_edges=True)
+plotter.subplot(0, 1)
+plotter.add_mesh(edge_bounds.to_pyvista().shrink(0.8))
+plotter.subplot(0, 2)
+plotter.add_mesh(vertex_bounds.to_pyvista())
+plotter.show()
+</code></pre>
+<p><img src="python_examples/topological_tools_files/topological_tools_9_0.png" alt="png"></p>
+<h2 id="descend--boundaries-update"><a class="header" href="#descend--boundaries-update">Descend / boundaries update</a></h2>
+<p>You can directly update the mesh inplace when computing the descending mesh or the boundaries mesh.</p>
+<pre><code class="language-python">volumes.boundaries_update()
+volumes.boundaries_update(target_dim=1)
+volumes.to_pyvista().shrink(0.8).plot(show_edges=True)
+</code></pre>
+<p><img src="python_examples/topological_tools_files/topological_tools_11_0.png" alt="png"></p>
+<p>When using the <code>_update</code> version, the elements of the same dimension of the generated mesh are returned as a new mesh.</p>
+<pre><code class="language-python">old_face_mesh = volumes.descend_update()
+volumes.to_pyvista().shrink(0.8).plot(show_edges=True)
+</code></pre>
+<p><img src="python_examples/topological_tools_files/topological_tools_13_0.png" alt="png"></p>
+<pre><code class="language-python">old_face_mesh.to_pyvista().shrink(0.8).plot(show_edges=True)
+</code></pre>
+<p><img src="python_examples/topological_tools_files/topological_tools_14_0.png" alt="png"></p>
+<h2 id="connected-components"><a class="header" href="#connected-components">Connected components</a></h2>
+<pre><code class="language-python">x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
+coords = np.c_[x.flatten(), y.flatten()]
+conn = np.array(
+    [
+        [0, 1, 6, 5],
+        [6, 7, 12, 11],
+        # [2, 3, 8, 7],
+        [11, 12, 17, 16],
+    ],
+    dtype=np.uint,
+)
+mesh = mf.UMesh(coords)
+mesh.add_regular_block("QUAD4", conn)
+mesh.add_regular_block("VERTEX", np.arange(len(coords), dtype=np.uint)[..., np.newaxis])
+</code></pre>
+<pre><code class="language-python">compos_link_edge = mesh.connected_components(link_dim=1)
+compos_link_node = mesh.connected_components(link_dim=0)
+
+print(f"{len(compos_link_edge)=}")
+print(f"{len(compos_link_node)=}")
+</code></pre>
+<pre><code>len(compos_link_edge)=2
+len(compos_link_node)=1
+</code></pre>
+<pre><code class="language-python">edges = mesh.descend()
+
+shape = (3, 2)
+row_weights = [1.0, 0.5, 0.5]
+groups = [
+    (0, np.s_[:]),
+    (1, 0),
+    (2, 0),
+    (np.s_[1:], 1),
+]
+
+plotter = pv.Plotter(shape=shape, groups=groups, row_weights=row_weights)
+plotter.subplot(0, 0)
+plotter.add_text("Original mesh")
+plotter.add_mesh(mesh.to_pyvista(), show_edges=True)
+plotter.camera_position = "xy"
+
+for i, compo in enumerate(compos_link_edge):
+    plotter.subplot(i + 1, 0)
+    plotter.add_text(f"Compo linked by edge: n°{i}")
+    plotter.add_mesh(edges.to_pyvista())
+    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
+    plotter.camera_position = "xy"
+
+for i, compo in enumerate(compos_link_node):
+    plotter.subplot(i + 1, 1)
+    plotter.add_text(f"Compo linked by node: n°{i}")
+    plotter.add_mesh(edges.to_pyvista())
+    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
+    plotter.camera_position = "xy"
+plotter.show()
+</code></pre>
+<p><img src="python_examples/topological_tools_files/topological_tools_18_0.png" alt="png"></p>
+<h2 id="crack"><a class="header" href="#crack">Crack</a></h2>
+<p>This feature is the contrary of the <code>merge_nodes</code> feature. It duplicates nodes such that the resulting mesh does not connect on the descending_mesh given.</p>
+<pre><code class="language-python">x = range(2)
+y = np.linspace(0.0, 3.0, 3, endpoint=True)
+z = np.logspace(0.0, 1.0, 3, endpoint=True)
+volumes = mf.build_cmesh(x, y, z)
+faces = volumes.descend()
+</code></pre>
+<pre><code class="language-python">cracked = volumes.crack(faces)
+</code></pre>
+<pre><code class="language-python">edges = faces.descend()
+compos_original = volumes.connected_components()
+compos_cracked = cracked.connected_components()
+
+assert len(compos_original) == 1
+
+n_compos = len(compos_cracked)
+
+shape = (3, n_compos + 1)
+groups = [
+    (0, 0),
+    (0, np.s_[1:]),
+    (np.s_[1:], 0),
+    (1, np.s_[1:]),
+    *((2, i + 1) for i in range(n_compos)),
+]
+row_weights = [1.0, 0.1, 1.0]
+col_weights = [1.5, *(0.5,) * n_compos]
+pv.set_jupyter_backend("static")
+plotter = pv.Plotter(
+    shape=shape, groups=groups, row_weights=row_weights, col_weights=col_weights
+)
+
+plotter.subplot(0, 0)
+plotter.add_text("Original mesh")
+plotter.add_mesh(volumes.to_pyvista(), show_edges=True)
+plotter.subplot(0, 1)
+plotter.add_text("Cut mesh used for the crack")
+plotter.add_mesh(faces.to_pyvista().shrink(0.8), show_edges=True)
+
+plotter.subplot(1, 0)
+plotter.add_text("Compo of original mesh")
+plotter.add_mesh(edges.to_pyvista())
+plotter.add_mesh(compos_original[0].to_pyvista(), show_edges=True)
+
+plotter.subplot(1, 1)
+plotter.add_text("Compos of cracked mesh")
+
+for i, compo in enumerate(compos_cracked):
+    plotter.subplot(2, i + 1)
+    plotter.add_mesh(edges.to_pyvista())
+    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
+    plotter.camera.zoom(2)
+plotter.show()
+</code></pre>
+<p><img src="python_examples/topological_tools_files/topological_tools_22_0.png" alt="png"></p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="geometrical-tools"><a class="header" href="#geometrical-tools">Geometrical tools</a></h1>
+<pre><code class="language-python">import mefikit as mf
+import numpy as np
+import pyvista as pv
+
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
+</code></pre>
+<h2 id="snap-points"><a class="header" href="#snap-points">Snap points</a></h2>
+<pre><code class="language-python">x = np.linspace(0.0, 3.0, 10, endpoint=True)
+mesh = mf.build_cmesh(x, x)
+
+eps = 0.1
+dec = x[-1] / len(x) + eps
+x2 = np.linspace(dec, x[-1] + dec, len(x), endpoint=True)
+mesh2 = mf.build_cmesh(x2, x2)
+</code></pre>
+<p><strong>Note:</strong> epsilon value used in the following operation is big enough so that there are multiple candidates for some points, but low enough so that there is no degenerated cell created.</p>
+<pre><code class="language-python">snaped = mesh.snap(mesh2, eps=x[-1] / len(x))
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter()
+pt.add_mesh(mesh.descend().to_pyvista())
+pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista())
+pt.show(cpos="xy")
+</code></pre>
+<p><img src="python_examples/geometric_tools_files/geometric_tools_6_0.png" alt="png"></p>
+<pre><code class="language-python">pt = pv.Plotter()
+pt.add_mesh(snaped.to_pyvista(), show_edges=True)
+pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista())
+pt.show(cpos="xy")
+</code></pre>
+<p><img src="python_examples/geometric_tools_files/geometric_tools_7_0.png" alt="png"></p>
+<h2 id="merge-nodes"><a class="header" href="#merge-nodes">Merge nodes</a></h2>
+<pre><code class="language-python">x = range(2)
+y = np.linspace(0.0, 3.0, 3, endpoint=True)
+z = np.logspace(0.0, 1.0, 3, endpoint=True)
+volumes = mf.build_cmesh(x, y, z)
+faces = volumes.descend()
+cracked = volumes.crack(faces)
+</code></pre>
+<pre><code class="language-python">merged = cracked.merge_nodes()
+</code></pre>
+<pre><code class="language-python">edges = faces.descend()
+compos_merged = merged.connected_components()
+compos_cracked = cracked.connected_components()
+
+assert len(compos_merged) == 1
+
+n_compos = len(compos_cracked)
+
+shape = (3, n_compos + 1)
+groups = [
+    (0, np.s_[:-1]),  # cracked
+    (0, n_compos),  # merged
+    (1, np.s_[:-1]),  # cracked txt
+    (np.s_[1:], n_compos),  # merged compos
+    *((2, i) for i in range(n_compos)),  # cracked compos
+]
+row_weights = [1.0, 0.1, 1.0]
+col_weights = [*(0.5,) * n_compos, 1.5]
+pv.set_jupyter_backend("static")
+plotter = pv.Plotter(
+    shape=shape, groups=groups, row_weights=row_weights, col_weights=col_weights
+)
+
+plotter.subplot(0, n_compos)
+plotter.add_text("Merged mesh")
+plotter.add_mesh(merged.to_pyvista(), show_edges=True)
+plotter.subplot(0, 0)
+plotter.add_text("Cut mesh used for the crack")
+plotter.add_mesh(faces.to_pyvista().shrink(0.8), show_edges=True)
+
+plotter.subplot(1, n_compos)
+plotter.add_text("Compo of merged mesh")
+plotter.add_mesh(edges.to_pyvista())
+plotter.add_mesh(compos_merged[0].to_pyvista(), show_edges=True)
+
+plotter.subplot(1, 0)
+plotter.add_text("Compos of cracked mesh")
+
+for i, compo in enumerate(compos_cracked):
+    plotter.subplot(2, i)
+    plotter.add_mesh(edges.to_pyvista())
+    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
+    plotter.camera.zoom(2)
+plotter.show()
+</code></pre>
+<p><img src="python_examples/geometric_tools_files/geometric_tools_11_0.png" alt="png"></p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="selection-tool"><a class="header" href="#selection-tool">Selection tool</a></h1>
+<pre><code class="language-python">import mefikit as mf
+import numpy as np
+import pyvista as pv
+
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
+</code></pre>
+<h2 id="element-selection"><a class="header" href="#element-selection">Element selection</a></h2>
+<p>Elements can be selected based on there:</p>
+<ul>
+<li>types</li>
+<li>ids</li>
+<li>dimensions</li>
+</ul>
+<p>Elements can be selected based on there centroid position. The selection methods using centroids are :</p>
+<ul>
+<li>bbox</li>
+<li>sphere</li>
+<li>rectangle</li>
+<li>circle</li>
+</ul>
+<p>As you can guess, bbox and sphere should be used for 3d meshes and rectangle and circle for 2d meshes.</p>
+<p>Elements can be selected based on the nodes position and a boolean : whether to select element with all nodes matching the coundition or any node matching the coundition.</p>
+<ul>
+<li>nbbox</li>
+<li>nsphere</li>
+<li>nrect</li>
+<li>ncircle</li>
+<li>nids</li>
+</ul>
+<p>Elements can be selected based on their group appartenance :</p>
+<ul>
+<li>inside</li>
+<li>outside</li>
+</ul>
+<p>Elements can be selected based on their scalar fields values :</p>
+<ul>
+<li>FieldExpr &gt; FieldExpr</li>
+<li>FieldExpr &gt;= FieldExpr</li>
+<li>FieldExpr &lt; FieldExpr</li>
+<li>FieldExpr &lt;= FieldExpr</li>
+<li>FieldExpr == FieldExpr</li>
+</ul>
+<h3 id="the-selection-type"><a class="header" href="#the-selection-type">The Selection type</a></h3>
+<p>Here the types manipulated are <code>Selection</code>. They are simple objects that know how to compose themselves.</p>
+<pre><code class="language-python">clip = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.5])
+sphere = mf.sel.sphere([0.5, 0.5, 0.5], 0.5)
+</code></pre>
+<pre><code class="language-python">x = np.linspace(0.0, 1.0, 20, endpoint=True)
+volumes = mf.build_cmesh(x, x, x)
+</code></pre>
+<pre><code class="language-python">volumes.select(clip).to_pyvista().plot()
+</code></pre>
+<p><img src="python_examples/selection_files/selection_6_0.png" alt="png"></p>
+<pre><code class="language-python">volumes.select(sphere).to_pyvista().plot()
+</code></pre>
+<p><img src="python_examples/selection_files/selection_7_0.png" alt="png"></p>
+<h2 id="selection-composition"><a class="header" href="#selection-composition">Selection composition</a></h2>
+<p>One of the great strength of the select method is its composability !
+Whatch by yourself.</p>
+<p>The operators <code>&amp;</code>, <code>|</code>, <code>^</code>, <code>-</code> and <code>~</code> are available.</p>
+<pre><code class="language-python">x = np.linspace(0.0, 2.0, 100)
+y = np.linspace(0.0, 1.0, 50)
+faces = mf.build_cmesh(x, y)
+</code></pre>
+<pre><code class="language-python">circle1 = mf.sel.circle([0.75, 0.5], 0.5)
+circle2 = mf.sel.circle([1.25, 0.5], 0.5)
+</code></pre>
+<pre><code class="language-python">union = faces.select(circle1 | circle2)
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter()
+pt.add_mesh(faces.descend().to_pyvista())
+pt.add_mesh(union.to_pyvista())
+pt.camera_position = "xy"
+pt.show()
+</code></pre>
+<p><img src="python_examples/selection_files/selection_12_0.png" alt="png"></p>
+<pre><code class="language-python">intersection = faces.select(circle1 &amp; circle2)
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter()
+pt.add_mesh(faces.descend().to_pyvista())
+pt.add_mesh(intersection.to_pyvista())
+pt.camera_position = "xy"
+pt.show()
+</code></pre>
+<p><img src="python_examples/selection_files/selection_14_0.png" alt="png"></p>
+<pre><code class="language-python">sym_diff = faces.select(circle1 ^ circle2)
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter()
+pt.add_mesh(faces.descend().to_pyvista())
+pt.add_mesh(sym_diff.to_pyvista())
+pt.camera_position = "xy"
+pt.show()
+</code></pre>
+<p><img src="python_examples/selection_files/selection_16_0.png" alt="png"></p>
+<pre><code class="language-python">diff = faces.select(circle1 - circle2)
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter()
+pt.add_mesh(faces.descend().to_pyvista())
+pt.add_mesh(diff.to_pyvista())
+pt.camera_position = "xy"
+pt.show()
+</code></pre>
+<p><img src="python_examples/selection_files/selection_18_0.png" alt="png"></p>
+<pre><code class="language-python">notsel = faces.select(~circle1)
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter()
+pt.add_mesh(faces.descend().to_pyvista())
+pt.add_mesh(notsel.to_pyvista())
+pt.camera_position = "xy"
+pt.show()
+</code></pre>
+<p><img src="python_examples/selection_files/selection_20_0.png" alt="png"></p>
+<h2 id="a-3d-complex-example"><a class="header" href="#a-3d-complex-example">A 3D complex example</a></h2>
+<pre><code class="language-python">sphere = mf.sel.sphere([0.5, 0.5, 0.5], 0.5)
+clip_x = mf.sel.bbox([0.5, -np.inf, -np.inf], [np.inf, np.inf, np.inf])  # x &gt; 0.5
+clip_z = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.5])  # z &lt; 0.5
+</code></pre>
+<pre><code class="language-python">volumes.select(
+    (clip_x &amp; sphere &amp; clip_z) | (sphere &amp; ~clip_x &amp; ~clip_z)
+).to_pyvista().plot()
+</code></pre>
+<p><img src="python_examples/selection_files/selection_23_0.png" alt="png"></p>
+<h2 id="how-does-it-works-"><a class="header" href="#how-does-it-works-">How does it works ?</a></h2>
+<p>Each objects generated by a selection function (a function from the mf.sel module) is of the <code>Selection</code> type. It implements operators so that it knows how to compose in an expression. That way an expression generates a new <code>Selection</code> which can be interpreted by the <code>.select(expr)</code> method.</p>
+<pre><code class="language-python">print(sphere)
+</code></pre>
+<pre><code>CentroidSelection(
+    Sphere {
+        center: [
+            0.5,
+            0.5,
+            0.5,
+        ],
+        r2: 0.5,
+    },
+)
+</code></pre>
+<pre><code class="language-python">print(~(sphere &amp; clip_x))
+</code></pre>
+<pre><code>NotExpr(
+    NotExpr(
+        BinarayExpr(
+            BinarayExpr {
+                operator: And,
+                left: CentroidSelection(
+                    Sphere {
+                        center: [
+                            0.5,
+                            0.5,
+                            0.5,
+                        ],
+                        r2: 0.5,
+                    },
+                ),
+                right: CentroidSelection(
+                    BBox {
+                        min: [
+                            0.5,
+                            -inf,
+                            -inf,
+                        ],
+                        max: [
+                            inf,
+                            inf,
+                            inf,
+                        ],
+                    },
+                ),
+            },
+        ),
+    ),
+)
+</code></pre>
+<p>You can see two layers of NotExpr and BinaryExpr. That is perfectly normal, it does not mean that the operation is applied twice, both NotExpr operations and both BinaryExpr op actually comes from different namespaces and it is just a form of encapsulation (first is a variant, second is an enum).</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="fields"><a class="header" href="#fields">Fields</a></h1>
+<pre><code class="language-python">import mefikit as mf
+import numpy as np
+import pyvista as pv
+
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
+</code></pre>
+<h2 id="field-expressions"><a class="header" href="#field-expressions">Field expressions</a></h2>
+<p>FieldExpr are composition of floats and mf.sel.field(“fieldname”) or custom fields :</p>
+<ul>
+<li>field(“toto”) * field(“tata”)</li>
+<li>field(“toto”) + field(“tata”)</li>
+<li>field(“toto”) - field(“tata”)</li>
+<li>field(“toto”) / field(“tata”)</li>
+<li>field(“toto”) ** field(“tata”)</li>
+<li>field(“toto”).dot(field(“tata”))</li>
+<li>field(“toto”) @ field(“tata”)</li>
+<li>sin(field(“toto”))</li>
+<li>cos(field(“toto”))</li>
+<li>abs(field(“toto”))</li>
+<li>log(field(“toto”))</li>
+<li>log10(field(“toto”))</li>
+<li>exp(field(“toto”))</li>
+<li>field(“toto”)[0]</li>
+<li>normals()</li>
+<li>x()</li>
+<li>y()</li>
+<li>z()</li>
+<li>centroids()</li>
+</ul>
+<pre><code class="language-python">x = np.logspace(-5, 0.0, 1000)
+mesh2 = mf.build_cmesh(x, x)
+</code></pre>
+<pre><code class="language-python">mesh2.measure_update()
+</code></pre>
+<pre><code class="language-python">mesh2.to_pyvista().plot()
+</code></pre>
+<p><img src="python_examples/fields_files/fields_5_0.png" alt="png"></p>
+<pre><code class="language-python">m = mf.Field("Measure")
+</code></pre>
+<h2 id="field-operations-evaluation"><a class="header" href="#field-operations-evaluation">Field operations evaluation</a></h2>
+<pre><code class="language-python">mesh2.eval_update("4 * M2", m * m * 4.0)
+</code></pre>
+<pre><code class="language-python">mesh2.to_pyvista().plot()
+</code></pre>
+<p><img src="python_examples/fields_files/fields_9_0.png" alt="png"></p>
+<pre><code class="language-python">mesh2.fields()
+</code></pre>
+<pre><code>{'4 * M2': {'QUAD4': array([7.22038631e-28, 7.38874101e-28, 7.56102117e-28, ...,
+         6.58446349e-08, 6.73799065e-08, 6.89509753e-08], shape=(998001,))},
+ 'Measure': {'QUAD4': array([1.34353883e-14, 1.35911194e-14, 1.37486555e-14, ...,
+         1.28301047e-04, 1.29788199e-04, 1.31292589e-04], shape=(998001,))}}
+</code></pre>
+<pre><code class="language-python">m2 = mf.Field("4 * M2")
+mesh2.eval(m2 - 4.0 * m.square())
+</code></pre>
+<pre><code>{'QUAD4': array([0., 0., 0., ..., 0., 0., 0.], shape=(998001,))}
+</code></pre>
+<h2 id="how-does-it-work-"><a class="header" href="#how-does-it-work-">How does it work ?</a></h2>
+<pre><code class="language-python">print(4.0 * m * m)
+</code></pre>
+<pre><code>BinarayExpr {
+    operator: Mul,
+    left: BinarayExpr {
+        operator: Mul,
+        left: Array(
+            4.0, shape=[], strides=[], layout=CFcf (0xf), dynamic ndim=0,
+        ),
+        right: Field(
+            "Measure",
+        ),
+    },
+    right: Field(
+        "Measure",
+    ),
+}
+</code></pre>
+<h2 id="why-is-it-awesome-"><a class="header" href="#why-is-it-awesome-">Why is it awesome ?</a></h2>
+<p>This enables two patterns :</p>
+<ul>
+<li>reusability and composition of filters</li>
+<li>evaluation optimizations, some selection filters are evaluated in parallel, some are evaluated first if they are discriminant</li>
+</ul>
+<h1 id="field-to-selection"><a class="header" href="#field-to-selection">Field to Selection</a></h1>
+<p>Fields can be converted to threshold selections :</p>
+<pre><code class="language-python">th = (m &gt; 3.25e-5) &amp; (m &lt; 1e-4)
+</code></pre>
+<pre><code class="language-python">m2sel = mesh2.select(th)
+pvm2: pv.UnstructuredGrid = m2sel.to_pyvista()
+pvm2.active_scalars_name = "Measure"
+pvm2.plot()
+</code></pre>
+<p><img src="python_examples/fields_files/fields_17_0.png" alt="png"></p>
+<p>Thoses threasholds selections can be combined with other selections.</p>
+<pre><code class="language-python">r = mf.sel.rect([0.25, 0.25], [0.7, 0.7])
+c = mf.sel.circle([0.875, 0.875], 0.05)
+</code></pre>
+<pre><code class="language-python">mesh2.select((m2 &gt; 4e-9) - r - c).to_pyvista().plot()
+</code></pre>
+<p><img src="python_examples/fields_files/fields_20_0.png" alt="png"></p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="bubbles-example"><a class="header" href="#bubbles-example">Bubbles example</a></h1>
+<pre><code class="language-python">import mefikit as mf
+import numpy as np
+import pyvista as pv
+
+rng = np.random.default_rng(seed=123)
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
+</code></pre>
+<pre><code class="language-python">xmax = 5.0
+ymax = 1.0
+r = 0.17
+nb = 15
+nr = 12.5
+</code></pre>
+<pre><code class="language-python">nx = int(xmax / r * nr)
+ny = int(ymax / r * nr)
+print(f"Number of elements : {nx * ny * ny:,}")
+</code></pre>
+<pre><code>Number of elements : 1,955,743
+</code></pre>
+<pre><code class="language-python">xc = rng.uniform(r, xmax - r, nb)
+yc = rng.uniform(r, ymax - r, nb)
+zc = rng.uniform(r, ymax - r, nb)
+spheres = [mf.sel.sphere([x, y, z], r) for x, y, z in zip(xc, yc, zc)]
+sphere_union = spheres[0]
+for s in spheres[1:]:
+    sphere_union = sphere_union | s
+</code></pre>
+<pre><code class="language-python">x = np.linspace(0.0, xmax, nx)
+y = np.linspace(0.0, ymax, ny)
+volumes = mf.build_cmesh(x, y, y)
+</code></pre>
+<pre><code class="language-python">volumes.boundaries().to_pyvista().plot(opacity=0.4)
+</code></pre>
+<p><img src="python_examples/example_bubbles_files/example_bubbles_6_0.png" alt="png"></p>
+<pre><code class="language-python">inner_bubbles = volumes.select(sphere_union)
+interface = inner_bubbles.boundaries()
+cracked = volumes.crack(interface)
+</code></pre>
+<pre><code class="language-python">cracked.boundaries().to_pyvista().plot(opacity=0.4)
+</code></pre>
+<p><img src="python_examples/example_bubbles_files/example_bubbles_8_0.png" alt="png"></p>
+<pre><code class="language-python">bubble_groups = inner_bubbles.connected_components()
+</code></pre>
+<pre><code class="language-python">pv.global_theme.color_cycler = "default"
+pl = pv.Plotter()
+for c in bubble_groups:
+    compo = c.to_pyvista()
+    pl.add_mesh(compo)
+pl.add_mesh(volumes.boundaries(target_dim=1).to_pyvista())
+pl.show()
+pv.global_theme.color_cycler = None
+</code></pre>
+<p><img src="python_examples/example_bubbles_files/example_bubbles_10_0.png" alt="png"></p>
+<pre><code class="language-python">clip1 = mf.sel.bbox([-np.inf] * 3, [np.inf, ymax / 3.0, np.inf])
+pl = pv.Plotter()
+pl.add_mesh(volumes.select(clip1 &amp; ~sphere_union).to_pyvista())
+pl.add_mesh(interface.to_pyvista(), opacity=0.4)
+pl.show()
+</code></pre>
+<p><img src="python_examples/example_bubbles_files/example_bubbles_11_0.png" alt="png"></p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-c2a407aa.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-a0b12cfe.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>
