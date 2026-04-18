@@ -1,8 +1,8 @@
 [workspace]
 resolver = "3"
 members = [
-  "meficore",
-  "mefipy",
+  "crates/mefikit",
+  "crates/mefikit-py",
   # "mefikit-ffi",
 ]
 
