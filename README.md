@@ -15,6 +15,24 @@ the [Mefibook!](./mefibook/src/SUMMARY.md)
 
 ---
 
+## 💡 Why `Mefikit`?
+
+The internal mesh representation is designed for **simplicity and
+performance**, closely matching the file format layout. Unlike other tools
+`Mefikit` provides:
+
+- 🧼 **Simple interface**
+- ⚙️ Easy development, integration and debugging
+- 📦 Modern tools and clean build system (Rust/Cargo)
+- 🧪 Pilot usage of rust in mesh tools and HPC scientific software
+
+And thrive to:
+
+- 🚀 Good **runtime performance**
+- 🧪 Robust testing & benchmarking suite
+
+---
+
 ## ✨ Key Features
 
 ### 🧩 Mesh and Field Core
@@ -90,24 +108,6 @@ the [Mefibook!](./mefibook/src/SUMMARY.md)
 
 - All high level functionality is exposed via clean Python bindings for rapid prototyping and integration in data pipelines.
 - Adding python conversions through `numpy` to `meshio`, `pyvista`, `medcoupling`.
-
----
-
-## 💡 Why `Mefikit`?
-
-The internal mesh representation is designed for **simplicity and
-performance**, closely matching the file format layout. Unlike other tools
-`Mefikit` provides:
-
-- 🧼 **Simple interface**
-- ⚙️ Easy development, integration and debugging
-- 📦 Modern tools and clean build system (Rust/Cargo)
-- 🧪 Pilot usage of rust in mesh tools and HPC scientific software
-
-And thrive to:
-
-- 🚀 Good **runtime performance**
-- 🧪 Robust testing & benchmarking suite
 
 ---
 
