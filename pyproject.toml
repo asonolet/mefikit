@@ -4,11 +4,27 @@ build-backend = "maturin"
 
 [project]
 name = "mefikit"
-version = "0.1.0"
-description = "Python bindings for the mefikit Rust library"
+dynamic = ["version"]
+license = { text = "MIT OR Apache-2.0" }
+readme = "README.md"
+description = "High-performance library for unstructured mesh and field manipulation, designed for scientific computing, mesh processing, and multi-physics workflows."
+keywords = ["science", "simulation", "mesh", "cfd", "geometry", "hpc"]
 requires-python = ">=3.9"
 authors = [{ name = "Aymeric SONOLET", email = "aymeric.sonolet@cea.fr" }]
-dependencies = ["numpy"]
+dependencies = [
+    "numpy>=1.21",
+]
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Topic :: Scientific/Engineering",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Topic :: Scientific/Engineering :: Mathematics",
+]
 
 [project.optional-dependencies]
 io = ["meshio[all]>=5.3.5", "medcoupling", "pyvista[all]>=0.46.4"]
@@ -28,8 +44,8 @@ default-groups = "all"
 
 [dependency-groups]
 dev = [
-    "jupyterlab>=4.5.6",
-    "medcoupling>=9.15.0",
-    "pytest>=8.4.2",
-    "pyvista>=0.46.5",
+  "jupyterlab>=4.5.6",
+  "medcoupling>=9.15.0",
+  "pytest>=8.4.2",
+  "pyvista>=0.46.5",
 ]

@@ -253,5 +253,17 @@ cargo flamegraph --profile flame --example name_of_the_example
 
 ## License
 
-This library is licensed under the MIT License. See the `LICENSE` file for
-more information.
+Licensed under either of:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+---
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in Mefikit by you shall be dual licensed as above, without any
+additional terms or conditions.
