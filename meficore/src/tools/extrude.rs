@@ -60,6 +60,7 @@ fn extrude_coords_parallel(
 }
 
 /// This allows curvilinear extrusion along a new axis with non parallel planes.
+/// This method is only valid in 3d.
 ///
 /// A new axis is added with coords from along. The x (and potentially y) coords take an offset and
 /// a rotation from the along array. The offset starts at 0., so if along does not starts at [0.,
@@ -79,14 +80,13 @@ fn extrude_coords_curvilinear(
     let new_axis = nd::Array::from_elem((coords.nrows(), 1), z0);
     let coords = nd::concatenate(nd::Axis(1), &[coords, new_axis.view()]).unwrap();
 
-    let origin = along.slice(s![0, ..]).to_owned();
+    // TODO: implement the method for 2d extrusion
     let zero = nd::arr2(&[[0., 0., 0.]]);
     let offsets_vecs = nd::concatenate![
         nd::Axis(0),
         zero,
         &along.slice(s![1.., ..]) - &along.slice(s![..-1, ..]),
     ]; // z starts at 0.0
-    // first offsets_vecs row should be full zeros
 
     // Compute normals
     // 1. Compute vectors
