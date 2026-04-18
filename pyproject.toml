@@ -15,7 +15,8 @@ io = ["meshio[all]>=5.3.5", "medcoupling", "pyvista[all]>=0.46.4"]
 all = ["mefikit[io]"]
 
 [tool.maturin]
-python-source = "python"
+python-source = "src"
+manifest-path = "crates/mefikit-py/Cargo.toml"
 module-name = "mefikit.mefipy"
 
 [tool.ruff.lint]
@@ -26,4 +27,9 @@ package = false
 default-groups = "all"
 
 [dependency-groups]
-dev = ["pytest>=8.4.2"]
+dev = [
+    "jupyterlab>=4.5.6",
+    "medcoupling>=9.15.0",
+    "pytest>=8.4.2",
+    "pyvista>=0.46.5",
+]

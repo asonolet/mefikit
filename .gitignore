@@ -5,12 +5,10 @@
 **/examples/*.yaml
 **/examples/*.vtk
 **/examples/*.vtu
-mefikit-py/.venv
 perf.data*
 flamegraph.svg
 **/__pycache__
-mefipy/python/mefikit/*.so
-mefipy/venv
-mefipy/.venv
+src/mefikit/*.so
+venv
+.venv
 .ipynb_checkpoints
-mefikit/benches/target/

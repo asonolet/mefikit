@@ -1,6 +1,6 @@
 # Mefikit
 
-![Mefikit logo](./mefibook/src/logo/mefikit_logo_v2.png)
+![Mefikit logo](./docs/src/logo/mefikit_logo_v2.png)
 
 **Mefikit** (_Meshes and Fields Kit_) is a modern, high-performance library for
 manipulating unstructured meshes and associated fields and groups. It is
@@ -11,7 +11,7 @@ mesh-based data processing pipelines.
 **Mefikit** is in a very early development phase. You might want to check the [ROADMAP](./ROADMAP.md).
 
 If you are starting with **Mefikit**, especially on the Python side, check for
-the [Mefibook!](./mefibook/src/SUMMARY.md)
+the [Mefibook!](./docs/src/SUMMARY.md)
 
 ---
 
@@ -117,9 +117,9 @@ And thrive to:
 
 ```text
 mefikit/
-├── meficore/      # The rust core library. You can use it as a rust dependency
-├── mefipy/        # PyO3 bindings and python package
-├── mefibook/      # The Mefikit Book
+├── crates/      # The rust core library and pyo3 bindings. You can use it as a rust dependency
+├── src/         # The python package
+├── docs/        # The Mefikit Book
 ```
 
 ### Rust core library
@@ -143,20 +143,11 @@ cargo build --release
 This will create a release build of the library in the `target/release`
 directory.
 
-### Python bindings and python package
+### Python package
 
-```text
-mefipy/
-├── src/              # The PyO3 bindings of the mefikit crate
-├── python/mefikit/   # The python mefikit library
-├── tests/            # Python tests
-```
-
-The crate with the python bindings is called `mefipy`. It contains all the PyO3
+The crate with the python bindings is called `mefikit-py`. It contains all the PyO3
 stuff. This crate is used as the basis of the python `mefikit` library. The
-same name was used for the python library for the sake of simplicity. If you
-want to specifically design the python lib and not the rust crate, you can call
-it `mefikit-py`.
+same name was used for the python library for the sake of simplicity.
 
 To build the bindings and the python package please run:
 
@@ -172,12 +163,12 @@ uv run pytest
 
 `uv` won't build the package, it is only in charge of the dependencies.
 `maturin` is the only one parametrized for this. Please run `maturin` each time
-rust `meficore` or `mefipy` changed.
+rust `mefikit` or `mefikit-py` changed.
 
 ### Mefibook
 
 ```text
-mefibook/
+docs/
 ├── src/                # The mdbook root dir
 ├── python_examples/    # Python notebooks
 ```
