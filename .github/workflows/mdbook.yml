@@ -1,0 +1,33 @@
+name: Deploy mdBook
+
+on:
+  push:
+    branches:
+      - dev # ou master
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: taiki-e/install-action@cargo-binstall
+
+      - name: Install mdBook
+        run: |
+          cargo binstall mdbook
+
+      - name: Build book
+        run: |
+          cd mefibook
+          mdbook build
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./mefibook/book
