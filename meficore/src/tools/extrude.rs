@@ -1,6 +1,6 @@
 use crate::mesh::{ElementType, UMesh, UMeshView};
 
-use ndarray::{self as nd, IntoNdProducer};
+use ndarray::{self as nd, ArrayView1, s};
 
 /// This is the most simple extrusion method.
 ///
@@ -13,7 +13,7 @@ fn extrude_coords(coords: nd::ArrayView2<'_, f64>, along: &[f64]) -> nd::Array2<
     let mut new_coords: Vec<_> = Vec::with_capacity(along.len());
     for &val in along {
         let mut coord_i = coord0.clone();
-        coord_i.slice_mut(nd::s![.., dim - 1]).fill(val);
+        coord_i.slice_mut(s![.., dim - 1]).fill(val);
         new_coords.push(coord_i);
     }
     let new_coords_views: Vec<_> = new_coords.iter().map(|c| c.view()).collect();
@@ -36,26 +36,22 @@ fn extrude_coords_parallel(
     let mut along_centered = along.to_owned();
     // Remove x offset
     along_centered
-        .slice_mut(nd::s![.., 0])
+        .slice_mut(s![.., 0])
         .mapv_inplace(|x| x - along[[0, 0]]);
     if dim > 2 {
         // Remove y offset
         along_centered
-            .slice_mut(nd::s![.., 1])
+            .slice_mut(s![.., 1])
             .mapv_inplace(|y| y - along[[0, 1]]);
     }
 
     let mut new_coords: Vec<_> = Vec::with_capacity(along.nrows());
     for val in along_centered.rows() {
         let mut coord_i = coord0.clone();
-        coord_i.slice_mut(nd::s![.., dim - 1]).fill(val[dim - 1]);
-        coord_i
-            .slice_mut(nd::s![.., 0])
-            .mapv_inplace(|x| x + val[0]);
+        coord_i.slice_mut(s![.., dim - 1]).fill(val[dim - 1]);
+        coord_i.slice_mut(s![.., 0]).mapv_inplace(|x| x + val[0]);
         if dim > 2 {
-            coord_i
-                .slice_mut(nd::s![.., 1])
-                .mapv_inplace(|x| x + val[1]);
+            coord_i.slice_mut(s![.., 1]).mapv_inplace(|x| x + val[1]);
         }
         new_coords.push(coord_i);
     }
@@ -79,37 +75,130 @@ fn extrude_coords_curvilinear(
     // Center is the barycenter of the nodes used as rotation center, this is arbitrary
     let dim = along.ncols();
     assert_eq!(dim - 1, coords.ncols());
-    let z0 = along[[0, dim]];
+    let z0 = along[[0, dim - 1]];
     let new_axis = nd::Array::from_elem((coords.nrows(), 1), z0);
     let coords = nd::concatenate(nd::Axis(1), &[coords, new_axis.view()]).unwrap();
-    let center = coords.mean_axis(nd::Axis(0)).unwrap();
 
-    let origin = along.slice(nd::s![0, ..]).to_owned();
-    let offsets_vecs = along.to_owned() - &origin; // z starts at 0.0
+    let origin = along.slice(s![0, ..]).to_owned();
+    let zero = nd::arr2(&[[0., 0., 0.]]);
+    let offsets_vecs = nd::concatenate![
+        nd::Axis(0),
+        zero,
+        &along.slice(s![1.., ..]) - &along.slice(s![..-1, ..]),
+    ]; // z starts at 0.0
     // first offsets_vecs row should be full zeros
 
     // Compute normals
     // 1. Compute vectors
-    let dir_vec =
-        offsets_vecs.slice(nd::s![1.., ..]).to_owned() - offsets_vecs.slice(nd::s![..-1, ..]);
-    let normal_vecs = dir_vec.slice(nd::s![1.., ..]).to_owned() - dir_vec.slice(nd::s![..-1, ..]);
-    let first_vec = dir_vec.slice(nd::s![..1, ..]).to_owned();
-    let last_vec = dir_vec.slice(nd::s![-1.., ..]).to_owned();
+    // For all except first and last, the normal vector is computed from previous and next offsets
+    // positions (centered)
+    let normal_vecs = &along.slice(s![2.., ..]) - &along.slice(s![..-2, ..]);
+    let oz = nd::arr2(&[[0., 0., 1.]]);
+    let first_vec = &along.slice(s![1..2, ..]) - &along.slice(s![..1, ..]);
+    let last_vec = &along.slice(s![-1.., ..]) - &along.slice(s![-2..-1, ..]);
 
-    let normal_vecs = nd::concatenate![nd::Axis(0), first_vec, normal_vecs, last_vec];
+    let normal_vecs = nd::concatenate![nd::Axis(0), oz, first_vec, normal_vecs, last_vec];
 
     let mut new_coords: Vec<_> = Vec::with_capacity(along.nrows());
-    new_coords.push(coords);
-    for (offset, normal) in offsets_vecs.rows().into_iter().zip(normal_vecs.rows()) {
-        // let mut coord_i = coords.clone();
-        // TOOD: use quaternion to compute new coords
-        // TOOD: compute from previous coords so that the U turn issue is not encountered
-        todo!("Translate and rotate coord_i with center, offset and normal.");
-        let rotated_coords = &center + (&coords - &center) + offset;
+    let mut last_coords = coords.clone();
+
+    for (offset, z_win) in offsets_vecs
+        .rows()
+        .into_iter()
+        .zip(normal_vecs.axis_windows(nd::Axis(0), 2))
+    {
+        let z_prev = z_win.row(0).to_owned();
+        let z_new = z_win.row(1).to_owned();
+        let center = last_coords.mean_axis(nd::Axis(0)).unwrap();
+        let rotated_coords = rotate_mesh(last_coords.view(), center.view(), z_prev, z_new) + offset;
+        last_coords = rotated_coords.clone();
         new_coords.push(rotated_coords);
     }
     let new_coords_views: Vec<_> = new_coords.iter().map(|c| c.view()).collect();
     nd::concatenate(nd::Axis(0), &new_coords_views).unwrap()
+}
+
+use ndarray::Array1;
+
+fn orthogonal(a: nd::ArrayView1<f64>) -> Array1<f64> {
+    if a[0].abs() < a[1].abs() && a[0].abs() < a[2].abs() {
+        let ox = Array1::from(vec![1.0, 0.0, 0.0]);
+        cross(a, ox.view())
+    } else if a[1].abs() < a[2].abs() {
+        let oy = Array1::from(vec![0.0, 1.0, 0.0]);
+        cross(a, oy.view())
+    } else {
+        let oz = Array1::from(vec![0.0, 0.0, 1.0]);
+        cross(a, oz.view())
+    }
+}
+
+fn normalize(mut v: nd::ArrayViewMut1<f64>) {
+    let n = v.dot(&v).sqrt();
+    v /= n;
+}
+
+fn rotate_mesh(
+    coords: nd::ArrayView2<f64>,
+    center: nd::ArrayView1<f64>,
+    z_prev: nd::Array1<f64>,
+    z_new: nd::Array1<f64>,
+) -> nd::Array2<f64> {
+    let mut result = coords.to_owned();
+
+    // a = (0,0,1)
+    let mut a = z_prev;
+    normalize(a.view_mut());
+
+    // normaliser b
+    let mut b = z_new;
+    normalize(b.view_mut());
+
+    let c = a.dot(&b);
+
+    // produit vectoriel
+    let v = cross(a.view(), b.view());
+
+    if c > 0.999999 {
+        // identité
+        return result;
+    }
+
+    if c < -0.999999 {
+        // rotation 180°
+        let u = orthogonal(a.view());
+
+        for mut row in result.axis_iter_mut(nd::Axis(0)) {
+            let mut x = &row - &center;
+            let dot = x.dot(&u);
+            x = &x - &(2.0 * dot * &u);
+            row.assign(&(x + center));
+        }
+        return result;
+    }
+
+    let denom = 1.0 + c;
+
+    for mut row in result.axis_iter_mut(nd::Axis(0)) {
+        let mut x = &row - &center;
+
+        let vx = cross(v.view(), x.view());
+        let vvx = cross(v.view(), vx.view());
+
+        x = &x + &vx + &(vvx / denom);
+
+        row.assign(&(x + center));
+    }
+
+    result
+}
+
+fn cross(a: ArrayView1<f64>, b: ArrayView1<f64>) -> Array1<f64> {
+    Array1::from(vec![
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ])
 }
 
 // fn extrude_coords_along_normal(coords: nd::ArrayView2<'_, f64>, along: &[f64]) -> nd::Array2<f64> {
@@ -252,9 +341,22 @@ pub fn extrude_parallel(mesh: UMeshView, along: nd::ArrayView2<'_, f64>) -> UMes
     extrude_connectivity(mesh, along.nrows() - 1, new_coords)
 }
 
+pub fn extrude_curv(mesh: UMeshView, along: nd::ArrayView2<'_, f64>) -> UMesh {
+    if along.is_empty() {
+        return mesh.to_shared();
+    }
+    let new_coords = extrude_coords_curvilinear(mesh.coords(), along);
+    if along.nrows() == 1 {
+        let mut extruded_mesh = mesh.to_shared();
+        extruded_mesh.coords = new_coords.into_shared();
+        return extruded_mesh;
+    }
+    extrude_connectivity(mesh, along.nrows() - 1, new_coords)
+}
+
 pub trait Extrudable {
     fn extrude(&self, along: &[f64]) -> UMesh;
-    // fn extrude_curv(&self, along: nd::ArrayView2<'_, f64>) -> UMesh;
+    fn extrude_curv(&self, along: nd::ArrayView2<'_, f64>) -> UMesh;
     fn extrude_parallel(&self, along: nd::ArrayView2<'_, f64>) -> UMesh;
     // fn extrude_grow_normal_dir(&self, along: &[f64]) -> UMesh;
     // fn extrude_grow_with_focal(&self, along: &[f64], focal: f64, normal: &[f64]);
@@ -268,6 +370,10 @@ impl Extrudable for UMeshView<'_> {
     fn extrude_parallel(&self, along: ndarray::ArrayView2<'_, f64>) -> UMesh {
         extrude_parallel(self.clone(), along)
     }
+
+    fn extrude_curv(&self, along: ndarray::ArrayView2<'_, f64>) -> UMesh {
+        extrude_curv(self.clone(), along)
+    }
 }
 
 impl Extrudable for UMesh {
@@ -277,5 +383,9 @@ impl Extrudable for UMesh {
 
     fn extrude_parallel(&self, along: ndarray::ArrayView2<'_, f64>) -> UMesh {
         extrude_parallel(self.view(), along)
+    }
+
+    fn extrude_curv(&self, along: ndarray::ArrayView2<'_, f64>) -> UMesh {
+        extrude_curv(self.view(), along)
     }
 }

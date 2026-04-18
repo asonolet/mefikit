@@ -80,9 +80,9 @@ extruded.to_pyvista(dim="all").plot(show_edges=True)
 
 ```python
 n = 50
-x = np.sin(np.linspace(0., np.pi, n))
-y = np.cos(np.linspace(0., np.pi, n))
-z = np.linspace(0., 4., n)
+x = np.sin(np.linspace(0.0, np.pi, n))
+y = np.cos(np.linspace(0.0, np.pi, n))
+z = np.linspace(0.0, 4.0, n)
 line = np.c_[x, y, z]
 
 extruded_par = mesh.extrude_parallel(line)
@@ -96,3 +96,30 @@ extruded_par.to_pyvista(dim="all").plot(show_edges=True)
 
 
 ![png](extrusions_files/extrusions_12_0.png)
+
+
+
+### Build curviliear extrusion mesh
+
+
+```python
+mesh = mf.build_cmesh(range(2), range(2))
+n = 20
+# x = np.linspace(0, 4, n)
+x = np.zeros((n,))
+# x = np.sin(np.linspace(0.0, np.pi, n))
+y = np.cos(np.linspace(0.0, np.pi, n))
+z = np.sin(np.linspace(0.0, np.pi, n))
+line = np.c_[x, y, z]
+
+extruded_curv = mesh.extrude_curv(line)
+```
+
+
+```python
+extruded_curv.to_pyvista(dim="all").plot(show_edges=True)
+```
+
+
+
+![png](extrusions_files/extrusions_15_0.png)

@@ -241,6 +241,11 @@ impl PyUMesh {
         new_mesh.into()
     }
 
+    fn extrude_curv(&self, along: PyReadonlyArray2<'_, f64>) -> Self {
+        let new_mesh = mf::extrude_curv(self.inner.view(), along.as_array());
+        new_mesh.into()
+    }
+
     #[pyo3(signature = (expr, with_fields=true))]
     fn select(&self, expr: PySelection, with_fields: bool) -> Self {
         let (_, submesh) = self.inner.select(expr.into(), with_fields);
