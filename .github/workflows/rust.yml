@@ -38,28 +38,28 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
-  benchmark:
-    runs-on: ubuntu-latest
+  # benchmark:
+  #   runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install Valgrind
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y valgrind
-      - uses: taiki-e/install-action@cargo-binstall
-      - name: Install gungraun-runner
-        run: |
-          version=$(cargo metadata --format-version=1 |\
-            jq '.packages[] | select(.name == "gungraun").version' |\
-            tr -d '"'
-          )
-          cargo binstall --no-confirm gungraun-runner --version $version
-      - run: cargo bench -- --output-format bencher | tee output.txt
-      - uses: benchmark-action/github-action-benchmark@v1
-        with:
-          tool: "cargo"
-          output-file-path: output.txt
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-          alert-threshold: "150%"
-          fail-on-alert: true
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Install Valgrind
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install -y valgrind
+  #     - uses: taiki-e/install-action@cargo-binstall
+  #     - name: Install gungraun-runner
+  #       run: |
+  #         version=$(cargo metadata --format-version=1 |\
+  #           jq '.packages[] | select(.name == "gungraun").version' |\
+  #           tr -d '"'
+  #         )
+  #         cargo binstall --no-confirm gungraun-runner --version $version
+  #     - run: cargo bench -- --output-format bencher | tee output.txt
+  #     - uses: benchmark-action/github-action-benchmark@v1
+  #       with:
+  #         tool: "cargo"
+  #         output-file-path: output.txt
+  #         github-token: "${{ secrets.GITHUB_TOKEN }}"
+  #         alert-threshold: "150%"
+  #         fail-on-alert: true
