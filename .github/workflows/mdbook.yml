@@ -23,11 +23,11 @@ jobs:
 
       - name: Build book
         run: |
-          cd mefibook
+          cd docs
           mdbook build
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./mefibook/book
+          publish_dir: ./docs/book
