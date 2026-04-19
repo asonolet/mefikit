@@ -1,6 +1,6 @@
 # Mefikit
 
-![Mefikit logo](./docs/src/logo/mefikit_logo_v2.png)
+![Mefikit logo](https://github.com/asonolet/mefikit/blob/master/docs/src/logo/mefikit_logo_v2.png)
 
 **Mefikit** (_Meshes and Fields Kit_) is a modern, high-performance library for
 manipulating unstructured meshes and associated fields and groups. It is
@@ -8,30 +8,32 @@ designed with a minimal, clear, and efficient interface, focusing on
 flexibility, correctness, and integration in multi-physics simulations and
 mesh-based data processing pipelines.
 
-**Mefikit** is in a very early development phase. You might want to check the [ROADMAP](./ROADMAP.md).
+🚧 **Mefikit** is in early development. Key resources to get started and follow
+progress:
 
-If you are starting with **Mefikit**, especially on the Python side, check for
-the [Mefibook!](./docs/src/SUMMARY.md)
+- 📚 [Documentation (Mefibook)](https://asonolet.github.io/mefikit)
+- 🗺️ [Roadmap](./ROADMAP.md)
+- 📝 [Changelog](./CHANGELOG.md)
+- 🐍 [PyPI](https://pypi.org/project/mefikit)
+- 📦 [Crates.io](https://crates.io/crates/mefikit)
+- 💻 [GitHub](https://github.com/asonolet/mefikit)
 
----
+## 💡 Why _Mefikit_?
 
-## 💡 Why `Mefikit`?
+_Mefikit_ aims to make mesh-based development **more direct and less
+error-prone**, without sacrificing performance. It reduces low-level array
+handling so you can focus on **algorithms, physics, and data flow**.
 
-The internal mesh representation is designed for **simplicity and
-performance**, closely matching the file format layout. Unlike other tools
-`Mefikit` provides:
+For scientific developers, it offers:
 
-- 🧼 **Simple interface**
-- ⚙️ Easy development, integration and debugging
-- 📦 Modern tools and clean build system (Rust/Cargo)
-- 🧪 Pilot usage of rust in mesh tools and HPC scientific software
-
-And thrive to:
-
-- 🚀 Good **runtime performance**
-- 🧪 Robust testing & benchmarking suite
-
----
+- 🧠 **Higher-level mesh thinking** — express operations on fields and geometry
+  instead of indices
+- 🧪 **Fast experimentation** — combine topology, geometry, and fields in a
+  unified API
+- 🔗 **Python ↔ Rust continuity** — prototype and scale with the same concepts
+- 🚧 **Early-stage flexibility** — shape core design choices while the project evolves
+- ⚡ **Performance-oriented core** — efficient execution without hiding the
+  data model
 
 ## ✨ Key Features
 
@@ -41,6 +43,35 @@ And thrive to:
   - Supports **mixed element types** in the same mesh
   - Named **fields of doubles** over elements or nodes
   - **Element groups** for flexible subdomain handling
+
+### 🧠 Expression DSL for Fields & Mesh Queries (python and rust)
+
+**Mefikit** provides a compact, composable DSL to work with fields and mesh
+regions without manual array handling.
+
+```python
+T = mf.Field("temperature")
+rhoCp = mf.Field("heat_capacity")
+V = mf.Field("measure")
+
+energy = rhoCp * T * V
+
+mesh.eval_update("energy", energy)     # compute & store in Rust as a new field
+E = mesh.eval(energy)                  # or materialize as NumPy
+
+energy = mf.Field("energy")            # reference the computed field
+submesh = mesh.select(energy > 1e6)    # field-based filtering
+
+domain = mf.sel.bbox(p_min, p_max) | mf.sel.sphere(c, r)
+submesh = mesh.select(domain & energy > 1e6)  # field and space filtering
+```
+
+- **Symbolic expressions**: build computations without touching raw arrays
+- **Unified queries**: combine fields, geometry, and groups (`mf.sel.inside(...)`)
+- **Efficient execution**: evaluated in Rust, with optional NumPy output
+
+This avoids manual indexing over unstructured meshes and keeps computations
+close to the data, while remaining concise and expressive.
 
 ### 🔄 Input/Output Support
 
@@ -60,11 +91,6 @@ And thrive to:
   - `extrude` - Create an extruded mesh (1d x 1d, 2d x 1d)
   - `duplicate` - Create a mesh by duplication (0d, 1d, 2d, 3d)
   - `aggregate` – Build a mesh from multiple non overlapping cell groups.
-- `select` - Powerfull composable selection API (DSL)
-  - on nodes position
-  - on elements position
-  - on fields values
-  - etc
 - 🧠 Topological operations
   - `descend` – Build the descending connectivity mesh (faces from volumes, etc)
   - `boundaries` – Build the boundaries mesh
@@ -80,6 +106,9 @@ And thrive to:
 
 ### 🧠 Element kit (rust only)
 
+This element kit provide a nice way to implement new features on elements and
+use them to build mesh new operations.
+
 - Descending elements (edges/faces of volumes, etc.)
 - Equivalence classes of elements
 - Simplexization
@@ -88,28 +117,6 @@ And thrive to:
 - Normal and orientation computation
 - Barycentre and volume evaluation
 - ...
-
-### 🔄 Mesh Ownership, Views, and Shared Coordinates
-
-- `UMesh`: fully owns its data (coordinates, connectivity, fields,
-  etc.), suitable for storage, transformation, and I/O. Useful to share
-  arrays using copy-on-write. Maximum performance when staying in rust.
-- `UMeshView<'a>`: read-only view into external or borrowed mesh
-  data; ideal for zero-copy FFI.
-
-### 🛠 Explicit is better than implicit
-
-- Out-of-place functional API for heavy op (`UMeshView` or `&UMesh`): `compute_descending`,
-  `intersect_meshes`, ...
-- In-place for metadata manipulations and non destructive op (`&mut UMesh`):
-  `assign_field`, `merge_close_nodes`, `add_group`, `snap`, ...
-
-### 🐍 Python Bindings
-
-- All high level functionality is exposed via clean Python bindings for rapid prototyping and integration in data pipelines.
-- Adding python conversions through `numpy` to `meshio`, `pyvista`, `medcoupling`.
-
----
 
 ## 🧪 Developer Notes
 
@@ -142,6 +149,21 @@ cargo build --release
 
 This will create a release build of the library in the `target/release`
 directory.
+
+### Memory model: Mesh Ownership, Views, and Shared Coordinates
+
+- `UMesh`: fully owns its data (coordinates, connectivity, fields,
+  etc.), suitable for storage, transformation, and I/O. Useful to share
+  arrays using copy-on-write. Maximum performance when staying in rust.
+- `UMeshView<'a>`: read-only view into external or borrowed mesh
+  data; ideal for zero-copy FFI.
+
+### API philosophy: Explicit is better than implicit
+
+- Out-of-place functional API for heavy op (`UMeshView` or `&UMesh`): `compute_descending`,
+  `intersect_meshes`, ...
+- In-place for metadata manipulations and non destructive op (`&mut UMesh`):
+  `assign_field`, `merge_close_nodes`, `add_group`, `snap`, ...
 
 ### Python package
 
@@ -259,8 +281,6 @@ Licensed under either of:
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
 
 at your option.
-
----
 
 ### Contribution
 
