@@ -34,6 +34,7 @@ all = ["mefikit[io]"]
 python-source = "src"
 manifest-path = "crates/mefikit-py/Cargo.toml"
 module-name = "mefikit.mefipy"
+include = ["README-*"]
 
 [tool.ruff.lint]
 preview = true
