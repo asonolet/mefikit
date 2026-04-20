@@ -1,16 +1,8 @@
-# ruff: disable[F403,F405,F821,E402]
-from .mefipy import *
+from . import data as data
+from . import io
+from .mefipy import UMesh, build_cmesh, sel
 
-__doc__ = mefipy.__doc__
-if hasattr(mefipy, "__all__"):
-    __all__ = mefipy.__all__
-else:
-    __all__ = ()
-del mefipy
+io.install_conversions()
+del io
 
-from . import io as io
-from . import data
-# ruff: enable[F403,F405,F821,E402]
-
-
-__all__ = (*__all__, "data")
+__all__ = ("UMesh", "build_cmesh", "data", "sel")

@@ -1,5 +1,6 @@
-import mefikit as mf
 import numpy as np
+
+import mefikit as mf
 
 
 def umesh3():
@@ -28,5 +29,4 @@ def cmesh3():
 
 
 def umesh2():
-    umesh = mf.build_cmesh(range(5), np.linspace(0.0, 1.0))
-    return umesh
+    return mf.build_cmesh(range(5), np.linspace(0.0, 1.0))
