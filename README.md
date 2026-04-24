@@ -168,8 +168,8 @@ directory.
 ### Python package
 
 The crate with the python bindings is called `mefikit-py`. It contains all the PyO3
-stuff. This crate is used as the basis of the python `mefikit` library. The
-same name was used for the python library for the sake of simplicity.
+bindings. This crate is used as the basis of the python `mefikit` package. The
+same name was used for the python package for the sake of simplicity.
 
 To build the bindings and the python package please run:
 

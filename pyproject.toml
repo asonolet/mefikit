@@ -11,7 +11,9 @@ description = "High-performance library for unstructured mesh and field manipula
 keywords = ["science", "simulation", "mesh", "cfd", "geometry", "hpc"]
 requires-python = ">=3.9"
 authors = [{ name = "Aymeric SONOLET", email = "aymeric.sonolet@cea.fr" }]
-dependencies = ["numpy>=1.21"]
+dependencies = [
+    "numpy>=1.21",
+]
 classifiers = [
   "Programming Language :: Rust",
   "Programming Language :: Python :: 3",
@@ -29,9 +31,10 @@ io = ["meshio[all]>=5.3.5", "medcoupling", "pyvista[all]>=0.46.4"]
 all = ["mefikit[io]"]
 
 [tool.maturin]
-python-source = "src"
 manifest-path = "crates/mefikit-py/Cargo.toml"
 module-name = "mefikit.mefipy"
+python-source = "src"
+
 include = ["LICENSE-*"]
 
 [tool.ruff.lint]
@@ -43,6 +46,8 @@ default-groups = "all"
 
 [dependency-groups]
 dev = [
+  "mypy>=1.19.1", # for stubtest
+  "monkeytype", # for stub generation
   "jupyterlab>=4.5.6",
   "medcoupling>=9.15.0",
   "pytest>=8.4.2",

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from mefikit import UMesh
+from mefikit.mefipy import UMesh
 
 type_order = [
     "VERTEX",
