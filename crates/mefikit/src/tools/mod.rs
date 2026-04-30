@@ -60,6 +60,7 @@ pub mod grid;
 pub mod intersect;
 pub mod measure;
 pub mod neighbours;
+pub mod polyze;
 pub mod selector;
 pub mod snap;
 

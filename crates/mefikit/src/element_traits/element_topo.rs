@@ -201,6 +201,70 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
             _ => todo!(),
         }
     }
+
+    fn to_poly(&self) -> (ElementType, Vec<usize>) {
+        use ElementType::*;
+        let co = self.connectivity();
+        match self.element_type() {
+            a @ (VERTEX | SEG2) => (a, co.to_vec()),
+            TRI3 | QUAD4 => (PGON, co.to_vec()),
+            TET4 => (
+                PHED,
+                vec![
+                    co[0],
+                    co[1],
+                    co[2],
+                    usize::MAX,
+                    co[1],
+                    co[2],
+                    co[3],
+                    usize::MAX,
+                    co[2],
+                    co[3],
+                    co[0],
+                    usize::MAX,
+                    co[3],
+                    co[0],
+                    co[1],
+                ],
+            ),
+            HEX8 => (
+                PHED,
+                vec![
+                    co[0],
+                    co[1],
+                    co[2],
+                    co[3],
+                    usize::MAX,
+                    co[0],
+                    co[3],
+                    co[7],
+                    co[4],
+                    usize::MAX,
+                    co[0],
+                    co[4],
+                    co[5],
+                    co[1],
+                    usize::MAX,
+                    co[1],
+                    co[5],
+                    co[6],
+                    co[2],
+                    usize::MAX,
+                    co[2],
+                    co[6],
+                    co[7],
+                    co[3],
+                    usize::MAX,
+                    co[4],
+                    co[7],
+                    co[6],
+                    co[5],
+                ],
+            ),
+            _ => todo!(),
+        }
+    }
 }
 
 impl<'a, T> ElementTopo<'a> for T where T: ElementLike<'a> {}
