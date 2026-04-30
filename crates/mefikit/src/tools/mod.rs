@@ -81,6 +81,7 @@ pub mod intersect;
 pub mod measure;
 /// Neighbor computation for mesh elements.
 pub mod neighbours;
+pub mod polyze;
 /// Element and node selection utilities.
 pub mod selector;
 /// Node snapping to merge nearby nodes.
