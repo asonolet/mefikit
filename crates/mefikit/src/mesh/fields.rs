@@ -425,3 +425,82 @@ where
         FieldOwned::new(result)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mesh::ElementType;
+    use ndarray as nd;
+
+    #[test]
+    fn test_fieldbase_new() {
+        let mut map = BTreeMap::new();
+        map.insert(ElementType::QUAD4, nd::arr0(1.0).into_dyn());
+        let field = FieldBase::new(map);
+        assert_eq!(field.dimension(), Some(crate::mesh::Dimension::D2));
+    }
+
+    #[test]
+    fn test_fieldbase_view() {
+        let mut map = BTreeMap::new();
+        map.insert(ElementType::QUAD4, nd::arr0(1.0).into_dyn());
+        let field = FieldBase::new(map);
+        let view = field.view();
+        assert_eq!(view.dimension(), Some(crate::mesh::Dimension::D2));
+    }
+
+    #[test]
+    fn test_fieldbase_dimension() {
+        let mut map = BTreeMap::new();
+        map.insert(ElementType::SEG2, nd::arr0(1.0).into_dyn());
+        let field = FieldBase::new(map);
+        assert_eq!(field.dimension(), Some(crate::mesh::Dimension::D1));
+    }
+
+    #[test]
+    fn test_fieldbase_is_coherent() {
+        let mut map = BTreeMap::new();
+        map.insert(ElementType::QUAD4, nd::arr0(1.0).into_dyn());
+        map.insert(ElementType::TRI3, nd::arr0(2.0).into_dyn());
+        let field = FieldBase::new(map);
+        assert!(field.is_coherent());
+    }
+
+    #[test]
+    fn test_fieldbase_is_strictly_compatible_with() {
+        let mut map1 = BTreeMap::new();
+        map1.insert(ElementType::QUAD4, nd::arr0(1.0).into_dyn());
+        let field1 = FieldBase::new(map1);
+
+        let mut map2 = BTreeMap::new();
+        map2.insert(ElementType::QUAD4, nd::arr0(2.0).into_dyn());
+        let field2 = FieldBase::new(map2);
+
+        assert!(field1.is_strictly_compatible_with(&field2));
+    }
+
+    #[test]
+    fn test_fieldbase_may_be_compatible_with() {
+        let mut map1 = BTreeMap::new();
+        map1.insert(ElementType::QUAD4, nd::arr0(1.0).into_dyn());
+        let field1 = FieldBase::new(map1);
+
+        let mut map2 = BTreeMap::new();
+        map2.insert(ElementType::QUAD4, nd::arr0(2.0).into_dyn());
+        let field2 = FieldBase::new(map2);
+
+        assert!(field1.may_be_compatible_with(&field2));
+    }
+
+    #[test]
+    fn test_fieldbase_mapv() {
+        let mut map = BTreeMap::new();
+        map.insert(ElementType::QUAD4, nd::arr1(&[1.0, 2.0, 3.0]).into_dyn());
+        let field = FieldBase::new(map);
+        let mapped = field.mapv(|x| x * 2.0);
+        let result = mapped.0.get(&ElementType::QUAD4).unwrap();
+        assert_eq!(result[0], 2.0);
+        assert_eq!(result[1], 4.0);
+        assert_eq!(result[2], 6.0);
+    }
+}
