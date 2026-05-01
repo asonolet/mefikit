@@ -20,7 +20,7 @@ pub enum FieldExpr {
     /// A reference to a named field in the mesh.
     Field(String),
     /// A binary operation between two expressions.
-    BinarayExpr {
+    BinaryExpr {
         operator: BinaryOp,
         left: Arc<FieldExpr>,
         right: Arc<FieldExpr>,
@@ -43,7 +43,7 @@ pub enum FieldExpr {
 }
 
 /// Binary operations available in field expressions.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     /// Addition.
     Add,
@@ -58,7 +58,7 @@ pub enum BinaryOp {
 }
 
 /// Unary operations available in field expressions.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
     /// Sine function.
     Sin,
@@ -155,7 +155,7 @@ impl FieldExpr {
 
     /// Raises this expression to the power of `other`.
     pub fn pow(self, other: Self) -> Self {
-        Self::BinarayExpr {
+        Self::BinaryExpr {
             operator: BinaryOp::Pow,
             left: Arc::new(self),
             right: Arc::new(other),
@@ -177,7 +177,7 @@ impl Add for FieldExpr {
     type Output = FieldExpr;
 
     fn add(self, rhs: FieldExpr) -> FieldExpr {
-        FieldExpr::BinarayExpr {
+        FieldExpr::BinaryExpr {
             operator: BinaryOp::Add,
             left: Arc::new(self),
             right: Arc::new(rhs),
@@ -189,7 +189,7 @@ impl Sub for FieldExpr {
     type Output = FieldExpr;
 
     fn sub(self, rhs: FieldExpr) -> FieldExpr {
-        FieldExpr::BinarayExpr {
+        FieldExpr::BinaryExpr {
             operator: BinaryOp::Sub,
             left: Arc::new(self),
             right: Arc::new(rhs),
@@ -201,7 +201,7 @@ impl Mul for FieldExpr {
     type Output = FieldExpr;
 
     fn mul(self, rhs: FieldExpr) -> FieldExpr {
-        FieldExpr::BinarayExpr {
+        FieldExpr::BinaryExpr {
             operator: BinaryOp::Mul,
             left: Arc::new(self),
             right: Arc::new(rhs),
@@ -213,7 +213,7 @@ impl Div for FieldExpr {
     type Output = FieldExpr;
 
     fn div(self, rhs: FieldExpr) -> FieldExpr {
-        FieldExpr::BinarayExpr {
+        FieldExpr::BinaryExpr {
             operator: BinaryOp::Div,
             left: Arc::new(self),
             right: Arc::new(rhs),
@@ -248,7 +248,7 @@ impl Evaluable for FieldExpr {
         match self {
             FieldExpr::Array(arr) => FieldCowD::from_array(arr.view().into(), elems.as_slice()),
             FieldExpr::Field(name) => mesh.field(name, Some(dim)).unwrap().into(),
-            FieldExpr::BinarayExpr {
+            FieldExpr::BinaryExpr {
                 operator,
                 left,
                 right,
@@ -339,8 +339,10 @@ impl MeshEvalUpdatable for UMesh {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::mesh::ElementType;
     use crate::mesh_examples as me;
     use crate::tools::Measurable;
+    use ndarray as nd;
 
     #[test]
     fn compose_expr() {
@@ -354,7 +356,151 @@ mod test {
     fn measure_squared() {
         let mut m = me::make_imesh_2d(10);
         m.measure_update("M", None);
-        let mes_squared5 = field("M").square() * arr(nd::arr0(5.));
+        let mes_squared5 = field("M").square() * arr(nd::arr0(5.0));
         m.eval_field(None, mes_squared5);
+    }
+
+    #[test]
+    fn test_field_expr_sin() {
+        let expr = arr(nd::arr0(0.0)).sin();
+        match expr {
+            FieldExpr::UnaryExpr { operator, .. } => assert_eq!(operator, UnaryOp::Sin),
+            _ => panic!("Expected UnaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_field_expr_cos() {
+        let expr = arr(nd::arr0(0.0)).cos();
+        match expr {
+            FieldExpr::UnaryExpr { operator, .. } => assert_eq!(operator, UnaryOp::Cos),
+            _ => panic!("Expected UnaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_field_expr_sqrt() {
+        let expr = arr(nd::arr0(4.0)).sqrt();
+        match expr {
+            FieldExpr::UnaryExpr { operator, .. } => assert_eq!(operator, UnaryOp::Sqrt),
+            _ => panic!("Expected UnaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_field_expr_square() {
+        let expr = arr(nd::arr0(3.0)).square();
+        match expr {
+            FieldExpr::UnaryExpr { operator, .. } => assert_eq!(operator, UnaryOp::Square),
+            _ => panic!("Expected UnaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_field_expr_exp() {
+        let expr = arr(nd::arr0(1.0)).exp();
+        match expr {
+            FieldExpr::UnaryExpr { operator, .. } => assert_eq!(operator, UnaryOp::Exp),
+            _ => panic!("Expected UnaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_field_expr_ln() {
+        let expr = arr(nd::arr0(1.0)).ln();
+        match expr {
+            FieldExpr::UnaryExpr { operator, .. } => assert_eq!(operator, UnaryOp::Ln),
+            _ => panic!("Expected UnaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_field_expr_log10() {
+        let expr = arr(nd::arr0(1.0)).log10();
+        match expr {
+            FieldExpr::UnaryExpr { operator, .. } => assert_eq!(operator, UnaryOp::Log10),
+            _ => panic!("Expected UnaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_field_expr_tan() {
+        let expr = arr(nd::arr0(0.0)).tan();
+        match expr {
+            FieldExpr::UnaryExpr { operator, .. } => assert_eq!(operator, UnaryOp::Tan),
+            _ => panic!("Expected UnaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_field_expr_abs() {
+        let expr = arr(nd::arr0(-1.0)).abs();
+        match expr {
+            FieldExpr::UnaryExpr { operator, .. } => assert_eq!(operator, UnaryOp::Abs),
+            _ => panic!("Expected UnaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_binary_expr_add() {
+        let a = field("A");
+        let b = field("B");
+        let expr = a + b;
+        match expr {
+            FieldExpr::BinaryExpr { operator, .. } => assert_eq!(operator, BinaryOp::Add),
+            _ => panic!("Expected BinaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_binary_expr_mul() {
+        let a = field("A");
+        let b = field("B");
+        let expr = a * b;
+        match expr {
+            FieldExpr::BinaryExpr { operator, .. } => assert_eq!(operator, BinaryOp::Mul),
+            _ => panic!("Expected BinaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_binary_expr_sub() {
+        let a = field("A");
+        let b = field("B");
+        let expr = a - b;
+        match expr {
+            FieldExpr::BinaryExpr { operator, .. } => assert_eq!(operator, BinaryOp::Sub),
+            _ => panic!("Expected BinaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_binary_expr_div() {
+        let a = field("A");
+        let b = field("B");
+        let expr = a / b;
+        match expr {
+            FieldExpr::BinaryExpr { operator, .. } => assert_eq!(operator, BinaryOp::Div),
+            _ => panic!("Expected BinaryExpr"),
+        }
+    }
+
+    #[test]
+    fn test_eval_field() {
+        let mut mesh = me::make_imesh_2d(5);
+        mesh.measure_update("area", None);
+        let expr = field("area").square();
+        let result = mesh.eval_field(None, expr);
+        assert!(result.0.contains_key(&ElementType::QUAD4));
+    }
+
+    #[test]
+    fn test_eval_update_field() {
+        let mut mesh = me::make_imesh_2d(5);
+        mesh.measure_update("area", None);
+        let expr = field("area") * arr(nd::arr0(2.0));
+        let _result = mesh.eval_update_field("doubled", None, expr);
+        // eval_update_field returns None when the field is new (not replaced)
+        assert!(mesh.field("doubled", None).is_some());
     }
 }

@@ -14,6 +14,16 @@ use rstar::AABB;
 /// Extends [`ElementLike`] with methods for accessing coordinates as nalgebra
 /// points, computing measures (length/area/volume), bounding boxes, and centroids.
 pub trait ElementGeo<'a>: ElementLike<'a> {
+    /// Returns the i-th coordinate as a 1D point.
+    ///
+    /// # Panics
+    /// Panics if the coordinate is not 1D.
+    #[inline(always)]
+    fn coord1(&self, i: usize) -> na::Point1<f64> {
+        let coord = self.coord(i);
+        assert_eq!(coord.len(), 1);
+        na::Point1::from_slice(coord)
+    }
     /// Returns the i-th coordinate as a 2D point.
     ///
     /// # Panics
@@ -71,6 +81,18 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
     /// Returns an iterator over all coordinates as slices.
     fn coords(&self) -> impl ExactSizeIterator<Item = &[f64]> {
         (0..self.connectivity().len()).map(|i| self.coord(i))
+    }
+
+    /// Computes the geometric measure of the element in 1D space.
+    ///
+    /// Returns length for 1D elements.
+    fn measure1(&self) -> f64 {
+        use ElementType::*;
+        match self.element_type() {
+            VERTEX => 0.0,
+            SEG2 => mes::dist1(self.coord1(0), self.coord1(1)),
+            _ => todo!(),
+        }
     }
 
     /// Computes the geometric measure of the element in 2D space.
@@ -153,3 +175,250 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
 }
 
 impl<'a, T> ElementGeo<'a> for T where T: ElementLike<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mesh::{Element, ElementType};
+    use approx::assert_abs_diff_eq;
+    use ndarray as nd;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn test_coord2() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let p0 = elem.coord2(0);
+        assert_eq!(p0, na::Point2::new(0.0, 0.0));
+        let p1 = elem.coord2(1);
+        assert_eq!(p1, na::Point2::new(1.0, 0.0));
+    }
+
+    #[test]
+    fn test_coord2_ref() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let c0: &[f64; 2] = elem.coord2_ref(0);
+        assert_eq!(c0, &[0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_coords2() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let coords: Vec<_> = elem.coords2().collect();
+        assert_eq!(coords.len(), 3);
+    }
+
+    #[test]
+    fn test_coord3() {
+        let coords = nd::array![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let p0 = elem.coord3(0);
+        assert_eq!(p0, na::Point3::new(0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn test_coords3() {
+        let coords = nd::array![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let coords: Vec<_> = elem.coords3().collect();
+        assert_eq!(coords.len(), 3);
+    }
+
+    #[test]
+    fn test_coords() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let coords: Vec<_> = elem.coords().collect();
+        assert_eq!(coords.len(), 3);
+    }
+
+    #[test]
+    fn test_measure2_quad4() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
+        let conn = &[0, 1, 3, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::QUAD4,
+        );
+        assert_abs_diff_eq!(elem.measure2(), 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_measure2_seg2() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0]];
+        let conn = &[0, 1];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::SEG2,
+        );
+        assert_abs_diff_eq!(elem.measure2(), 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_centroid2() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let centroid = elem.centroid2();
+        assert_abs_diff_eq!(centroid[0], 1.0 / 3.0, epsilon = 1e-10);
+        assert_abs_diff_eq!(centroid[1], 1.0 / 3.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_centroid3() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ];
+        let conn = &[0, 1, 2, 3];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TET4,
+        );
+        let centroid = elem.centroid3();
+        assert_abs_diff_eq!(centroid[0], 0.25, epsilon = 1e-10);
+        assert_abs_diff_eq!(centroid[1], 0.25, epsilon = 1e-10);
+        assert_abs_diff_eq!(centroid[2], 0.25, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_to_aabb2() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let aabb = elem.to_aabb2();
+        assert_eq!(aabb.lower(), [0.0, 0.0]);
+        assert_eq!(aabb.upper(), [1.0, 1.0]);
+    }
+
+    #[test]
+    fn test_to_aabb() {
+        let coords = nd::array![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let aabb = elem.to_aabb();
+        assert_eq!(aabb.lower(), [0.0, 0.0, 0.0]);
+        assert_eq!(aabb.upper(), [1.0, 1.0, 0.0]);
+    }
+}

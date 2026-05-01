@@ -384,11 +384,8 @@ pub trait Descendable {
     ) -> Option<Self::Output>;
 
     /// Computes the boundary subentity mesh (subentities shared by exactly one element).
-    fn boundaries(
-        &self,
-        src_dim: Option<Dimension>,
-        target_dim: Option<Dimension>,
-    ) -> Self::Output;
+    fn boundaries(&self, src_dim: Option<Dimension>, target_dim: Option<Dimension>)
+    -> Self::Output;
 
     /// Computes and adds the boundary mesh to this mesh.
     fn boundaries_update(
@@ -431,5 +428,81 @@ impl Descendable for UMesh {
     ) -> Option<Self::Output> {
         let new_mesh = compute_boundaries(self, src_dim, target_dim);
         self.update(new_mesh)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mesh::{ElementType, UMesh};
+    use ndarray as nd;
+
+    fn make_simple_quad_mesh() -> UMesh {
+        let coords =
+            nd::ArcArray2::from_shape_vec((4, 2), vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0])
+                .unwrap();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_regular_block(
+            ElementType::QUAD4,
+            nd::arr2(&[[0, 1, 3, 2]]).to_shared(),
+            None,
+        );
+        mesh
+    }
+
+    #[test]
+    fn test_compute_neighbours() {
+        let mesh = make_simple_quad_mesh();
+        let (submesh, graph) = compute_neighbours(&mesh, None, None);
+        // The submesh should contain the edges (codim=1)
+        assert!(submesh.num_elements() > 0);
+        // Graph should have nodes (original elements)
+        assert!(graph.node_count() > 0);
+    }
+
+    #[test]
+    fn test_compute_descending() {
+        let mesh = make_simple_quad_mesh();
+        let descended = compute_descending(&mesh, None, None);
+        // Descending a 2D mesh by 1 gives edges
+        assert!(descended.num_elements() > 0);
+    }
+
+    #[test]
+    fn test_compute_boundaries() {
+        let mesh = make_simple_quad_mesh();
+        let boundaries = compute_boundaries(&mesh, None, None);
+        // Boundaries should be edges on the boundary
+        assert!(boundaries.num_elements() > 0);
+    }
+
+    #[test]
+    fn test_descend_trait() {
+        let mesh = make_simple_quad_mesh();
+        let descended: UMesh = mesh.descend(None, None);
+        assert!(descended.num_elements() > 0);
+    }
+
+    #[test]
+    fn test_boundaries_trait() {
+        let mesh = make_simple_quad_mesh();
+        let boundaries: UMesh = mesh.boundaries(None, None);
+        assert!(boundaries.num_elements() > 0);
+    }
+
+    #[test]
+    fn test_descend_update() {
+        let mut mesh = make_simple_quad_mesh();
+        let _result = mesh.descend_update(None, None);
+        // descend_update returns None when the mesh is new (not replaced)
+        // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_boundaries_update() {
+        let mut mesh = make_simple_quad_mesh();
+        let _result = mesh.boundaries_update(None, None);
+        // boundaries_update returns None when the mesh is new (not replaced)
+        // Just verify it doesn't panic
     }
 }

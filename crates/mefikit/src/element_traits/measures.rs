@@ -3,7 +3,7 @@
 //! Provides functions for computing distances, areas, and volumes of
 //! geometric primitives.
 
-use na::{Point2, Vector4};
+use na::{Point1, Point2, Vector4};
 use nalgebra as na;
 use ndarray::prelude::*;
 
@@ -11,6 +11,12 @@ use ndarray::prelude::*;
 pub fn dist_(a: ArrayView1<f64>, b: ArrayView1<f64>) -> f64 {
     let diff = &a - &b;
     diff.map(|x| x.powi(2)).sum().sqrt()
+}
+
+/// Computes the Euclidean distance between two 1D points.
+pub fn dist1(a: Point1<f64>, b: Point1<f64>) -> f64 {
+    let diff = a - b;
+    diff.norm()
 }
 
 /// Computes the Euclidean distance between two 2D points.
@@ -116,4 +122,93 @@ pub fn vol_tetra(_a: ArrayView1<f64>, _b: ArrayView1<f64>, _c: ArrayView1<f64>) 
 /// Computes the volume of a hexahedron.
 pub fn vol_hexa(_a: ArrayView1<f64>, _b: ArrayView1<f64>, _c: ArrayView1<f64>) -> f64 {
     todo!()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn test_dist2() {
+        let a = na::Point2::new(0.0, 0.0);
+        let b = na::Point2::new(3.0, 4.0);
+        assert_abs_diff_eq!(dist2(a, b), 5.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_squared_dist2() {
+        let a = [0.0, 0.0];
+        let b = [3.0, 4.0];
+        assert_abs_diff_eq!(squared_dist2(&a, &b), 25.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_squared_dist2_() {
+        let a = na::Point2::new(0.0, 0.0);
+        let b = na::Point2::new(3.0, 4.0);
+        assert_abs_diff_eq!(squared_dist2_(a, b), 25.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_dist3() {
+        let a = [0.0, 0.0, 0.0];
+        let b = [3.0, 4.0, 0.0];
+        assert_abs_diff_eq!(dist3(&a, &b), 5.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_squared_dist3() {
+        let a = [0.0, 0.0, 0.0];
+        let b = [3.0, 4.0, 0.0];
+        assert_abs_diff_eq!(squared_dist3(&a, &b), 25.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_surf_tri2() {
+        let a = na::Point2::new(0.0, 0.0);
+        let b = na::Point2::new(1.0, 0.0);
+        let c = na::Point2::new(0.0, 1.0);
+        assert_abs_diff_eq!(surf_tri2(a, b, c), 0.5, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_surf_tri2_signed() {
+        let a = [0.0, 0.0];
+        let b = [1.0, 0.0];
+        let c = [0.0, 1.0];
+        assert_abs_diff_eq!(surf_tri2_signed(&a, &b, &c), 0.5, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_surf_quad2() {
+        let a = na::Point2::new(0.0, 0.0);
+        let b = na::Point2::new(1.0, 0.0);
+        let c = na::Point2::new(1.0, 1.0);
+        let d = na::Point2::new(0.0, 1.0);
+        assert_abs_diff_eq!(surf_quad2(&a, &b, &c, &d), 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_surf_quad2_signed() {
+        let a = [0.0, 0.0];
+        let b = [1.0, 0.0];
+        let c = [1.0, 1.0];
+        let d = [0.0, 1.0];
+        assert_abs_diff_eq!(surf_quad2_signed(&a, &b, &c, &d), 1.0, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_surf_tri3() {
+        let a = [0.0, 0.0, 0.0];
+        let b = [1.0, 0.0, 0.0];
+        let c = [0.0, 1.0, 0.0];
+        let area = surf_tri3(a, b, c);
+        assert_abs_diff_eq!(area, 0.5, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_surf_quad3() {
+        // This will panic with todo!() - skipping
+    }
 }

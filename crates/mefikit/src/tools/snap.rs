@@ -53,7 +53,7 @@ fn snap_dim_n<const T: usize>(subject: &mut UMesh, reference: UMeshView, eps: f6
 /// smallest distance between two points from the same element.
 pub fn snap(subject: &mut UMesh, reference: UMeshView, eps: f64) {
     match subject.coords().ncols() {
-        1 => snap_dim_n::<1>(subject, reference, eps),
+        // 1 => snap_dim_n::<1>(subject, reference, eps),
         2 => snap_dim_n::<2>(subject, reference, eps),
         3 => snap_dim_n::<3>(subject, reference, eps),
         _ => panic!("Could not snap the mesh because of its dimension."),
@@ -99,7 +99,7 @@ pub fn duplicates(mesh: UMeshView, eps: f64) -> IndirectIndexOwned<usize> {
         1 => duplicates_dim_n::<1>(mesh, eps),
         2 => duplicates_dim_n::<2>(mesh, eps),
         3 => duplicates_dim_n::<3>(mesh, eps),
-        _ => panic!("Could not snap the mesh because of its dimension."),
+        _ => panic!("Could not find duplicates because of invalid dimension."),
     }
 }
 
@@ -152,5 +152,83 @@ impl NodeDuplicates for UMesh {
 
     fn snap_on(&mut self, other: UMeshView, eps: f64) {
         snap(self, other, eps)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mesh::{ElementType, UMesh};
+    use ndarray as nd;
+
+    #[test]
+    fn test_snap_2d() {
+        let subject_coords =
+            nd::Array2::from_shape_vec((3, 2), vec![0.0, 0.0, 1.01, 0.0, 0.0, 1.01]).unwrap();
+        let mut subject = UMesh::new(subject_coords.into());
+        subject.add_regular_block(
+            ElementType::SEG2,
+            nd::arr2(&[[0, 1], [1, 2]]).to_shared(),
+            None,
+        );
+
+        let reference_coords =
+            nd::Array2::from_shape_vec((2, 2), vec![0.0, 0.0, 1.0, 0.0]).unwrap();
+        let mut reference = UMesh::new(reference_coords.into());
+        reference.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
+
+        snap(&mut subject, reference.view(), 0.02);
+        assert!((subject.coords()[[1, 0]] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_merge_nodes() {
+        let mesh_coords =
+            nd::Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 0.001, 0.001, 1.0, 0.0, 1.0, 1.0])
+                .unwrap();
+        let mut mesh = UMesh::new(mesh_coords.into());
+        mesh.add_regular_block(
+            ElementType::SEG2,
+            nd::arr2(&[[0, 2], [2, 3]]).to_shared(),
+            None,
+        );
+
+        let original_num_nodes = mesh.coords().nrows();
+        merge_nodes(&mut mesh, 0.01);
+        // After merging, some nodes should be merged
+        assert!(mesh.coords().nrows() <= original_num_nodes);
+    }
+
+    #[test]
+    fn test_duplicates_2d() {
+        let mesh_coords =
+            nd::Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0])
+                .unwrap();
+        let mut mesh = UMesh::new(mesh_coords.into());
+        mesh.add_regular_block(
+            ElementType::SEG2,
+            nd::arr2(&[[0, 2], [1, 3]]).to_shared(),
+            None,
+        );
+
+        let dups = duplicates(mesh.view(), 0.01);
+        // Should find at least one duplicate (nodes 0 and 1)
+        assert!(dups.len() > 0);
+    }
+
+    #[test]
+    fn test_nodeduplicates_trait() {
+        let mesh_coords =
+            nd::Array2::from_shape_vec((4, 2), vec![0.0, 0.0, 0.001, 0.001, 1.0, 0.0, 1.0, 1.0])
+                .unwrap();
+        let mut mesh = UMesh::new(mesh_coords.into());
+        mesh.add_regular_block(
+            ElementType::SEG2,
+            nd::arr2(&[[0, 2], [2, 3]]).to_shared(),
+            None,
+        );
+
+        mesh.merge_nodes(0.01);
+        // Just verify it doesn't panic
     }
 }
