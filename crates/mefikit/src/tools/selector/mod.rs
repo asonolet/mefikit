@@ -1,3 +1,8 @@
+//! Element and node selection utilities.
+//!
+//! Provides a domain-specific language for selecting mesh elements and nodes
+//! based on geometric, topological, and field-based criteria.
+
 mod centroid;
 mod element;
 mod field;

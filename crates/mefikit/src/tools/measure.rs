@@ -1,3 +1,7 @@
+//! Geometric measurements for mesh elements.
+//!
+//! Computes element measures (length, area, volume) and stores them as fields.
+
 use crate::element_traits::ElementGeo;
 use crate::mesh::ElementType;
 use crate::mesh::FieldOwned;
@@ -9,6 +13,9 @@ use ndarray as nd;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 
+/// Computes the geometric measure of each element in the mesh.
+///
+/// Returns a map of element types to arrays of measure values.
 pub fn measure(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array1<f64>> {
     let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
     mesh
@@ -37,8 +44,11 @@ pub fn measure(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType,
     .collect()
 }
 
+/// Trait for computing and storing element measures as fields.
 pub trait Measurable {
+    /// Computes element measures and returns them as a field.
     fn measure(&self, dim: Option<Dimension>) -> FieldOwned<nd::Ix1>;
+    /// Computes element measures and stores them as a named field in the mesh.
     fn measure_update(&mut self, name: &str, dim: Option<Dimension>);
 }
 

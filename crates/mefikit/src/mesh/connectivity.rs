@@ -26,8 +26,11 @@ where
 pub type Connectivity = ConnectivityBase<nd::OwnedArcRepr<usize>>;
 pub type ConnectivityView<'a> = ConnectivityBase<nd::ViewRepr<&'a usize>>;
 
+/// Iterator over connectivity entries, handling both regular and poly variants.
 pub enum ConnectivityIterator<'a> {
+    /// Iterator over rows of a regular 2D connectivity array.
     RegularIter(nd::iter::LanesIter<'a, usize, nd::Ix1>),
+    /// Iterator over sub-slices of a poly indirect index.
     PolyIter(IndirectIndexIter<'a, usize>),
 }
 
@@ -50,14 +53,17 @@ impl<'a> Iterator for ConnectivityIterator<'a> {
 impl<'a> ExactSizeIterator for ConnectivityIterator<'a> {}
 
 impl Connectivity {
+    /// Creates a new regular (fixed-size) connectivity from a 2D arc array.
     pub fn new_regular(conn: nd::ArcArray2<usize>) -> Self {
         Connectivity::Regular(conn)
     }
 
+    /// Creates a new poly (variable-size) connectivity from data and offsets arrays.
     pub fn new_poly(data: nd::ArcArray1<usize>, offsets: nd::ArcArray1<usize>) -> Self {
         Connectivity::Poly(IndirectIndex { data, offsets })
     }
 
+    /// Appends a new connectivity entry to this connectivity.
     pub fn push(&mut self, connectivity: nd::ArrayView1<usize>) {
         match self {
             Connectivity::Regular(conn) => {
@@ -92,6 +98,7 @@ impl<C> ConnectivityBase<C>
 where
     C: nd::Data<Elem = usize>,
 {
+    /// Returns the number of connectivity entries (elements).
     pub fn len(&self) -> usize {
         match self {
             ConnectivityBase::Regular(conn) => conn.nrows(),
@@ -99,6 +106,7 @@ where
         }
     }
 
+    /// Returns an iterator over all connectivity entries.
     pub fn iter(&self) -> impl ExactSizeIterator<Item = &'_ [usize]> + '_
     where
         C: nd::Data,
@@ -109,6 +117,7 @@ where
         }
     }
 
+    /// Returns a view of this connectivity.
     pub fn view(&self) -> ConnectivityView<'_> {
         match self {
             Self::Regular(arr) => ConnectivityView::Regular(arr.view()),

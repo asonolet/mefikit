@@ -50,22 +50,27 @@ impl Default for RegularUMeshBuilder {
 }
 
 impl RegularUMeshBuilder {
+    /// Creates a new empty mesh builder.
     pub fn new() -> Self {
         Self {
             coords_grid: Vec::new(),
         }
     }
 
+    /// Adds an axis to the grid.
+    ///
+    /// Axes must be added in order: first x, then y, then z.
+    /// A maximum of 3 axes can be added.
     pub fn add_axis(mut self, axis: Vec<f64>) -> Self {
         if self.coords_grid.len() < 3 {
             self.coords_grid.push(axis);
         } else {
-            // If we already have two axes, we cannot add more
             panic!("Cannot add more than three axes to a regular mesh builder");
         }
         self
     }
 
+    /// Computes the element connectivity for the grid.
     fn compute_connectivity(&self) -> Array2<usize> {
         let num_axes = self.coords_grid.len();
         let num_nodes: usize = self.coords_grid.iter().map(|axis| axis.len()).product();
@@ -124,6 +129,7 @@ impl RegularUMeshBuilder {
         }
     }
 
+    /// Computes the node coordinates for the grid.
     fn compute_coords(&self) -> Array2<f64> {
         let num_axes: usize = self.coords_grid.len();
 
@@ -166,6 +172,10 @@ impl RegularUMeshBuilder {
         }
     }
 
+    /// Builds the mesh from the defined axes.
+    ///
+    /// Creates a 1D (SEG2), 2D (QUAD4), or 3D (HEX8) mesh depending on
+    /// the number of axes added.
     pub fn build(self) -> UMesh {
         let coords = self.compute_coords();
         let coords_dim = coords.shape()[1];

@@ -1,3 +1,8 @@
+//! Neighbor computation and subentity extraction for meshes.
+//!
+//! Provides functions for computing element-to-element connectivity graphs,
+//! extracting subentities (faces, edges, vertices), and computing boundaries.
+
 use itertools::Itertools;
 use petgraph::prelude::UnGraphMap;
 #[cfg(feature = "rayon")]
@@ -364,16 +369,28 @@ pub fn compute_submesh_with_n_neighbours(
     neighbours
 }
 
+/// Trait for computing subentity meshes and boundaries.
 pub trait Descendable {
     type Output;
+
+    /// Computes the subentity mesh (e.g., faces from volumes).
     fn descend(&self, src_dim: Option<Dimension>, target_dim: Option<Dimension>) -> Self::Output;
+
+    /// Computes and adds the subentity mesh to this mesh.
     fn descend_update(
         &mut self,
         src_dim: Option<Dimension>,
         target_dim: Option<Dimension>,
     ) -> Option<Self::Output>;
-    fn boundaries(&self, src_dim: Option<Dimension>, target_dim: Option<Dimension>)
-    -> Self::Output;
+
+    /// Computes the boundary subentity mesh (subentities shared by exactly one element).
+    fn boundaries(
+        &self,
+        src_dim: Option<Dimension>,
+        target_dim: Option<Dimension>,
+    ) -> Self::Output;
+
+    /// Computes and adds the boundary mesh to this mesh.
     fn boundaries_update(
         &mut self,
         src_dim: Option<Dimension>,

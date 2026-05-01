@@ -1,3 +1,8 @@
+//! Field expression system for computing derived fields.
+//!
+//! Provides a domain-specific language for building and evaluating
+//! field expressions using mathematical operations.
+
 use ndarray::{self as nd};
 use smallvec::SmallVec;
 use std::{
@@ -7,103 +12,148 @@ use std::{
 
 use crate::mesh::{Dimension, FieldArcD, FieldCowD, FieldOwnedD, UMesh, UMeshBase, UMeshView};
 
+/// An expression tree for field computations.
 #[derive(Clone, Debug)]
 pub enum FieldExpr {
-    Array(nd::Array<f64, nd::IxDyn>), // This array is meant to be broadcasted
+    /// A broadcastable constant array.
+    Array(nd::Array<f64, nd::IxDyn>),
+    /// A reference to a named field in the mesh.
     Field(String),
+    /// A binary operation between two expressions.
     BinarayExpr {
         operator: BinaryOp,
         left: Arc<FieldExpr>,
         right: Arc<FieldExpr>,
     },
+    /// A unary operation on an expression.
     UnaryExpr {
         operator: UnaryOp,
         expr: Arc<FieldExpr>,
     },
+    /// Element centroids (not yet implemented).
     Centroids,
+    /// X coordinate (not yet implemented).
     X,
+    /// Y coordinate (not yet implemented).
     Y,
+    /// Z coordinate (not yet implemented).
     Z,
+    /// Index into a multi-component field.
     Index(Arc<FieldExpr>, SmallVec<[usize; 2]>),
 }
 
+/// Binary operations available in field expressions.
 #[derive(Copy, Clone, Debug)]
 pub enum BinaryOp {
+    /// Addition.
     Add,
+    /// Multiplication.
     Mul,
+    /// Subtraction.
     Sub,
+    /// Division.
     Div,
+    /// Power (a^b).
     Pow,
 }
 
+/// Unary operations available in field expressions.
 #[derive(Copy, Clone, Debug)]
 pub enum UnaryOp {
+    /// Sine function.
     Sin,
+    /// Square root.
     Sqrt,
+    /// Squaring (x^2).
     Square,
+    /// Cosine function.
     Cos,
+    /// Exponential function.
     Exp,
+    /// Natural logarithm.
     Ln,
+    /// Base-10 logarithm.
     Log10,
+    /// Absolute value.
     Abs,
+    /// Tangent function.
     Tan,
 }
 
 impl FieldExpr {
+    /// Applies the sine function to this expression.
     pub fn sin(self) -> Self {
         Self::UnaryExpr {
             operator: UnaryOp::Sin,
             expr: Arc::new(self),
         }
     }
+
+    /// Applies the cosine function to this expression.
     pub fn cos(self) -> Self {
         Self::UnaryExpr {
             operator: UnaryOp::Cos,
             expr: Arc::new(self),
         }
     }
+
+    /// Applies the square root to this expression.
     pub fn sqrt(self) -> Self {
         Self::UnaryExpr {
             operator: UnaryOp::Sqrt,
             expr: Arc::new(self),
         }
     }
+
+    /// Squares this expression.
     pub fn square(self) -> Self {
         Self::UnaryExpr {
             operator: UnaryOp::Square,
             expr: Arc::new(self),
         }
     }
+
+    /// Applies the exponential function to this expression.
     pub fn exp(self) -> Self {
         Self::UnaryExpr {
             operator: UnaryOp::Exp,
             expr: Arc::new(self),
         }
     }
+
+    /// Applies the natural logarithm to this expression.
     pub fn ln(self) -> Self {
         Self::UnaryExpr {
             operator: UnaryOp::Ln,
             expr: Arc::new(self),
         }
     }
+
+    /// Applies the base-10 logarithm to this expression.
     pub fn log10(self) -> Self {
         Self::UnaryExpr {
             operator: UnaryOp::Log10,
             expr: Arc::new(self),
         }
     }
+
+    /// Applies the tangent function to this expression.
     pub fn tan(self) -> Self {
         Self::UnaryExpr {
             operator: UnaryOp::Tan,
             expr: Arc::new(self),
         }
     }
+
+    /// Applies the absolute value to this expression.
     pub fn abs(self) -> Self {
         Self::UnaryExpr {
             operator: UnaryOp::Abs,
             expr: Arc::new(self),
         }
     }
+
+    /// Raises this expression to the power of `other`.
     pub fn pow(self, other: Self) -> Self {
         Self::BinarayExpr {
             operator: BinaryOp::Pow,
@@ -113,10 +163,12 @@ impl FieldExpr {
     }
 }
 
+/// Creates a field expression referencing a named field.
 pub fn field(name: &str) -> FieldExpr {
     FieldExpr::Field(name.to_owned())
 }
 
+/// Creates a field expression from a constant array.
 pub fn arr<D: nd::Dimension>(arr: nd::Array<f64, D>) -> FieldExpr {
     FieldExpr::Array(arr.into_dyn())
 }
@@ -170,12 +222,15 @@ impl Div for FieldExpr {
 }
 
 impl FieldExpr {
+    /// Selects a component from a multi-component field.
     pub fn index(self, index: &[usize]) -> Self {
         Self::Index(Arc::new(self), index.into())
     }
 }
 
+/// Trait for evaluating field expressions on a mesh.
 pub trait Evaluable {
+    /// Evaluates the expression on the given mesh and returns the result as a field.
     fn evaluate<'a>(&'a self, mesh: &'a UMeshView<'a>, dim: Option<Dimension>) -> FieldCowD<'a>;
 }
 
@@ -240,11 +295,15 @@ impl Evaluable for FieldExpr {
     }
 }
 
+/// Trait for evaluating field expressions on a mesh.
 pub trait MeshEvaluable {
+    /// Evaluates an expression and returns the result as a new field.
     fn eval_field(&self, dim: Option<Dimension>, expr: FieldExpr) -> FieldOwnedD;
 }
 
+/// Trait for evaluating and storing field expressions.
 pub trait MeshEvalUpdatable: MeshEvaluable {
+    /// Evaluates an expression and stores the result as a named field in the mesh.
     fn eval_update_field(
         &mut self,
         name: &str,

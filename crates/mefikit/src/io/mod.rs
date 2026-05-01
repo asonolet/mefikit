@@ -1,11 +1,17 @@
+//! Mesh I/O operations for reading and writing mesh files.
+//!
+//! Supports JSON, YAML, and VTK/VTU formats.
+
 use crate::mesh::{UMesh, UMeshView};
 use std::path::Path;
 
 mod serde_io;
 mod vtk_io;
-// mod med; // for later
-// mod cngs; // for later
 
+/// Reads a mesh from the given file path.
+///
+/// The file format is determined by the file extension.
+/// Supported formats: JSON, YAML, VTK, VTU.
 pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
     match path
         .extension()
@@ -21,6 +27,10 @@ pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
     }
 }
 
+/// Writes a mesh to the given file path.
+///
+/// The file format is determined by the file extension.
+/// Supported formats: JSON, YAML, VTK, VTU.
 pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Error>> {
     match path
         .extension()

@@ -1,3 +1,18 @@
+//! mefikit - A high-performance library for unstructured mesh manipulation.
+//!
+//! This crate provides data structures and algorithms for working with
+//! unstructured meshes in scientific computing applications. It supports
+//! various element types (0D to 3D, including polyhedral elements),
+//! field data management, and mesh operations like intersection,
+//! extrusion, and connected component analysis.
+//!
+//! ## Key Components
+//!
+//! - [`mesh`] - Core mesh data structures (`UMesh`, `UMeshView`, element blocks)
+//! - [`element_traits`] - Geometric and topological operations on elements
+//! - [`tools`] - Mesh algorithms (selection, cracking, extrusion, etc.)
+//! - [`io`] - File I/O for various mesh formats
+
 /// This module defines geometrical operations on elements.
 ///
 /// The operations are provided through the `ElementGeo` trait.

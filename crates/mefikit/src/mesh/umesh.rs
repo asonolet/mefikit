@@ -34,6 +34,7 @@ where
     pub(crate) element_blocks: BTreeMap<ElementType, ElementBlockBase<C, F, G>>,
 }
 
+/// An owned unstructured mesh with reference-counted data.
 pub type UMesh = UMeshBase<
     nd::OwnedArcRepr<f64>,
     nd::OwnedArcRepr<usize>,
@@ -41,6 +42,7 @@ pub type UMesh = UMeshBase<
     nd::OwnedArcRepr<usize>,
 >;
 
+/// A view into an unstructured mesh with borrowed data.
 pub type UMeshView<'a> = UMeshBase<
     nd::ViewRepr<&'a f64>,
     nd::ViewRepr<&'a usize>,
@@ -55,6 +57,7 @@ where
     F: nd::Data<Elem = f64>,
     G: nd::Data<Elem = usize>,
 {
+    /// Returns a view of this mesh.
     pub fn view(
         &self,
     ) -> UMeshBase<
@@ -82,6 +85,7 @@ where
         view
     }
 
+    /// Returns a view of the coordinates array.
     pub fn coords(&self) -> nd::ArrayView2<'_, f64> {
         self.coords.view()
     }
@@ -130,21 +134,25 @@ where
         }
     }
 
+    /// Returns the space dimension (coordinate dimension) of the mesh.
     pub fn space_dimension(&self) -> usize {
         self.coords.shape()[1]
     }
 
+    /// Returns the highest topological dimension of elements in the mesh.
     pub fn topological_dimension(&self) -> Option<Dimension> {
         let max_et = self.element_blocks.keys().max()?;
         Some(max_et.dimension())
     }
 
+    /// Returns an iterator over all elements in the mesh.
     pub fn elements(&self) -> impl Iterator<Item = Element<'_>> {
         self.element_blocks
             .values()
             .flat_map(|block| block.iter(self.coords.view()))
     }
 
+    /// Parallel iterator over all elements (serial fallback without `rayon`).
     #[cfg(feature = "rayon")]
     pub fn par_elements(&self) -> impl ParallelIterator<Item = Element<'_>>
     where
@@ -158,15 +166,18 @@ where
             .flat_map(|(_, block)| block.par_iter(self.coords.view()))
     }
 
+    /// Parallel iterator over all elements (requires `rayon` feature).
     #[cfg(not(feature = "rayon"))]
     pub fn par_elements(&self) -> impl Iterator<Item = Element<'_>> {
         self.elements()
     }
 
+    /// Returns the total number of elements in the mesh.
     pub fn num_elements(&self) -> usize {
         self.element_blocks.values().map(|block| block.len()).sum()
     }
 
+    /// Returns the number of elements of a specific topological dimension.
     pub fn num_elements_of_dim(&self, dim: Dimension) -> usize {
         self.element_blocks
             .iter()
@@ -175,11 +186,13 @@ where
             .sum()
     }
 
+    /// Returns the element with the given ID.
     pub fn element(&self, id: ElementId) -> Element<'_> {
         let eb = self.element_blocks.get(&id.element_type()).unwrap();
         eb.get(id.index(), self.coords.view())
     }
 
+    /// Returns an iterator over elements of a specific topological dimension.
     pub fn elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element<'_>> {
         self.element_blocks
             .iter()
@@ -187,6 +200,7 @@ where
             .flat_map(|(_, block)| block.iter(self.coords.view()))
     }
 
+    /// Parallel iterator over elements of a specific dimension (requires `rayon`).
     #[cfg(feature = "rayon")]
     pub fn par_elements_of_dim(&self, dim: Dimension) -> impl ParallelIterator<Item = Element<'_>>
     where
@@ -201,19 +215,23 @@ where
             .flat_map(|(_, block)| block.par_iter(self.coords.view()))
     }
 
+    /// Parallel iterator over elements of a specific dimension (serial fallback).
     #[cfg(not(feature = "rayon"))]
     pub fn par_elements_of_dim(&self, dim: Dimension) -> impl Iterator<Item = Element<'_>> {
         self.elements_of_dim(dim)
     }
 
+    /// Returns an iterator over all element types present in the mesh.
     pub fn element_types(&self) -> impl Iterator<Item = &ElementType> {
         self.element_blocks.keys()
     }
 
+    /// Returns an iterator over all element blocks.
     pub fn blocks(&self) -> impl Iterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)> {
         self.element_blocks.iter()
     }
 
+    /// Parallel iterator over all element blocks (requires `rayon`).
     #[cfg(feature = "rayon")]
     pub fn par_blocks(
         &self,
@@ -227,23 +245,18 @@ where
         self.element_blocks.par_iter()
     }
 
+    /// Parallel iterator over all element blocks (serial fallback).
     #[cfg(not(feature = "rayon"))]
     pub fn par_blocks(&self) -> impl Iterator<Item = (&ElementType, &ElementBlockBase<C, F, G>)> {
         self.blocks()
     }
 
+    /// Returns the element block for the given element type, if present.
     pub fn block(&self, element_type: ElementType) -> Option<&ElementBlockBase<C, F, G>> {
         self.element_blocks.get(&element_type)
     }
 
-    // pub fn families(&self, element_type: ElementType) -> Option<&[usize]> {
-    //     let eb = self.element_block(element_type);
-    //     match eb {
-    //         Some(eb) => Some(&eb.families),
-    //         None => None,
-    //     }
-    // }
-
+    /// Returns a sorted list of node indices that are referenced by elements.
     pub fn used_nodes(&self) -> Vec<usize> {
         let mut used_nodes = FxHashSet::default();
         for element in self.elements() {
@@ -306,6 +319,9 @@ where
         })
     }
 
+    /// Removes a field from the mesh at the given dimension.
+    ///
+    /// Returns the removed field if it existed, or `None` if the field was not found.
     pub fn remove_field(
         &mut self,
         name: &str,
@@ -343,6 +359,10 @@ where
         Some(FieldBase::new(field_map))
     }
 
+    /// Replaces an existing field with new data.
+    ///
+    /// Returns the old field if it existed, or `None` if the field was not found
+    /// (in which case the new field is inserted).
     pub fn update_field(
         &mut self,
         name: &str,
@@ -392,6 +412,7 @@ where
 }
 
 impl<'a> UMeshView<'a> {
+    /// Creates a new empty mesh view with the given coordinates.
     pub fn new(coords: nd::ArrayView2<'a, f64>) -> Self {
         Self {
             coords,
@@ -399,6 +420,7 @@ impl<'a> UMeshView<'a> {
         }
     }
 
+    /// Converts this view into an owned mesh.
     pub fn to_shared(&self) -> UMesh {
         let mut umesh = UMesh::new(self.coords.to_shared());
         for (&et, eb) in &self.element_blocks {
@@ -413,6 +435,7 @@ impl<'a> UMeshView<'a> {
         umesh
     }
 
+    /// Adds a regular element block to this view.
     pub fn add_regular_block(
         &mut self,
         et: ElementType,
@@ -424,6 +447,7 @@ impl<'a> UMeshView<'a> {
         self.element_blocks.entry(key).or_insert(wrapped);
     }
 
+    /// Adds a poly element block to this view.
     pub fn add_poly_block(
         &mut self,
         et: ElementType,
@@ -437,6 +461,7 @@ impl<'a> UMeshView<'a> {
 }
 
 impl UMesh {
+    /// Creates a new empty mesh with the given coordinates.
     pub fn new(coords: nd::ArcArray2<f64>) -> Self {
         Self {
             coords,
@@ -460,6 +485,9 @@ impl UMesh {
         self.element_blocks.entry(key).or_insert(wrapped);
     }
 
+    /// Adds a poly (variable-size) element block to the mesh.
+    ///
+    /// If the element type already has a block, it is replaced.
     pub fn add_poly_block(
         &mut self,
         et: ElementType,
@@ -471,10 +499,14 @@ impl UMesh {
         self.element_blocks.entry(key).or_insert(wrapped);
     }
 
+    /// Returns this mesh as an owned mesh (identity operation for `UMesh`).
     pub fn into_owned(self) -> UMesh {
         self
     }
 
+    /// Adds a single element to the mesh, creating a block if needed.
+    ///
+    /// Returns the ID of the newly added element.
     pub fn add_element(
         &mut self,
         element_type: ElementType,
@@ -511,11 +543,15 @@ impl UMesh {
         let new_element_id = self.element_blocks.get(&element_type).unwrap().len();
         self.element_blocks
             .get_mut(&element_type)
-            .unwrap() // This unwrap is safe because we just inserted the element type
+            .unwrap()
             .add_element(nd::ArrayView1::from(connectivity), family, fields);
         ElementId::new(element_type, new_element_id)
     }
 
+    /// Removes elements with the given IDs from the mesh.
+    ///
+    /// # Note
+    /// This method is not yet implemented.
     pub fn remove_elements(&mut self, _ids: &ElementIds) {
         todo!()
     }
@@ -608,6 +644,7 @@ impl UMesh {
         self
     }
 
+    /// Returns a mutable view of the element with the given ID.
     pub fn element_mut(&mut self, id: ElementId) -> ElementMut<'_> {
         self.element_blocks
             .get_mut(&id.element_type())
@@ -615,9 +652,9 @@ impl UMesh {
             .get_mut(id.index(), self.coords.view())
     }
 
-    /// This method takes all blocks from other mesh and add them to self. Before adding a block,
-    /// if blocks from the same dimension already exists in self, they are removed and returned in
-    /// a new UMesh.
+    /// Merges another mesh into this one, replacing blocks of the same dimensions.
+    ///
+    /// Returns the old blocks that were replaced, or `None` if no blocks were replaced.
     pub fn update(&mut self, mut other: Self) -> Option<Self> {
         let target_dims = other
             .element_types()

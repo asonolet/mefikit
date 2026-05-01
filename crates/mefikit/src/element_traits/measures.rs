@@ -1,45 +1,58 @@
+//! Geometric measure computations for elements.
+//!
+//! Provides functions for computing distances, areas, and volumes of
+//! geometric primitives.
+
 use na::{Point2, Vector4};
 use nalgebra as na;
 use ndarray::prelude::*;
 
+/// Computes the Euclidean distance between two points (generic dimension).
 pub fn dist_(a: ArrayView1<f64>, b: ArrayView1<f64>) -> f64 {
     let diff = &a - &b;
     diff.map(|x| x.powi(2)).sum().sqrt()
 }
 
+/// Computes the Euclidean distance between two 2D points.
 pub fn dist2(a: Point2<f64>, b: Point2<f64>) -> f64 {
     let diff = a - b;
     diff.norm()
 }
 
+/// Computes the squared distance between two 2D points.
 pub fn squared_dist2(a: &[f64; 2], b: &[f64; 2]) -> f64 {
     (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)
 }
 
+/// Computes the squared distance between two 2D points.
 pub fn squared_dist2_(a: Point2<f64>, b: Point2<f64>) -> f64 {
     (a - b).norm_squared()
 }
 
+/// Computes the squared distance between two 3D points.
 pub fn squared_dist3(a: &[f64; 3], b: &[f64; 3]) -> f64 {
     (a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)
 }
 
+/// Computes the Euclidean distance between two 3D points.
 pub fn dist3(a: &[f64; 3], b: &[f64; 3]) -> f64 {
     squared_dist3(a, b).sqrt()
 }
 
+/// Computes the area of a 2D triangle (generic input).
 pub fn surf_tri(_a: ArrayView1<f64>, _b: ArrayView1<f64>, _c: ArrayView1<f64>) -> f64 {
     todo!()
 }
 
+/// Computes the area of a 2D triangle.
 #[inline]
 pub fn surf_tri2(a: Point2<f64>, b: Point2<f64>, c: Point2<f64>) -> f64 {
-    // ad - bc
     0.5 * ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)).abs()
 }
 
-/// ad - bc
-/// positive is counter clockwise
+/// Computes the signed area of a 2D triangle.
+///
+/// Positive result indicates counter-clockwise orientation.
 pub fn surf_tri2_signed(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2]) -> f64 {
     let u0 = b[0] - a[0];
     let u1 = b[1] - a[1];
@@ -48,9 +61,9 @@ pub fn surf_tri2_signed(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2]) -> f64 {
     0.5 * (u0 * v1 - u1 * v0)
 }
 
+/// Computes the area of a 3D triangle.
 #[inline]
 pub fn surf_tri3(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
-    // 1/2 || u ^ v ||
     let u0 = b[0] - a[0];
     let u1 = b[1] - a[0];
     let u2 = b[2] - a[2];
@@ -61,7 +74,10 @@ pub fn surf_tri3(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
         .sqrt()
 }
 
-/// Cross intersecting is not tested and result is wrong
+/// Computes the area of a 2D quadrilateral.
+///
+/// # Warning
+/// Cross intersecting is not tested and result is wrong.
 #[inline(always)]
 pub fn surf_quad2(a: &Point2<f64>, b: &Point2<f64>, c: &Point2<f64>, d: &Point2<f64>) -> f64 {
     let px: Vector4<f64> = Vector4::new(a.x, b.x, c.x, d.x);
@@ -71,7 +87,10 @@ pub fn surf_quad2(a: &Point2<f64>, b: &Point2<f64>, c: &Point2<f64>, d: &Point2<
     0.5 * (px.dot(&pys) - py.dot(&pxs)).abs()
 }
 
-/// Cross intersecting is not tested and result is wrong
+/// Computes the signed area of a 2D quadrilateral.
+///
+/// # Warning
+/// Cross intersecting is not tested and result is wrong.
 pub fn surf_quad2_signed(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2], d: &[f64; 2]) -> f64 {
     let u0 = b[0] - a[0];
     let u1 = b[1] - a[1];
@@ -84,14 +103,17 @@ pub fn surf_quad2_signed(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2], d: &[f64; 2])
     0.5 * (u0 * v1 - u1 * v0 + x0 * y1 - x1 * y0)
 }
 
+/// Computes the area of a 3D quadrilateral.
 pub fn surf_quad3(_a: &[f64; 3], _b: &[f64; 3], _c: &[f64; 3], _d: &[f64; 3]) -> f64 {
     todo!()
 }
 
+/// Computes the volume of a tetrahedron.
 pub fn vol_tetra(_a: ArrayView1<f64>, _b: ArrayView1<f64>, _c: ArrayView1<f64>) -> f64 {
     todo!()
 }
 
+/// Computes the volume of a hexahedron.
 pub fn vol_hexa(_a: ArrayView1<f64>, _b: ArrayView1<f64>, _c: ArrayView1<f64>) -> f64 {
     todo!()
 }

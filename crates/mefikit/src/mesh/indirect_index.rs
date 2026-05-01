@@ -1,3 +1,9 @@
+//! An indirect indexing structure for variable-length arrays.
+//!
+//! [`IndirectIndex`] stores data in a flat array with an offsets array to
+//! delineate sub-slices, enabling efficient storage of variable-length
+//! sequences (e.g., polygonal element connectivity).
+
 use std::{
     collections::VecDeque,
     ops::{Index, IndexMut},
@@ -7,6 +13,11 @@ use derive_where::derive_where;
 use ndarray as nd;
 use serde::de::DeserializeOwned;
 
+/// A data structure for indirect indexing of variable-length slices.
+///
+/// Stores elements in a contiguous `data` array, with `offsets` marking the
+/// cumulative end positions of each sub-slice. This is commonly used for
+/// polygonal/polyhedral connectivity where elements have varying node counts.
 #[derive_where(Clone; C: nd::RawDataClone<Elem=T>, D: nd::RawDataClone<Elem=usize>, T: Clone)]
 #[derive_where(Debug, Serialize, PartialEq, Eq, Hash; T)]
 #[derive_where(Deserialize; C: nd::Data<Elem=T> + nd::DataOwned, D: nd::Data<Elem=usize> + nd::DataOwned, T: DeserializeOwned)]
@@ -15,7 +26,9 @@ where
     C: nd::Data<Elem = T>,
     D: nd::Data<Elem = usize>,
 {
+    /// Flat array containing all elements.
     pub data: nd::ArrayBase<C, nd::Ix1>,
+    /// Cumulative offsets marking end positions of each sub-slice.
     pub offsets: nd::ArrayBase<D, nd::Ix1>,
 }
 
@@ -24,6 +37,7 @@ where
     C: nd::Data<Elem = T>,
     D: nd::Data<Elem = usize>,
 {
+    /// Returns an iterator over the sub-slices.
     pub fn iter(&self) -> IndirectIndexIter<'_, T> {
         IndirectIndexIter {
             data: self.data.as_slice().unwrap(),
@@ -31,12 +45,18 @@ where
             last_offset: 0,
         }
     }
+
+    /// Returns the number of sub-slices (elements).
     pub fn len(&self) -> usize {
         self.offsets.len()
     }
+
+    /// Returns the total number of elements in the data array.
     pub fn num_elems_tot(&self) -> usize {
         self.data.len()
     }
+
+    /// Returns a view of this indirect index.
     pub fn view(&self) -> IndirectIndexView<'_, T> {
         IndirectIndexView {
             data: self.data.view(),
@@ -66,6 +86,7 @@ where
     C: nd::RawDataClone<Elem = T> + nd::DataOwned + nd::DataMut,
     D: nd::RawDataClone<Elem = usize> + nd::DataOwned + nd::DataMut,
 {
+    /// Returns a mutable iterator over the sub-slices.
     pub fn iter_mut(&mut self) -> IndirectIndexIterMut<'_, T> {
         IndirectIndexIterMut {
             data: self.data.as_slice_mut().unwrap(),
@@ -90,6 +111,7 @@ where
     }
 }
 
+/// Immutable iterator over sub-slices of an [`IndirectIndex`].
 pub struct IndirectIndexIter<'a, T>
 where
     T: 'a,
@@ -132,6 +154,7 @@ where
     }
 }
 
+/// Mutable iterator over sub-slices of an [`IndirectIndex`].
 pub struct IndirectIndexIterMut<'a, T>
 where
     T: 'a,
@@ -175,6 +198,7 @@ where
     }
 }
 
+/// Owning iterator that yields `Vec<T>` for each sub-slice.
 pub struct IndirectIndexIntoIter<T> {
     data: VecDeque<T>,
     offsets: VecDeque<usize>,
@@ -200,20 +224,26 @@ impl<T> Iterator for IndirectIndexIntoIter<T> {
     }
 }
 
+/// Owned indirect index with uniquely owned data.
 pub type IndirectIndexOwned<T> = IndirectIndex<T, nd::OwnedRepr<T>, nd::OwnedRepr<usize>>;
+/// Shared (reference-counted) indirect index.
 pub type IndirectIndexShared<T> = IndirectIndex<T, nd::OwnedArcRepr<T>, nd::OwnedArcRepr<usize>>;
+/// View into an indirect index with borrowed data.
 pub type IndirectIndexView<'a, T> = IndirectIndex<T, nd::ViewRepr<&'a T>, nd::ViewRepr<&'a usize>>;
 
 impl<T> IndirectIndexOwned<T>
 where
     T: Clone,
 {
+    /// Creates a new empty owned indirect index.
     pub fn new() -> Self {
         Self {
             data: nd::arr1(&[]),
             offsets: nd::arr1(&[]),
         }
     }
+
+    /// Appends a new sub-slice to the index.
     pub fn push(&mut self, elem: &[T]) {
         let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
         let (mut vec_data, _) = data.into_raw_vec_and_offset();
@@ -224,12 +254,16 @@ where
         self.data = vec_data.into();
         self.offsets = vec_offsets.into();
     }
+
+    /// Appends a view-based sub-slice to the index.
     pub fn push_conn(&mut self, elem: nd::ArrayView1<'_, T>) {
         self.data.append(nd::Axis(0), elem).unwrap();
         self.offsets
             .push(nd::Axis(0), nd::arr0(self.data.len()).view())
             .unwrap();
     }
+
+    /// Extends the index from raw data and offset slices.
     pub fn extend_from_raw_slices(&mut self, data_slice: &[T], offsets_slice: &[usize]) {
         let num_elems = self.data.len();
         let data = std::mem::replace(&mut self.data, nd::arr1(&[]));
@@ -241,12 +275,16 @@ where
         self.data = vec_data.into();
         self.offsets = vec_offsets.into();
     }
+
+    /// Reserves capacity for additional data and offsets.
     pub fn reserve(&mut self, additional_data: usize, additional_offsets: usize) {
         self.data.reserve(nd::Axis(0), additional_data).unwrap();
         self.offsets
             .reserve(nd::Axis(0), additional_offsets)
             .unwrap();
     }
+
+    /// Converts this owned index into a shared (reference-counted) index.
     pub fn into_shared(self) -> IndirectIndexShared<T> {
         IndirectIndexShared {
             data: self.data.into_shared(),
@@ -302,12 +340,15 @@ impl<T> IndirectIndexShared<T>
 where
     T: Clone,
 {
+    /// Creates a new empty shared indirect index.
     pub fn new() -> Self {
         Self {
             data: nd::arr1(&[]).into_shared(),
             offsets: nd::arr1(&[]).into_shared(),
         }
     }
+
+    /// Converts this shared index into an owned index.
     pub fn into_owned(self) -> IndirectIndexOwned<T> {
         IndirectIndexOwned {
             data: self.data.into_owned(),

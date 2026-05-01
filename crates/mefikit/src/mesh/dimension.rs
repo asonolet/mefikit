@@ -1,8 +1,17 @@
+//! Dimension types for mesh elements and fields.
+//!
+//! Provides the [`Dimension`] enum representing 0D, 1D, 2D, and 3D spaces.
+
+/// Represents the topological dimension of a mesh element or field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum Dimension {
+    /// Zero-dimensional (points/vertices).
     D0,
+    /// One-dimensional (lines/segments).
     D1,
+    /// Two-dimensional (surfaces/faces).
     D2,
+    /// Three-dimensional (volumes).
     D3,
 }
 

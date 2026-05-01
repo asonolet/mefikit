@@ -7,34 +7,56 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::Dimension;
 
+/// Indicates whether an element has a fixed or variable number of nodes.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum Regularity {
+    /// Element with a fixed number of nodes (e.g., TRI3, QUAD4, HEX8).
     Regular,
+    /// Element with a variable/arbitrary number of nodes (e.g., PGON, PHED, SPLINE).
     Poly,
 }
 
+/// Types of polyhedral/polygonal elements with arbitrary node counts.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PolyElemType {
+    /// A spline curve element with arbitrary nodes.
     Spline,
+    /// A polygon element with arbitrary nodes (2D).
     Pgon,
+    /// A polyhedron element with arbitrary nodes (3D).
     Phed,
 }
 
+/// Types of regular elements with a fixed number of nodes.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub enum RegularElemType {
+    /// A single point/vertex (0D, 1 node).
     Vertex,
+    /// Linear line segment (1D, 2 nodes).
     Seg2,
+    /// Quadratic line segment (1D, 3 nodes).
     Seg3,
+    /// Cubic line segment (1D, 4 nodes).
     Seg4,
+    /// Linear triangle (2D, 3 nodes).
     Tri3,
+    /// Quadratic triangle (2D, 6 nodes).
     Tri6,
+    /// Quadratic triangle with centroid (2D, 7 nodes).
     Tri7,
+    /// Linear quadrilateral (2D, 4 nodes).
     Quad4,
+    /// Serendipity quadratic quadrilateral (2D, 8 nodes).
     Quad8,
+    /// Biquadratic quadrilateral (2D, 9 nodes).
     Quad9,
+    /// Linear tetrahedron (3D, 4 nodes).
     Tet4,
+    /// Quadratic tetrahedron (3D, 10 nodes).
     Tet10,
+    /// Linear hexahedron (3D, 8 nodes).
     Hex8,
+    /// Tricubic hexahedron (3D, 21 nodes).
     Hex21,
 }
 
@@ -161,18 +183,22 @@ impl ElementType {
     }
 }
 
+/// Unique identifier for an element, combining its type and index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct ElementId(ElementType, usize);
 
 impl ElementId {
+    /// Creates a new element identifier.
     pub fn new(element_type: ElementType, index: usize) -> Self {
         ElementId(element_type, index)
     }
 
+    /// Returns the element type.
     pub fn element_type(&self) -> ElementType {
         self.0
     }
 
+    /// Returns the index of the element within its block.
     pub fn index(&self) -> usize {
         self.1
     }

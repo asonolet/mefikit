@@ -1,5 +1,12 @@
+//! Point-in-region tests for geometric queries.
+//!
+//! Provides functions for testing if a point lies inside various regions:
+//! spheres, circles, bounding boxes, rectangles, and polygons (linear,
+//! quadratic, and bezier).
+
 use robust as ro;
 
+/// Returns `true` if point `x` is inside a 3D sphere.
 pub fn in_sphere(x: &[f64; 3], center: &[f64; 3], r: f64) -> bool {
     let x = ro::Coord3D {
         x: x[0],
@@ -29,6 +36,7 @@ pub fn in_sphere(x: &[f64; 3], center: &[f64; 3], r: f64) -> bool {
     ro::insphere(pa, pb, pc, pd, x) > 0.0
 }
 
+/// Returns `true` if point `x` is inside a 2D circle.
 pub fn in_circle(x: &[f64; 2], center: &[f64; 2], r: f64) -> bool {
     let x = ro::Coord { x: x[0], y: x[1] };
     let pa = ro::Coord {
@@ -80,7 +88,9 @@ pub fn in_circle(x: &[f64; 2], center: &[f64; 2], r: f64) -> bool {
 //     d2 <= r * r
 // }
 
-///  p0 is lower min bound and p1 higher max
+/// Returns `true` if point `x` is inside an axis-aligned 3D bounding box.
+///
+/// The box is defined by corner points `p0` (min) and `p1` (max).
 pub fn in_aa_bbox(x: &[f64; 3], p0: &[f64; 3], p1: &[f64; 3]) -> bool {
     !((x[0] < p0[0])
         || (x[0] >= p1[0])
@@ -90,11 +100,14 @@ pub fn in_aa_bbox(x: &[f64; 3], p0: &[f64; 3], p1: &[f64; 3]) -> bool {
         || (x[2] >= p1[2]))
 }
 
-///  p0 is lower min bound and p1 higher max
+/// Returns `true` if point `x` is inside an axis-aligned 2D rectangle.
+///
+/// The rectangle is defined by corner points `p0` (min) and `p1` (max).
 pub fn in_aa_rectangle(x: &[f64; 2], p0: &[f64; 2], p1: &[f64; 2]) -> bool {
     !((x[0] < p0[0]) || (x[0] >= p1[0]) || (x[1] < p0[1]) || (x[1] >= p1[1]))
 }
 
+/// Returns `true` if point `x` is inside a linear polygon using ray casting.
 pub fn in_polygon(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
     let px = x[0];
     let py = x[1];
@@ -127,6 +140,9 @@ pub fn in_polygon(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
     inside
 }
 
+/// Returns `true` if point `x` is inside a quadratic polygon.
+///
+/// The polygon is specified as `[vertices..., quadratic_control_points...]`.
 pub fn in_quadratic_polygon(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
     let px = x[0];
     let py = x[1];
@@ -215,6 +231,9 @@ fn angle_between(a: f64, b: f64, x: f64) -> bool {
     ax <= ab
 }
 
+/// Returns `true` if point `x` is inside a Bezier polygon.
+///
+/// The polygon is specified as `[vertices..., Bezier_control_points...]`.
 pub fn in_bezier_polygon(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
     let px = x[0];
     let py = x[1];
@@ -286,6 +305,10 @@ pub fn in_bezier_polygon(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
     inside
 }
 
+/// Returns `true` if a point is inside a polyhedron using ray-triangle intersection.
+///
+/// The polyhedron is defined by `coords` (vertex positions) and `connectivity`
+/// (face indices separated by `usize::MAX`).
 pub fn point_in_phed(point: &[f64; 3], coords: &[[f64; 3]], connectivity: &[usize]) -> bool {
     let px = point[0];
     let py = point[1];
@@ -411,6 +434,7 @@ fn ray_intersects_triangle(
     point_in_triangle_3d(ix, iy, iz, v0, v1, v2)
 }
 
+/// Alternative polyhedron test using half-open ray intersection for robustness.
 pub fn point_in_phed2(point: &[f64; 3], coords: &[[f64; 3]], connectivity: &[usize]) -> bool {
     let px = point[0];
     let py = point[1];

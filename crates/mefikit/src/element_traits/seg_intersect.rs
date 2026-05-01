@@ -1,26 +1,44 @@
+//! Segment-segment intersection algorithms.
+//!
+//! Provides robust intersection detection between 2D line segments,
+//! handling edge cases like collinear segments and endpoint coincidences.
+
 use nalgebra::Point2;
 use nalgebra::{self as na, Vector2};
 
+/// Represents an intersection point, either at an existing endpoint or a new point.
 #[derive(Copy, Debug, PartialEq, Clone, PartialOrd)]
 pub enum Intersection {
+    /// Intersection at one of the four segment endpoints.
     Existing(PointId),
+    /// Intersection at a new point with given coordinates.
     New([f64; 2]),
 }
 
+/// Identifies which endpoint of the two segments is involved in an intersection.
 #[derive(Copy, Debug, PartialEq, Clone, PartialOrd)]
 pub enum PointId {
+    /// First endpoint of the first segment.
     P1,
+    /// Second endpoint of the first segment.
     P2,
+    /// First endpoint of the second segment.
     P3,
+    /// Second endpoint of the second segment.
     P4,
 }
 
+/// The result of a segment-segment intersection test.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Intersections {
+    /// No intersection between the segments.
     None,
-    One(Intersection),      // classic one intersection
-    Two([Intersection; 2]), // Two intersections only possible with arc
-    Segment([PointId; 2]),  // Shared arc/seg, between two existing points
+    /// A single intersection point.
+    One(Intersection),
+    /// Two intersection points (only possible with arcs).
+    Two([Intersection; 2]),
+    /// Overlapping segment between two existing points.
+    Segment([PointId; 2]),
 }
 
 #[inline(always)]
@@ -28,6 +46,10 @@ fn cross_prod2(v1: Vector2<f64>, v2: Vector2<f64>) -> f64 {
     v1[0] * v2[1] - v1[1] * v2[0]
 }
 
+/// Computes the intersection between two 2D line segments.
+///
+/// Returns [`Intersections`] describing whether and where the segments intersect.
+/// The result is symmetric: swapping the segment pairs produces an equivalent result.
 pub fn intersect_seg_seg(
     p1: Point2<f64>,
     p2: Point2<f64>,

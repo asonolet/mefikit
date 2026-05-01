@@ -1,10 +1,25 @@
+//! Topological operations for mesh elements.
+//!
+//! Provides the [`ElementTopo`] trait for extracting subentities (faces, edges, vertices)
+//! and decomposing elements into simplexes.
+
 use ndarray::prelude::*;
 
 use crate::mesh::Connectivity;
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
+/// Topological operations for mesh elements.
+///
+/// Extends [`ElementLike`] with methods for extracting subentities at various
+/// codimensions and decomposing elements into simplex components.
 pub trait ElementTopo<'a>: ElementLike<'a> {
-    /// This function returns the subentities of the element based on the codimension.
+    /// Returns the subentities of the element at the given codimension.
+    ///
+    /// For example, for a QUAD4 element:
+    /// - `codim = D1` returns the 4 edges (SEG2)
+    /// - `codim = D2` returns the 4 vertices (VERTEX)
+    ///
+    /// If `codim` is `None`, defaults to `D1`.
     fn subentities(&self, codim: Option<Dimension>) -> Vec<(ElementType, Connectivity)> {
         use ElementType::*;
         let codim = match codim {
@@ -179,6 +194,11 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         res
     }
 
+    /// Decomposes the element into simplex elements.
+    ///
+    /// Returns a list of (element type, connectivity) tuples representing
+    /// the simplex decomposition. For example, a QUAD4 is decomposed into
+    /// two TRI3 elements.
     fn to_simplexes(&self) -> Vec<(ElementType, Vec<usize>)> {
         use ElementType::*;
         let co = self.connectivity();
