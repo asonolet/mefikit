@@ -34,6 +34,7 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
         "json" => serde_io::write_json(path, mesh),
         "yaml" | "yml" => serde_io::write_yaml(path, mesh),
         "vtk" | "vtu" => vtk_io::write(path, mesh),
+        "vtkhdf" | "h5" | "hdf5" => hdf_vtk::write(path, mesh),
         _ => Err(format!("Unsupported file extension: {path:?}").into()),
     }
 }
