@@ -7,8 +7,6 @@ mod hdf_vtk;
 // mod med; // for later
 // mod cngs; // for later
 
-pub use vtk_io::{to_element_type, to_vtk_cell};
-
 pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
     match path
         .extension()
