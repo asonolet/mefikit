@@ -174,3 +174,18 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
     
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mesh_examples as me;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_write_vtk() {
+        let path = PathBuf::from("test.vtkhdf");
+        let mesh = me::make_mesh_2d_multi();
+        assert!(write(&path, mesh.view()).is_ok());
+        std::fs::remove_file(path).unwrap(); // Clean up the test file
+    }
+}
