@@ -1,4 +1,12 @@
-use hdf5_metno::{File, types::FixedAscii};
+use hdf5_metno::{File, 
+    types::{
+        TypeDescriptor, 
+        FixedAscii, 
+        FixedUnicode, 
+        VarLenAscii, 
+        VarLenUnicode
+    }
+};
 use ndarray::{Array2, Array1, arr1, s};
 use std::path::Path;
 use crate::mesh::{ElementLike, ElementType, UMesh, UMeshView};
@@ -44,22 +52,53 @@ fn handle_unstructured(block: &hdf5_metno::Group) -> Result<UMesh, Box<dyn std::
     Ok(mesh)
 }
 
+fn read_type_attr(group: &hdf5_metno::Group) -> Result<String, Box<dyn std::error::Error>> {
+    let attr = group.attr("Type")?;
+    let dtype = attr.dtype()?;
+    let desc = dtype.to_descriptor()?;
+    dbg!(&desc);  // let's see what we get
+    match desc {
+        TypeDescriptor::VarLenUnicode  => {
+            let s: VarLenUnicode = attr.read_scalar()?;
+            Ok(s.to_string())
+        },
+        TypeDescriptor::VarLenAscii => {
+            let s: VarLenAscii = attr.read_scalar()?;
+            Ok(s.to_string())
+        },
+        TypeDescriptor::FixedAscii(_) => {
+            let s: FixedAscii<64> = attr.read_scalar()?;
+            Ok(s.as_str().trim_end_matches('\0').to_string())
+        }
+        TypeDescriptor::FixedUnicode(_) => {
+            let s: FixedUnicode<64> = attr.read_scalar()?;
+            Ok(s.as_str().trim_end_matches('\0').to_string())
+        }
+        other => Err(format!("Unexpected string type: {other:?}").into()),
+    }
+}
+
 pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
     let file = File::open(path)?;
-    let vtkhdf_group = file
+    let vtk = file
         .group("VTKHDF").map_err(|_| "Not a VTKHDF file")?;
-    let groups = vtkhdf_group.member_names()?;
+    let type_attr = read_type_attr(&vtk);
+    println!("type attr = {type_attr:?}");
 
-    // Match over block type and get the first one matching the caracteristics
-    // Multiple blocks iteration is not supported here but you can extract 
-    // from a multiblock vtkhdf file
-    for group in groups {
-        let block = vtkhdf_group.group(group.as_str())?;
-        let kind: FixedAscii<64> = block.attr("Type")?.read_scalar()?;
-        match kind.as_str().trim_end_matches('\0') {
-            "UnstructuredGrid" => return handle_unstructured(&block),
-            _ => continue,
-        }
+    match read_type_attr(&vtk)?.as_str() {
+        "UnstructuredGrid" => return handle_unstructured(&vtk), 
+        "PartitionedDataSetCollection" | "MultiBlockDataSet" => {
+            for name in vtk.member_names()? {
+                let block = vtk.group(name.as_str())?;
+                dbg!(&block);
+                let Ok(_) = block.attr("Type") else { continue };
+                match read_type_attr(&block)?.as_str() {
+                    "UnstructuredGrid" => return handle_unstructured(&block),
+                    _ => continue,
+                }
+            }
+        },
+        _ => {},
     }
     Err(format!("No VTKHDF group found in {}", path.display()).into())
 }
