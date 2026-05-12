@@ -4,6 +4,7 @@ use ndarray as nd;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 use super::connectivity::{Connectivity, ConnectivityBase, ConnectivityView};
 use super::element::{Element, ElementMut, ElementType};
@@ -14,20 +15,22 @@ use super::indirect_index::IndirectIndex;
 /// The element block is the base structure to hold connectivity, fields, groups.
 /// It is used to hold all cell information and allows cell iteration.
 /// The only data not included for an element block to be standalone is the coordinates array.
-#[derive_where(Clone; C: nd::RawDataClone, F: nd::RawDataClone, G: nd::RawDataClone)]
+#[derive_where(Clone; C: nd::RawDataClone, F: nd::RawDataClone, G: nd::RawDataClone, H: nd::RawDataClone)]
 #[derive_where(Debug, Serialize, PartialEq)]
-#[derive_where(Deserialize; C: nd::DataOwned, F: nd::DataOwned, G: nd::DataOwned)]
-pub struct ElementBlockBase<C, F, G>
+#[derive_where(Deserialize; C: nd::DataOwned, F: nd::DataOwned, G: nd::DataOwned, H: nd::DataOwned)]
+pub struct ElementBlockBase<C, F, G, H>
 where
     C: nd::Data<Elem = usize>,
     F: nd::Data<Elem = f64>,
     G: nd::Data<Elem = usize>,
+    H: nd::Data<Elem = usize>,
 {
     pub cell_type: ElementType,
     pub connectivity: ConnectivityBase<C>,
     pub fields: BTreeMap<String, nd::ArrayBase<F, nd::IxDyn>>,
     pub families: nd::ArrayBase<G, nd::Ix1>,
-    pub groups: BTreeMap<String, BTreeSet<usize>>,
+    // TODO: a view or an Owned Arc pointer
+    pub groups: BTreeMap<String, nd::ArrayBase<H, nd::Ix1>>,
 }
 
 pub type ElementBlock =
