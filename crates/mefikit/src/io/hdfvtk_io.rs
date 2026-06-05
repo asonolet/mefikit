@@ -134,7 +134,7 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
 
     // destructure elements of UMesh
     let mut types: Vec<u8> = Vec::new();
-    let mut offsets: Vec<usize> = Vec::new();
+    let mut offsets: Vec<usize> = vec![0];
     let mut connectivity: Vec<usize> = Vec::new();
 
     for el in mesh.elements() {
@@ -167,4 +167,42 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
         .write(&Array1::from(connectivity))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mesh_examples as me;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_read_hdfvtk() {
+        let path = PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/Box1.vtkhdf"
+        ));
+        let mesh = read(&path).unwrap();
+        assert_eq!(mesh.coords().nrows(), 13);
+        assert_eq!(mesh.num_elements(), 54);
+    }
+
+    #[test]
+    fn test_write_hdfvtk() {
+        let path = PathBuf::from("test_write.vtkhdf");
+        let mesh = me::make_mesh_2d_multi();
+        assert!(write(&path, mesh.view()).is_ok());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn test_roundtrip_hdfvtk() {
+        let path = PathBuf::from("test_roundtrip.vtkhdf");
+        let mesh = me::make_mesh_2d_multi();
+        assert!(write(&path, mesh.view()).is_ok());
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        for (e1, e2) in mesh.elements().zip(mesh2.elements()) {
+            assert_eq!(e1.connectivity, e2.connectivity);
+        }
+    }
 }
