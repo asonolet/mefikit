@@ -40,3 +40,76 @@ impl Comparable for FieldExpr {
         FieldSelection::Neq(Arc::new(self), Arc::new(other))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::fieldexpr::{arr, field};
+    use ndarray;
+
+    #[test]
+    fn test_field_gt() {
+        let a = field("A");
+        let b = arr(ndarray::arr0(1.0));
+        let selection = a.gt(b);
+        match selection {
+            FieldSelection::Gt(..) => (),
+            _ => panic!("Expected Gt"),
+        }
+    }
+
+    #[test]
+    fn test_field_geq() {
+        let a = field("A");
+        let b = arr(ndarray::arr0(1.0));
+        let selection = a.geq(b);
+        match selection {
+            FieldSelection::Geq(..) => (),
+            _ => panic!("Expected Geq"),
+        }
+    }
+
+    #[test]
+    fn test_field_lt() {
+        let a = field("A");
+        let b = arr(ndarray::arr0(1.0));
+        let selection = a.lt(b);
+        match selection {
+            FieldSelection::Lt(..) => (),
+            _ => panic!("Expected Lt"),
+        }
+    }
+
+    #[test]
+    fn test_field_leq() {
+        let a = field("A");
+        let b = arr(ndarray::arr0(1.0));
+        let selection = a.leq(b);
+        match selection {
+            FieldSelection::Leq(..) => (),
+            _ => panic!("Expected Leq"),
+        }
+    }
+
+    #[test]
+    fn test_field_eq() {
+        let a = field("A");
+        let b = arr(ndarray::arr0(1.0));
+        let selection = a.eq(b);
+        match selection {
+            FieldSelection::Eq(..) => (),
+            _ => panic!("Expected Eq"),
+        }
+    }
+
+    #[test]
+    fn test_field_neq() {
+        let a = field("A");
+        let b = arr(ndarray::arr0(1.0));
+        let selection = a.neq(b);
+        match selection {
+            FieldSelection::Neq(..) => (),
+            _ => panic!("Expected Neq"),
+        }
+    }
+}

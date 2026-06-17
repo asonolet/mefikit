@@ -1,3 +1,8 @@
+//! Core mesh data structures for unstructured mesh manipulation.
+//!
+//! This module provides the fundamental types for representing unstructured meshes,
+//! including connectivity, element blocks, fields, and the main [`UMesh`] type.
+
 mod connectivity;
 mod dimension;
 mod element;

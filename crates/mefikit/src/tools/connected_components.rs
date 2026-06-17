@@ -1,3 +1,7 @@
+//! Connected component analysis for meshes.
+//!
+//! Identifies and extracts disconnected mesh regions.
+
 use petgraph::algo::kosaraju_scc;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
@@ -5,6 +9,15 @@ use rayon::prelude::*;
 use crate::mesh::{Dimension, UMesh};
 use crate::tools::compute_neighbours_graph;
 
+/// Computes the connected components of a mesh.
+///
+/// Returns a vector of sub-meshes, each representing a disconnected component.
+///
+/// # Arguments
+/// * `mesh` - The input mesh
+/// * `src_dim` - Source element dimension (defaults to topological dimension)
+/// * `link_dim` - Link dimension for connectivity (defaults to D1)
+/// * `with_fields` - Whether to include field data in extracted meshes
 pub fn compute_connected_components(
     mesh: &UMesh,
     src_dim: Option<Dimension>,

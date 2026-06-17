@@ -24,7 +24,7 @@ fn find_equals(mesh_ref: UMeshView, partmesh: UMeshView) -> Vec<Option<ElementId
             .par_elements_of_dim(dim)
             .map(|e| (SortedVecKey::new(e.connectivity().into()), e.id()))
             .collect();
-        hash_to_ref.extend(svk_eid.into_iter())
+        hash_to_ref.extend(svk_eid)
     }
     partmesh
         .elements()

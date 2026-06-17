@@ -1,9 +1,18 @@
+//! Utility types for element operations.
+
 use smallvec::SmallVec;
 
+/// A wrapper that ensures a vector of indices is always sorted.
+///
+/// Useful as a hash map key where order-independent equality is needed
+/// (e.g., identifying shared edges between elements).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SortedVecKey(SmallVec<[usize; 4]>);
 
 impl SortedVecKey {
+    /// Creates a new sorted key from the given vector.
+    ///
+    /// The input vector is sorted in-place.
     pub fn new(mut vec: SmallVec<[usize; 4]>) -> Self {
         vec.sort_unstable();
         SortedVecKey(vec)

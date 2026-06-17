@@ -1,0 +1,26 @@
+name: coverage
+
+on:
+  push:
+    branches: ["master", "dev"]
+  pull_request:
+    branches: ["master", "dev"]
+
+jobs:
+  test:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install binstall
+        uses: taiki-e/install-action@cargo-binstall
+
+      - name: Install tarpaulin
+        run: |
+          cargo binstall cargo-tarpaulin
+
+      - name: Generate code coverage
+        run: |
+          cargo tarpaulin --verbose --packages mefikit --timeout 120 --out xml --fail-under 50

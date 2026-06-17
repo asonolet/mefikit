@@ -3,8 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
-
-from mefikit import UMesh
+import numpy.typing as npt
 
 type_order = [
     "VERTEX",
@@ -66,149 +65,145 @@ mf_types_num_node = {
 }
 
 
-def to_meshio(umesh: UMesh):
-    import meshio
-
-    blocks = umesh.blocks()  # type: dict
-
-    cells = {mefikit_to_meshio_type[t]: b for (t, b) in blocks.items()}
-
-    return meshio.Mesh(
-        umesh.coords(),
-        cells,
-    )
-
-
-UMesh.to_meshio = to_meshio
-
-
-def to_mc(umesh: UMesh, lev=None):
+def install_conversions():
     import medcoupling as mc
-
-    mf_types_mc_id = {
-        "VERTEX": 0,
-        "SEG2": 1,
-        "SEG3": 2,
-        "TRI3": 3,
-        "TRI6": 6,
-        "QUAD4": 4,
-        "QUAD8": 8,
-        "TET4": 14,
-        "TET10": 20,
-        "HEX8": 18,
-        "HEX20": 30,
-    }
-
-    def _mf_reg_to_mc_connectivity(et: str, conn: np.ndarray):
-        num_nodes = conn.shape[1]
-        n_elem = conn.shape[0]
-
-        new_connectivity = np.insert(
-            conn.flatten(), np.arange(n_elem) * num_nodes, mf_types_mc_id[et]
-        )
-        offsets = np.arange(n_elem, dtype=int) * (num_nodes + 1)
-        return new_connectivity, offsets
-
-    blocks = umesh.blocks()
-    coords = umesh.coords()
-
-    mc_conn = np.array([], dtype=int)
-    mc_offset = np.array([], dtype=int)
-
-    if lev is None:
-        lev = max(mf_types_dim[et] for et in blocks)
-
-    for et in type_order:
-        if et not in blocks or mf_types_dim[et] != lev:
-            continue
-
-        conn, offset = _mf_reg_to_mc_connectivity(et, blocks[et])
-        mc_conn = np.hstack((mc_conn, conn), dtype=int)
-        # offsets the offset
-        if len(mc_offset) > 0:
-            offset += mc_offset[-1]
-            offset = offset[1:]
-        mc_offset = np.r_[mc_offset, offset]
-    res = mc.MEDCouplingUMesh()
-    res.setCoords(mc.DataArrayDouble(coords))
-    res.setConnectivity(mc.DataArrayInt(mc_conn), mc.DataArrayInt(mc_offset))
-    res.setName("mf_UMesh")
-    return res
-
-
-UMesh.to_mc = to_mc
-
-
-def to_pyvista(
-    umesh: UMesh, dim: str | int | None = None, with_fields: Sequence[str] | bool = True
-):
+    import meshio
     import pyvista as pv
 
-    blocks = umesh.blocks()
-    coords = umesh.coords()
-    if not with_fields:
-        fields = {}
-    else:
-        fields = umesh.fields()
-        if not isinstance(with_fields, bool):
-            fields = {n: f for n, f in fields.items() if n in with_fields}
+    from mefikit import UMesh
 
-    mf_types_to_pv = {
-        "VERTEX": pv.CellType.VERTEX,
-        "SEG2": pv.CellType.LINE,
-        "SEG3": pv.CellType.QUADRATIC_EDGE,
-        "TRI3": pv.CellType.TRIANGLE,
-        "TRI6": pv.CellType.QUADRATIC_TRIANGLE,
-        "QUAD4": pv.CellType.QUAD,
-        "QUAD8": pv.CellType.QUADRATIC_QUAD,
-        "TET4": pv.CellType.TETRA,
-        "TET10": pv.CellType.QUADRATIC_TETRA,
-        "HEX8": pv.CellType.HEXAHEDRON,
-        "HEX20": pv.CellType.QUADRATIC_HEXAHEDRON,
-    }
+    def to_meshio(self: UMesh) -> meshio.Mesh:
+        blocks = self.blocks()  # type: dict
 
-    if dim is None:
-        dim = max(mf_types_dim[et] for et in blocks)
+        cells = {mefikit_to_meshio_type[t]: b for (t, b) in blocks.items()}
 
-    def _mf_reg_to_pv_connectivity(et: str, conn: np.ndarray):
-        num_nodes = conn.shape[1]
-        n_elem = conn.shape[0]
-
-        new_connectivity = np.insert(
-            conn.flatten(), np.arange(n_elem) * num_nodes, num_nodes
+        return meshio.Mesh(
+            self.coords(),
+            cells,
         )
-        elems_type = np.array([mf_types_to_pv[et]] * n_elem)
-        return new_connectivity, elems_type
 
-    conns = []
-    et_typess = []
-    fields_dict = {f: [] for f in fields}
-    for et in type_order:
-        if et not in blocks or (dim != "all" and mf_types_dim[et] != dim):
-            continue
+    def to_mc(self: UMesh, lev=None) -> mc.MEDCouplingUMesh:
+        mf_types_mc_id = {
+            "VERTEX": 0,
+            "SEG2": 1,
+            "SEG3": 2,
+            "TRI3": 3,
+            "TRI6": 6,
+            "QUAD4": 4,
+            "QUAD8": 8,
+            "TET4": 14,
+            "TET10": 20,
+            "HEX8": 18,
+            "HEX20": 30,
+        }
 
-        conn, et_types = _mf_reg_to_pv_connectivity(et, blocks[et])
-        conns.append(conn)
-        et_typess.append(et_types)
-        for f, v in fields.items():
-            fields_dict[f].append(v[et])
+        def _mf_reg_to_mc_connectivity(et: str, conn: npt.NDArray[np.uintp]):
+            num_nodes = conn.shape[1]
+            n_elem = conn.shape[0]
 
-    pv_conn = np.hstack(conns, dtype=int)
-    pv_et_types = np.hstack(et_typess, dtype=int)
+            new_connectivity = np.insert(
+                conn.flatten(), np.arange(n_elem) * num_nodes, mf_types_mc_id[et]
+            )
+            offsets = np.arange(n_elem, dtype=int) * (num_nodes + 1)
+            return new_connectivity, offsets
 
-    pv_fields_dict = {f: np.hstack(fields_dict[f], dtype=float) for f in fields}
+        blocks = self.blocks()
+        coords = self.coords()
 
-    if coords.shape[1] == 1:
-        pv_coords = np.hstack((coords, np.zeros((coords.shape[0], 2))))
-    elif coords.shape[1] == 2:
-        pv_coords = np.hstack((coords, np.zeros((coords.shape[0], 1))))
-    else:
-        pv_coords = coords
+        mc_conn = np.array([], dtype=int)
+        mc_offset = np.array([], dtype=int)
 
-    res = pv.UnstructuredGrid(pv_conn, pv_et_types, pv_coords)
-    for f, v in pv_fields_dict.items():
-        res.cell_data[f] = v
-    return res
+        if lev is None:
+            lev = max(mf_types_dim[et] for et in blocks)
 
+        for et in type_order:
+            if et not in blocks or mf_types_dim[et] != lev:
+                continue
 
-UMesh.to_pyvista = to_pyvista
+            conn, offset = _mf_reg_to_mc_connectivity(et, blocks[et])
+            mc_conn = np.hstack((mc_conn, conn), dtype=int)
+            # offsets the offset
+            if len(mc_offset) > 0:
+                offset += mc_offset[-1]
+                offset = offset[1:]
+            mc_offset = np.r_[mc_offset, offset]
+        res = mc.MEDCouplingUMesh()
+        res.setCoords(mc.DataArrayDouble(coords))
+        res.setConnectivity(mc.DataArrayInt(mc_conn), mc.DataArrayInt(mc_offset))
+        res.setName("mf_UMesh")
+        return res
+
+    def to_pyvista(
+        self: UMesh,
+        dim: str | int | None = None,
+        with_fields: Sequence[str] | bool = True,
+    ) -> pv.UnstructuredGrid:
+        blocks = self.blocks()
+        coords = self.coords()
+        if not with_fields:
+            fields = {}
+        else:
+            fields = self.fields()
+            if not isinstance(with_fields, bool):
+                fields = {n: f for n, f in fields.items() if n in with_fields}
+
+        mf_types_to_pv = {
+            "VERTEX": pv.CellType.VERTEX,
+            "SEG2": pv.CellType.LINE,
+            "SEG3": pv.CellType.QUADRATIC_EDGE,
+            "TRI3": pv.CellType.TRIANGLE,
+            "TRI6": pv.CellType.QUADRATIC_TRIANGLE,
+            "QUAD4": pv.CellType.QUAD,
+            "QUAD8": pv.CellType.QUADRATIC_QUAD,
+            "TET4": pv.CellType.TETRA,
+            "TET10": pv.CellType.QUADRATIC_TETRA,
+            "HEX8": pv.CellType.HEXAHEDRON,
+            "HEX20": pv.CellType.QUADRATIC_HEXAHEDRON,
+        }
+
+        if dim is None:
+            dim = max(mf_types_dim[et] for et in blocks)
+
+        def _mf_reg_to_pv_connectivity(et: str, conn: np.ndarray):
+            num_nodes = conn.shape[1]
+            n_elem = conn.shape[0]
+
+            new_connectivity = np.insert(
+                conn.flatten(), np.arange(n_elem) * num_nodes, num_nodes
+            )
+            elems_type = np.array([mf_types_to_pv[et]] * n_elem)
+            return new_connectivity, elems_type
+
+        conns = []
+        et_typess = []
+        fields_dict = {f: [] for f in fields}
+        for et in type_order:
+            if et not in blocks or (dim != "all" and mf_types_dim[et] != dim):
+                continue
+
+            conn, et_types = _mf_reg_to_pv_connectivity(et, blocks[et])
+            conns.append(conn)
+            et_typess.append(et_types)
+            for f, v in fields.items():
+                fields_dict[f].append(v[et])
+
+        pv_conn = np.hstack(conns, dtype=int)
+        pv_et_types = np.hstack(et_typess, dtype=int)
+
+        pv_fields_dict = {f: np.hstack(fields_dict[f], dtype=float) for f in fields}
+
+        if coords.shape[1] == 1:
+            pv_coords = np.hstack((coords, np.zeros((coords.shape[0], 2))))
+        elif coords.shape[1] == 2:
+            pv_coords = np.hstack((coords, np.zeros((coords.shape[0], 1))))
+        else:
+            pv_coords = coords
+
+        res = pv.UnstructuredGrid(pv_conn, pv_et_types, pv_coords)
+        for f, v in pv_fields_dict.items():
+            res.cell_data[f] = v
+        return res
+
+    UMesh.to_meshio = to_meshio
+    UMesh.to_mc = to_mc
+    UMesh.to_pyvista = to_pyvista

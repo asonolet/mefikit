@@ -1,16 +1,16 @@
-# ruff: disable[F403,F405,F821,E402]
-from .mefipy import *
+import importlib.util
 
-__doc__ = mefipy.__doc__
-if hasattr(mefipy, "__all__"):
-    __all__ = mefipy.__all__
-else:
-    __all__ = ()
-del mefipy
-
-from . import io as io
-from . import data
-# ruff: enable[F403,F405,F821,E402]
+from . import data as data
+from . import io
+from .mefipy import UMesh, build_cmesh, sel
 
 
-__all__ = (*__all__, "data")
+def has(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
+
+
+if has("meshio") and has("medcoupling") and has("pyvista"):
+    io.install_conversions()
+del io
+
+__all__ = ("UMesh", "build_cmesh", "data", "sel")

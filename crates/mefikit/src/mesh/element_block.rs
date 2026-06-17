@@ -42,14 +42,17 @@ where
     F: nd::Data<Elem = f64>,
     G: nd::Data<Elem = usize>,
 {
+    /// Returns the number of elements in this block.
     pub fn len(&self) -> usize {
         self.connectivity.len()
     }
 
+    /// Returns the connectivity (node indices) for the element at `index`.
     pub fn element_connectivity(&self, index: usize) -> &[usize] {
         &self.connectivity[index]
     }
 
+    /// Returns an immutable view of the element at `index`.
     pub fn get<'a>(&'a self, index: usize, coords: nd::ArrayView2<'a, f64>) -> Element<'a> {
         // let fields = self
         //     .fields
@@ -67,6 +70,7 @@ where
         )
     }
 
+    /// Returns an iterator over all elements in this block.
     pub fn iter<'a>(
         &'a self,
         coords: nd::ArrayView2<'a, f64>,
@@ -86,6 +90,8 @@ where
                 )
             })
     }
+
+    /// Parallel iterator over elements (serial fallback without `rayon`).
     #[cfg(not(feature = "rayon"))]
     pub fn par_iter<'a>(
         &'a self,
@@ -94,6 +100,7 @@ where
         self.iter(coords)
     }
 
+    /// Parallel iterator over elements (requires `rayon` feature).
     #[cfg(feature = "rayon")]
     pub fn par_iter<'a>(
         &'a self,
@@ -186,6 +193,10 @@ impl ElementBlock {
         }
     }
 
+    /// Adds a new element to this block.
+    ///
+    /// The connectivity is appended to the block's connectivity array, and a
+    /// new family entry is created. Field support is not yet implemented.
     pub fn add_element(
         &mut self,
         connectivity: nd::ArrayView1<usize>,
@@ -205,6 +216,7 @@ impl ElementBlock {
         }
     }
 
+    /// Returns a mutable view of the element at `index`.
     pub fn get_mut<'a>(
         &'a mut self,
         index: usize,
@@ -289,7 +301,9 @@ impl<'a> ElementBlockView<'a> {
     }
 }
 
+/// Trait for converting an element block into an (ElementType, block) tuple.
 pub trait IntoElementBlockEntry {
+    /// Consumes self and returns the element type and block.
     fn into_entry(self) -> (ElementType, ElementBlock);
 }
 

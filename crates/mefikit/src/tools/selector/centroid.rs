@@ -91,3 +91,56 @@ impl CentroidSelection {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mesh_examples as me;
+    use crate::tools::MeshSelect;
+    use crate::tools::Selection;
+
+    #[test]
+    fn test_in_sphere() {
+        let mesh = me::make_mesh_2d_quad();
+        let selection = CentroidSelection::Circle {
+            center: [0.5, 0.5],
+            r2: 0.5,
+        };
+        let ids = mesh.select_ids(Selection::CentroidSelection(selection));
+        // Quad centroid is at (0.5, 0.5) which is within radius 0.5
+        assert!(ids.len() > 0);
+    }
+
+    #[test]
+    fn test_in_circle() {
+        let mesh = me::make_mesh_2d_quad();
+        let selection = CentroidSelection::Circle {
+            center: [0.5, 0.5],
+            r2: 0.5,
+        };
+        let ids = mesh.select_ids(Selection::CentroidSelection(selection));
+        assert!(ids.len() > 0);
+    }
+
+    #[test]
+    fn test_in_bbox() {
+        let mesh = me::make_mesh_2d_quad();
+        let selection = Selection::CentroidSelection(CentroidSelection::Rect {
+            min: [0.0, 0.0],
+            max: [1.0, 1.0],
+        });
+        let ids = mesh.select_ids(selection);
+        assert!(ids.len() > 0);
+    }
+
+    #[test]
+    fn test_in_rect() {
+        let mesh = me::make_mesh_2d_quad();
+        let selection = Selection::CentroidSelection(CentroidSelection::Rect {
+            min: [0.0, 0.0],
+            max: [1.0, 1.0],
+        });
+        let ids = mesh.select_ids(selection);
+        assert!(ids.len() > 0);
+    }
+}

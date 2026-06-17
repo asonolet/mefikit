@@ -1,5 +1,20 @@
+//! Mesh manipulation tools and algorithms.
+//!
+//! This module provides various utilities for mesh operations including:
+//! - Connected component analysis
+//! - Mesh cracking (splitting shared nodes/faces)
+//! - Mesh extrusion (raising dimension)
+//! - Field expressions and evaluation
+//! - Structured grid generation
+//! - Mesh intersection operations
+//! - Geometric measurements
+//! - Neighbor computation
+//! - Element selection
+//! - Node snapping
+
+/// Connected component analysis for meshes.
 pub mod connected_components;
-/// Crack along
+/// Crack along shared faces/nodes to separate mesh regions.
 ///
 /// # Entrée
 ///
@@ -25,10 +40,14 @@ pub mod connected_components;
 ///
 /// - pour tous les noeuds dupliqués je récupère les éléments de dimension inférieure
 pub mod crack;
-/// This module builds a mesh of one dimension higher than the input mesh by extuding it.
+/// Mesh extrusion to build a higher-dimensional mesh.
+///
+/// This module builds a mesh of one dimension higher than the input mesh by extruding it.
 /// Duplicated nodes are allowed, both in the original mesh and the 1d mesh.
 pub mod extrude;
+/// Field expression evaluation and manipulation.
 pub mod fieldexpr;
+/// Structured grid generation utilities.
 pub mod grid;
 /// Module for intersecting meshes.
 ///
@@ -58,9 +77,13 @@ pub mod grid;
 /// manage non conformities and numerical precision issues. The implementation should be robust
 /// and handle these issues gracefully.
 pub mod intersect;
+/// Geometric measurement utilities for meshes.
 pub mod measure;
+/// Neighbor computation for mesh elements.
 pub mod neighbours;
+/// Element and node selection utilities.
 pub mod selector;
+/// Node snapping to merge nearby nodes.
 pub mod snap;
 
 pub use connected_components::*;

@@ -1,10 +1,25 @@
+//! Topological operations for mesh elements.
+//!
+//! Provides the [`ElementTopo`] trait for extracting subentities (faces, edges, vertices)
+//! and decomposing elements into simplexes.
+
 use ndarray::prelude::*;
 
 use crate::mesh::Connectivity;
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
+/// Topological operations for mesh elements.
+///
+/// Extends [`ElementLike`] with methods for extracting subentities at various
+/// codimensions and decomposing elements into simplex components.
 pub trait ElementTopo<'a>: ElementLike<'a> {
-    /// This function returns the subentities of the element based on the codimension.
+    /// Returns the subentities of the element at the given codimension.
+    ///
+    /// For example, for a QUAD4 element:
+    /// - `codim = D1` returns the 4 edges (SEG2)
+    /// - `codim = D2` returns the 4 vertices (VERTEX)
+    ///
+    /// If `codim` is `None`, defaults to `D1`.
     fn subentities(&self, codim: Option<Dimension>) -> Vec<(ElementType, Connectivity)> {
         use ElementType::*;
         let codim = match codim {
@@ -179,6 +194,11 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         res
     }
 
+    /// Decomposes the element into simplex elements.
+    ///
+    /// Returns a list of (element type, connectivity) tuples representing
+    /// the simplex decomposition. For example, a QUAD4 is decomposed into
+    /// two TRI3 elements.
     fn to_simplexes(&self) -> Vec<(ElementType, Vec<usize>)> {
         use ElementType::*;
         let co = self.connectivity();
@@ -204,3 +224,164 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
 }
 
 impl<'a, T> ElementTopo<'a> for T where T: ElementLike<'a> {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mesh::{Element, ElementType};
+    use ndarray as nd;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn test_subentities_quad4_codim1() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2, 3];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::QUAD4,
+        );
+        let subentities = elem.subentities(Some(crate::mesh::Dimension::D1));
+        assert_eq!(subentities.len(), 1); // One Connectivity containing all 4 edges
+        let (et, connectivity) = &subentities[0];
+        assert_eq!(*et, ElementType::SEG2);
+        // Check that connectivity contains 4 edges (4 x 2 nodes = 8 values)
+        assert_eq!(connectivity.len(), 4);
+    }
+
+    #[test]
+    fn test_subentities_quad4_codim2() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2, 3];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::QUAD4,
+        );
+        let subentities = elem.subentities(Some(crate::mesh::Dimension::D2));
+        assert_eq!(subentities.len(), 1); // One Connectivity containing all 4 vertices
+        let (et, connectivity) = &subentities[0];
+        assert_eq!(*et, ElementType::VERTEX);
+        assert_eq!(connectivity.len(), 4);
+    }
+
+    #[test]
+    fn test_subentities_tri3_codim1() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let subentities = elem.subentities(Some(crate::mesh::Dimension::D1));
+        assert_eq!(subentities.len(), 1); // One Connectivity containing all 3 edges
+        let (et, connectivity) = &subentities[0];
+        assert_eq!(*et, ElementType::SEG2);
+        assert_eq!(connectivity.len(), 3);
+    }
+
+    #[test]
+    fn test_subentities_tri3_codim2() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let subentities = elem.subentities(Some(crate::mesh::Dimension::D2));
+        assert_eq!(subentities.len(), 1); // One Connectivity containing all 3 vertices
+        let (et, connectivity) = &subentities[0];
+        assert_eq!(*et, ElementType::VERTEX);
+        assert_eq!(connectivity.len(), 3);
+    }
+
+    #[test]
+    fn test_subentities_seg2() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0]];
+        let conn = &[0, 1];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::SEG2,
+        );
+        let subentities = elem.subentities(None); // defaults to D1
+        assert_eq!(subentities.len(), 1); // One Connectivity containing both vertices
+        let (et, connectivity) = &subentities[0];
+        assert_eq!(*et, ElementType::VERTEX);
+        assert_eq!(connectivity.len(), 2);
+    }
+
+    #[test]
+    fn test_to_simplexes_quad4() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2, 3];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::QUAD4,
+        );
+        let simplexes = elem.to_simplexes();
+        assert_eq!(simplexes.len(), 2); // QUAD4 -> 2 TRI3
+        for (et, _) in &simplexes {
+            assert_eq!(*et, ElementType::TRI3);
+        }
+    }
+
+    #[test]
+    fn test_to_simplexes_tri3() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let conn = &[0, 1, 2];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TRI3,
+        );
+        let simplexes = elem.to_simplexes();
+        assert_eq!(simplexes.len(), 1); // TRI3 -> 1 TRI3
+        assert_eq!(simplexes[0].0, ElementType::TRI3);
+    }
+}

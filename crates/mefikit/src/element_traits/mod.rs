@@ -1,3 +1,9 @@
+//! Element trait definitions for geometric and topological operations.
+//!
+//! This module provides traits that extend elements with geometric queries
+//! (coordinates, measures, centroids) and topological operations
+//! (subentities, simplex decomposition).
+
 mod element_geo;
 mod element_topo;
 pub mod is_in;

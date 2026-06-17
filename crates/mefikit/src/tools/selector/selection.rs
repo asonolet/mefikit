@@ -1,3 +1,5 @@
+//! Selection types and operations for mesh queries.
+
 use std::ops::{BitAnd, BitOr, BitXor, Not, Sub};
 use std::sync::Arc;
 use std::thread;
@@ -13,29 +15,48 @@ use super::node::NodeSelection;
 
 pub use super::field::Comparable;
 
+/// Trait for selection objects that can filter element IDs.
 pub trait Select {
+    /// Applies the selection to the given mesh view, filtering the element ID set.
     fn select<'a>(&'a self, view: &'a UMeshView<'a>, eids: ElementIdsSet) -> ElementIdsSet;
 }
 
+/// A selection expression for querying mesh elements.
+///
+/// Selections can be combined using boolean operators (AND, OR, XOR, NOT)
+/// to build complex queries.
 #[derive(Clone, Debug)]
 pub enum Selection {
+    /// Selection based on element type or dimension.
     ElementSelection(ElementSelection),
+    /// Selection based on element group membership.
     GroupSelection(GroupSelection),
+    /// Selection based on field values.
     FieldSelection(FieldSelection),
+    /// Selection based on element centroid positions.
     CentroidSelection(CentroidSelection),
+    /// Selection based on node positions.
     NodeSelection(NodeSelection),
+    /// Binary boolean expression combining two selections.
     BinarayExpr(BinarayExpr),
+    /// Negation of a selection.
     NotExpr(NotExpr),
 }
 
+/// Boolean operators for combining selections.
 #[derive(Copy, Clone, Debug)]
 pub enum BooleanOp {
+    /// Logical AND (intersection).
     And,
+    /// Logical OR (union).
     Or,
+    /// Logical XOR (symmetric difference).
     Xor,
+    /// Set difference.
     Diff,
 }
 
+/// A binary boolean expression combining two selections.
 #[derive(Clone, Debug)]
 pub struct BinarayExpr {
     pub operator: BooleanOp,
@@ -43,6 +64,7 @@ pub struct BinarayExpr {
     pub right: Arc<Selection>,
 }
 
+/// A negation expression wrapping a selection.
 #[derive(Clone, Debug)]
 pub struct NotExpr(pub Arc<Selection>);
 
@@ -167,40 +189,63 @@ impl Selection {
         })
     }
 }
+
+/// Creates a selection for nodes inside an axis-aligned 3D bounding box.
 pub fn nbbox(min: [f64; 3], max: [f64; 3], all: bool) -> Selection {
     Selection::NodeSelection(NodeSelection::BBox { all, min, max })
 }
+
+/// Creates a selection for nodes inside an axis-aligned 2D rectangle.
 pub fn nrect(min: [f64; 2], max: [f64; 2], all: bool) -> Selection {
     Selection::NodeSelection(NodeSelection::Rect { all, min, max })
 }
-/// This method filters upon nodes position.
+
+/// Creates a selection for nodes inside a 3D sphere.
 pub fn nsphere(center: [f64; 3], r2: f64, all: bool) -> Selection {
     Selection::NodeSelection(NodeSelection::Sphere { all, center, r: r2 })
 }
+
+/// Creates a selection for nodes inside a 2D circle.
 pub fn ncircle(center: [f64; 2], r2: f64, all: bool) -> Selection {
     Selection::NodeSelection(NodeSelection::Circle { all, center, r: r2 })
 }
+
+/// Creates a selection for nodes by their indices.
 pub fn nids(ids: Vec<usize>, all: bool) -> Selection {
     Selection::NodeSelection(NodeSelection::Ids { all, ids })
 }
+
+/// Creates a selection for element centroids inside a 3D bounding box.
 pub fn bbox(min: [f64; 3], max: [f64; 3]) -> Selection {
     Selection::CentroidSelection(CentroidSelection::BBox { min, max })
 }
+
+/// Creates a selection for element centroids inside a 2D rectangle.
 pub fn rect(min: [f64; 2], max: [f64; 2]) -> Selection {
     Selection::CentroidSelection(CentroidSelection::Rect { min, max })
 }
+
+/// Creates a selection for element centroids inside a 3D sphere.
 pub fn sphere(center: [f64; 3], r2: f64) -> Selection {
     Selection::CentroidSelection(CentroidSelection::Sphere { center, r2 })
 }
+
+/// Creates a selection for element centroids inside a 2D circle.
 pub fn circle(center: [f64; 2], r2: f64) -> Selection {
     Selection::CentroidSelection(CentroidSelection::Circle { center, r2 })
 }
+
+/// Creates a selection for elements of specific types.
 pub fn types(elems: Vec<ElementType>) -> Selection {
     Selection::ElementSelection(ElementSelection::Types(elems))
 }
+
+/// Creates a selection for elements of specific dimensions.
 pub fn dimensions(dims: Vec<Dimension>) -> Selection {
     Selection::ElementSelection(ElementSelection::Dimensions(dims))
 }
+
+/// Creates a selection for elements by their IDs.
 pub fn ids(eids: ElementIds) -> Selection {
     Selection::ElementSelection(ElementSelection::InIds(eids))
 }
@@ -414,8 +459,12 @@ impl Select for CentroidSelection {
     }
 }
 
+/// Trait for applying selections to meshes.
 pub trait MeshSelect {
+    /// Returns the element IDs matching the selection expression.
     fn select_ids(&self, expr: Selection) -> ElementIds;
+
+    /// Returns matching element IDs and extracts a sub-mesh.
     fn select(&self, expr: Selection, with_fields: bool) -> (ElementIds, Self);
 }
 
