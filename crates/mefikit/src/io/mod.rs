@@ -7,8 +7,7 @@ use std::path::Path;
 
 mod hdfvtk_io;
 mod serde_io;
-pub mod vtk_io;
-// mod med; // for later
+mod vtk_io;
 
 /// Reads a mesh from the given file path.
 ///
