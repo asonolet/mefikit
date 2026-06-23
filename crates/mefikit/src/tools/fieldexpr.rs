@@ -10,6 +10,8 @@ use std::{
     sync::Arc,
 };
 
+use super::centroids::centroids;
+use super::measure::measure;
 use crate::mesh::{Dimension, FieldArcD, FieldCowD, FieldOwnedD, UMesh, UMeshBase, UMeshView};
 
 /// An expression tree for field computations.
@@ -30,6 +32,8 @@ pub enum FieldExpr {
         operator: UnaryOp,
         expr: Arc<FieldExpr>,
     },
+    /// Element measure (not yet implemented).
+    Measure,
     /// Element centroids (not yet implemented).
     Centroids,
     /// X coordinate (not yet implemented).
@@ -277,8 +281,20 @@ impl Evaluable for FieldExpr {
                     UnaryOp::Abs => expr_eval.mapv(|x| x.abs()).into(),
                 }
             }
-            // FieldExpr::Measure => mesh.measure().to_owned(),
-            // FieldExpr::Centroids => mesh.centroids().to_owned(),
+            FieldExpr::Measure => FieldOwnedD::new(
+                measure(mesh.clone(), None)
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into_dyn()))
+                    .collect(),
+            )
+            .into(),
+            FieldExpr::Centroids => FieldOwnedD::new(
+                centroids(mesh.clone(), None)
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into_dyn()))
+                    .collect(),
+            )
+            .into(),
             // FieldExpr::X => mesh.coords().slice(nd::s![.., 0]).to_owned(),
             // FieldExpr::Y => mesh.coords().slice(nd::s![.., 1]).to_owned(),
             // FieldExpr::Z => mesh.coords().slice(nd::s![.., 2]).to_owned(),
