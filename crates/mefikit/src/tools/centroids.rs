@@ -13,7 +13,7 @@ use ndarray as nd;
 use rayon::prelude::*;
 use std::collections::BTreeMap;
 
-/// Computes the geometric measure of each element in the mesh.
+/// Computes the geometric center of each element in the mesh.
 ///
 /// Returns a map of element types to arrays of measure values.
 pub fn centroids(
@@ -56,6 +56,63 @@ pub fn centroids(
             )
         })
     .collect()
+}
+
+/// Computes the x coord of each element center in the mesh.
+///
+/// Returns a map of element types to arrays of measure values.
+pub fn x_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array2<f64>> {
+    let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
+    mesh.par_blocks()
+        .filter(|(et, _)| et.dimension() == dim)
+        .map(|(&k, v)| {
+            (k, {
+                let a: Vec<f64> = v
+                    .par_iter(mesh.coords.view())
+                    .map(|e| e.coords().map(|x| x[0]).sum::<f64>() / (e.num_nodes() as f64))
+                    .collect();
+                nd::Array2::from_shape_vec((v.len(), 1), a).unwrap()
+            })
+        })
+        .collect()
+}
+
+/// Computes the y coord of each element center in the mesh.
+///
+/// Returns a map of element types to arrays of measure values.
+pub fn y_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array2<f64>> {
+    let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
+    mesh.par_blocks()
+        .filter(|(et, _)| et.dimension() == dim)
+        .map(|(&k, v)| {
+            (k, {
+                let a: Vec<f64> = v
+                    .par_iter(mesh.coords.view())
+                    .map(|e| e.coords().map(|x| x[1]).sum::<f64>() / (e.num_nodes() as f64))
+                    .collect();
+                nd::Array2::from_shape_vec((v.len(), 1), a).unwrap()
+            })
+        })
+        .collect()
+}
+
+/// Computes the z coord of each element center in the mesh.
+///
+/// Returns a map of element types to arrays of measure values.
+pub fn z_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array2<f64>> {
+    let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
+    mesh.par_blocks()
+        .filter(|(et, _)| et.dimension() == dim)
+        .map(|(&k, v)| {
+            (k, {
+                let a: Vec<f64> = v
+                    .par_iter(mesh.coords.view())
+                    .map(|e| e.coords().map(|x| x[2]).sum::<f64>() / (e.num_nodes() as f64))
+                    .collect();
+                nd::Array2::from_shape_vec((v.len(), 1), a).unwrap()
+            })
+        })
+        .collect()
 }
 
 /// Trait for computing and storing element measures as fields.
