@@ -3,6 +3,7 @@
 //! Computes element measures (length, area, volume) and stores them as fields.
 
 use crate::element_traits::ElementGeo;
+use crate::mesh::ElementLike;
 use crate::mesh::ElementType;
 use crate::mesh::FieldOwned;
 use crate::mesh::{Dimension, UMeshView};
@@ -27,6 +28,13 @@ pub fn centroids(
             (
                 k,
                 match mesh.space_dimension() {
+                    1 => {
+                        let a: Vec<f64> = v.par_iter(mesh.coords.view()).map(|e| e.coords().map(|x| x[0]).sum::<f64>() / (e.num_nodes() as f64)).collect();
+                        nd::Array2::from_shape_vec(
+                            (v.len(), 1),
+                            a
+                        ).unwrap()
+                    }
                     2 => {
                         let a: Vec<[f64; 2]> = v.par_iter(mesh.coords.view())
                             .map(|e| e.centroid2())
