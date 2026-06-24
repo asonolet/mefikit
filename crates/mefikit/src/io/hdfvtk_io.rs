@@ -40,13 +40,27 @@ fn usize_to_el(el_type: ElementType) -> Result<usize, MefikitIOError> {
 }
 
 fn handle_unstructured(block: &hdf5_metno::Group) -> Result<UMesh, MefikitIOError> {
-    // read data from file
-    let points: Array2<f64> = block.dataset("Points")?.read()?;
-    let offsets: Array1<usize> = block.dataset("Offsets")?.read()?;
-    let conn: Array1<i64> = block.dataset("Connectivity")?.read()?;
-    let types: Array1<usize> = block.dataset("Types")?.read()?;
+    let points: Array2<f64> = block
+        .dataset("Points")
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?
+        .read()
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
+    let offsets: Array1<usize> = block
+        .dataset("Offsets")
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?
+        .read()
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
+    let conn: Array1<i64> = block
+        .dataset("Connectivity")
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?
+        .read()
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
+    let types: Array1<usize> = block
+        .dataset("Types")
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?
+        .read()
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
 
-    // transform data into mesh
     let mut mesh = UMesh::new(points.into());
     for i in 0..types.len() {
         let start = offsets[i];
@@ -63,25 +77,39 @@ fn handle_unstructured(block: &hdf5_metno::Group) -> Result<UMesh, MefikitIOErro
 }
 
 fn read_type_attr(group: &hdf5_metno::Group) -> Result<String, MefikitIOError> {
-    let attr = group.attr("Type")?;
-    let dtype = attr.dtype()?;
-    let desc = dtype.to_descriptor()?;
+    let attr = group
+        .attr("Type")
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
+    let dtype = attr
+        .dtype()
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
+    let desc = dtype
+        .to_descriptor()
+        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
 
     match desc {
         TypeDescriptor::VarLenUnicode => {
-            let s: VarLenUnicode = attr.read_scalar()?;
+            let s: VarLenUnicode = attr
+                .read_scalar()
+                .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
             Ok(s.to_string())
         }
         TypeDescriptor::VarLenAscii => {
-            let s: VarLenAscii = attr.read_scalar()?;
+            let s: VarLenAscii = attr
+                .read_scalar()
+                .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
             Ok(s.to_string())
         }
         TypeDescriptor::FixedAscii(_) => {
-            let s: FixedAscii<64> = attr.read_scalar()?;
+            let s: FixedAscii<64> = attr
+                .read_scalar()
+                .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
             Ok(s.as_str().trim_end_matches('\0').to_string())
         }
         TypeDescriptor::FixedUnicode(_) => {
-            let s: FixedUnicode<64> = attr.read_scalar()?;
+            let s: FixedUnicode<64> = attr
+                .read_scalar()
+                .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
             Ok(s.as_str().trim_end_matches('\0').to_string())
         }
         other => Err(MefikitIOError::MalformedFile(format!(
@@ -91,7 +119,7 @@ fn read_type_attr(group: &hdf5_metno::Group) -> Result<String, MefikitIOError> {
 }
 
 pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
-    let file = File::open(path)?;
+    let file = File::open(path).map_err(|e| MefikitIOError::Parse(e.to_string()))?;
     let vtk = file
         .group("VTKHDF")
         .map_err(|_| MefikitIOError::MalformedFile("Not a VTKHDF file".to_string()))?;
@@ -99,8 +127,13 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     match read_type_attr(&vtk)?.as_str() {
         "UnstructuredGrid" => return handle_unstructured(&vtk),
         "PartitionedDataSetCollection" | "MultiBlockDataSet" => {
-            for name in vtk.member_names()? {
-                let block = vtk.group(name.as_str())?;
+            for name in vtk
+                .member_names()
+                .map_err(|e| MefikitIOError::Parse(e.to_string()))?
+            {
+                let block = vtk
+                    .group(name.as_str())
+                    .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
                 dbg!(&block);
                 let Ok(_) = block.attr("Type") else { continue };
                 match read_type_attr(&block)?.as_str() {
@@ -118,27 +151,30 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
 }
 
 pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
-    // create file
-    let file = File::create(path)?;
-    // create VTKHDF group
-    let vtk = file.create_group("VTKHDF")?;
+    let file = File::create(path).map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+    let vtk = file
+        .create_group("VTKHDF")
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
 
-    // add type UnstructuredGrid attr
     vtk.new_attr::<FixedAscii<16>>()
         .shape(())
-        .create("Type")?
-        .write_scalar(&FixedAscii::<16>::from_ascii("UnstructuredGrid").unwrap())?;
+        .create("Type")
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
+        .write_scalar(
+            &FixedAscii::<16>::from_ascii("UnstructuredGrid")
+                .map_err(|e| MefikitIOError::Encode(e.to_string()))?,
+        )
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
 
-    // add version
     vtk.new_attr::<i64>()
         .shape([2])
-        .create("Version")?
-        .write(&arr1(&[2i64, 0]))?;
+        .create("Version")
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
+        .write(&arr1(&[2i64, 0]))
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
 
-    // collect from mesh view
     let coords: Array2<f64> = mesh.coords().to_owned();
 
-    // destructure elements of UMesh
     let mut types: Vec<u8> = Vec::new();
     let mut offsets: Vec<usize> = vec![0];
     let mut connectivity: Vec<usize> = Vec::new();
@@ -150,27 +186,30 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
         offsets.push(connectivity.len());
     }
 
-    // write datasets
-    // coords
     vtk.new_dataset::<f64>()
         .shape(coords.shape())
-        .create("Points")?
-        .write(&coords)?;
-    // types
+        .create("Points")
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
+        .write(&coords)
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
     vtk.new_dataset::<u8>()
         .shape([types.len()])
-        .create("Types")?
-        .write(&Array1::from(types))?;
-    // offsets
+        .create("Types")
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
+        .write(&Array1::from(types))
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
     vtk.new_dataset::<usize>()
         .shape([offsets.len()])
-        .create("Offsets")?
-        .write(&Array1::from(offsets))?;
-    // connectivity
+        .create("Offsets")
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
+        .write(&Array1::from(offsets))
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
     vtk.new_dataset::<usize>()
         .shape([connectivity.len()])
-        .create("Connectivity")?
-        .write(&Array1::from(connectivity))?;
+        .create("Connectivity")
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
+        .write(&Array1::from(connectivity))
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
 
     Ok(())
 }
