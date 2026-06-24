@@ -4,6 +4,8 @@ use thiserror::Error;
 pub enum MefikitIOError {
     #[error("Unsupported file extension: {0}")]
     UnsupportedFileExtension(String),
+    #[error("HDF5 error: {0}")]
+    Hdf(#[from] hdf5_metno::Error),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("Parse error: {0}")]
