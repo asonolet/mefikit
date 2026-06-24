@@ -2,6 +2,7 @@ use hdf5_metno::{File, Group};
 use crate::mesh::{UMesh, ElementType};
 use std::path::Path;
 use hdf5_metno::types::FixedAscii;
+use super::elements_mapping::ElementsMapping;
 use super::error::MefikitIOError;
 use super::hdf_utils::{
     read_index_array,
@@ -53,39 +54,22 @@ impl CgnsBaseDim {
     }
 }
 
-struct CgnsElementInfo {
-    element_type: ElementType,
-    nodes_per_cell: Option<usize>,  // None for poly
-}
-
-fn cgns_element_info(code: i32) -> Option<CgnsElementInfo> {
-    match code {
-        2  => Some(CgnsElementInfo { element_type: ElementType::VERTEX, nodes_per_cell: Some(1) }),
-        3  => Some(CgnsElementInfo { element_type: ElementType::SEG2,   nodes_per_cell: Some(2) }),
-        5  => Some(CgnsElementInfo { element_type: ElementType::TRI3,   nodes_per_cell: Some(3) }),
-        7  => Some(CgnsElementInfo { element_type: ElementType::QUAD4,  nodes_per_cell: Some(4) }),
-        10 => Some(CgnsElementInfo { element_type: ElementType::TET4,   nodes_per_cell: Some(4) }),
-        17 => Some(CgnsElementInfo { element_type: ElementType::HEX8,   nodes_per_cell: Some(8) }),
-        22 => Some(CgnsElementInfo { element_type: ElementType::PGON,   nodes_per_cell: None    }),
-        23 => Some(CgnsElementInfo { element_type: ElementType::PHED,   nodes_per_cell: None    }),
-        other => {
-            eprintln!("warning: unsupported CGNS element type {other}, section skipped");
-            None
-        }
-    }
-}
-
-fn nodes_per_cgns_code(code: i32) -> Option<usize> {
-    match code {
-        2  => Some(1),
-        3  => Some(2),
-        5  => Some(3),
-        7  => Some(4),
-        10 => Some(4),
-        17 => Some(8),
-        _  => None, // poly types have variable stride — handled separately
-    }
-}
+// CGNS element type codes (see the CGNS SIDS ElementType_t enumeration). Poly
+// types (NGON_n/NFACE_n) have variable stride and are handled separately; their
+// node count comes from `ElementType::num_nodes()` returning `None`.
+const CGNS_MAPPING: ElementsMapping = ElementsMapping::new(
+    "CGNS",
+    &[
+        (2, ElementType::VERTEX),
+        (3, ElementType::SEG2),
+        (5, ElementType::TRI3),
+        (7, ElementType::QUAD4),
+        (10, ElementType::TET4),
+        (17, ElementType::HEX8),
+        (22, ElementType::PGON),
+        (23, ElementType::PHED),
+    ],
+);
 
 pub fn cgns_label(group: &Group) -> Result<String, MefikitIOError> {
     let attr = group.attr(" label").or_else(|_| group.attr("label"))?;
@@ -252,44 +236,54 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
     let mut phed_conn:    Option<Vec<i64>> = None;
 
     for element in &el_group {
-        let type_info = cgns_element_info(read_element_type(element)?);
-        if let Some(info) = type_info {
-            match info.element_type {
-                ElementType::PGON => {
-                    let conn    = read_element_connectivity(element)?;
-                    let offsets = read_element_offsets(element)?.ok_or_else(|| {
-                        MefikitIOError::MalformedFile("PGON missing ElementStartOffset".to_string())
-                    })?;
-                    let range = read_element_range(element)?;
-                    let n_cells = (range[1] - range[0] + 1) as usize;
-                    for i in 0..n_cells {
-                        let start = offsets[i] as usize;
-                        let end   = offsets[i + 1] as usize;
-                        let nodes: Vec<usize> = conn[start..end]
-                            .iter().map(|&v| v as usize).collect();
-                        mesh.add_element(ElementType::PGON, &nodes, None, None);
-                    }
-                    pgon_offsets = Some(offsets);
-                    pgon_conn    = Some(conn);
+        let code = read_element_type(element)?;
+        // Unsupported sections are skipped with a warning rather than aborting.
+        let element_type = match CGNS_MAPPING.to_element(code as u32) {
+            Ok(et) => et,
+            Err(_) => {
+                eprintln!("warning: unsupported CGNS element type {code}, section skipped");
+                continue;
+            }
+        };
+        match element_type {
+            ElementType::PGON => {
+                let conn    = read_element_connectivity(element)?;
+                let offsets = read_element_offsets(element)?.ok_or_else(|| {
+                    MefikitIOError::MalformedFile("PGON missing ElementStartOffset".to_string())
+                })?;
+                let range = read_element_range(element)?;
+                let n_cells = (range[1] - range[0] + 1) as usize;
+                for i in 0..n_cells {
+                    let start = offsets[i] as usize;
+                    let end   = offsets[i + 1] as usize;
+                    let nodes: Vec<usize> = conn[start..end]
+                        .iter().map(|&v| v as usize).collect();
+                    mesh.add_element(ElementType::PGON, &nodes, None, None);
                 }
-                ElementType::PHED => {
-                    phed_conn    = Some(read_phed_connectivity(element)?);
-                    phed_offsets = Some(read_element_offsets(element)?.ok_or_else(|| {
-                        MefikitIOError::MalformedFile("PHED missing ElementStartOffset".to_string())
-                    })?);
-                }
-                other => {
-                    let range = read_element_range(element)?;
-                    let conn  = read_element_connectivity(element)?;
-                    let n_cells = (range[1] - range[0] + 1) as usize;
-                    let nodes_per_cell = info.nodes_per_cell.unwrap();
-                    for i in 0..n_cells {
-                        let start = i * nodes_per_cell;
-                        let end   = start + nodes_per_cell;
-                        let cell: Vec<usize> = conn[start..end]
-                            .iter().map(|&v| v as usize).collect();
-                        mesh.add_element(info.element_type, &cell, None, None);
-                    }
+                pgon_offsets = Some(offsets);
+                pgon_conn    = Some(conn);
+            }
+            ElementType::PHED => {
+                phed_conn    = Some(read_phed_connectivity(element)?);
+                phed_offsets = Some(read_element_offsets(element)?.ok_or_else(|| {
+                    MefikitIOError::MalformedFile("PHED missing ElementStartOffset".to_string())
+                })?);
+            }
+            other => {
+                let range = read_element_range(element)?;
+                let conn  = read_element_connectivity(element)?;
+                let n_cells = (range[1] - range[0] + 1) as usize;
+                let nodes_per_cell = other.num_nodes().ok_or_else(|| {
+                    MefikitIOError::MalformedFile(format!(
+                        "CGNS element type {other:?} has no fixed node count"
+                    ))
+                })?;
+                for i in 0..n_cells {
+                    let start = i * nodes_per_cell;
+                    let end   = start + nodes_per_cell;
+                    let cell: Vec<usize> = conn[start..end]
+                        .iter().map(|&v| v as usize).collect();
+                    mesh.add_element(other, &cell, None, None);
                 }
             }
         }

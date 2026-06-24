@@ -5,7 +5,10 @@
 use crate::mesh::{UMesh, UMeshView};
 use std::path::Path;
 
+mod cgns_io;
+mod elements_mapping;
 mod error;
+mod hdf_utils;
 mod hdfvtk_io;
 mod med_io;
 mod serde_io;
@@ -28,7 +31,8 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
         "json" => serde_io::read_json(path),
         "yaml" | "yml" => serde_io::read_yaml(path),
         "vtk" | "vtu" => vtk_io::read(path),
-        "vtkhdf" | "h5" | "hdf5" => hdfvtk_io::read(path),
+        "vtkhdf" => hdfvtk_io::read(path),
+        "cgns" => cgns_io::read(path), //only cgns hdf5 files are supported
         "med" => med_io::read(path),
         _ => Err(MefikitIOError::UnsupportedFileExtension(format!(
             "{path:?}"
@@ -51,7 +55,7 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
         "json" => serde_io::write_json(path, mesh),
         "yaml" | "yml" => serde_io::write_yaml(path, mesh),
         "vtk" | "vtu" => vtk_io::write(path, mesh),
-        "vtkhdf" | "h5" | "hdf5" => hdfvtk_io::write(path, mesh),
+        "vtkhdf" => hdfvtk_io::write(path, mesh),
         "med" => med_io::write(path, &mesh),
         _ => Err(MefikitIOError::UnsupportedFileExtension(format!(
             "{path:?}"

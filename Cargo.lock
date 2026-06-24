@@ -918,6 +918,7 @@ dependencies = [
  "lstsq",
  "nalgebra",
  "ndarray",
+ "num-traits",
  "once_cell",
  "petgraph",
  "proptest",

@@ -1,25 +1,36 @@
+use super::elements_mapping::ElementsMapping;
 use super::error::MefikitIOError;
 use crate::mesh::ElementLike;
 use crate::mesh::ElementType;
 use crate::mesh::{UMesh, UMeshView};
 
 use ndarray::prelude::*;
+use num_traits::FromPrimitive;
 use std::path::Path;
 use vtkio::model::*;
 
-fn to_vtk_cell(et: ElementType) -> CellType {
-    use ElementType::*;
-    match et {
-        VERTEX => CellType::Vertex,
-        SEG2 => CellType::Line,
-        TRI3 => CellType::Triangle,
-        PGON => CellType::Polygon,
-        QUAD4 => CellType::Quad,
-        TET4 => CellType::Tetra,
-        HEX8 => CellType::Hexahedron,
-        PHED => CellType::Polyhedron,
-        _ => panic!("Unsupported element type for VTK: {et:?}"),
-    }
+// VTK cell type codes (matching vtkio's `CellType` discriminants).
+const VTK_MAPPING: ElementsMapping = ElementsMapping::new(
+    "VTK",
+    &[
+        (1, ElementType::VERTEX),
+        (3, ElementType::SEG2),
+        (5, ElementType::TRI3),
+        (7, ElementType::PGON),
+        (9, ElementType::QUAD4),
+        (10, ElementType::TET4),
+        (12, ElementType::HEX8),
+        (42, ElementType::PHED),
+    ],
+);
+
+fn to_vtk_cell(et: ElementType) -> Result<CellType, MefikitIOError> {
+    let code = VTK_MAPPING.to_code(et).ok_or_else(|| {
+        MefikitIOError::Encode(format!("Unsupported element type for VTK: {et:?}"))
+    })?;
+    CellType::from_u32(code).ok_or_else(|| {
+        MefikitIOError::Encode(format!("VTK cell code {code} is not a valid CellType"))
+    })
 }
 
 pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
@@ -69,7 +80,7 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
     let types: Vec<CellType> = mesh
         .elements()
         .map(|x| to_vtk_cell(x.element_type()))
-        .collect();
+        .collect::<Result<Vec<CellType>, MefikitIOError>>()?;
 
     let vtk = Vtk {
         version: Version::XML { major: 1, minor: 0 },
@@ -93,19 +104,8 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
     Ok(())
 }
 
-fn to_element_type(cell_type: CellType) -> ElementType {
-    use CellType::*;
-    match cell_type {
-        Vertex => ElementType::VERTEX,
-        Line => ElementType::SEG2,
-        Triangle => ElementType::TRI3,
-        Polygon => ElementType::PGON,
-        Quad => ElementType::QUAD4,
-        Tetra => ElementType::TET4,
-        Hexahedron => ElementType::HEX8,
-        Polyhedron => ElementType::PHED,
-        _ => panic!("Unsupported cell type for VTK: {cell_type:?}"),
-    }
+fn to_element_type(cell_type: CellType) -> Result<ElementType, MefikitIOError> {
+    Ok(VTK_MAPPING.to_element(cell_type as u8 as u32)?)
 }
 
 fn extract_connectivity(connectivity: &[u64], offsets: &[u64], i: usize) -> Vec<usize> {
@@ -144,7 +144,7 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
         let cell_connectivity =
             extract_connectivity(connectivity.as_slice(), offsets.as_slice(), i);
         mesh.add_element(
-            to_element_type(cell_type[i]),
+            to_element_type(cell_type[i])?,
             cell_connectivity.as_slice(),
             None,
             None,

@@ -1,45 +1,31 @@
+use super::elements_mapping::ElementsMapping;
 use super::error::MefikitIOError;
+use super::hdf_utils::read_group_attr;
 use crate::mesh::{ElementLike, ElementType, UMesh, UMeshView};
 use hdf5_metno::{
     File,
-    types::{FixedAscii, FixedUnicode, TypeDescriptor, VarLenAscii, VarLenUnicode},
+    Group,
+    types::FixedAscii,
 };
 use ndarray::{Array1, Array2, arr1, s};
 use std::path::Path;
 
-fn el_to_usize(code: usize) -> Result<ElementType, MefikitIOError> {
-    match code {
-        1 => Ok(ElementType::VERTEX),
-        3 => Ok(ElementType::SEG2),
-        5 => Ok(ElementType::TRI3),
-        7 => Ok(ElementType::PGON),
-        9 => Ok(ElementType::QUAD4),
-        10 => Ok(ElementType::TET4),
-        12 => Ok(ElementType::HEX8),
-        42 => Ok(ElementType::PHED),
-        other => Err(MefikitIOError::MalformedFile(format!(
-            "Unsupported HdfVtkElementType code {other}"
-        ))),
-    }
-}
+// VTKHDF reuses the standard VTK cell type codes.
+const VTKHDF_MAPPING: ElementsMapping = ElementsMapping::new(
+    "VTKHDF",
+    &[
+        (1, ElementType::VERTEX),
+        (3, ElementType::SEG2),
+        (5, ElementType::TRI3),
+        (7, ElementType::PGON),
+        (9, ElementType::QUAD4),
+        (10, ElementType::TET4),
+        (12, ElementType::HEX8),
+        (42, ElementType::PHED),
+    ],
+);
 
-fn usize_to_el(el_type: ElementType) -> Result<usize, MefikitIOError> {
-    match el_type {
-        ElementType::VERTEX => Ok(1),
-        ElementType::SEG2 => Ok(3),
-        ElementType::TRI3 => Ok(5),
-        ElementType::PGON => Ok(7),
-        ElementType::QUAD4 => Ok(9),
-        ElementType::TET4 => Ok(10),
-        ElementType::HEX8 => Ok(12),
-        ElementType::PHED => Ok(42),
-        other => Err(MefikitIOError::MalformedFile(format!(
-            "Unsupported ElementType {other:?}"
-        ))),
-    }
-}
-
-fn handle_unstructured(block: &hdf5_metno::Group) -> Result<UMesh, MefikitIOError> {
+fn handle_unstructured(block: &Group) -> Result<UMesh, MefikitIOError> {
     let points: Array2<f64> = block
         .dataset("Points")
         .map_err(|e| MefikitIOError::Parse(e.to_string()))?
@@ -65,7 +51,7 @@ fn handle_unstructured(block: &hdf5_metno::Group) -> Result<UMesh, MefikitIOErro
     for i in 0..types.len() {
         let start = offsets[i];
         let end = offsets[i + 1];
-        let el_type = el_to_usize(types[i])?;
+        let el_type = VTKHDF_MAPPING.to_element(types[i] as u32)?;
         let cell_conn: Vec<usize> = conn
             .slice(s![start..end])
             .iter()
@@ -76,55 +62,13 @@ fn handle_unstructured(block: &hdf5_metno::Group) -> Result<UMesh, MefikitIOErro
     Ok(mesh)
 }
 
-fn read_type_attr(group: &hdf5_metno::Group) -> Result<String, MefikitIOError> {
-    let attr = group
-        .attr("Type")
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
-    let dtype = attr
-        .dtype()
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
-    let desc = dtype
-        .to_descriptor()
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
-
-    match desc {
-        TypeDescriptor::VarLenUnicode => {
-            let s: VarLenUnicode = attr
-                .read_scalar()
-                .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
-            Ok(s.to_string())
-        }
-        TypeDescriptor::VarLenAscii => {
-            let s: VarLenAscii = attr
-                .read_scalar()
-                .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
-            Ok(s.to_string())
-        }
-        TypeDescriptor::FixedAscii(_) => {
-            let s: FixedAscii<64> = attr
-                .read_scalar()
-                .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
-            Ok(s.as_str().trim_end_matches('\0').to_string())
-        }
-        TypeDescriptor::FixedUnicode(_) => {
-            let s: FixedUnicode<64> = attr
-                .read_scalar()
-                .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
-            Ok(s.as_str().trim_end_matches('\0').to_string())
-        }
-        other => Err(MefikitIOError::MalformedFile(format!(
-            "Unexpected string type: {other:?}"
-        ))),
-    }
-}
-
 pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     let file = File::open(path).map_err(|e| MefikitIOError::Parse(e.to_string()))?;
     let vtk = file
         .group("VTKHDF")
         .map_err(|_| MefikitIOError::MalformedFile("Not a VTKHDF file".to_string()))?;
 
-    match read_type_attr(&vtk)?.as_str() {
+    match read_group_attr(&vtk, "Type")?.as_str() {
         "UnstructuredGrid" => return handle_unstructured(&vtk),
         "PartitionedDataSetCollection" | "MultiBlockDataSet" => {
             for name in vtk
@@ -136,7 +80,7 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
                     .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
                 dbg!(&block);
                 let Ok(_) = block.attr("Type") else { continue };
-                match read_type_attr(&block)?.as_str() {
+                match read_group_attr(&block, "Type")?.as_str() {
                     "UnstructuredGrid" => return handle_unstructured(&block),
                     _ => continue,
                 }
@@ -181,7 +125,13 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
 
     for el in mesh.elements() {
         let conn = el.connectivity();
-        types.push(usize_to_el(el.element_type())? as u8);
+        let code = VTKHDF_MAPPING.to_code(el.element_type()).ok_or_else(|| {
+            MefikitIOError::Encode(format!(
+                "Unsupported ElementType for VTKHDF: {:?}",
+                el.element_type()
+            ))
+        })?;
+        types.push(code as u8);
         connectivity.extend_from_slice(conn);
         offsets.push(connectivity.len());
     }
