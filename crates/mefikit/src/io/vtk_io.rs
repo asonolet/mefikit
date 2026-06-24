@@ -88,7 +88,8 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
             data: Attributes::new(),
         }),
     };
-    vtk.export(path).map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+    vtk.export(path)
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
     Ok(())
 }
 

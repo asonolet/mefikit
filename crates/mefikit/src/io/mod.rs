@@ -28,7 +28,9 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
         "yaml" | "yml" => serde_io::read_yaml(path),
         "vtk" | "vtu" => vtk_io::read(path),
         "vtkhdf" | "h5" | "hdf5" => hdfvtk_io::read(path),
-        _ => Err(MefikitIOError::UnsupportedFileExtension(format!("{path:?}"))),
+        _ => Err(MefikitIOError::UnsupportedFileExtension(format!(
+            "{path:?}"
+        ))),
     }
 }
 
@@ -48,6 +50,8 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
         "yaml" | "yml" => serde_io::write_yaml(path, mesh),
         "vtk" | "vtu" => vtk_io::write(path, mesh),
         "vtkhdf" | "h5" | "hdf5" => hdfvtk_io::write(path, mesh),
-        _ => Err(MefikitIOError::UnsupportedFileExtension(format!("{path:?}"))),
+        _ => Err(MefikitIOError::UnsupportedFileExtension(format!(
+            "{path:?}"
+        ))),
     }
 }
