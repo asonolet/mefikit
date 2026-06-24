@@ -5,16 +5,19 @@
 use crate::mesh::{UMesh, UMeshView};
 use std::path::Path;
 
+mod error;
 mod hdfvtk_io;
 mod med_io;
 mod serde_io;
 mod vtk_io;
 
+pub use error::MefikitIOError;
+
 /// Reads a mesh from the given file path.
 ///
 /// The file format is determined by the file extension.
 /// Supported formats: JSON, YAML, VTK, VTU.
-pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
+pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     match path
         .extension()
         .and_then(|e| e.to_str())
@@ -27,7 +30,9 @@ pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
         "vtk" | "vtu" => vtk_io::read(path),
         "vtkhdf" | "h5" | "hdf5" => hdfvtk_io::read(path),
         "med" => med_io::read(path),
-        _ => Err(format!("Unsupported file extension: {path:?}").into()),
+        _ => Err(MefikitIOError::UnsupportedFileExtension(format!(
+            "{path:?}"
+        ))),
     }
 }
 
@@ -35,7 +40,7 @@ pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
 ///
 /// The file format is determined by the file extension.
 /// Supported formats: JSON, YAML, VTK, VTU.
-pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
     match path
         .extension()
         .and_then(|e| e.to_str())
@@ -48,6 +53,8 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
         "vtk" | "vtu" => vtk_io::write(path, mesh),
         "vtkhdf" | "h5" | "hdf5" => hdfvtk_io::write(path, mesh),
         "med" => med_io::write(path, &mesh),
-        _ => Err(format!("Unsupported file extension: {path:?}").into()),
+        _ => Err(MefikitIOError::UnsupportedFileExtension(format!(
+            "{path:?}"
+        ))),
     }
 }

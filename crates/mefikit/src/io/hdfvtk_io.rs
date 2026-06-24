@@ -1,3 +1,4 @@
+use super::error::MefikitIOError;
 use crate::mesh::{ElementLike, ElementType, UMesh, UMeshView};
 use hdf5_metno::{
     File,
@@ -6,7 +7,7 @@ use hdf5_metno::{
 use ndarray::{Array1, Array2, arr1, s};
 use std::path::Path;
 
-fn el_to_usize(code: usize) -> Result<ElementType, Box<dyn std::error::Error>> {
+fn el_to_usize(code: usize) -> Result<ElementType, MefikitIOError> {
     match code {
         1 => Ok(ElementType::VERTEX),
         3 => Ok(ElementType::SEG2),
@@ -16,11 +17,13 @@ fn el_to_usize(code: usize) -> Result<ElementType, Box<dyn std::error::Error>> {
         10 => Ok(ElementType::TET4),
         12 => Ok(ElementType::HEX8),
         42 => Ok(ElementType::PHED),
-        other => Err(format!("Unsupported HdfVtkElementType code {other}").into()),
+        other => Err(MefikitIOError::MalformedFile(format!(
+            "Unsupported HdfVtkElementType code {other}"
+        ))),
     }
 }
 
-fn usize_to_el(el_type: ElementType) -> Result<usize, Box<dyn std::error::Error>> {
+fn usize_to_el(el_type: ElementType) -> Result<usize, MefikitIOError> {
     match el_type {
         ElementType::VERTEX => Ok(1),
         ElementType::SEG2 => Ok(3),
@@ -30,11 +33,13 @@ fn usize_to_el(el_type: ElementType) -> Result<usize, Box<dyn std::error::Error>
         ElementType::TET4 => Ok(10),
         ElementType::HEX8 => Ok(12),
         ElementType::PHED => Ok(42),
-        other => Err(format!("Unsupported ElementType {other:?}").into()),
+        other => Err(MefikitIOError::MalformedFile(format!(
+            "Unsupported ElementType {other:?}"
+        ))),
     }
 }
 
-fn handle_unstructured(block: &hdf5_metno::Group) -> Result<UMesh, Box<dyn std::error::Error>> {
+fn handle_unstructured(block: &hdf5_metno::Group) -> Result<UMesh, MefikitIOError> {
     // read data from file
     let points: Array2<f64> = block.dataset("Points")?.read()?;
     let offsets: Array1<usize> = block.dataset("Offsets")?.read()?;
@@ -57,7 +62,7 @@ fn handle_unstructured(block: &hdf5_metno::Group) -> Result<UMesh, Box<dyn std::
     Ok(mesh)
 }
 
-fn read_type_attr(group: &hdf5_metno::Group) -> Result<String, Box<dyn std::error::Error>> {
+fn read_type_attr(group: &hdf5_metno::Group) -> Result<String, MefikitIOError> {
     let attr = group.attr("Type")?;
     let dtype = attr.dtype()?;
     let desc = dtype.to_descriptor()?;
@@ -79,13 +84,17 @@ fn read_type_attr(group: &hdf5_metno::Group) -> Result<String, Box<dyn std::erro
             let s: FixedUnicode<64> = attr.read_scalar()?;
             Ok(s.as_str().trim_end_matches('\0').to_string())
         }
-        other => Err(format!("Unexpected string type: {other:?}").into()),
+        other => Err(MefikitIOError::MalformedFile(format!(
+            "Unexpected string type: {other:?}"
+        ))),
     }
 }
 
-pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
+pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     let file = File::open(path)?;
-    let vtk = file.group("VTKHDF").map_err(|_| "Not a VTKHDF file")?;
+    let vtk = file
+        .group("VTKHDF")
+        .map_err(|_| MefikitIOError::MalformedFile("Not a VTKHDF file".to_string()))?;
 
     match read_type_attr(&vtk)?.as_str() {
         "UnstructuredGrid" => return handle_unstructured(&vtk),
@@ -102,10 +111,13 @@ pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
         }
         _ => {}
     }
-    Err(format!("No VTKHDF group found in {}", path.display()).into())
+    Err(MefikitIOError::MalformedFile(format!(
+        "No VTKHDF group found in {}",
+        path.display()
+    )))
 }
 
-pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
     // create file
     let file = File::create(path)?;
     // create VTKHDF group

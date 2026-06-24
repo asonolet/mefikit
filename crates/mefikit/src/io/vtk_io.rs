@@ -1,3 +1,4 @@
+use super::error::MefikitIOError;
 use crate::mesh::ElementLike;
 use crate::mesh::ElementType;
 use crate::mesh::{UMesh, UMeshView};
@@ -21,7 +22,7 @@ fn to_vtk_cell(et: ElementType) -> CellType {
     }
 }
 
-pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
     let coords: Vec<f64> = match mesh.coords().shape()[1] {
         1 => mesh
             .coords()
@@ -115,7 +116,7 @@ fn extract_connectivity(connectivity: &[u64], offsets: &[u64], i: usize) -> Vec<
     cell_connectivity
 }
 
-pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
+pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     let vtk = Vtk::import(path)?;
     let pieces = if let DataSet::UnstructuredGrid { pieces, .. } = vtk.data {
         pieces
