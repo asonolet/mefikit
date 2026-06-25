@@ -1,3 +1,4 @@
+use super::error::MefikitIOError;
 use crate::mesh::ElementLike;
 use crate::mesh::ElementType;
 use crate::mesh::{UMesh, UMeshView};
@@ -21,7 +22,7 @@ fn to_vtk_cell(et: ElementType) -> CellType {
     }
 }
 
-pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
     let coords: Vec<f64> = match mesh.coords().shape()[1] {
         1 => mesh
             .coords()
@@ -87,7 +88,9 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), Box<dyn std::error::Err
             data: Attributes::new(),
         }),
     };
-    Ok(vtk.export(path)?)
+    vtk.export(path)
+        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+    Ok(())
 }
 
 fn to_element_type(cell_type: CellType) -> ElementType {
@@ -115,8 +118,8 @@ fn extract_connectivity(connectivity: &[u64], offsets: &[u64], i: usize) -> Vec<
     cell_connectivity
 }
 
-pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
-    let vtk = Vtk::import(path)?;
+pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
+    let vtk = Vtk::import(path).map_err(|e| MefikitIOError::Parse(e.to_string()))?;
     let pieces = if let DataSet::UnstructuredGrid { pieces, .. } = vtk.data {
         pieces
     } else {
@@ -128,7 +131,10 @@ pub fn read(path: &Path) -> Result<UMesh, Box<dyn std::error::Error>> {
         .load_piece_data(None)
         .expect("Failed to load piece data");
 
-    let points: Vec<f64> = piece.points.into_vec().unwrap();
+    let points: Vec<f64> = piece
+        .points
+        .into_vec()
+        .ok_or_else(|| MefikitIOError::Parse("Expected f64 point coordinates".to_string()))?;
     let mut mesh = UMesh::new(Array2::from_shape_vec((points.len() / 3, 3), points)?.into());
     let (connectivity, offsets) = piece.cells.cell_verts.into_xml();
     let cell_type = piece.cells.types;
