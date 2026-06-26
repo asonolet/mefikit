@@ -45,6 +45,12 @@ impl<'py> TryFrom<&Bound<'py, PyAny>> for PyField {
             return Ok(v);
         }
         if let Ok(v) = value.extract::<String>() {
+            if &v == "Measure" {
+                return Ok(mf::fieldexpr::FieldExpr::Measure.into());
+            }
+            if &v == "Centroids" {
+                return Ok(mf::fieldexpr::FieldExpr::Centroids.into());
+            }
             return Ok(mf::fieldexpr::field(&v).into());
         }
         if let Ok(v) = value.extract::<np::PyReadonlyArray0<f64>>() {
