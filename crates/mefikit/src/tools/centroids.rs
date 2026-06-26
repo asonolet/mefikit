@@ -6,6 +6,7 @@ use crate::element_traits::ElementGeo;
 use crate::mesh::ElementLike;
 use crate::mesh::ElementType;
 use crate::mesh::FieldOwned;
+use crate::mesh::UMesh;
 use crate::mesh::{Dimension, UMeshView};
 
 use ndarray as nd;
@@ -17,7 +18,7 @@ use std::collections::BTreeMap;
 ///
 /// Returns a map of element types to arrays of measure values.
 pub fn centroids(
-    mesh: UMeshView,
+    mesh: &UMeshView,
     dim: Option<Dimension>,
 ) -> BTreeMap<ElementType, nd::Array2<f64>> {
     let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
@@ -61,7 +62,10 @@ pub fn centroids(
 /// Computes the x coord of each element center in the mesh.
 ///
 /// Returns a map of element types to arrays of measure values.
-pub fn x_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array2<f64>> {
+pub fn x_center(
+    mesh: &UMeshView,
+    dim: Option<Dimension>,
+) -> BTreeMap<ElementType, nd::Array1<f64>> {
     let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
     mesh.par_blocks()
         .filter(|(et, _)| et.dimension() == dim)
@@ -71,7 +75,7 @@ pub fn x_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType
                     .par_iter(mesh.coords.view())
                     .map(|e| e.coords().map(|x| x[0]).sum::<f64>() / (e.num_nodes() as f64))
                     .collect();
-                nd::Array2::from_shape_vec((v.len(), 1), a).unwrap()
+                nd::Array1::from_shape_vec((v.len(),), a).unwrap()
             })
         })
         .collect()
@@ -80,7 +84,10 @@ pub fn x_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType
 /// Computes the y coord of each element center in the mesh.
 ///
 /// Returns a map of element types to arrays of measure values.
-pub fn y_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array2<f64>> {
+pub fn y_center(
+    mesh: &UMeshView,
+    dim: Option<Dimension>,
+) -> BTreeMap<ElementType, nd::Array1<f64>> {
     let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
     mesh.par_blocks()
         .filter(|(et, _)| et.dimension() == dim)
@@ -90,7 +97,7 @@ pub fn y_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType
                     .par_iter(mesh.coords.view())
                     .map(|e| e.coords().map(|x| x[1]).sum::<f64>() / (e.num_nodes() as f64))
                     .collect();
-                nd::Array2::from_shape_vec((v.len(), 1), a).unwrap()
+                nd::Array1::from_shape_vec((v.len(),), a).unwrap()
             })
         })
         .collect()
@@ -99,7 +106,10 @@ pub fn y_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType
 /// Computes the z coord of each element center in the mesh.
 ///
 /// Returns a map of element types to arrays of measure values.
-pub fn z_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array2<f64>> {
+pub fn z_center(
+    mesh: &UMeshView,
+    dim: Option<Dimension>,
+) -> BTreeMap<ElementType, nd::Array1<f64>> {
     let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
     mesh.par_blocks()
         .filter(|(et, _)| et.dimension() == dim)
@@ -109,7 +119,7 @@ pub fn z_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType
                     .par_iter(mesh.coords.view())
                     .map(|e| e.coords().map(|x| x[2]).sum::<f64>() / (e.num_nodes() as f64))
                     .collect();
-                nd::Array2::from_shape_vec((v.len(), 1), a).unwrap()
+                nd::Array1::from_shape_vec((v.len(),), a).unwrap()
             })
         })
         .collect()
@@ -118,10 +128,56 @@ pub fn z_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType
 /// Trait for computing and storing element measures as fields.
 pub trait Centroidable {
     /// Computes element measures and returns them as a field.
-    fn centroid(&self, dim: Option<Dimension>) -> FieldOwned<nd::Ix1>;
+    fn centroid(&self, dim: Option<Dimension>) -> FieldOwned<nd::Ix2>;
     fn x(&self, dim: Option<Dimension>) -> FieldOwned<nd::Ix1>;
     fn y(&self, dim: Option<Dimension>) -> FieldOwned<nd::Ix1>;
     fn z(&self, dim: Option<Dimension>) -> FieldOwned<nd::Ix1>;
+}
+
+pub trait CentroidableMut {
     /// Computes element measures and stores them as a named field in the mesh.
-    fn centroid_update(&mut self, name: &str, dim: Option<Dimension>);
+    fn centroid_update(&mut self, dim: Option<Dimension>);
+}
+
+impl Centroidable for UMesh {
+    fn centroid(&self, dim: Option<Dimension>) -> FieldOwned<nd::Ix2> {
+        FieldOwned::new(centroids(&self.view(), dim))
+    }
+
+    fn x(&self, dim: Option<Dimension>) -> FieldOwned<nd::Ix1> {
+        FieldOwned::new(x_center(&self.view(), dim))
+    }
+
+    fn y(&self, dim: Option<Dimension>) -> FieldOwned<nd::Ix1> {
+        FieldOwned::new(y_center(&self.view(), dim))
+    }
+
+    fn z(&self, dim: Option<Dimension>) -> FieldOwned<nd::Ix1> {
+        FieldOwned::new(z_center(&self.view(), dim))
+    }
+}
+
+impl CentroidableMut for UMesh {
+    fn centroid_update(&mut self, dim: Option<Dimension>) {
+        let f = FieldOwned::new(centroids(&self.view(), dim));
+        self.update_field("Centroids", f.into_shared().into_dyn(), dim);
+    }
+}
+
+impl Centroidable for UMeshView<'_> {
+    fn centroid(&self, dim: Option<Dimension>) -> FieldOwned<ndarray::Ix2> {
+        FieldOwned::new(centroids(self, dim))
+    }
+
+    fn x(&self, dim: Option<Dimension>) -> FieldOwned<ndarray::Ix1> {
+        FieldOwned::new(x_center(self, dim))
+    }
+
+    fn y(&self, dim: Option<Dimension>) -> FieldOwned<ndarray::Ix1> {
+        FieldOwned::new(y_center(self, dim))
+    }
+
+    fn z(&self, dim: Option<Dimension>) -> FieldOwned<ndarray::Ix1> {
+        FieldOwned::new(z_center(self, dim))
+    }
 }
