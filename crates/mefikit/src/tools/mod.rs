@@ -87,6 +87,8 @@ pub mod neighbours;
 pub mod selector;
 /// Node snapping to merge nearby nodes.
 pub mod snap;
+/// Cell splitting to create finer meshes.
+pub mod split_cells;
 
 pub use centroids::*;
 pub use connected_components::*;
@@ -97,3 +99,4 @@ pub use measure::*;
 pub use neighbours::*;
 pub use selector::*;
 pub use snap::*;
+pub use split_cells::*;

@@ -266,6 +266,11 @@ impl PyUMesh {
     fn eval_update(&mut self, name: &str, expr: PyField) {
         self.inner.eval_update_field(name, None, expr.into());
     }
+
+    fn split(&self) -> Self {
+        let new_mesh = mf::split(self.inner.view());
+        new_mesh.into()
+    }
 }
 
 impl Display for PyUMesh {
