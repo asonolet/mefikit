@@ -271,6 +271,10 @@ impl PyUMesh {
         let new_mesh = mf::split(self.inner.view());
         new_mesh.into()
     }
+
+    fn num_elements(&self) -> usize {
+        self.inner.num_elements()
+    }
 }
 
 impl Display for PyUMesh {

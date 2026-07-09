@@ -15,5 +15,6 @@ class TestSplitCells:
         mesh.add_regular_block("SEG2", np.array([[0, 1]], dtype=np.uint))
 
         # Split each cell into 2 sub-cells
-        split_mesh = mesh.split()
-        assert split_mesh.num_elements() == 2
+        splitted_mesh = mesh.split()
+        assert len(splitted_mesh.coords()) == 3
+        assert splitted_mesh.num_elements() == 2
