@@ -4,6 +4,8 @@
 //! spheres, circles, bounding boxes, rectangles, and polygons (linear,
 //! quadratic, and bezier).
 
+use super::measures::ortho_dist2;
+use itertools::Itertools;
 use robust as ro;
 
 /// Returns `true` if point `x` is inside a 3D sphere.
@@ -138,6 +140,71 @@ pub fn in_polygon(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
     }
 
     inside
+}
+
+/// Returns `true` if point `x` is inside a linear polygon using nearest point method.
+/// It might be slower than the ray casting method but is stable (no issue of near-crossing an edge
+/// which is far away).
+/// Convention:
+/// polygon points are in anti-clockwise order.
+pub fn in_polygon_stable(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
+    let px = x[0];
+    let py = x[1];
+
+    enum Intersection {
+        Point(usize),
+        OrthoProj(usize),
+    }
+
+    let n = pgon.len();
+    if n < 3 {
+        return false;
+    }
+
+    let mut min_dist2 = f64::INFINITY;
+    let mut closest = Intersection::Point(0);
+    let p = nalgebra::Point2::new(px, py);
+    // Iterate polygon points and get closest one.
+    for (i, (a, b)) in pgon.iter().circular_tuple_windows().enumerate() {
+        let pa = nalgebra::Point2::new(a[0], a[1]);
+        let pb = nalgebra::Point2::new(b[0], b[1]);
+        let (t, sqrt_dist) = ortho_dist2(p, pa, pb);
+        if sqrt_dist < min_dist2 {
+            min_dist2 = sqrt_dist;
+            if t == 0.0 {
+                closest = Intersection::Point(i);
+            } else if t == 1.0 {
+                closest = Intersection::Point(i + 1);
+            } else {
+                closest = Intersection::OrthoProj(i);
+            }
+        }
+    }
+
+    match closest {
+        Intersection::Point(closest) => {
+            let [xa, ya] = pgon[(((closest as i64) - 1) % n as i64) as usize];
+            let [xb, yb] = pgon[closest];
+            let [xc, yc] = pgon[(closest + 1) % n];
+            let a = ro::Coord { x: xa, y: ya };
+            let b = ro::Coord { x: xb, y: yb };
+            let c = ro::Coord { x: xc, y: yc };
+            let d = ro::Coord { x: px, y: py };
+            if ro::orient2d(a, b, c) < 0. {
+                ro::orient2d(a, b, d) > 0. && ro::orient2d(b, c, d) > 0.
+            } else {
+                ro::orient2d(a, b, d) > 0. || ro::orient2d(b, c, d) > 0.
+            }
+        }
+        Intersection::OrthoProj(closest) => {
+            let [xa, ya] = pgon[closest];
+            let [xb, yb] = pgon[(closest + 1) % n];
+            let a = ro::Coord { x: xa, y: ya };
+            let b = ro::Coord { x: xb, y: yb };
+            let p = ro::Coord { x: px, y: py };
+            ro::orient2d(a, b, p) > 0.
+        }
+    }
 }
 
 /// Returns `true` if point `x` is inside a quadratic polygon.
@@ -538,6 +605,8 @@ fn ray_intersects_triangle_half_open(
 
 #[cfg(test)]
 mod tests {
+    use crate::element_traits::is_in::in_polygon_stable;
+
     use super::in_polygon;
     use super::in_quadratic_polygon;
 
@@ -568,6 +637,20 @@ mod tests {
         let pgon = square();
         let p = [0.5, 0.5];
         assert!(in_polygon(&p, &pgon));
+    }
+
+    #[test]
+    fn inside_point_stable() {
+        let pgon = square();
+        let p = [0.5, 0.5];
+        assert!(in_polygon_stable(&p, &pgon));
+    }
+
+    #[test]
+    fn outside_point_stable() {
+        let pgon = square();
+        let p = [2.5, 0.0];
+        assert!(!in_polygon_stable(&p, &pgon));
     }
 
     #[test]
