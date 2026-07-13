@@ -384,24 +384,25 @@ where
     }
 }
 
-impl<S, D> Mul<&FieldBase<S, D>> for &FieldBase<S, D>
+impl<S> Mul<&FieldBase<S, nd::IxDyn>> for &FieldBase<S, nd::IxDyn>
 where
     S: nd::Data<Elem = f64>,
-    D: nd::Dimension,
 {
-    type Output = FieldOwned<D>;
+    type Output = FieldOwned<nd::IxDyn>;
 
     /// Element-wise multiplication of two fields.
-    fn mul(self, rhs: &FieldBase<S, D>) -> Self::Output {
-        self.panic_if_incompatible_with(rhs);
-        let mut result = BTreeMap::new();
-        for (elem_type, left_array) in &self.0 {
-            if let Some(right_array) = rhs.0.get(elem_type) {
-                let prod_array = left_array * right_array;
-                result.insert(*elem_type, prod_array.into_owned());
-            }
-        }
-        FieldOwned::new(result)
+    fn mul(self, rhs: &FieldBase<S, nd::IxDyn>) -> Self::Output {
+        let result = self.map_zip(rhs, |a, b| a * b);
+        // self.panic_if_incompatible_with(rhs);
+        // let mut result = BTreeMap::new();
+        // for (elem_type, left_array) in &self.0 {
+        //     if let Some(right_array) = rhs.0.get(elem_type) {
+        //         let prod_array = left_array * right_array;
+        //         result.insert(*elem_type, prod_array.into_owned());
+        //     }
+        // }
+        // FieldOwned::new(result)
+        result
     }
 }
 
