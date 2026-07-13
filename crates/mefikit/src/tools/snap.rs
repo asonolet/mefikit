@@ -84,7 +84,7 @@ fn duplicates_from_dim_n<const T: usize>(
             .into_iter()
             .fold((f64::INFINITY, None), |acc, &p| {
                 let (min_d2, closest_p) = acc;
-                let na_p = p.geom().clone().into();
+                let na_p = (*p.geom()).into();
                 let na_coord = (*coord).into();
                 let d2 = na::distance_squared(&na_p, &na_coord);
                 if d2 < min_d2 {

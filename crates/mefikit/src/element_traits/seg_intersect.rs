@@ -3,7 +3,6 @@
 //! Provides robust intersection detection between 2D line segments,
 //! handling edge cases like collinear segments and endpoint coincidences.
 
-use arrayvec::ArrayVec;
 use nalgebra::Point2;
 use nalgebra::{self as na, Vector2};
 
@@ -50,6 +49,9 @@ impl Intersections {
             Self::Two(_) => 2,
             Self::Segment(_) => 2,
         }
+    }
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::None)
     }
 }
 

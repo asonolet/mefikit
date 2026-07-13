@@ -298,8 +298,8 @@ mod connectivity {
     fn poly_connectivity_access() {
         let mesh = make_mesh_2d_multi();
         let (data, offsets) = mesh.poly_connectivity(ElementType::PGON).unwrap();
-        assert!(data.len() > 0);
-        assert!(offsets.len() > 0);
+        assert!(!data.is_empty());
+        assert!(!offsets.is_empty());
     }
 
     #[test]
@@ -578,7 +578,6 @@ mod extract_mesh {
 
 mod selection {
     use super::*;
-    use sel;
 
     #[test]
     fn select_all_elements() {
@@ -613,7 +612,7 @@ mod selection {
     fn select_by_node_ids() {
         let mesh = make_mesh_2d_multi();
         let ids = mesh.select_ids(sel::nids(vec![0, 1], false));
-        assert!(ids.len() > 0);
+        assert!(!ids.is_empty());
     }
 }
 

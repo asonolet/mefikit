@@ -137,7 +137,7 @@ where
                 )
             })
     }
-    pub fn view(&self) -> ElementBlockView {
+    pub fn view(&'_ self) -> ElementBlockView<'_> {
         ElementBlockView {
             cell_type: self.cell_type,
             connectivity: self.connectivity.view(),
