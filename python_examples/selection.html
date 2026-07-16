@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-0392ca55.css">
-        <link rel="stylesheet" href="../css/chrome-fc474251.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-914c0c81.js";
+            window.path_to_searchindex_js = "../searchindex-412a09d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-49e3bc73.js"></script>
@@ -228,10 +228,10 @@ volumes = mf.build_cmesh(x, x, x)
 </code></pre>
 <pre><code class="language-python">volumes.select(clip).to_pyvista().plot()
 </code></pre>
-<p><img src="selection_files/selection_6_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="selection_files/selection_6_0.png" alt="png"><span class="img-wrapper"><img src="selection_files/selection_6_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">volumes.select(sphere).to_pyvista().plot()
 </code></pre>
-<p><img src="selection_files/selection_7_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="selection_files/selection_7_0.png" alt="png"><span class="img-wrapper"><img src="selection_files/selection_7_0.png" alt="png"></span></label></p>
 <h2 id="selection-composition"><a class="header" href="#selection-composition">Selection composition</a></h2>
 <p>One of the great strength of the select method is its composability !
 Whatch by yourself.</p>
@@ -251,7 +251,7 @@ pt.add_mesh(union.to_pyvista())
 pt.camera_position = "xy"
 pt.show()
 </code></pre>
-<p><img src="selection_files/selection_12_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="selection_files/selection_12_0.png" alt="png"><span class="img-wrapper"><img src="selection_files/selection_12_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">intersection = faces.select(circle1 &amp; circle2)
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
@@ -260,7 +260,7 @@ pt.add_mesh(intersection.to_pyvista())
 pt.camera_position = "xy"
 pt.show()
 </code></pre>
-<p><img src="selection_files/selection_14_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="selection_files/selection_14_0.png" alt="png"><span class="img-wrapper"><img src="selection_files/selection_14_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">sym_diff = faces.select(circle1 ^ circle2)
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
@@ -269,7 +269,7 @@ pt.add_mesh(sym_diff.to_pyvista())
 pt.camera_position = "xy"
 pt.show()
 </code></pre>
-<p><img src="selection_files/selection_16_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="selection_files/selection_16_0.png" alt="png"><span class="img-wrapper"><img src="selection_files/selection_16_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">diff = faces.select(circle1 - circle2)
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
@@ -278,7 +278,7 @@ pt.add_mesh(diff.to_pyvista())
 pt.camera_position = "xy"
 pt.show()
 </code></pre>
-<p><img src="selection_files/selection_18_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="selection_files/selection_18_0.png" alt="png"><span class="img-wrapper"><img src="selection_files/selection_18_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">notsel = faces.select(~circle1)
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
@@ -287,7 +287,7 @@ pt.add_mesh(notsel.to_pyvista())
 pt.camera_position = "xy"
 pt.show()
 </code></pre>
-<p><img src="selection_files/selection_20_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="selection_files/selection_20_0.png" alt="png"><span class="img-wrapper"><img src="selection_files/selection_20_0.png" alt="png"></span></label></p>
 <h2 id="a-3d-complex-example"><a class="header" href="#a-3d-complex-example">A 3D complex example</a></h2>
 <pre><code class="language-python">sphere = mf.sel.sphere([0.5, 0.5, 0.5], 0.5)
 clip_x = mf.sel.bbox([0.5, -np.inf, -np.inf], [np.inf, np.inf, np.inf])  # x &gt; 0.5
@@ -297,7 +297,7 @@ clip_z = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.5])  # z &l
     (clip_x &amp; sphere &amp; clip_z) | (sphere &amp; ~clip_x &amp; ~clip_z)
 ).to_pyvista().plot()
 </code></pre>
-<p><img src="selection_files/selection_23_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="selection_files/selection_23_0.png" alt="png"><span class="img-wrapper"><img src="selection_files/selection_23_0.png" alt="png"></span></label></p>
 <h2 id="how-does-it-works-"><a class="header" href="#how-does-it-works-">How does it works ?</a></h2>
 <p>Each objects generated by a selection function (a function from the mf.sel module) is of the <code>Selection</code> type. It implements operators so that it knows how to compose in an expression. That way an expression generates a new <code>Selection</code> which can be interpreted by the <code>.select(expr)</code> method.</p>
 <pre><code class="language-python">print(sphere)
@@ -399,7 +399,7 @@ clip_z = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.5])  # z &l
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-c22b7243.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

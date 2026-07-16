@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-0392ca55.css">
-        <link rel="stylesheet" href="../css/chrome-fc474251.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-914c0c81.js";
+            window.path_to_searchindex_js = "../searchindex-412a09d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-49e3bc73.js"></script>
@@ -209,14 +209,14 @@ volumes = mf.build_cmesh(x, y, y)
 </code></pre>
 <pre><code class="language-python">volumes.boundaries().to_pyvista().plot(opacity=0.4)
 </code></pre>
-<p><img src="example_bubbles_files/example_bubbles_6_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_6_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_6_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">inner_bubbles = volumes.select(sphere_union)
 interface = inner_bubbles.boundaries()
 cracked = volumes.crack(interface)
 </code></pre>
 <pre><code class="language-python">cracked.boundaries().to_pyvista().plot(opacity=0.4)
 </code></pre>
-<p><img src="example_bubbles_files/example_bubbles_8_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_8_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_8_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">bubble_groups = inner_bubbles.connected_components()
 </code></pre>
 <pre><code class="language-python">pv.global_theme.color_cycler = "default"
@@ -228,14 +228,14 @@ pl.add_mesh(volumes.boundaries(target_dim=1).to_pyvista())
 pl.show()
 pv.global_theme.color_cycler = None
 </code></pre>
-<p><img src="example_bubbles_files/example_bubbles_10_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_10_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_10_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">clip1 = mf.sel.bbox([-np.inf] * 3, [np.inf, ymax / 3.0, np.inf])
 pl = pv.Plotter()
 pl.add_mesh(volumes.select(clip1 &amp; ~sphere_union).to_pyvista())
 pl.add_mesh(interface.to_pyvista(), opacity=0.4)
 pl.show()
 </code></pre>
-<p><img src="example_bubbles_files/example_bubbles_11_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_11_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_11_0.png" alt="png"></span></label></p>
 
                     </main>
 
@@ -279,7 +279,7 @@ pl.show()
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-c22b7243.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

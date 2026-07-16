@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-0392ca55.css">
-        <link rel="stylesheet" href="../css/chrome-fc474251.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-914c0c81.js";
+            window.path_to_searchindex_js = "../searchindex-412a09d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-49e3bc73.js"></script>
@@ -238,7 +238,7 @@ volumes
 <p>The mesh is composed of a coordinates array, and several blocks.</p>
 <pre><code class="language-python">volumes.to_pyvista().plot(show_edges=True)
 </code></pre>
-<p><img src="umesh_basics_files/umesh_basics_6_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="umesh_basics_files/umesh_basics_6_0.png" alt="png"><span class="img-wrapper"><img src="umesh_basics_files/umesh_basics_6_0.png" alt="png"></span></label></p>
 <h2 id="building-mesh-with-custom-connectivity"><a class="header" href="#building-mesh-with-custom-connectivity">Building mesh with custom connectivity</a></h2>
 <pre><code class="language-python">x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
 coords = np.c_[x.flatten(), y.flatten()]
@@ -266,7 +266,7 @@ mesh.add_regular_block("QUAD4", np.array([[3, 4, 9, 8]], dtype=np.uint))
 </code></pre>
 <pre><code class="language-python">mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 </code></pre>
-<p><img src="umesh_basics_files/umesh_basics_10_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="umesh_basics_files/umesh_basics_10_0.png" alt="png"><span class="img-wrapper"><img src="umesh_basics_files/umesh_basics_10_0.png" alt="png"></span></label></p>
 <h2 id="mesh-and-fields"><a class="header" href="#mesh-and-fields">Mesh <em>and</em> Fields</a></h2>
 <pre><code class="language-python">x = np.logspace(-5, 0.0)
 mesh2 = mf.build_cmesh(x, x)
@@ -281,7 +281,7 @@ mes
 </code></pre>
 <pre><code class="language-python">mesh2.to_pyvista().plot()
 </code></pre>
-<p><img src="umesh_basics_files/umesh_basics_15_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="umesh_basics_files/umesh_basics_15_0.png" alt="png"><span class="img-wrapper"><img src="umesh_basics_files/umesh_basics_15_0.png" alt="png"></span></label></p>
 
                     </main>
 
@@ -331,7 +331,7 @@ mes
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-c22b7243.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

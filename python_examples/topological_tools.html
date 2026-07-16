@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-0392ca55.css">
-        <link rel="stylesheet" href="../css/chrome-fc474251.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-914c0c81.js";
+            window.path_to_searchindex_js = "../searchindex-412a09d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-49e3bc73.js"></script>
@@ -204,7 +204,7 @@ plotter.subplot(0, 2)
 plotter.add_mesh(vertex.to_pyvista())
 plotter.show()
 </code></pre>
-<p><img src="topological_tools_files/topological_tools_5_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_5_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_5_0.png" alt="png"></span></label></p>
 <h3 id="submesh-in-one-go"><a class="header" href="#submesh-in-one-go">Submesh in one go</a></h3>
 <p>You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining mutliple <code>.descend()</code> calls.</p>
 <pre><code class="language-python">edges = volumes.descend(target_dim=1)
@@ -217,7 +217,7 @@ plotter.subplot(0, 1)
 plotter.add_mesh(vertex.to_pyvista())
 plotter.show()
 </code></pre>
-<p><img src="topological_tools_files/topological_tools_7_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_7_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_7_0.png" alt="png"></span></label></p>
 <h2 id="boundaries-computation"><a class="header" href="#boundaries-computation">Boundaries computation</a></h2>
 <p>As it is very common to compute boundaries on a mesh (for boundary counditions for ex), there is a custom <code>boundaries</code> computation method.</p>
 <pre><code class="language-python">face_bounds = volumes.boundaries()
@@ -233,22 +233,22 @@ plotter.subplot(0, 2)
 plotter.add_mesh(vertex_bounds.to_pyvista())
 plotter.show()
 </code></pre>
-<p><img src="topological_tools_files/topological_tools_9_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_9_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_9_0.png" alt="png"></span></label></p>
 <h2 id="descend--boundaries-update"><a class="header" href="#descend--boundaries-update">Descend / boundaries update</a></h2>
 <p>You can directly update the mesh inplace when computing the descending mesh or the boundaries mesh.</p>
 <pre><code class="language-python">volumes.boundaries_update()
 volumes.boundaries_update(target_dim=1)
 volumes.to_pyvista().shrink(0.8).plot(show_edges=True)
 </code></pre>
-<p><img src="topological_tools_files/topological_tools_11_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_11_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_11_0.png" alt="png"></span></label></p>
 <p>When using the <code>_update</code> version, the elements of the same dimension of the generated mesh are returned as a new mesh.</p>
 <pre><code class="language-python">old_face_mesh = volumes.descend_update()
 volumes.to_pyvista().shrink(0.8).plot(show_edges=True)
 </code></pre>
-<p><img src="topological_tools_files/topological_tools_13_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_13_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_13_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">old_face_mesh.to_pyvista().shrink(0.8).plot(show_edges=True)
 </code></pre>
-<p><img src="topological_tools_files/topological_tools_14_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_14_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_14_0.png" alt="png"></span></label></p>
 <h2 id="connected-components"><a class="header" href="#connected-components">Connected components</a></h2>
 <pre><code class="language-python">x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
 coords = np.c_[x.flatten(), y.flatten()]
@@ -306,7 +306,7 @@ for i, compo in enumerate(compos_link_node):
     plotter.camera_position = "xy"
 plotter.show()
 </code></pre>
-<p><img src="topological_tools_files/topological_tools_18_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_18_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_18_0.png" alt="png"></span></label></p>
 <h2 id="crack"><a class="header" href="#crack">Crack</a></h2>
 <p>This feature is the contrary of the <code>merge_nodes</code> feature. It duplicates nodes such that the resulting mesh does not connect on the descending_mesh given.</p>
 <pre><code class="language-python">x = range(2)
@@ -362,7 +362,7 @@ for i, compo in enumerate(compos_cracked):
     plotter.camera.zoom(2)
 plotter.show()
 </code></pre>
-<p><img src="topological_tools_files/topological_tools_22_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_22_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_22_0.png" alt="png"></span></label></p>
 
                     </main>
 
@@ -412,7 +412,7 @@ plotter.show()
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-c22b7243.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

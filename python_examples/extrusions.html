@@ -15,8 +15,8 @@
         <link rel="icon" href="../favicon-de23e50b.svg">
         <link rel="shortcut icon" href="../favicon-8114d1fc.png">
         <link rel="stylesheet" href="../css/variables-8adf115d.css">
-        <link rel="stylesheet" href="../css/general-0392ca55.css">
-        <link rel="stylesheet" href="../css/chrome-fc474251.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
         <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-914c0c81.js";
+            window.path_to_searchindex_js = "../searchindex-412a09d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-49e3bc73.js"></script>
@@ -210,14 +210,14 @@ mesh.add_regular_block("QUAD4", np.array([[3, 4, 9, 8]], dtype=np.uint))
 </code></pre>
 <pre><code class="language-python">mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 </code></pre>
-<p><img src="extrusions_files/extrusions_5_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="extrusions_files/extrusions_5_0.png" alt="png"><span class="img-wrapper"><img src="extrusions_files/extrusions_5_0.png" alt="png"></span></label></p>
 <h2 id="extrusion-along-an-existing-axis"><a class="header" href="#extrusion-along-an-existing-axis">Extrusion along an existing axis</a></h2>
 <h3 id="build-simple-extruded-mesh"><a class="header" href="#build-simple-extruded-mesh">Build simple extruded mesh</a></h3>
 <pre><code class="language-python">extruded = mesh.extrude(range(3))
 </code></pre>
 <pre><code class="language-python">extruded.to_pyvista(dim="all").plot(show_edges=True)
 </code></pre>
-<p><img src="extrusions_files/extrusions_9_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="extrusions_files/extrusions_9_0.png" alt="png"><span class="img-wrapper"><img src="extrusions_files/extrusions_9_0.png" alt="png"></span></label></p>
 <h3 id="build-extruded-mesh-along-a-3d-line-with-parallel-z-faces"><a class="header" href="#build-extruded-mesh-along-a-3d-line-with-parallel-z-faces">Build extruded mesh along a 3d line with parallel z faces</a></h3>
 <pre><code class="language-python">n = 50
 x = np.sin(np.linspace(0.0, np.pi, n))
@@ -229,7 +229,7 @@ extruded_par = mesh.extrude_parallel(line)
 </code></pre>
 <pre><code class="language-python">extruded_par.to_pyvista(dim="all").plot(show_edges=True)
 </code></pre>
-<p><img src="extrusions_files/extrusions_12_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="extrusions_files/extrusions_12_0.png" alt="png"><span class="img-wrapper"><img src="extrusions_files/extrusions_12_0.png" alt="png"></span></label></p>
 <h3 id="build-curviliear-extrusion-mesh"><a class="header" href="#build-curviliear-extrusion-mesh">Build curviliear extrusion mesh</a></h3>
 <pre><code class="language-python">mesh = mf.build_cmesh(range(2), range(2))
 n = 20
@@ -244,7 +244,7 @@ extruded_curv = mesh.extrude_curv(line)
 </code></pre>
 <pre><code class="language-python">extruded_curv.to_pyvista(dim="all").plot(show_edges=True)
 </code></pre>
-<p><img src="extrusions_files/extrusions_15_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="extrusions_files/extrusions_15_0.png" alt="png"><span class="img-wrapper"><img src="extrusions_files/extrusions_15_0.png" alt="png"></span></label></p>
 
                     </main>
 
@@ -294,7 +294,7 @@ extruded_curv = mesh.extrude_curv(line)
 
         <script src="../clipboard-1626706a.min.js"></script>
         <script src="../highlight-abc7f01d.js"></script>
-        <script src="../book-c22b7243.js"></script>
+        <script src="../book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 

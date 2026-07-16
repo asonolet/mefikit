@@ -16,8 +16,8 @@
         <link rel="icon" href="favicon-de23e50b.svg">
         <link rel="shortcut icon" href="favicon-8114d1fc.png">
         <link rel="stylesheet" href="css/variables-8adf115d.css">
-        <link rel="stylesheet" href="css/general-0392ca55.css">
-        <link rel="stylesheet" href="css/chrome-fc474251.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
         <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
 
         <!-- Fonts -->
@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-914c0c81.js";
+            window.path_to_searchindex_js = "searchindex-412a09d6.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-49e3bc73.js"></script>
@@ -176,7 +176,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="introduction"><a class="header" href="#introduction">Introduction</a></h1>
-<p><img src="logo/mefikit_logo_v2.png" alt="Mefikit logo"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="logo/mefikit_logo_v2.png" alt="Mefikit logo"><span class="img-wrapper"><img src="logo/mefikit_logo_v2.png" alt="Mefikit logo"></span></label></p>
 <h2 id="about-mefikit"><a class="header" href="#about-mefikit">About <code>mefikit</code></a></h2>
 <p><strong><code>mefikit</code></strong> — short for <strong>Mesh and Field Kit</strong> — is a comprehensive library for
 generating, manipulating, and analyzing unstructured meshes together with
@@ -407,7 +407,7 @@ volumes
 <p>The mesh is composed of a coordinates array, and several blocks.</p>
 <pre><code class="language-python">volumes.to_pyvista().plot(show_edges=True)
 </code></pre>
-<p><img src="python_examples/umesh_basics_files/umesh_basics_6_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/umesh_basics_files/umesh_basics_6_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/umesh_basics_files/umesh_basics_6_0.png" alt="png"></span></label></p>
 <h2 id="building-mesh-with-custom-connectivity"><a class="header" href="#building-mesh-with-custom-connectivity">Building mesh with custom connectivity</a></h2>
 <pre><code class="language-python">x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
 coords = np.c_[x.flatten(), y.flatten()]
@@ -435,7 +435,7 @@ mesh.add_regular_block("QUAD4", np.array([[3, 4, 9, 8]], dtype=np.uint))
 </code></pre>
 <pre><code class="language-python">mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 </code></pre>
-<p><img src="python_examples/umesh_basics_files/umesh_basics_10_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/umesh_basics_files/umesh_basics_10_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/umesh_basics_files/umesh_basics_10_0.png" alt="png"></span></label></p>
 <h2 id="mesh-and-fields"><a class="header" href="#mesh-and-fields">Mesh <em>and</em> Fields</a></h2>
 <pre><code class="language-python">x = np.logspace(-5, 0.0)
 mesh2 = mf.build_cmesh(x, x)
@@ -450,7 +450,7 @@ mes
 </code></pre>
 <pre><code class="language-python">mesh2.to_pyvista().plot()
 </code></pre>
-<p><img src="python_examples/umesh_basics_files/umesh_basics_15_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/umesh_basics_files/umesh_basics_15_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/umesh_basics_files/umesh_basics_15_0.png" alt="png"></span></label></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="intput--output"><a class="header" href="#intput--output">Intput / Output</a></h1>
 <pre><code class="language-python">import mefikit as mf
@@ -565,14 +565,14 @@ mesh.add_regular_block("QUAD4", np.array([[3, 4, 9, 8]], dtype=np.uint))
 </code></pre>
 <pre><code class="language-python">mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 </code></pre>
-<p><img src="python_examples/extrusions_files/extrusions_5_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/extrusions_files/extrusions_5_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/extrusions_files/extrusions_5_0.png" alt="png"></span></label></p>
 <h2 id="extrusion-along-an-existing-axis"><a class="header" href="#extrusion-along-an-existing-axis">Extrusion along an existing axis</a></h2>
 <h3 id="build-simple-extruded-mesh"><a class="header" href="#build-simple-extruded-mesh">Build simple extruded mesh</a></h3>
 <pre><code class="language-python">extruded = mesh.extrude(range(3))
 </code></pre>
 <pre><code class="language-python">extruded.to_pyvista(dim="all").plot(show_edges=True)
 </code></pre>
-<p><img src="python_examples/extrusions_files/extrusions_9_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/extrusions_files/extrusions_9_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/extrusions_files/extrusions_9_0.png" alt="png"></span></label></p>
 <h3 id="build-extruded-mesh-along-a-3d-line-with-parallel-z-faces"><a class="header" href="#build-extruded-mesh-along-a-3d-line-with-parallel-z-faces">Build extruded mesh along a 3d line with parallel z faces</a></h3>
 <pre><code class="language-python">n = 50
 x = np.sin(np.linspace(0.0, np.pi, n))
@@ -584,7 +584,7 @@ extruded_par = mesh.extrude_parallel(line)
 </code></pre>
 <pre><code class="language-python">extruded_par.to_pyvista(dim="all").plot(show_edges=True)
 </code></pre>
-<p><img src="python_examples/extrusions_files/extrusions_12_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/extrusions_files/extrusions_12_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/extrusions_files/extrusions_12_0.png" alt="png"></span></label></p>
 <h3 id="build-curviliear-extrusion-mesh"><a class="header" href="#build-curviliear-extrusion-mesh">Build curviliear extrusion mesh</a></h3>
 <pre><code class="language-python">mesh = mf.build_cmesh(range(2), range(2))
 n = 20
@@ -599,7 +599,7 @@ extruded_curv = mesh.extrude_curv(line)
 </code></pre>
 <pre><code class="language-python">extruded_curv.to_pyvista(dim="all").plot(show_edges=True)
 </code></pre>
-<p><img src="python_examples/extrusions_files/extrusions_15_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/extrusions_files/extrusions_15_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/extrusions_files/extrusions_15_0.png" alt="png"></span></label></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="topological-tools"><a class="header" href="#topological-tools">Topological tools</a></h1>
 <pre><code class="language-python">import mefikit as mf
@@ -631,7 +631,7 @@ plotter.subplot(0, 2)
 plotter.add_mesh(vertex.to_pyvista())
 plotter.show()
 </code></pre>
-<p><img src="python_examples/topological_tools_files/topological_tools_5_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_5_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_5_0.png" alt="png"></span></label></p>
 <h3 id="submesh-in-one-go"><a class="header" href="#submesh-in-one-go">Submesh in one go</a></h3>
 <p>You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining mutliple <code>.descend()</code> calls.</p>
 <pre><code class="language-python">edges = volumes.descend(target_dim=1)
@@ -644,7 +644,7 @@ plotter.subplot(0, 1)
 plotter.add_mesh(vertex.to_pyvista())
 plotter.show()
 </code></pre>
-<p><img src="python_examples/topological_tools_files/topological_tools_7_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_7_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_7_0.png" alt="png"></span></label></p>
 <h2 id="boundaries-computation"><a class="header" href="#boundaries-computation">Boundaries computation</a></h2>
 <p>As it is very common to compute boundaries on a mesh (for boundary counditions for ex), there is a custom <code>boundaries</code> computation method.</p>
 <pre><code class="language-python">face_bounds = volumes.boundaries()
@@ -660,22 +660,22 @@ plotter.subplot(0, 2)
 plotter.add_mesh(vertex_bounds.to_pyvista())
 plotter.show()
 </code></pre>
-<p><img src="python_examples/topological_tools_files/topological_tools_9_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_9_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_9_0.png" alt="png"></span></label></p>
 <h2 id="descend--boundaries-update"><a class="header" href="#descend--boundaries-update">Descend / boundaries update</a></h2>
 <p>You can directly update the mesh inplace when computing the descending mesh or the boundaries mesh.</p>
 <pre><code class="language-python">volumes.boundaries_update()
 volumes.boundaries_update(target_dim=1)
 volumes.to_pyvista().shrink(0.8).plot(show_edges=True)
 </code></pre>
-<p><img src="python_examples/topological_tools_files/topological_tools_11_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_11_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_11_0.png" alt="png"></span></label></p>
 <p>When using the <code>_update</code> version, the elements of the same dimension of the generated mesh are returned as a new mesh.</p>
 <pre><code class="language-python">old_face_mesh = volumes.descend_update()
 volumes.to_pyvista().shrink(0.8).plot(show_edges=True)
 </code></pre>
-<p><img src="python_examples/topological_tools_files/topological_tools_13_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_13_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_13_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">old_face_mesh.to_pyvista().shrink(0.8).plot(show_edges=True)
 </code></pre>
-<p><img src="python_examples/topological_tools_files/topological_tools_14_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_14_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_14_0.png" alt="png"></span></label></p>
 <h2 id="connected-components"><a class="header" href="#connected-components">Connected components</a></h2>
 <pre><code class="language-python">x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
 coords = np.c_[x.flatten(), y.flatten()]
@@ -733,7 +733,7 @@ for i, compo in enumerate(compos_link_node):
     plotter.camera_position = "xy"
 plotter.show()
 </code></pre>
-<p><img src="python_examples/topological_tools_files/topological_tools_18_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_18_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_18_0.png" alt="png"></span></label></p>
 <h2 id="crack"><a class="header" href="#crack">Crack</a></h2>
 <p>This feature is the contrary of the <code>merge_nodes</code> feature. It duplicates nodes such that the resulting mesh does not connect on the descending_mesh given.</p>
 <pre><code class="language-python">x = range(2)
@@ -789,7 +789,7 @@ for i, compo in enumerate(compos_cracked):
     plotter.camera.zoom(2)
 plotter.show()
 </code></pre>
-<p><img src="python_examples/topological_tools_files/topological_tools_22_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_22_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_22_0.png" alt="png"></span></label></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="geometrical-tools"><a class="header" href="#geometrical-tools">Geometrical tools</a></h1>
 <pre><code class="language-python">import mefikit as mf
@@ -816,13 +816,13 @@ pt.add_mesh(mesh.descend().to_pyvista())
 pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista())
 pt.show(cpos="xy")
 </code></pre>
-<p><img src="python_examples/geometric_tools_files/geometric_tools_6_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/geometric_tools_files/geometric_tools_6_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/geometric_tools_files/geometric_tools_6_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">pt = pv.Plotter()
 pt.add_mesh(snaped.to_pyvista(), show_edges=True)
 pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista())
 pt.show(cpos="xy")
 </code></pre>
-<p><img src="python_examples/geometric_tools_files/geometric_tools_7_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/geometric_tools_files/geometric_tools_7_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/geometric_tools_files/geometric_tools_7_0.png" alt="png"></span></label></p>
 <h2 id="merge-nodes"><a class="header" href="#merge-nodes">Merge nodes</a></h2>
 <pre><code class="language-python">x = range(2)
 y = np.linspace(0.0, 3.0, 3, endpoint=True)
@@ -878,7 +878,7 @@ for i, compo in enumerate(compos_cracked):
     plotter.camera.zoom(2)
 plotter.show()
 </code></pre>
-<p><img src="python_examples/geometric_tools_files/geometric_tools_11_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/geometric_tools_files/geometric_tools_11_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/geometric_tools_files/geometric_tools_11_0.png" alt="png"></span></label></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="selection-tool"><a class="header" href="#selection-tool">Selection tool</a></h1>
 <pre><code class="language-python">import mefikit as mf
@@ -934,10 +934,10 @@ volumes = mf.build_cmesh(x, x, x)
 </code></pre>
 <pre><code class="language-python">volumes.select(clip).to_pyvista().plot()
 </code></pre>
-<p><img src="python_examples/selection_files/selection_6_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_6_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_6_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">volumes.select(sphere).to_pyvista().plot()
 </code></pre>
-<p><img src="python_examples/selection_files/selection_7_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_7_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_7_0.png" alt="png"></span></label></p>
 <h2 id="selection-composition"><a class="header" href="#selection-composition">Selection composition</a></h2>
 <p>One of the great strength of the select method is its composability !
 Whatch by yourself.</p>
@@ -957,7 +957,7 @@ pt.add_mesh(union.to_pyvista())
 pt.camera_position = "xy"
 pt.show()
 </code></pre>
-<p><img src="python_examples/selection_files/selection_12_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_12_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_12_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">intersection = faces.select(circle1 &amp; circle2)
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
@@ -966,7 +966,7 @@ pt.add_mesh(intersection.to_pyvista())
 pt.camera_position = "xy"
 pt.show()
 </code></pre>
-<p><img src="python_examples/selection_files/selection_14_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_14_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_14_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">sym_diff = faces.select(circle1 ^ circle2)
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
@@ -975,7 +975,7 @@ pt.add_mesh(sym_diff.to_pyvista())
 pt.camera_position = "xy"
 pt.show()
 </code></pre>
-<p><img src="python_examples/selection_files/selection_16_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_16_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_16_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">diff = faces.select(circle1 - circle2)
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
@@ -984,7 +984,7 @@ pt.add_mesh(diff.to_pyvista())
 pt.camera_position = "xy"
 pt.show()
 </code></pre>
-<p><img src="python_examples/selection_files/selection_18_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_18_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_18_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">notsel = faces.select(~circle1)
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
@@ -993,7 +993,7 @@ pt.add_mesh(notsel.to_pyvista())
 pt.camera_position = "xy"
 pt.show()
 </code></pre>
-<p><img src="python_examples/selection_files/selection_20_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_20_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_20_0.png" alt="png"></span></label></p>
 <h2 id="a-3d-complex-example"><a class="header" href="#a-3d-complex-example">A 3D complex example</a></h2>
 <pre><code class="language-python">sphere = mf.sel.sphere([0.5, 0.5, 0.5], 0.5)
 clip_x = mf.sel.bbox([0.5, -np.inf, -np.inf], [np.inf, np.inf, np.inf])  # x &gt; 0.5
@@ -1003,7 +1003,7 @@ clip_z = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.5])  # z &l
     (clip_x &amp; sphere &amp; clip_z) | (sphere &amp; ~clip_x &amp; ~clip_z)
 ).to_pyvista().plot()
 </code></pre>
-<p><img src="python_examples/selection_files/selection_23_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_23_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_23_0.png" alt="png"></span></label></p>
 <h2 id="how-does-it-works-"><a class="header" href="#how-does-it-works-">How does it works ?</a></h2>
 <p>Each objects generated by a selection function (a function from the mf.sel module) is of the <code>Selection</code> type. It implements operators so that it knows how to compose in an expression. That way an expression generates a new <code>Selection</code> which can be interpreted by the <code>.select(expr)</code> method.</p>
 <pre><code class="language-python">print(sphere)
@@ -1095,7 +1095,7 @@ mesh2 = mf.build_cmesh(x, x)
 </code></pre>
 <pre><code class="language-python">mesh2.to_pyvista().plot()
 </code></pre>
-<p><img src="python_examples/fields_files/fields_5_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_5_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_5_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">m = mf.Field("Measure")
 </code></pre>
 <h2 id="field-operations-evaluation"><a class="header" href="#field-operations-evaluation">Field operations evaluation</a></h2>
@@ -1103,7 +1103,7 @@ mesh2 = mf.build_cmesh(x, x)
 </code></pre>
 <pre><code class="language-python">mesh2.to_pyvista().plot()
 </code></pre>
-<p><img src="python_examples/fields_files/fields_9_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_9_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_9_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">mesh2.fields()
 </code></pre>
 <pre><code>{'4 * M2': {'QUAD4': array([7.22038631e-28, 7.38874101e-28, 7.56102117e-28, ...,
@@ -1150,14 +1150,14 @@ pvm2: pv.UnstructuredGrid = m2sel.to_pyvista()
 pvm2.active_scalars_name = "Measure"
 pvm2.plot()
 </code></pre>
-<p><img src="python_examples/fields_files/fields_17_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_17_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_17_0.png" alt="png"></span></label></p>
 <p>Thoses threasholds selections can be combined with other selections.</p>
 <pre><code class="language-python">r = mf.sel.rect([0.25, 0.25], [0.7, 0.7])
 c = mf.sel.circle([0.875, 0.875], 0.05)
 </code></pre>
 <pre><code class="language-python">mesh2.select((m2 &gt; 4e-9) - r - c).to_pyvista().plot()
 </code></pre>
-<p><img src="python_examples/fields_files/fields_20_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_20_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_20_0.png" alt="png"></span></label></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bubbles-example"><a class="header" href="#bubbles-example">Bubbles example</a></h1>
 <pre><code class="language-python">import mefikit as mf
@@ -1194,14 +1194,14 @@ volumes = mf.build_cmesh(x, y, y)
 </code></pre>
 <pre><code class="language-python">volumes.boundaries().to_pyvista().plot(opacity=0.4)
 </code></pre>
-<p><img src="python_examples/example_bubbles_files/example_bubbles_6_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_6_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_6_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">inner_bubbles = volumes.select(sphere_union)
 interface = inner_bubbles.boundaries()
 cracked = volumes.crack(interface)
 </code></pre>
 <pre><code class="language-python">cracked.boundaries().to_pyvista().plot(opacity=0.4)
 </code></pre>
-<p><img src="python_examples/example_bubbles_files/example_bubbles_8_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_8_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_8_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">bubble_groups = inner_bubbles.connected_components()
 </code></pre>
 <pre><code class="language-python">pv.global_theme.color_cycler = "default"
@@ -1213,14 +1213,14 @@ pl.add_mesh(volumes.boundaries(target_dim=1).to_pyvista())
 pl.show()
 pv.global_theme.color_cycler = None
 </code></pre>
-<p><img src="python_examples/example_bubbles_files/example_bubbles_10_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_10_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_10_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">clip1 = mf.sel.bbox([-np.inf] * 3, [np.inf, ymax / 3.0, np.inf])
 pl = pv.Plotter()
 pl.add_mesh(volumes.select(clip1 &amp; ~sphere_union).to_pyvista())
 pl.add_mesh(interface.to_pyvista(), opacity=0.4)
 pl.show()
 </code></pre>
-<p><img src="python_examples/example_bubbles_files/example_bubbles_11_0.png" alt="png"></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_11_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_11_0.png" alt="png"></span></label></p>
 
                     </main>
 
@@ -1258,7 +1258,7 @@ pl.show()
 
         <script src="clipboard-1626706a.min.js"></script>
         <script src="highlight-abc7f01d.js"></script>
-        <script src="book-c22b7243.js"></script>
+        <script src="book-609e4cb8.js"></script>
 
         <!-- Custom JS scripts -->
 
