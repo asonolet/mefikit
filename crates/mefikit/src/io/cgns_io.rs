@@ -302,16 +302,25 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
             let mut cell_nodes: Vec<usize> = Vec::new();
 
             for &face_ref in &p_conn[start..end] {
-                let _reversed  = face_ref < 0;
+                let reversed  = face_ref < 0;
                 let face_index = (face_ref.unsigned_abs() as usize) - 1;
 
                 let node_start = f_off[face_index] as usize;
                 let node_end   = f_off[face_index + 1] as usize;
 
-                for &node_id in &f_conn[node_start..node_end] {
-                    let coord_index = (node_id as usize) - 1;
-                    cell_nodes.push(coord_index);
+                // Face 
+                let face: Vec<usize> = f_conn[node_start..node_end]
+                    .iter()
+                    .map(|&node_id| (node_id as usize) - 1) // 0-based
+                    .collect();
+                
+                // Orientation 
+                if reversed {
+                    cell_nodes.extend(face.iter().rev());
+                } else {
+                    cell_nodes.extend(face.iter());
                 }
+                cell_nodes.push(usize::MAX); // PHED separator
             }
 
             mesh.add_element(ElementType::PHED, &cell_nodes, None, None);
