@@ -30,25 +30,25 @@ type SortedSegIntersections = FxHashMap<SortedVecKey, Vec<NodeId>>;
 /// id).
 /// The SortedVecKey of the map is independent from mesh1/mesh2 distinction as NodeIds are common
 /// between the two meshes.
-/// TODO: this is half of the work, I need also seg2 intersected with seg1 by reversing the map.
 fn to_sorted_intersections(
     intersections: &M1M2Intersections,
-    _mesh2: UMeshView,
-    global_coords: nd::ArrayView2<'_, f64>,
+    mesh2: UMeshView,
+    coords: nd::ArrayView2<'_, f64>,
 ) -> SortedSegIntersections {
-    let coords = global_coords;
-    let mut sorted_intersections: SortedSegIntersections = FxHashMap::default();
-    for (seg1_id, seg2_ints) in intersections {
-        let p1: Point2<f64> = Point2::from_slice(coords.row(seg1_id[0]).as_slice().unwrap());
-        let p2: Point2<f64> = Point2::from_slice(coords.row(seg1_id[1]).as_slice().unwrap());
+    let mut non_sorted_intersections = to_non_sorted_intersections(intersections, mesh2);
+
+    for (eid, v) in &mut non_sorted_intersections {
+        let p1: Point2<f64> = Point2::from_slice(coords.row(eid[0]).as_slice().unwrap());
+        let p2: Point2<f64> = Point2::from_slice(coords.row(eid[1]).as_slice().unwrap());
         let oriented_vec: Vector2<f64> = p2 - p1;
-        let mut sorted_ints: Vec<NodeId> = seg2_ints
-            .iter()
-            .map(|(_, intersection_ids)| match intersection_ids {
-                IntersectionIds::One(i) => *i,
-                IntersectionIds::Segment(_, _) => todo!("TODO: manage colinear case"),
-            })
-            .collect();
+
+        let mut sorted_ints: Vec<NodeId> = Vec::new();
+
+        // First point
+        sorted_ints.push(eid[0]);
+        // Intersection points
+        sorted_ints.append(v);
+        // Sorting all intersections points
         sorted_ints.sort_by(|a, b| {
             let va: Vector2<f64> = Point2::from_slice(coords.row(*a).as_slice().unwrap()) - p1;
             let vb: Vector2<f64> = Point2::from_slice(coords.row(*b).as_slice().unwrap()) - p1;
@@ -56,9 +56,65 @@ fn to_sorted_intersections(
             let db = oriented_vec.dot(&vb);
             da.total_cmp(&db)
         });
+        // Adding last point (known)
+        sorted_ints.push(eid[1]);
+
+        // Removing duplicates
+        sorted_ints.dedup();
+        v.append(&mut sorted_ints);
+    }
+    non_sorted_intersections
+}
+
+fn to_non_sorted_intersections(
+    intersections: &M1M2Intersections,
+    mesh2: UMeshView,
+) -> SortedSegIntersections {
+    let mut sorted_intersections: SortedSegIntersections = FxHashMap::default();
+
+    // Seg1 id
+    for (seg1_id, seg2_ints) in intersections {
+        let mut sorted_ints: Vec<NodeId> = Vec::new();
+
+        // Intersection points
+        for (_, inters) in seg2_ints {
+            match inters {
+                IntersectionIds::One(i) => sorted_ints.push(*i),
+                IntersectionIds::Segment(i1, i2) => {
+                    sorted_ints.push(*i1);
+                    sorted_ints.push(*i2);
+                }
+            }
+        }
         sorted_intersections.insert(seg1_id.clone(), sorted_ints);
     }
+
+    // Seg2 id
+    for seg2_ints in intersections.values() {
+        for (seg2, int) in seg2_ints {
+            let seg2_id = SortedVecKey::new(mesh2.element(*seg2).connectivity().into());
+            match int {
+                IntersectionIds::One(i) => {
+                    sorted_intersections.entry(seg2_id).or_default().push(*i)
+                }
+                IntersectionIds::Segment(i1, i2) => {
+                    let v = sorted_intersections.entry(seg2_id).or_default();
+                    v.push(*i1);
+                    v.push(*i2);
+                }
+            }
+        }
+    }
+
     sorted_intersections
+}
+
+/// Build the map n1 -> Vec<(n2, reached)>
+/// This map should be build locally (by cell).
+/// This map is sorted in counter clockwise order, ie n1n2 for a given n1 have increasing angle to Ox.
+#[allow(unused)]
+fn build_sorted_dart_map(sint: SortedSegIntersections) -> FxHashMap<NodeId, Vec<(NodeId, bool)>> {
+    todo!()
 }
 
 pub trait Cutable {
