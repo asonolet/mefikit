@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use ndarray as nd;
 
-use crate::element_traits::cut;
+use crate::element_traits::cut::{IntersectionIds, M1M2Intersections};
 use crate::element_traits::{
     Cutable, Intersection, Intersections, PointId, SortedVecKey, intersect_seg_seg,
 };
@@ -95,8 +95,8 @@ fn compute_intersections(
     m1_edges: &UMesh,
     m2_edges: &UMesh,
     m2bvh: &SpIdx2,
-) -> (cut::M1M2Intersections, nd::ArcArray2<f64>) {
-    let mut intersections: cut::M1M2Intersections = FxHashMap::default();
+) -> (M1M2Intersections, nd::ArcArray2<f64>) {
+    let mut intersections: M1M2Intersections = FxHashMap::default();
     let mut new_coords = Vec::new();
     let mut new_coord_id = m2_edges.coords().nrows();
 
@@ -120,7 +120,7 @@ fn compute_intersections(
 }
 
 fn add_intersection(
-    intersections: &mut cut::M1M2Intersections,
+    intersections: &mut M1M2Intersections,
     new_coords: &mut Vec<f64>,
     new_coord_id: &mut usize,
     edge: &Element<'_>,
@@ -139,29 +139,44 @@ fn add_intersection(
     match int {
         Intersections::None => (),
         Intersections::One(i) => {
-            let m1sgid = cut::M1SgId(SortedVecKey::new(edge.connectivity().into()));
-            let v = intersections.entry(m1sgid).or_default();
-            match i {
-                Intersection::Existing(PointId::P1) => {
-                    v.push((cut::M2SgId(edge2.id()), cut::NodeId(edge.connectivity[0])));
+            {
+                let m1sgid = SortedVecKey::new(edge.connectivity().into());
+                let v = intersections.entry(m1sgid).or_default();
+                match i {
+                    Intersection::Existing(p) => {
+                        v.push((
+                            edge2.id(),
+                            IntersectionIds::One(intersection_p_to_global_index(p, edge, &edge2)),
+                        ));
+                    }
+                    Intersection::New(coord) => {
+                        v.push((edge2.id(), IntersectionIds::One(*new_coord_id)));
+                        *new_coord_id += 1;
+                        new_coords.extend_from_slice(&coord);
+                    }
                 }
-                Intersection::Existing(PointId::P2) => {
-                    v.push((cut::M2SgId(edge2.id()), cut::NodeId(edge.connectivity[1])));
-                }
-                Intersection::Existing(PointId::P3) => {
-                    v.push((cut::M2SgId(edge2.id()), cut::NodeId(edge2.connectivity[0])));
-                }
-                Intersection::Existing(PointId::P4) => {
-                    v.push((cut::M2SgId(edge2.id()), cut::NodeId(edge2.connectivity[1])));
-                }
-                Intersection::New(coord) => {
-                    v.push((cut::M2SgId(edge2.id()), cut::NodeId(*new_coord_id)));
-                    *new_coord_id += 1;
-                    new_coords.extend_from_slice(&coord);
-                }
-            }
+            };
         }
-        Intersections::Two([_i1, _i2]) => todo!(),
-        Intersections::Segment([_i1, _i2]) => todo!(),
+        Intersections::Two([_i1, _i2]) => todo!("Arc intersections is not yet implemented."),
+        Intersections::Segment([p1, p2]) => {
+            let m1sgid = SortedVecKey::new(edge.connectivity().into());
+            let v = intersections.entry(m1sgid).or_default();
+            v.push((
+                edge2.id(),
+                IntersectionIds::Segment(
+                    intersection_p_to_global_index(p1, edge, &edge2),
+                    intersection_p_to_global_index(p2, edge, &edge2),
+                ),
+            ));
+        }
+    }
+}
+
+fn intersection_p_to_global_index(p: PointId, edge: &Element<'_>, edge2: &Element<'_>) -> usize {
+    match p {
+        PointId::P1 => edge.connectivity[0],
+        PointId::P2 => edge.connectivity[1],
+        PointId::P3 => edge2.connectivity[0],
+        PointId::P4 => edge2.connectivity[1],
     }
 }

@@ -1,5 +1,7 @@
 use bvh::aabb::{Aabb, Bounded};
-use bvh::bounding_hierarchy::{BHShape, BoundingHierarchy};
+use bvh::bounding_hierarchy::BHShape;
+#[cfg(feature = "rayon")]
+use bvh::bounding_hierarchy::BoundingHierarchy;
 use bvh::bvh::Bvh;
 #[cfg(feature = "rayon")]
 use rayon::iter::ParallelIterator;
