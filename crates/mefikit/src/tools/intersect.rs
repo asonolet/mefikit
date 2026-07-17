@@ -66,7 +66,7 @@ pub fn intersect_meshes(mesh1: UMesh, mesh2: UMesh) -> UMesh {
     let seg_intersections =
         to_sorted_intersections(&intersections, &m2_edges.view(), &cutted_mesh.coords());
 
-    for cell in mesh1.elements() {
+    for cell in mesh1.elements_of_dim(Dimension::D2) {
         let [bmin, bmax] = cell.bounds2();
         let candidates = m2bvh.in_bounds(bmin, bmax);
         let reconstructed = cell.cut_with_intersections(
@@ -270,4 +270,69 @@ fn to_non_sorted_intersections(
     }
 
     sorted_intersections
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // use crate::io::write;
+    use crate::mesh_examples::{make_imesh_2d, make_mesh_2d_multi_simple};
+    // use std::path::Path;
+
+    #[test]
+    fn test_intersect_meshes_simple() {
+        let mesh1 = make_mesh_2d_multi_simple();
+        let mesh2 = make_imesh_2d(2);
+        // let p = Path::new("mesh1.vtk");
+        // let _ = write(p, mesh1.view());
+        // let p = Path::new("mesh2.vtk");
+        // let _ = write(p, mesh2.view());
+
+        let mesh_cutted = intersect_meshes(mesh1, mesh2);
+        // let p = Path::new("test_intersect_meshes.vtk");
+        // let _ = write(p, mesh_cutted.view());
+        assert_eq!(mesh_cutted.coords().nrows(), 14);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D0), 0);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D1), 0);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D2), 5);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D3), 0);
+    }
+
+    #[test]
+    fn test_intersect_meshes_2() {
+        let mesh1 = make_imesh_2d(3);
+        let mesh2 = make_imesh_2d(2);
+        // let p = Path::new("mesh1_2.vtk");
+        // let _ = write(p, mesh1.view());
+        // let p = Path::new("mesh2_2.vtk");
+        // let _ = write(p, mesh2.view());
+
+        let mesh_cutted = intersect_meshes(mesh1, mesh2);
+        // let p = Path::new("test_intersect_meshes2.vtk");
+        // let _ = write(p, mesh_cutted.view());
+        assert_eq!(mesh_cutted.coords().nrows(), 29);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D0), 0);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D1), 0);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D2), 16);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D3), 0);
+    }
+
+    #[test]
+    fn test_intersect_meshes_3() {
+        let mesh1 = make_imesh_2d(2);
+        let mesh2 = make_imesh_2d(3);
+        // let p = Path::new("mesh1_3.vtk");
+        // let _ = write(p, mesh1.view());
+        // let p = Path::new("mesh2_3.vtk");
+        // let _ = write(p, mesh2.view());
+
+        let mesh_cutted = intersect_meshes(mesh1, mesh2);
+        // let p = Path::new("test_intersect_meshes3.vtk");
+        // let _ = write(p, mesh_cutted.view());
+        assert_eq!(mesh_cutted.coords().nrows(), 29);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D0), 0);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D1), 0);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D2), 16);
+        assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D3), 0);
+    }
 }

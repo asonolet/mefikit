@@ -33,6 +33,31 @@ pub fn make_mesh_3d_seg2() -> mf::UMesh {
 /// - Two SEG2 elements
 /// - One QUAD4 element
 /// - One PGON element
+pub fn make_mesh_2d_multi_simple() -> mf::UMesh {
+    let coords = nd::Array2::from_shape_vec(
+        (5, 2),
+        vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.5, 0.5],
+    )
+    .unwrap();
+    let mut mesh = mf::UMesh::new(coords.into());
+    mesh.add_regular_block(
+        mf::ElementType::SEG2,
+        nd::arr2(&[[0, 1], [1, 3]]).to_shared(),
+        None,
+    );
+    mesh.add_regular_block(
+        mf::ElementType::QUAD4,
+        nd::arr2(&[[0, 1, 3, 2]]).to_shared(),
+        None,
+    );
+    mesh.add_element(mf::ElementType::PGON, &[1, 4, 3], None, None);
+    mesh
+}
+
+/// Creates a 2D mesh with multiple element types:
+/// - Two SEG2 elements
+/// - One QUAD4 element
+/// - One PGON element
 pub fn make_mesh_2d_multi() -> mf::UMesh {
     let coords = nd::Array2::from_shape_vec(
         (5, 2),
