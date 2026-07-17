@@ -2,11 +2,7 @@ use super::elements_mapping::ElementsMapping;
 use super::error::MefikitIOError;
 use super::hdf_utils::read_group_attr;
 use crate::mesh::{ElementLike, ElementType, UMesh, UMeshView};
-use hdf5_metno::{
-    File,
-    Group,
-    types::FixedAscii,
-};
+use hdf5_metno::{File, Group, types::FixedAscii};
 use ndarray::{Array1, Array2, arr1, s};
 use std::path::Path;
 

@@ -9,10 +9,7 @@ pub struct UnknownElement {
 
 impl From<UnknownElement> for MefikitIOError {
     fn from(e: UnknownElement) -> Self {
-        MefikitIOError::MalformedFile(format!(
-            "Unsupported {} element code {}",
-            e.format, e.code
-        ))
+        MefikitIOError::MalformedFile(format!("Unsupported {} element code {}", e.format, e.code))
     }
 }
 
@@ -41,9 +38,6 @@ impl ElementsMapping {
     }
 
     pub fn to_code(&self, elem: ElementType) -> Option<u32> {
-        self.table
-            .iter()
-            .find(|(_, e)| *e == elem)
-            .map(|(c, _)| *c)
+        self.table.iter().find(|(_, e)| *e == elem).map(|(c, _)| *c)
     }
 }

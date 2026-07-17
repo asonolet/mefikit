@@ -1,26 +1,22 @@
-use hdf5_metno::{File, Group};
-use crate::mesh::{UMesh, UMeshView, ElementType, ElementLike, Dimension};
-use std::path::Path;
-use std::collections::HashMap;
-use std::ffi::CString;
-use hdf5_metno::types::FixedAscii;
-use ndarray::{Array1, arr1, arr2};
-use hdf5_metno_sys::h5a::{H5Acreate2, H5Aclose, H5Awrite};
-use hdf5_metno_sys::h5i::hid_t;
-use hdf5_metno_sys::h5p::H5P_DEFAULT;
-use hdf5_metno_sys::h5s::{H5Screate, H5Sclose, H5S_class_t};
-use hdf5_metno_sys::h5t::{
-    H5Tclose, H5Tcopy, H5Tset_cset, H5Tset_size, H5Tset_strpad, H5T_cset_t, H5T_str_t,
-    H5T_C_S1,
-};
 use super::elements_mapping::ElementsMapping;
 use super::error::MefikitIOError;
-use super::hdf_utils::{
-    read_index_array,
-    read_string_data,
+use super::hdf_utils::{read_index_array, read_string_data};
+use crate::mesh::{Dimension, ElementLike, ElementType, UMesh, UMeshView};
+use hdf5_metno::types::FixedAscii;
+use hdf5_metno::{File, Group};
+use hdf5_metno_sys::h5a::{H5Aclose, H5Acreate2, H5Awrite};
+use hdf5_metno_sys::h5i::hid_t;
+use hdf5_metno_sys::h5p::H5P_DEFAULT;
+use hdf5_metno_sys::h5s::{H5S_class_t, H5Sclose, H5Screate};
+use hdf5_metno_sys::h5t::{
+    H5T_C_S1, H5T_cset_t, H5T_str_t, H5Tclose, H5Tcopy, H5Tset_cset, H5Tset_size, H5Tset_strpad,
 };
+use ndarray::{Array1, arr1, arr2};
+use std::collections::HashMap;
+use std::ffi::CString;
+use std::path::Path;
 
-// The cgns module is responsible for reading and writing CGNS files. It is strictly limited to cgns hdf format files since it uses hdf5-metno as an interface to the hdf5 library. 
+// The cgns module is responsible for reading and writing CGNS files. It is strictly limited to cgns hdf format files since it uses hdf5-metno as an interface to the hdf5 library.
 // future versions with cgns general support as a feature will be implemented
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,7 +56,9 @@ impl CgnsBaseDim {
     pub fn validate(&self) -> Result<(), MefikitIOError> {
         match (self.cell_dim, self.phys_dim) {
             (3, 3) | (2, 3) | (2, 2) | (1, 1) => Ok(()),
-            other  => Err(MefikitIOError::Parse(format!("Unsupported dimension combo {other:?}"))),
+            other => Err(MefikitIOError::Parse(format!(
+                "Unsupported dimension combo {other:?}"
+            ))),
         }
     }
 }
@@ -91,28 +89,33 @@ pub fn cgns_label(group: &Group) -> Result<String, MefikitIOError> {
     Ok(label.trim().trim_matches('\0').to_string())
 }
 
-fn find_first_child_with_label(
-    group: &Group,
-    label: &str,
-) -> Result<Group, MefikitIOError > {
+fn find_first_child_with_label(group: &Group, label: &str) -> Result<Group, MefikitIOError> {
     for name in group.member_names()? {
-        let Ok(child) = group.group(&name) else { continue };
-        let Ok(lbl) = cgns_label(&child) else { continue };
+        let Ok(child) = group.group(&name) else {
+            continue;
+        };
+        let Ok(lbl) = cgns_label(&child) else {
+            continue;
+        };
         if lbl == label {
             return Ok(child);
         }
     }
-    Err(MefikitIOError::Parse(format!("no child with label '{label}' in '{}'", group.name()).into()))
+    Err(MefikitIOError::Parse(format!(
+        "no child with label '{label}' in '{}'",
+        group.name()
+    )))
 }
 
-fn children_with_label(
-    group: &Group,
-    label: &str,
-) -> Result<Vec<Group>, MefikitIOError> {
+fn children_with_label(group: &Group, label: &str) -> Result<Vec<Group>, MefikitIOError> {
     let mut out = Vec::new();
     for name in group.member_names()? {
-        let Ok(child) = group.group(&name) else { continue };
-        let Ok(lbl) = cgns_label(&child) else { continue };
+        let Ok(child) = group.group(&name) else {
+            continue;
+        };
+        let Ok(lbl) = cgns_label(&child) else {
+            continue;
+        };
         if lbl == label {
             out.push(child);
         }
@@ -150,9 +153,7 @@ fn read_coordinates(
                     .map(|&v| v as f64)
                     .collect()
             } else {
-                ds.as_reader()
-                    .read_1d::<f64>()?
-                    .to_vec()
+                ds.as_reader().read_1d::<f64>()?.to_vec()
             };
 
             Ok(values)
@@ -162,26 +163,27 @@ fn read_coordinates(
     let n = columns[0].len();
     let mut coords = ndarray::Array2::<f64>::zeros((n, phys_dim));
     for (col_idx, col_data) in columns.iter().enumerate() {
-        coords.column_mut(col_idx)
+        coords
+            .column_mut(col_idx)
             .iter_mut()
             .zip(col_data)
             .for_each(|(dst, &src)| *dst = src);
     }
-    
+
     Ok(coords.into_shared())
 }
 
-// inline to speed up the check since we'll be doing it for every element
-#[inline]
-fn is_ngon(cgns_code: i32) -> bool {
-    cgns_code == 22
-}
+// // inline to speed up the check since we'll be doing it for every element
+// #[inline]
+// fn is_ngon(cgns_code: i32) -> bool {
+//     cgns_code == 22
+// }
 
-// Return true if element describes a cell-face section (NFACE_n)
-#[inline]
-fn is_nfaces(cgns_code: i32) -> bool {
-    cgns_code == 23
-}
+// // Return true if element describes a cell-face section (NFACE_n)
+// #[inline]
+// fn is_nfaces(cgns_code: i32) -> bool {
+//     cgns_code == 23
+// }
 
 // Elements_t stores [ElementType, ElementSizeBoundary] in its " data" dataset;
 // the first value is the CGNS element type code.
@@ -222,11 +224,11 @@ fn read_element_offsets(element: &Group) -> Result<Option<Vec<i64>>, MefikitIOEr
     Ok(Some(values))
 }
 
-// CGNS defines two "polyhedral" element types with variable connectivity 
-// length: NGON_n and NFACE_n, where n is the number of nodes per face. They 
-// are encoded with cgns_code 22 and 23, respectively, and their connectivity 
-// is stored as a length-prefixed list of node indices: [n_nodes, v0, v1, ..., 
-// vn, n_nodes, v0, ...]. We need to handle these separately from the regular 
+// CGNS defines two "polyhedral" element types with variable connectivity
+// length: NGON_n and NFACE_n, where n is the number of nodes per face. They
+// are encoded with cgns_code 22 and 23, respectively, and their connectivity
+// is stored as a length-prefixed list of node indices: [n_nodes, v0, v1, ...,
+// vn, n_nodes, v0, ...]. We need to handle these separately from the regular
 // fixed-stride elements.
 // ElementStartOffset = [0, 4, 9, 13, ...]
 //                       ↑  ↑  ↑   ↑
@@ -242,9 +244,9 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
 
     // --- first pass: collect PGON and PHED raw data ---
     let mut pgon_offsets: Option<Vec<i64>> = None;
-    let mut pgon_conn:    Option<Vec<i64>> = None;
+    let mut pgon_conn: Option<Vec<i64>> = None;
     let mut phed_offsets: Option<Vec<i64>> = None;
-    let mut phed_conn:    Option<Vec<i64>> = None;
+    let mut phed_conn: Option<Vec<i64>> = None;
 
     for element in &el_group {
         let code = read_element_type(element)?;
@@ -258,7 +260,7 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
         };
         match element_type {
             ElementType::PGON => {
-                let conn    = read_element_connectivity(element)?;
+                let conn = read_element_connectivity(element)?;
                 let offsets = read_element_offsets(element)?.ok_or_else(|| {
                     MefikitIOError::MalformedFile("PGON missing ElementStartOffset".to_string())
                 })?;
@@ -266,25 +268,25 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
                 let n_cells = (range[1] - range[0] + 1) as usize;
                 for i in 0..n_cells {
                     let start = offsets[i] as usize;
-                    let end   = offsets[i + 1] as usize;
+                    let end = offsets[i + 1] as usize;
                     // CGNS indices are 1-based; mefikit connectivity is 0-based
                     // (indexes directly into `coords`), so subtract 1.
-                    let nodes: Vec<usize> = conn[start..end]
-                        .iter().map(|&v| (v as usize) - 1).collect();
+                    let nodes: Vec<usize> =
+                        conn[start..end].iter().map(|&v| (v as usize) - 1).collect();
                     mesh.add_element(ElementType::PGON, &nodes, None, None);
                 }
                 pgon_offsets = Some(offsets);
-                pgon_conn    = Some(conn);
+                pgon_conn = Some(conn);
             }
             ElementType::PHED => {
-                phed_conn    = Some(read_phed_connectivity(element)?);
+                phed_conn = Some(read_phed_connectivity(element)?);
                 phed_offsets = Some(read_element_offsets(element)?.ok_or_else(|| {
                     MefikitIOError::MalformedFile("PHED missing ElementStartOffset".to_string())
                 })?);
             }
             other => {
                 let range = read_element_range(element)?;
-                let conn  = read_element_connectivity(element)?;
+                let conn = read_element_connectivity(element)?;
                 let n_cells = (range[1] - range[0] + 1) as usize;
                 let nodes_per_cell = other.num_nodes().ok_or_else(|| {
                     MefikitIOError::MalformedFile(format!(
@@ -293,11 +295,11 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
                 })?;
                 for i in 0..n_cells {
                     let start = i * nodes_per_cell;
-                    let end   = start + nodes_per_cell;
+                    let end = start + nodes_per_cell;
                     // CGNS indices are 1-based; convert to mefikit's 0-based
                     // connectivity by subtracting 1.
-                    let cell: Vec<usize> = conn[start..end]
-                        .iter().map(|&v| (v as usize) - 1).collect();
+                    let cell: Vec<usize> =
+                        conn[start..end].iter().map(|&v| (v as usize) - 1).collect();
                     mesh.add_element(other, &cell, None, None);
                 }
             }
@@ -308,28 +310,27 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
     if let (Some(p_off), Some(p_conn), Some(f_off), Some(f_conn)) =
         (phed_offsets, phed_conn, pgon_offsets, pgon_conn)
     {
-        
         let n_cells = p_off.len() - 1;
         for i in 0..n_cells {
             let start = p_off[i] as usize;
-            let end   = p_off[i + 1] as usize;
+            let end = p_off[i + 1] as usize;
 
             let mut cell_nodes: Vec<usize> = Vec::new();
 
             for &face_ref in &p_conn[start..end] {
-                let reversed  = face_ref < 0;
+                let reversed = face_ref < 0;
                 let face_index = (face_ref.unsigned_abs() as usize) - 1;
 
                 let node_start = f_off[face_index] as usize;
-                let node_end   = f_off[face_index + 1] as usize;
+                let node_end = f_off[face_index + 1] as usize;
 
-                // Face 
+                // Face
                 let face: Vec<usize> = f_conn[node_start..node_end]
                     .iter()
                     .map(|&node_id| (node_id as usize) - 1) // 0-based
                     .collect();
-                
-                // Orientation 
+
+                // Orientation
                 if reversed {
                     cell_nodes.extend(face.iter().rev());
                 } else {
@@ -345,9 +346,9 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
     Ok(())
 }
 
-// DISCLAIMER: the Family and BC connectivity are not handled in this version, but the code is 
-// structured to allow for future implementation of these features. The current implementation 
-// focuses on reading the mesh geometry and element connectivity from CGNS files, specifically 
+// DISCLAIMER: the Family and BC connectivity are not handled in this version, but the code is
+// structured to allow for future implementation of these features. The current implementation
+// focuses on reading the mesh geometry and element connectivity from CGNS files, specifically
 // handling unstructured meshes with PGON and PHED elements.
 pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     let f = File::open(path)?;
@@ -358,15 +359,17 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
 
     let z_type = read_string_data(&find_first_child_with_label(&zone, "ZoneType_t")?)?;
     if z_type != "Unstructured" {
-        return Err(MefikitIOError::Parse(format!("unsupported zone type: {z_type}")));
+        return Err(MefikitIOError::Parse(format!(
+            "unsupported zone type: {z_type}"
+        )));
     }
 
-   let coords = read_coordinates(&zone, cgns_dim.phys_dim)?;
-   let mut mesh = UMesh::new(coords);
+    let coords = read_coordinates(&zone, cgns_dim.phys_dim)?;
+    let mut mesh = UMesh::new(coords);
 
-   read_elements(&mut mesh, &zone)?;
+    read_elements(&mut mesh, &zone)?;
 
-   // Future implementation: read families and boundary conditions
+    // Future implementation: read families and boundary conditions
     Ok(mesh)
 }
 
@@ -576,7 +579,11 @@ fn face_orientation(canon: &[usize], face: &[usize]) -> i64 {
         Some(p) => p,
         None => return 1,
     };
-    if face[(pos + 1) % n] == canon[1] { 1 } else { -1 }
+    if face[(pos + 1) % n] == canon[1] {
+        1
+    } else {
+        -1
+    }
 }
 
 fn write_elements(zone: &Group, mesh: &UMeshView) -> Result<(), MefikitIOError> {
@@ -764,7 +771,11 @@ mod tests {
     // (so the test degrades to a no-op instead of failing on machines without
     // the CGNS tools), otherwise (exit code, combined stdout+stderr).
     fn cgnscheck(path: &std::path::Path) -> Option<(i32, String)> {
-        let out = Command::new("cgnscheck").arg("-v").arg(path).output().ok()?;
+        let out = Command::new("cgnscheck")
+            .arg("-v")
+            .arg(path)
+            .output()
+            .ok()?;
         let code = out.status.code().unwrap_or(-1);
         let text = format!(
             "{}{}",
@@ -847,7 +858,10 @@ mod tests {
             .unwrap()
             .connectivity()
             .to_vec();
-        assert_eq!(a, b, "first PHED cell connectivity must match after round-trip");
+        assert_eq!(
+            a, b,
+            "first PHED cell connectivity must match after round-trip"
+        );
 
         let _ = std::fs::remove_file(&dst);
     }

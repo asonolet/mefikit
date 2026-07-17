@@ -1,43 +1,27 @@
-use hdf5_metno::types::{FixedAscii, FixedUnicode, TypeDescriptor, VarLenAscii, VarLenUnicode};
-use hdf5_metno::Group;
-use ndarray::{Array1, Array2};
-
 use super::error::MefikitIOError;
+use hdf5_metno::Group;
+use hdf5_metno::types::{FixedAscii, FixedUnicode, TypeDescriptor, VarLenAscii, VarLenUnicode};
 
 pub fn read_group_attr(group: &hdf5_metno::Group, name: &str) -> Result<String, MefikitIOError> {
-    let attr = group
-        .attr(name)
-        .map_err(|e| MefikitIOError::Hdf(e))?;
-    let dtype = attr
-        .dtype()
-        .map_err(|e| MefikitIOError::Hdf(e))?;
-    let desc = dtype
-        .to_descriptor()
-        .map_err(|e| MefikitIOError::Hdf(e))?;
+    let attr = group.attr(name).map_err(MefikitIOError::Hdf)?;
+    let dtype = attr.dtype().map_err(MefikitIOError::Hdf)?;
+    let desc = dtype.to_descriptor().map_err(MefikitIOError::Hdf)?;
 
     match desc {
         TypeDescriptor::VarLenUnicode => {
-            let s: VarLenUnicode = attr
-                .read_scalar()
-                .map_err(|e| MefikitIOError::Hdf(e))?;
+            let s: VarLenUnicode = attr.read_scalar().map_err(MefikitIOError::Hdf)?;
             Ok(s.to_string())
         }
         TypeDescriptor::VarLenAscii => {
-            let s: VarLenAscii = attr
-                .read_scalar()
-                .map_err(|e| MefikitIOError::Hdf(e))?;
+            let s: VarLenAscii = attr.read_scalar().map_err(MefikitIOError::Hdf)?;
             Ok(s.to_string())
         }
         TypeDescriptor::FixedAscii(_) => {
-            let s: FixedAscii<64> = attr
-                .read_scalar()
-                .map_err(|e| MefikitIOError::Hdf(e))?;
+            let s: FixedAscii<64> = attr.read_scalar().map_err(MefikitIOError::Hdf)?;
             Ok(s.as_str().trim_end_matches('\0').to_string())
         }
         TypeDescriptor::FixedUnicode(_) => {
-            let s: FixedUnicode<64> = attr
-                .read_scalar()
-                .map_err(|e| MefikitIOError::Hdf(e))?;
+            let s: FixedUnicode<64> = attr.read_scalar().map_err(MefikitIOError::Hdf)?;
             Ok(s.as_str().trim_end_matches('\0').to_string())
         }
         other => Err(MefikitIOError::MalformedFile(format!(
@@ -63,22 +47,24 @@ pub fn read_index_array(group: &Group) -> Result<Vec<i64>, MefikitIOError> {
     let type_str = read_group_attr(group, "type")?;
 
     let values: Vec<i64> = match type_str.as_str() {
-        "I4" => {
-            ds.as_reader().read_dyn::<i32>()?
-                .iter()
-                .map(|&x| x as i64)
-                .collect()
-        }
+        "I4" => ds
+            .as_reader()
+            .read_dyn::<i32>()?
+            .iter()
+            .map(|&x| x as i64)
+            .collect(),
         "I8" => {
-            ds.as_reader().read_dyn::<i64>()?
-                .into_raw_vec_and_offset().0
+            ds.as_reader()
+                .read_dyn::<i64>()?
+                .into_raw_vec_and_offset()
+                .0
         }
         _ => {
             return Err(MefikitIOError::MalformedFile(format!(
                 "Unexpected index array type: {type_str}"
-            )))
+            )));
         }
     };
-    
+
     Ok(values)
 }
