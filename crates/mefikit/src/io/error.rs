@@ -16,4 +16,13 @@ pub enum MefikitIOError {
     InvalidLayout(#[from] ndarray::ShapeError),
     #[error("Malformed file: {0}")]
     MalformedFile(String),
+    /// The in-memory mesh cannot be represented in the target format (e.g. an
+    /// element type with no equivalent in the format, or inconsistent
+    /// polyhedral topology when exporting to CGNS NFACE_n/NGON_n).
+    #[error("Invalid mesh for export: {0}")]
+    InvalidMesh(String),
+    /// A raw HDF5 C-API call (used for CGNS-specific null-terminated string
+    /// attributes) returned a failure status.
+    #[error("HDF5 C-API error: {0}")]
+    Hdf5Sys(String),
 }

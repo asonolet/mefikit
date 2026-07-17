@@ -43,7 +43,7 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
 /// Writes a mesh to the given file path.
 ///
 /// The file format is determined by the file extension.
-/// Supported formats: JSON, YAML, VTK, VTU.
+/// Supported formats: JSON, YAML, VTK, VTU, VTKHDF, CGNS (HDF5).
 pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
     match path
         .extension()
@@ -57,6 +57,7 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
         "vtk" | "vtu" => vtk_io::write(path, mesh),
         "vtkhdf" => hdfvtk_io::write(path, mesh),
         "med" => med_io::write(path, &mesh),
+        "cgns" => cgns_io::write_cgns(path, mesh), // only cgns hdf5 files are supported
         _ => Err(MefikitIOError::UnsupportedFileExtension(format!(
             "{path:?}"
         ))),
