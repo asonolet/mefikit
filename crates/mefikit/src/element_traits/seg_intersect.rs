@@ -129,7 +129,7 @@ fn colinear_seg_intersection(
     let or = na::Point2::origin();
     let o = or + ((p1 - or) + (p2 - or) + (p3 - or) + (p4 - or)) / 4.0;
     let dir = p2 - p1;
-    let ts = if dir[0] > dir[1] {
+    let ts = if dir[0].abs() > dir[1].abs() {
         [
             (p1[0] - o[0]) / dir[0],
             (p2[0] - o[0]) / dir[0],
