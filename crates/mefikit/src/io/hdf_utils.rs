@@ -2,6 +2,23 @@ use super::error::MefikitIOError;
 use hdf5_metno::Group;
 use hdf5_metno::types::{FixedAscii, FixedUnicode, TypeDescriptor, VarLenAscii, VarLenUnicode};
 
+/// libhdf5 is linked statically without `--enable-threadsafe`, so its internal
+/// API-context stack (`H5CX`) is a plain global rather than thread-local. Two
+/// threads inside libhdf5 at once corrupt it, which shows up as an assertion
+/// failure in `H5CX_get_vec_size` or a plain SIGSEGV. Cargo runs tests in
+/// parallel, so *every* test that touches HDF5 - CGNS or VTKHDF - must
+/// serialize through this one lock. Poison-tolerant so a panicking test does
+/// not wedge the rest.
+#[cfg(test)]
+static HDF5_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Acquires the process-wide HDF5 test lock. Hold the guard for the whole
+/// duration of any test that opens, reads or writes an HDF5 file.
+#[cfg(test)]
+pub fn hdf5_test_guard() -> std::sync::MutexGuard<'static, ()> {
+    HDF5_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 pub fn read_group_attr(group: &hdf5_metno::Group, name: &str) -> Result<String, MefikitIOError> {
     let attr = group.attr(name).map_err(MefikitIOError::Hdf)?;
     let dtype = attr.dtype().map_err(MefikitIOError::Hdf)?;

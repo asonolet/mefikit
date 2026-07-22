@@ -189,11 +189,13 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::hdf_utils::hdf5_test_guard;
     use crate::mesh_examples as me;
     use std::path::PathBuf;
 
     #[test]
     fn test_read_hdfvtk() {
+        let _guard = hdf5_test_guard();
         let path = PathBuf::from(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/tests/single_hex8.vtkhdf"
@@ -203,6 +205,7 @@ mod tests {
 
     #[test]
     fn test_write_hdfvtk() {
+        let _guard = hdf5_test_guard();
         let path = PathBuf::from("test_write.vtkhdf");
         let mesh = me::make_mesh_2d_multi();
         assert!(write(&path, mesh.view()).is_ok());
@@ -211,6 +214,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_hdfvtk() {
+        let _guard = hdf5_test_guard();
         let path = PathBuf::from("test_roundtrip.vtkhdf");
         let mesh = me::make_mesh_2d_multi();
         assert!(write(&path, mesh.view()).is_ok());
@@ -226,6 +230,7 @@ mod tests {
     /// and the integer datasets use Int64.
     #[test]
     fn test_write_is_vtkhdf_compliant() {
+        let _guard = hdf5_test_guard();
         let path = PathBuf::from("test_compliant.vtkhdf");
         let mesh = me::make_mesh_2d_multi();
         write(&path, mesh.view()).unwrap();

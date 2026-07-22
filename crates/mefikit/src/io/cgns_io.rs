@@ -748,13 +748,8 @@ pub fn write_cgns(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::io::hdf_utils::hdf5_test_guard;
     use std::process::Command;
-    use std::sync::Mutex;
-
-    // libhdf5 (static build) is not guaranteed thread-safe. Cargo runs tests in
-    // parallel, so every CGNS test serializes through this lock. Poison-tolerant
-    // so a panicking test does not wedge the rest.
-    static HDF5_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn fixture() -> std::path::PathBuf {
         std::path::PathBuf::from(concat!(
@@ -787,7 +782,7 @@ mod tests {
 
     #[test]
     fn read_particles_has_pgon_and_phed() {
-        let _guard = HDF5_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = hdf5_test_guard();
         let mesh = read(&fixture()).unwrap();
 
         let n = mesh.coords().nrows();
@@ -822,7 +817,7 @@ mod tests {
 
     #[test]
     fn write_roundtrip_reread_matches() {
-        let _guard = HDF5_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = hdf5_test_guard();
         let dst = tmp("mefikit_cgns_roundtrip_reread.cgns");
         let _ = std::fs::remove_file(&dst);
 
@@ -868,7 +863,7 @@ mod tests {
 
     #[test]
     fn write_roundtrip_passes_cgnscheck() {
-        let _guard = HDF5_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = hdf5_test_guard();
         let dst = tmp("mefikit_cgns_roundtrip_check.cgns");
         let _ = std::fs::remove_file(&dst);
 
@@ -890,7 +885,7 @@ mod tests {
 
     #[test]
     fn write_regular_hex_passes_cgnscheck() {
-        let _guard = HDF5_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = hdf5_test_guard();
         // Hand-built unit-cube HEX8. CGNS HEX_8 node order: bottom quad CCW then
         // top quad CCW.
         let coords = ndarray::arr2(&[
