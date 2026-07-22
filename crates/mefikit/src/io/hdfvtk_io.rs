@@ -198,7 +198,7 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/tests/single_hex8.vtkhdf"
         ));
-        let mesh = read(&path).unwrap();
+        let _mesh = read(&path).unwrap();
     }
 
     #[test]
