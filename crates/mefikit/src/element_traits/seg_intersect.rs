@@ -154,6 +154,7 @@ fn colinear_seg_intersection(
         [P1, a, P2, _] => Intersections::Segment([a, P2]),
         [P1, a, b, P2] => Intersections::Segment([a, b]),
         [_, P1, a, P2] => Intersections::Segment([P1, a]),
+        [_, P1, P2, _] => Intersections::Segment([P1, P2]),
         _ => {
             panic!(
                 "This situation should not be possible as P1 is before P2 along the P2 - P1 vec."
