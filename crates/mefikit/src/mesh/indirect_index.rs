@@ -215,7 +215,9 @@ impl<T> Iterator for IndirectIndexIntoIter<T> {
         let offset = self.offsets.pop_front().unwrap();
         let len_elem = offset - self.last_offset;
         self.last_offset = offset;
-        let chunk = self.data.split_off(len_elem);
+        let mut chunk = self.data.split_off(len_elem);
+        // NOTE: chunk and self.data must be reversed
+        std::mem::swap(&mut chunk, &mut self.data);
         Some(chunk.into())
     }
 
