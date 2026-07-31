@@ -10,6 +10,9 @@ pub fn split(mesh: UMeshView) -> UMesh {
             ElementType::SEG2 => {
                 split_seg2(&mesh, block, &mut new_mesh);
             }
+            ElementType::QUAD4 => {
+                split_quad4(&mesh, block, &mut new_mesh);
+            }
             _ => {
                 // For unsupported element types, copy them as-is
                 if let ConnectivityView::Regular(conn) = &block.connectivity {
@@ -51,6 +54,90 @@ fn split_seg2(mesh: &UMeshView, block: &crate::mesh::ElementBlockView, new_mesh:
     new_mesh.add_regular_block(ElementType::SEG2, new_conn_array.into_shared(), None);
 }
 
+fn split_quad4(mesh: &UMeshView, block: &crate::mesh::ElementBlockView, new_mesh: &mut UMesh) {
+    let conn = match &block.connectivity {
+        ConnectivityView::Regular(c) => c.view(),
+        _ => return,
+    };
+    let new_conn_size = conn.nrows() * 4;
+    let mut new_conn: Vec<usize> = Vec::with_capacity(new_conn_size * 4);
+
+    for element_conn in conn.rows() {
+        let coords_n0 = mesh.coords.row(element_conn[0]);
+        let coords_n1 = mesh.coords.row(element_conn[1]);
+        let coords_n2 = mesh.coords.row(element_conn[2]);
+        let coords_n3 = mesh.coords.row(element_conn[3]);
+
+        // Calculate midpoints for each edge
+        let midpoint_01 = (coords_n0.to_owned() + coords_n1.to_owned()) / 2.0;
+        let midpoint_12 = (coords_n1.to_owned() + coords_n2.to_owned()) / 2.0;
+        let midpoint_23 = (coords_n2.to_owned() + coords_n3.to_owned()) / 2.0;
+        let midpoint_30 = (coords_n3.to_owned() + coords_n0.to_owned()) / 2.0;
+
+        // Calculate center point
+        let center = (coords_n0.to_owned()
+            + coords_n1.to_owned()
+            + coords_n2.to_owned()
+            + coords_n3.to_owned())
+            / 4.0;
+
+        // Add new nodes to the mesh
+        let mid_01_index = new_mesh.coords().nrows();
+        new_mesh
+            .append_coord(midpoint_01.view())
+            .expect("Shape error when adding coordinates");
+
+        let mid_12_index = new_mesh.coords().nrows();
+        new_mesh
+            .append_coord(midpoint_12.view())
+            .expect("Shape error when adding coordinates");
+
+        let mid_23_index = new_mesh.coords().nrows();
+        new_mesh
+            .append_coord(midpoint_23.view())
+            .expect("Shape error when adding coordinates");
+
+        let mid_30_index = new_mesh.coords().nrows();
+        new_mesh
+            .append_coord(midpoint_30.view())
+            .expect("Shape error when adding coordinates");
+
+        let center_index = new_mesh.coords().nrows();
+        new_mesh
+            .append_coord(center.view())
+            .expect("Shape error when adding coordinates");
+
+        // Create 4 new QUAD4 elements
+        // Bottom-left quad: n0, mid_01, center, mid_30
+        new_conn.push(element_conn[0]);
+        new_conn.push(mid_01_index);
+        new_conn.push(center_index);
+        new_conn.push(mid_30_index);
+
+        // Bottom-right quad: mid_01, n1, mid_12, center
+        new_conn.push(mid_01_index);
+        new_conn.push(element_conn[1]);
+        new_conn.push(mid_12_index);
+        new_conn.push(center_index);
+
+        // Top-right quad: center, mid_12, n2, mid_23
+        new_conn.push(center_index);
+        new_conn.push(mid_12_index);
+        new_conn.push(element_conn[2]);
+        new_conn.push(mid_23_index);
+
+        // Top-left quad: mid_30, center, mid_23, n3
+        new_conn.push(mid_30_index);
+        new_conn.push(center_index);
+        new_conn.push(mid_23_index);
+        new_conn.push(element_conn[3]);
+    }
+    let new_conn_array = nd::Array2::from_shape_vec((new_conn_size, 4), new_conn)
+        .expect("Shape error when building new connectivity array");
+
+    new_mesh.add_regular_block(ElementType::QUAD4, new_conn_array.into_shared(), None);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,9 +176,65 @@ mod tests {
         let tol = 1e-10;
         assert!(splitted_mesh.coords.row(0)[0] < tol);
         assert!(splitted_mesh.coords.row(0)[1] < tol);
+        assert!((splitted_mesh.coords.row(1)[0] - 1.).abs() < tol);
+        assert!(splitted_mesh.coords.row(1)[1] < tol);
+        assert!((splitted_mesh.coords.row(2)[0] - 0.5).abs() < tol);
+        assert!(splitted_mesh.coords.row(2)[1] < tol);
+    }
+
+    #[test]
+    fn test_split_single_quad4() {
+        let space_dimension = 2;
+        // Create a simple square with 4 nodes
+        let coords = nd::ArcArray2::from_shape_vec(
+            (4, space_dimension),
+            vec![0., 0., 1., 0., 1., 1., 0., 1.],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_regular_block(
+            ElementType::QUAD4,
+            nd::Array2::from_shape_vec((1, 4), vec![0, 1, 2, 3]) // One quad element
+                .unwrap()
+                .to_shared(),
+            None,
+        );
+
+        let splitted_mesh = split(mesh.view());
+
+        // Should create 4 new QUAD4 elements
+        assert_eq!(splitted_mesh.num_elements(), 4);
+        assert_eq!(splitted_mesh.coords.nrows(), 9);
+
+        let tol = 1e-10;
+        // Check original nodes are preserved
+        assert!(splitted_mesh.coords.row(0)[0] < tol);
+        assert!(splitted_mesh.coords.row(0)[1] < tol);
         assert!(splitted_mesh.coords.row(1)[0] - 1. < tol);
         assert!(splitted_mesh.coords.row(1)[1] < tol);
-        assert!(splitted_mesh.coords.row(2)[0] - 0.5 < tol);
-        assert!(splitted_mesh.coords.row(2)[1] < tol);
+        assert!(splitted_mesh.coords.row(2)[0] - 1. < tol);
+        assert!(splitted_mesh.coords.row(2)[1] - 1. < tol);
+        assert!(splitted_mesh.coords.row(3)[0] < tol);
+        assert!(splitted_mesh.coords.row(3)[1] - 1. < tol);
+
+        // Check midpoint between node 0 and 1 (should be at index 4)
+        assert!((splitted_mesh.coords.row(4)[0] - 0.5).abs() < tol);
+        assert!(splitted_mesh.coords.row(4)[1] < tol);
+
+        // Check midpoint between node 1 and 2 (should be at index 5)
+        assert!(splitted_mesh.coords.row(5)[0] - 1. < tol);
+        assert!((splitted_mesh.coords.row(5)[1] - 0.5).abs() < tol);
+
+        // Check midpoint between node 2 and 3 (should be at index 6)
+        assert!((splitted_mesh.coords.row(6)[0] - 0.5).abs() < tol);
+        assert!(splitted_mesh.coords.row(6)[1] - 1. < tol);
+
+        // Check midpoint between node 3 and 0 (should be at index 7)
+        assert!(splitted_mesh.coords.row(7)[0] < tol);
+        assert!((splitted_mesh.coords.row(7)[1] - 0.5).abs() < tol);
+
+        // Check center point (should be at index 8)
+        assert!((splitted_mesh.coords.row(8)[0] - 0.5).abs() < tol);
+        assert!((splitted_mesh.coords.row(8)[1] - 0.5).abs() < tol);
     }
 }
