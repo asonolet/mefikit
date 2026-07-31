@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Start: snapping");
     let now = time::Instant::now();
-    let cutted = mf::intersect::intersect_meshes(mesh1, mesh2);
+    let cutted = mf::intersect::intersect_2d2d(mesh1, mesh2);
     let elapsed = now.elapsed();
     let ttot = elapsed.as_secs_f64();
     mf::write(Path::new("cutted.vtk"), cutted.view())?;
