@@ -16,6 +16,9 @@ pub fn split(mesh: UMeshView) -> UMesh {
             ElementType::QUAD4 => {
                 split_quad4(&mesh, block, &mut new_mesh);
             }
+            ElementType::TET4 => {
+                split_tet4(&mesh, block, &mut new_mesh);
+            }
             _ => {
                 // For unsupported element types, copy them as-is
                 if let ConnectivityView::Regular(conn) = &block.connectivity {
@@ -179,6 +182,57 @@ fn split_quad4(mesh: &UMeshView, block: &crate::mesh::ElementBlockView, new_mesh
     new_mesh.add_regular_block(ElementType::QUAD4, new_conn_array.into_shared(), None);
 }
 
+fn split_tet4(mesh: &UMeshView, block: &crate::mesh::ElementBlockView, new_mesh: &mut UMesh) {
+    let conn = match &block.connectivity {
+        ConnectivityView::Regular(c) => c.view(),
+        _ => return,
+    };
+    let new_conn_size = conn.nrows() * 4;
+    let mut new_conn: Vec<usize> = Vec::with_capacity(new_conn_size * 4);
+
+    for element_conn in conn.rows() {
+        let coords_n0 = mesh.coords.row(element_conn[0]);
+        let coords_n1 = mesh.coords.row(element_conn[1]);
+        let coords_n2 = mesh.coords.row(element_conn[2]);
+        let coords_n3 = mesh.coords.row(element_conn[3]);
+
+        let centroid = (coords_n0.to_owned()
+            + coords_n1.to_owned()
+            + coords_n2.to_owned()
+            + coords_n3.to_owned())
+            / 4.0;
+
+        let centroid_index = new_mesh.coords().nrows();
+        new_mesh
+            .append_coord(centroid.view())
+            .expect("Shape error when adding coordinates");
+
+        new_conn.push(element_conn[1]);
+        new_conn.push(element_conn[2]);
+        new_conn.push(element_conn[3]);
+        new_conn.push(centroid_index);
+
+        new_conn.push(element_conn[0]);
+        new_conn.push(element_conn[3]);
+        new_conn.push(element_conn[2]);
+        new_conn.push(centroid_index);
+
+        new_conn.push(element_conn[0]);
+        new_conn.push(element_conn[1]);
+        new_conn.push(element_conn[3]);
+        new_conn.push(centroid_index);
+
+        new_conn.push(element_conn[0]);
+        new_conn.push(element_conn[2]);
+        new_conn.push(element_conn[1]);
+        new_conn.push(centroid_index);
+    }
+    let new_conn_array = nd::Array2::from_shape_vec((new_conn_size, 4), new_conn)
+        .expect("Shape error when building new connectivity array");
+
+    new_mesh.add_regular_block(ElementType::TET4, new_conn_array.into_shared(), None);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -308,5 +362,34 @@ mod tests {
         // Check center point (should be at index 8)
         assert!((splitted_mesh.coords.row(8)[0] - 0.5).abs() < tol);
         assert!((splitted_mesh.coords.row(8)[1] - 0.5).abs() < tol);
+    }
+
+    #[test]
+    fn test_split_single_tet4() {
+        let space_dimension = 3;
+        let coords = nd::ArcArray2::from_shape_vec(
+            (4, space_dimension),
+            vec![0., 0., 0., 1., 0., 0., 0., 1., 0., 0., 0., 1.],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_regular_block(
+            ElementType::TET4,
+            nd::Array2::from_shape_vec((1, 4), vec![0, 1, 2, 3])
+                .unwrap()
+                .to_shared(),
+            None,
+        );
+
+        let splitted_mesh = split(mesh.view());
+
+        assert_eq!(splitted_mesh.num_elements(), 4);
+        assert_eq!(splitted_mesh.coords.nrows(), 5);
+
+        let tol = 1e-10;
+        // Check centroid (should be at index 4)
+        assert!((splitted_mesh.coords.row(4)[0] - 0.25).abs() < tol);
+        assert!((splitted_mesh.coords.row(4)[1] - 0.25).abs() < tol);
+        assert!((splitted_mesh.coords.row(4)[2] - 0.25).abs() < tol);
     }
 }
