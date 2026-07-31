@@ -10,6 +10,9 @@ pub fn split(mesh: UMeshView) -> UMesh {
             ElementType::SEG2 => {
                 split_seg2(&mesh, block, &mut new_mesh);
             }
+            ElementType::TRI3 => {
+                split_tri3(&mesh, block, &mut new_mesh);
+            }
             ElementType::QUAD4 => {
                 split_quad4(&mesh, block, &mut new_mesh);
             }
@@ -52,6 +55,44 @@ fn split_seg2(mesh: &UMeshView, block: &crate::mesh::ElementBlockView, new_mesh:
         .expect("Shape error when building new connectivity array");
 
     new_mesh.add_regular_block(ElementType::SEG2, new_conn_array.into_shared(), None);
+}
+
+fn split_tri3(mesh: &UMeshView, block: &crate::mesh::ElementBlockView, new_mesh: &mut UMesh) {
+    let conn = match &block.connectivity {
+        ConnectivityView::Regular(c) => c.view(),
+        _ => return,
+    };
+    let new_conn_size = conn.nrows() * 3;
+    let mut new_conn: Vec<usize> = Vec::with_capacity(new_conn_size * 3);
+    for element_conn in conn.rows() {
+        let coords_n1 = mesh.coords.row(element_conn[0]);
+        let coords_n2 = mesh.coords.row(element_conn[1]);
+        let coords_n3 = mesh.coords.row(element_conn[2]);
+
+        let midpoint = (coords_n1.to_owned() + coords_n2.to_owned() + coords_n3.to_owned()) / 3.0;
+
+        let new_node_index = new_mesh.coords().nrows();
+        new_mesh
+            .append_coord(midpoint.view())
+            .expect("Shape error when adding coordinates to new mesh");
+
+        new_conn.push(element_conn[0]);
+        new_conn.push(element_conn[1]);
+        new_conn.push(new_node_index);
+
+        new_conn.push(element_conn[1]);
+        new_conn.push(element_conn[2]);
+        new_conn.push(new_node_index);
+
+        new_conn.push(element_conn[2]);
+        new_conn.push(element_conn[0]);
+        new_conn.push(new_node_index);
+    }
+
+    let new_conn_array = nd::Array2::from_shape_vec((new_conn_size, 3), new_conn)
+        .expect("Shape error when building new connectivity array");
+
+    new_mesh.add_regular_block(ElementType::TRI3, new_conn_array.into_shared(), None);
 }
 
 fn split_quad4(mesh: &UMeshView, block: &crate::mesh::ElementBlockView, new_mesh: &mut UMesh) {
@@ -180,6 +221,37 @@ mod tests {
         assert!(splitted_mesh.coords.row(1)[1] < tol);
         assert!((splitted_mesh.coords.row(2)[0] - 0.5).abs() < tol);
         assert!(splitted_mesh.coords.row(2)[1] < tol);
+    }
+
+    #[test]
+    fn test_split_single_tri3() {
+        let space_dimension = 2;
+        let coords =
+            nd::ArcArray2::from_shape_vec((3, space_dimension), vec![0., 0., 3., 0., 0., 3.])
+                .unwrap();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_regular_block(
+            ElementType::TRI3,
+            nd::Array2::from_shape_vec((1, 3), vec![0, 1, 2])
+                .unwrap()
+                .to_shared(),
+            None,
+        );
+
+        let splitted_mesh = split(mesh.view());
+
+        assert_eq!(splitted_mesh.num_elements(), 3);
+        assert_eq!(splitted_mesh.coords.nrows(), 4);
+
+        let tol = 1e-10;
+        assert!(splitted_mesh.coords.row(0)[0] < tol);
+        assert!(splitted_mesh.coords.row(0)[1] < tol);
+        assert!((splitted_mesh.coords.row(1)[0] - 3.).abs() < tol);
+        assert!(splitted_mesh.coords.row(1)[1] < tol);
+        assert!(splitted_mesh.coords.row(2)[0] < tol);
+        assert!((splitted_mesh.coords.row(2)[1] - 3.).abs() < tol);
+        assert!((splitted_mesh.coords.row(3)[0] - 1.).abs() < tol);
+        assert!((splitted_mesh.coords.row(3)[1] - 1.).abs() < tol);
     }
 
     #[test]
