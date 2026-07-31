@@ -19,6 +19,9 @@ pub fn split(mesh: UMeshView) -> UMesh {
             ElementType::TET4 => {
                 split_tet4(&mesh, block, &mut new_mesh);
             }
+            ElementType::HEX8 => {
+                split_hex8(&mesh, block, &mut new_mesh);
+            }
             _ => {
                 // For unsupported element types, copy them as-is
                 if let ConnectivityView::Regular(conn) = &block.connectivity {
@@ -233,6 +236,161 @@ fn split_tet4(mesh: &UMeshView, block: &crate::mesh::ElementBlockView, new_mesh:
     new_mesh.add_regular_block(ElementType::TET4, new_conn_array.into_shared(), None);
 }
 
+fn split_hex8(mesh: &UMeshView, block: &crate::mesh::ElementBlockView, new_mesh: &mut UMesh) {
+    let conn = match &block.connectivity {
+        ConnectivityView::Regular(c) => c.view(),
+        _ => return,
+    };
+    let new_conn_size = conn.nrows() * 8;
+    let mut new_conn: Vec<usize> = Vec::with_capacity(new_conn_size * 8);
+
+    for element_conn in conn.rows() {
+        let c0 = mesh.coords.row(element_conn[0]);
+        let c1 = mesh.coords.row(element_conn[1]);
+        let c2 = mesh.coords.row(element_conn[2]);
+        let c3 = mesh.coords.row(element_conn[3]);
+        let c4 = mesh.coords.row(element_conn[4]);
+        let c5 = mesh.coords.row(element_conn[5]);
+        let c6 = mesh.coords.row(element_conn[6]);
+        let c7 = mesh.coords.row(element_conn[7]);
+
+        let m01 = (c0.to_owned() + c1.to_owned()) / 2.0;
+        let m12 = (c1.to_owned() + c2.to_owned()) / 2.0;
+        let m23 = (c2.to_owned() + c3.to_owned()) / 2.0;
+        let m30 = (c3.to_owned() + c0.to_owned()) / 2.0;
+        let m45 = (c4.to_owned() + c5.to_owned()) / 2.0;
+        let m56 = (c5.to_owned() + c6.to_owned()) / 2.0;
+        let m67 = (c6.to_owned() + c7.to_owned()) / 2.0;
+        let m74 = (c7.to_owned() + c4.to_owned()) / 2.0;
+        let m04 = (c0.to_owned() + c4.to_owned()) / 2.0;
+        let m15 = (c1.to_owned() + c5.to_owned()) / 2.0;
+        let m26 = (c2.to_owned() + c6.to_owned()) / 2.0;
+        let m37 = (c3.to_owned() + c7.to_owned()) / 2.0;
+
+        let f0123 = (c0.to_owned() + c1.to_owned() + c2.to_owned() + c3.to_owned()) / 4.0;
+        let f4567 = (c4.to_owned() + c5.to_owned() + c6.to_owned() + c7.to_owned()) / 4.0;
+        let f0154 = (c0.to_owned() + c1.to_owned() + c5.to_owned() + c4.to_owned()) / 4.0;
+        let f1265 = (c1.to_owned() + c2.to_owned() + c6.to_owned() + c5.to_owned()) / 4.0;
+        let f2376 = (c2.to_owned() + c3.to_owned() + c7.to_owned() + c6.to_owned()) / 4.0;
+        let f3074 = (c3.to_owned() + c0.to_owned() + c4.to_owned() + c7.to_owned()) / 4.0;
+
+        let cv = (c0.to_owned()
+            + c1.to_owned()
+            + c2.to_owned()
+            + c3.to_owned()
+            + c4.to_owned()
+            + c5.to_owned()
+            + c6.to_owned()
+            + c7.to_owned())
+            / 8.0;
+
+        let mut idx = Vec::with_capacity(19);
+        let new_nodes = [
+            m01, m12, m23, m30, m45, m56, m67, m74, m04, m15, m26, m37, f0123, f4567, f0154, f1265,
+            f2376, f3074, cv,
+        ];
+        for node in new_nodes.iter() {
+            let node_idx = new_mesh.coords().nrows();
+            new_mesh.append_coord(node.view()).expect("Shape error");
+            idx.push(node_idx);
+        }
+
+        let (im01, im12, im23, im30, im45, im56, im67, im74, im04, im15, im26, im37) = (
+            idx[0], idx[1], idx[2], idx[3], idx[4], idx[5], idx[6], idx[7], idx[8], idx[9],
+            idx[10], idx[11],
+        );
+        let (if0123, if4567, if0154, if1265, if2376, if3074, icv) = (
+            idx[12], idx[13], idx[14], idx[15], idx[16], idx[17], idx[18],
+        );
+
+        new_conn.extend_from_slice(&[
+            element_conn[0],
+            im01,
+            if0123,
+            im30,
+            im04,
+            if0154,
+            icv,
+            if3074,
+        ]);
+        new_conn.extend_from_slice(&[
+            im01,
+            element_conn[1],
+            im12,
+            if0123,
+            if0154,
+            im15,
+            icv,
+            if1265,
+        ]);
+        new_conn.extend_from_slice(&[
+            im12,
+            element_conn[2],
+            im23,
+            if0123,
+            if1265,
+            im26,
+            icv,
+            if2376,
+        ]);
+        new_conn.extend_from_slice(&[
+            im23,
+            element_conn[3],
+            im30,
+            if0123,
+            if2376,
+            im37,
+            icv,
+            if3074,
+        ]);
+        new_conn.extend_from_slice(&[
+            element_conn[4],
+            im45,
+            if4567,
+            im74,
+            im04,
+            if0154,
+            icv,
+            if3074,
+        ]);
+        new_conn.extend_from_slice(&[
+            im45,
+            element_conn[5],
+            im56,
+            if4567,
+            if0154,
+            im15,
+            icv,
+            if1265,
+        ]);
+        new_conn.extend_from_slice(&[
+            im56,
+            element_conn[6],
+            im67,
+            if4567,
+            if1265,
+            im26,
+            icv,
+            if2376,
+        ]);
+        new_conn.extend_from_slice(&[
+            im67,
+            element_conn[7],
+            im74,
+            if4567,
+            if2376,
+            im37,
+            icv,
+            if3074,
+        ]);
+    }
+
+    let new_conn_array = nd::Array2::from_shape_vec((new_conn_size, 8), new_conn)
+        .expect("Shape error when building new connectivity array");
+
+    new_mesh.add_regular_block(ElementType::HEX8, new_conn_array.into_shared(), None);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,5 +549,39 @@ mod tests {
         assert!((splitted_mesh.coords.row(4)[0] - 0.25).abs() < tol);
         assert!((splitted_mesh.coords.row(4)[1] - 0.25).abs() < tol);
         assert!((splitted_mesh.coords.row(4)[2] - 0.25).abs() < tol);
+    }
+
+    #[test]
+    fn test_split_single_hex8() {
+        let space_dimension = 3;
+        let coords = nd::ArcArray2::from_shape_vec(
+            (8, space_dimension),
+            vec![
+                0., 0., 0., 1., 0., 0., 1., 1., 0., 0., 1., 0., 0., 0., 1., 1., 0., 1., 1., 1., 1.,
+                0., 1., 1.,
+            ],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_regular_block(
+            ElementType::HEX8,
+            nd::Array2::from_shape_vec((1, 8), vec![0, 1, 2, 3, 4, 5, 6, 7])
+                .unwrap()
+                .to_shared(),
+            None,
+        );
+
+        let splitted_mesh = split(mesh.view());
+
+        // Should create 8 new HEX8 elements
+        assert_eq!(splitted_mesh.num_elements(), 8);
+        // Original 8 nodes + 19 new nodes (6 faces + 12 edges + center) = 27 nodes
+        assert_eq!(splitted_mesh.coords.nrows(), 27);
+
+        let tol = 1e-10;
+        // Check centroid (should be at index 26)
+        assert!((splitted_mesh.coords.row(26)[0] - 0.5).abs() < tol);
+        assert!((splitted_mesh.coords.row(26)[1] - 0.5).abs() < tol);
+        assert!((splitted_mesh.coords.row(26)[2] - 0.5).abs() < tol);
     }
 }
