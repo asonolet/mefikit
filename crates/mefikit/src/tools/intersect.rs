@@ -93,6 +93,61 @@ pub fn intersect_2d2d(mesh1: UMesh, mesh2: UMesh) -> UMesh {
     cutted_mesh
 }
 
+/// Computes the geometric intersection (overlay) of two 2D meshes.
+///
+/// # Guarantees
+/// - Output mesh is planar, manifold, and watertight
+/// - No T-junctions or dangling edges
+/// - All intersections between mesh1 and mesh2 are explicitly represented
+///
+/// # Assumptions
+/// - Input meshes are valid (non-self-intersecting)
+/// - Coordinates are in the same plane
+pub fn intersect_2d1d(mesh1: UMesh, mesh2: UMesh) -> UMesh {
+    //NOTE: must be before the compute_intersections because mesh2 coords indexing is used.
+    let mesh2 = concat_merge_on_ref_coords(mesh2, mesh1.view());
+
+    let m1_edges = mesh1.descend(Some(Dimension::D2), Some(Dimension::D1));
+
+    let m2bvh = mesh2.view().bvh2();
+
+    let (intersections, added_coords) = compute_intersections(&m1_edges, &mesh2, &m2bvh);
+
+    // Concatenates m1 coords, m2 coords, new intersections coords
+    let new_coords = nd::concatenate![nd::Axis(0), mesh2.coords(), added_coords];
+
+    let mut cutted_mesh = UMesh::new(new_coords.into_shared());
+
+    let seg_intersections =
+        to_sorted_intersections(&intersections, &mesh2.view(), &cutted_mesh.coords());
+
+    for cell in mesh1.elements_of_dim(Dimension::D2) {
+        let [bmin, bmax] = cell.bounds2();
+        let candidates = m2bvh.in_bounds(bmin, bmax);
+        let reconstructed = cell.cut_with_intersections(
+            &seg_intersections,
+            mesh2.view(),
+            cutted_mesh.coords(),
+            &candidates,
+        );
+
+        // If the cell was cut, I add new polys from the cut
+        if let Some(polys) = reconstructed {
+            for new_cell in polys {
+                cutted_mesh.add_element(ElementType::PGON, &new_cell, Some(*cell.family), None);
+            }
+        } else {
+            cutted_mesh.add_element(
+                cell.element_type(),
+                cell.connectivity(),
+                Some(*cell.family),
+                cell.fields.clone(),
+            );
+        }
+    }
+    cutted_mesh
+}
+
 /// Compute all intersections between mesh1 and mesh2 where mesh1 and mesh2 should be 2d mesh of
 /// edges. The computation is done quite naively. A BVH is used to accelarate finding m2
 /// intersecting edges.
