@@ -3,6 +3,7 @@ use bvh::bounding_hierarchy::BHShape;
 #[cfg(feature = "rayon")]
 use bvh::bounding_hierarchy::BoundingHierarchy;
 use bvh::bvh::Bvh;
+use nalgebra::{Point2, Point3};
 #[cfg(feature = "rayon")]
 use rayon::iter::ParallelIterator;
 
@@ -51,6 +52,14 @@ impl SpatialIndex<2> {
             .map(|eb| eb.eid)
             .collect()
     }
+    pub fn intersects(&self, p: [f64; 2]) -> ElementIds {
+        let p = Point2::new(p[0] as f32, p[1] as f32);
+        self.bvh
+            .traverse(&p, &self.elems)
+            .into_iter()
+            .map(|eb| eb.eid)
+            .collect()
+    }
 }
 
 impl SpatialIndex<3> {
@@ -61,6 +70,14 @@ impl SpatialIndex<3> {
         );
         self.bvh
             .traverse(&bbox, &self.elems)
+            .into_iter()
+            .map(|eb| eb.eid)
+            .collect()
+    }
+    pub fn intersects(&self, p: [f64; 3]) -> ElementIds {
+        let p = Point3::new(p[0] as f32, p[1] as f32, p[2] as f32);
+        self.bvh
+            .traverse(&p, &self.elems)
             .into_iter()
             .map(|eb| eb.eid)
             .collect()

@@ -7,6 +7,7 @@ use ndarray as nd;
 use crate::element_traits::cut::{
     IntersectionIds, M1M2Intersections, NodeId, SortedSegIntersections,
 };
+use crate::element_traits::is_in::{in_polygon_stable, strict_interior_point};
 use crate::element_traits::{
     Cutable, Intersection, Intersections, PointId, SortedVecKey, intersect_seg_seg,
 };
@@ -37,17 +38,57 @@ fn concat_merge_on_ref_coords(subject: UMesh, reference: UMeshView) -> UMesh {
     new_mesh2
 }
 
+/// Boolean-like operation to perform on two 2D meshes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum OverlayOperation {
+    /// Refine `mesh1` with the edges of `mesh2` while keeping `mesh1`'s domain.
+    #[default]
+    Imprint,
+    /// Keep the domain covered by at least one of the two meshes.
+    Union,
+    /// Keep the domain covered by both meshes.
+    Intersection,
+    /// Keep the domain of `mesh1` not covered by `mesh2`.
+    Difference,
+    /// Keep the domain covered by exactly one of the two meshes.
+    SymmetricDifference,
+}
+
+/// Boolean overlay of two 2D meshes.
+pub trait Overlayable {
+    /// Computes the overlay of `self` (as mesh1) and `mesh2` for the given operation.
+    ///
+    /// # Guarantees
+    /// - Output mesh is planar, manifold, and watertight
+    /// - No T-junctions or dangling edges
+    /// - All intersections between mesh1 and mesh2 are explicitly represented
+    ///
+    /// # Assumptions
+    /// - Input meshes are valid (non-self-intersecting)
+    /// - Coordinates are in the same plane
+    fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh;
+}
+
+impl Overlayable for UMesh {
+    fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh {
+        match operation {
+            OverlayOperation::Imprint => intersect_2d2d(self, mesh2),
+            OverlayOperation::Intersection => {
+                cut_and_classify(self.clone(), mesh2, |inside| inside)
+            }
+            OverlayOperation::Difference => cut_and_classify(self.clone(), mesh2, |inside| !inside),
+            OverlayOperation::Union => cut_both(self, mesh2, |_| true, |inside| !inside),
+            OverlayOperation::SymmetricDifference => {
+                cut_both(self, mesh2, |inside| !inside, |inside| !inside)
+            }
+        }
+    }
+}
+
 /// Computes the geometric intersection (overlay) of two 2D meshes.
 ///
-/// # Guarantees
-/// - Output mesh is planar, manifold, and watertight
-/// - No T-junctions or dangling edges
-/// - All intersections between mesh1 and mesh2 are explicitly represented
-///
-/// # Assumptions
-/// - Input meshes are valid (non-self-intersecting)
-/// - Coordinates are in the same plane
-pub fn intersect_2d2d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
+/// Refines `mesh1`'s cells with the edges of `mesh2`.
+fn intersect_2d2d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
     //NOTE: must be before the compute_intersections because mesh2 coords indexing is used.
     let mesh2 = concat_merge_on_ref_coords(mesh2, mesh1.view());
 
@@ -146,6 +187,222 @@ pub fn intersect_2d1d(mesh1: UMesh, mesh2: UMesh) -> UMesh {
         }
     }
     cutted_mesh
+}
+
+/// Cut the cells of `subject` with the edges of `cutter` and keep the pieces for which the
+/// `keep` predicate returns `true`. The predicate receives `true` when the piece lies inside
+/// `cutter`.
+fn cut_and_classify(subject: UMesh, cutter: UMesh, keep: impl Fn(bool) -> bool) -> UMesh {
+    //NOTE: must be before the compute_intersections because mesh2 coords indexing is used.
+    let cutter = concat_merge_on_ref_coords(cutter, subject.view());
+
+    let subject_edges = subject.descend(Some(Dimension::D2), Some(Dimension::D1));
+    let cutter_edges = cutter.descend(Some(Dimension::D2), Some(Dimension::D1));
+
+    let cutter_edges_bvh = cutter_edges.view().bvh2();
+
+    let (intersections, added_coords) =
+        compute_intersections(&subject_edges, &cutter_edges, &cutter_edges_bvh);
+
+    // Concatenates subject coords, cutter coords, new intersections coords
+    let new_coords = nd::concatenate![nd::Axis(0), cutter.coords(), added_coords];
+
+    let mut cutted_mesh = UMesh::new(new_coords.into_shared());
+
+    let seg_intersections =
+        to_sorted_intersections(&intersections, &cutter_edges.view(), &cutted_mesh.coords());
+
+    cut_cells(
+        &mut cutted_mesh,
+        subject,
+        &cutter,
+        &cutter_edges,
+        &cutter_edges_bvh,
+        &seg_intersections,
+        &keep,
+    );
+    cutted_mesh
+}
+
+/// Cut the cells of both meshes in a shared coordinate space, keeping the pieces selected by
+/// `keep1` (pieces of `mesh1` inside `mesh2`) and `keep2` (pieces of `mesh2` inside `mesh1`).
+fn cut_both(
+    mesh1: &UMesh,
+    mesh2: UMesh,
+    keep1: impl Fn(bool) -> bool,
+    keep2: impl Fn(bool) -> bool,
+) -> UMesh {
+    //NOTE: must be before the compute_intersections because mesh2 coords indexing is used.
+    let mesh2 = concat_merge_on_ref_coords(mesh2, mesh1.view());
+
+    let m1_edges = mesh1.descend(Some(Dimension::D2), Some(Dimension::D1));
+    let m2_edges = mesh2.descend(Some(Dimension::D2), Some(Dimension::D1));
+
+    let m1edges_bvh = m1_edges.view().bvh2();
+    let m2edges_bvh = m2_edges.view().bvh2();
+
+    let (intersections, added_coords) = compute_intersections(&m1_edges, &m2_edges, &m2edges_bvh);
+
+    // Concatenates subject coords, cutter coords, new intersections coords
+    let new_coords = nd::concatenate![nd::Axis(0), mesh2.coords(), added_coords];
+
+    let mut cutted_mesh = UMesh::new(new_coords.into_shared());
+
+    let seg_intersections =
+        to_sorted_intersections(&intersections, &m2_edges.view(), &cutted_mesh.coords());
+
+    cut_cells(
+        &mut cutted_mesh,
+        mesh1.clone(),
+        &mesh2,
+        &m2_edges,
+        &m2edges_bvh,
+        &seg_intersections,
+        &keep1,
+    );
+    cut_cells(
+        &mut cutted_mesh,
+        mesh2,
+        mesh1,
+        &m1_edges,
+        &m1edges_bvh,
+        &seg_intersections,
+        &keep2,
+    );
+    cutted_mesh
+}
+
+/// Cut the D2 cells of `subject` with `cutting_edges` and append the kept pieces to `out`.
+fn cut_cells(
+    out: &mut UMesh,
+    subject: UMesh,
+    cutter: &UMesh,
+    cutting_edges: &UMesh,
+    cutting_bvh: &SpIdx2,
+    seg_intersections: &SortedSegIntersections,
+    keep: &impl Fn(bool) -> bool,
+) {
+    let cutter_bvh = cutter.view().bvh2();
+
+    for cell in subject.elements_of_dim(Dimension::D2) {
+        let [bmin, bmax] = cell.bounds2();
+        let candidates = cutting_bvh.in_bounds(bmin, bmax);
+        let reconstructed = cell.cut_with_intersections(
+            seg_intersections,
+            cutting_edges.view(),
+            out.coords(),
+            &candidates,
+        );
+
+        // If the cell was cut, I add the kept new polys from the cut
+        if let Some(polys) = reconstructed {
+            for new_cell in polys {
+                let inside = pgon_inside(&new_cell, &out.coords(), cutter, &cutter_bvh);
+                if keep(inside) {
+                    out.add_element(ElementType::PGON, &new_cell, Some(*cell.family), None);
+                }
+            }
+        } else if keep(cell_inside(&cell, cutter, &cutter_bvh)) {
+            out.add_element(
+                cell.element_type(),
+                cell.connectivity(),
+                Some(*cell.family),
+                cell.fields.clone(),
+            );
+        }
+    }
+}
+
+/// Returns the cell vertices in counter-clockwise order.
+fn cell_points(cell: Element<'_>) -> Vec<[f64; 2]> {
+    let points: Vec<[f64; 2]> = (0..cell.connectivity().len())
+        .map(|i| cell.coord2(i).into())
+        .collect();
+    oriented_ccw(points)
+}
+
+/// Returns `true` if the polygon given by node ids lies inside any cell of `cutter_cells`.
+fn pgon_inside(
+    pgon: &[usize],
+    coords: &nd::ArrayView2<'_, f64>,
+    cutter: &UMesh,
+    cutter_bvh: &SpIdx2,
+) -> bool {
+    let points: Vec<[f64; 2]> = pgon
+        .iter()
+        .map(|&n| [coords[(n, 0)], coords[(n, 1)]])
+        .collect();
+    point_inside(&points, cutter, cutter_bvh)
+}
+
+/// Returns `true` if the cell lies inside any cell of `cutter_cells`.
+fn cell_inside(cell: &Element<'_>, cutter: &UMesh, cutter_bvh: &SpIdx2) -> bool {
+    let points: Vec<[f64; 2]> = (0..cell.connectivity().len())
+        .map(|i| cell.coord2(i).into())
+        .collect();
+    point_inside(&points, cutter, cutter_bvh)
+}
+
+/// Returns `true` if the interior of the polygon lies inside any cell of `cutter_cells`.
+///
+/// Pieces are produced by cutting a cell along the cutter edges, so a piece is either fully
+/// inside or fully outside the cutter. A strict interior point of the piece is therefore a valid
+/// witness: the piece is inside the cutter iff its interior point is. The centroid of a
+/// non-convex piece (e.g. an L-shape) can fall outside its own interior, so it is not a valid
+/// witness.
+fn point_inside(points: &[[f64; 2]], cutter: &UMesh, cutter_bvh: &SpIdx2) -> bool {
+    let Some(interior) = strict_interior_point(points) else {
+        return false;
+    };
+    let candidates = cutter_bvh.intersects(interior);
+    candidates
+        .iter()
+        .map(|eid| cutter.element(eid))
+        .map(|e| cell_points(e))
+        .any(|cell| in_polygon_stable(&interior, &cell))
+}
+
+/// Signed area of a polygon using the shoelace formula.
+/// Positive result indicates counter-clockwise orientation.
+fn shoelace_signed_area(points: &[[f64; 2]]) -> f64 {
+    let n = points.len();
+    let mut area2 = 0.0;
+    for i in 0..n {
+        let [x0, y0] = points[i];
+        let [x1, y1] = points[(i + 1) % n];
+        area2 += x0 * y1 - x1 * y0;
+    }
+    area2 / 2.0
+}
+
+/// Centroid of a polygon using the shoelace formula.
+/// Returns the first vertex for a degenerate polygon.
+#[allow(dead_code)]
+fn shoelace_centroid(points: &[[f64; 2]]) -> [f64; 2] {
+    let n = points.len();
+    let mut area2 = 0.0;
+    let mut cx = 0.0;
+    let mut cy = 0.0;
+    for i in 0..n {
+        let [x0, y0] = points[i];
+        let [x1, y1] = points[(i + 1) % n];
+        let cross = x0 * y1 - x1 * y0;
+        area2 += cross;
+        cx += (x0 + x1) * cross;
+        cy += (y0 + y1) * cross;
+    }
+    if area2.abs() < 1e-30 {
+        return points[0];
+    }
+    [cx / (3.0 * area2), cy / (3.0 * area2)]
+}
+
+/// Returns the polygon points in counter-clockwise order.
+fn oriented_ccw(mut points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
+    if shoelace_signed_area(&points) < 0.0 {
+        points.reverse();
+    }
+    points
 }
 
 /// Compute all intersections between mesh1 and mesh2 where mesh1 and mesh2 should be 2d mesh of
@@ -330,8 +587,10 @@ fn to_non_sorted_intersections(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_abs_diff_eq;
     // use crate::io::write;
     use crate::mesh_examples::{make_imesh_2d, make_mesh_2d_multi_simple};
+    use crate::tools::RegularUMeshBuilder;
     // use std::path::Path;
 
     #[test]
@@ -340,7 +599,7 @@ mod tests {
         let mut mesh2 = make_imesh_2d(1);
         mesh2.coords *= 1. / 3.;
 
-        let mesh_cutted = intersect_2d2d(&mesh1, mesh2);
+        let mesh_cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
         // let p = Path::new("test_intersect_square1.vtk");
         // let _ = write(p, mesh_cutted.view());
         assert_eq!(mesh_cutted.coords().nrows(), 13);
@@ -356,7 +615,7 @@ mod tests {
         let mut mesh2 = make_imesh_2d(1);
         mesh2.coords *= 2. / 3.;
 
-        let mesh_cutted = intersect_2d2d(&mesh1, mesh2);
+        let mesh_cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
         // let p = Path::new("test_intersect_square2.vtk");
         // let _ = write(p, mesh_cutted.view());
         assert_eq!(mesh_cutted.coords().nrows(), 15);
@@ -373,7 +632,7 @@ mod tests {
         mesh2.coords *= 1. / 6.;
         mesh2.coords += 1. / 6.;
 
-        let mesh_cutted = intersect_2d2d(&mesh1, mesh2);
+        let mesh_cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
         // let p = Path::new("test_intersect_square3.vtk");
         // let _ = write(p, mesh_cutted.view());
         assert_eq!(mesh_cutted.coords().nrows(), 13);
@@ -390,7 +649,7 @@ mod tests {
         mesh2.coords *= 0.25;
         mesh2.coords += 0.25;
 
-        let mesh_cutted = intersect_2d2d(&mesh1, mesh2);
+        let mesh_cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
         // let p = Path::new("test_intersect_square4.vtk");
         // let _ = write(p, mesh_cutted.view());
         assert_eq!(mesh_cutted.coords().nrows(), 13);
@@ -407,7 +666,7 @@ mod tests {
         mesh2.coords *= 0.5;
         mesh2.coords += 0.25;
 
-        let mesh_cutted = intersect_2d2d(&mesh1, mesh2);
+        let mesh_cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
         // let p = Path::new("test_intersect_square5.vtk");
         // let _ = write(p, mesh_cutted.view());
         assert_eq!(mesh_cutted.coords().nrows(), 17);
@@ -422,7 +681,7 @@ mod tests {
         let mesh1 = make_mesh_2d_multi_simple();
         let mesh2 = make_imesh_2d(2);
 
-        let mesh_cutted = intersect_2d2d(&mesh1, mesh2);
+        let mesh_cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
         // let p = Path::new("test_intersect_meshes.vtk");
         // let _ = write(p, mesh_cutted.view());
         assert_eq!(mesh_cutted.coords().nrows(), 14);
@@ -441,7 +700,7 @@ mod tests {
         // let p = Path::new("mesh2_2.vtk");
         // let _ = write(p, mesh2.view());
 
-        let mesh_cutted = intersect_2d2d(&mesh1, mesh2);
+        let mesh_cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
         // let p = Path::new("test_intersect_meshes2.vtk");
         // let _ = write(p, mesh_cutted.view());
         assert_eq!(mesh_cutted.coords().nrows(), 29);
@@ -460,7 +719,7 @@ mod tests {
         // let p = Path::new("mesh2_3.vtk");
         // let _ = write(p, mesh2.view());
 
-        let mesh_cutted = intersect_2d2d(&mesh1, mesh2);
+        let mesh_cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
         // let p = Path::new("test_intersect_meshes3.vtk");
         // let _ = write(p, mesh_cutted.view());
         assert_eq!(mesh_cutted.coords().nrows(), 29);
@@ -468,5 +727,226 @@ mod tests {
         assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D1), 0);
         assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D2), 16);
         assert_eq!(mesh_cutted.num_elements_of_dim(Dimension::D3), 0);
+    }
+
+    /// Sums the area of all D2 elements of the mesh.
+    fn mesh_area(mesh: &UMesh) -> f64 {
+        mesh.elements_of_dim(Dimension::D2)
+            .map(|cell| {
+                let points: Vec<[f64; 2]> = (0..cell.connectivity().len())
+                    .map(|i| cell.coord2(i).into())
+                    .collect();
+                shoelace_signed_area(&points).abs()
+            })
+            .sum()
+    }
+
+    /// mesh1 = [0, 1]^2, mesh2 = [0.25, 0.75]^2 (contained in mesh1).
+    fn make_nested_squares() -> (UMesh, UMesh) {
+        let mesh1 = make_imesh_2d(2);
+        let mut mesh2 = make_imesh_2d(1);
+        mesh2.coords *= 0.5;
+        mesh2.coords += 0.25;
+        (mesh1, mesh2)
+    }
+
+    #[test]
+    fn test_overlay_imprint_nested() {
+        let (mesh1, mesh2) = make_nested_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(mesh_area(&cutted), 1.0, epsilon = 1e-12);
+        assert_eq!(cutted.num_elements_of_dim(Dimension::D2), 8);
+    }
+
+    #[test]
+    fn test_overlay_union_nested() {
+        let (mesh1, mesh2) = make_nested_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Union);
+        assert_abs_diff_eq!(mesh_area(&cutted), 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_overlay_intersection_nested() {
+        let (mesh1, mesh2) = make_nested_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Intersection);
+        assert_abs_diff_eq!(mesh_area(&cutted), 0.25, epsilon = 1e-12);
+        assert_eq!(cutted.num_elements_of_dim(Dimension::D2), 4);
+    }
+
+    #[test]
+    fn test_overlay_difference_nested() {
+        let (mesh1, mesh2) = make_nested_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Difference);
+        assert_abs_diff_eq!(mesh_area(&cutted), 0.75, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_overlay_symmetric_difference_nested() {
+        let (mesh1, mesh2) = make_nested_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::SymmetricDifference);
+        assert_abs_diff_eq!(mesh_area(&cutted), 0.75, epsilon = 1e-12);
+    }
+
+    /// mesh1 = [0, 1]^2, mesh2 = [0.5, 1.5]^2 (straddling mesh1's boundary).
+    fn make_straddling_squares() -> (UMesh, UMesh) {
+        let mesh1 = make_imesh_2d(2);
+        let mut mesh2 = make_imesh_2d(2);
+        mesh2.coords += 0.5;
+        (mesh1, mesh2)
+    }
+
+    #[test]
+    fn test_overlay_union_straddling() {
+        let (mesh1, mesh2) = make_straddling_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Union);
+        assert_abs_diff_eq!(mesh_area(&cutted), 1.75, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_overlay_intersection_straddling() {
+        let (mesh1, mesh2) = make_straddling_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Intersection);
+        assert_abs_diff_eq!(mesh_area(&cutted), 0.25, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_overlay_difference_straddling() {
+        let (mesh1, mesh2) = make_straddling_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Difference);
+        assert_abs_diff_eq!(mesh_area(&cutted), 0.75, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_overlay_symmetric_difference_straddling() {
+        let (mesh1, mesh2) = make_straddling_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::SymmetricDifference);
+        assert_abs_diff_eq!(mesh_area(&cutted), 1.5, epsilon = 1e-12);
+    }
+
+    /// mesh1 = [0, 1]^2, mesh2 = [1.5, 2]^2 (disjoint from mesh1).
+    fn make_disjoint_squares() -> (UMesh, UMesh) {
+        let mesh1 = make_imesh_2d(2);
+        let mut mesh2 = make_imesh_2d(1);
+        mesh2.coords *= 0.5;
+        mesh2.coords += 1.5;
+        (mesh1, mesh2)
+    }
+
+    #[test]
+    fn test_overlay_union_disjoint() {
+        let (mesh1, mesh2) = make_disjoint_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Union);
+        assert_abs_diff_eq!(mesh_area(&cutted), 1.25, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_overlay_intersection_disjoint() {
+        let (mesh1, mesh2) = make_disjoint_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Intersection);
+        assert_eq!(cutted.num_elements_of_dim(Dimension::D2), 0);
+    }
+
+    #[test]
+    fn test_overlay_difference_disjoint() {
+        let (mesh1, mesh2) = make_disjoint_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Difference);
+        assert_abs_diff_eq!(mesh_area(&cutted), 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_overlay_symmetric_difference_disjoint() {
+        let (mesh1, mesh2) = make_disjoint_squares();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::SymmetricDifference);
+        assert_abs_diff_eq!(mesh_area(&cutted), 1.25, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_overlay_union_multi_simple() {
+        let mesh1 = make_mesh_2d_multi_simple();
+        let mesh2 = make_imesh_2d(2);
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Union);
+        assert_abs_diff_eq!(mesh_area(&cutted), 1.25, epsilon = 1e-12);
+        assert_eq!(cutted.num_elements_of_dim(Dimension::D2), 5);
+    }
+
+    /// mesh1: n x n grid on [0,1]^2. mesh2: staggered grid whose cells are centered on the
+    /// nodes of mesh1 and whose nodes are the cell centers of mesh1.
+    fn make_staggered_squares(n: usize) -> (UMesh, UMesh) {
+        let mesh1 = RegularUMeshBuilder::new()
+            .add_axis((0..=n).map(|i| i as f64 / n as f64).collect())
+            .add_axis((0..=n).map(|i| i as f64 / n as f64).collect())
+            .build();
+        let nodes: Vec<f64> = (0..=n + 1).map(|i| (i as f64 - 0.5) / n as f64).collect();
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(nodes.clone())
+            .add_axis(nodes)
+            .build();
+        (mesh1, mesh2)
+    }
+
+    #[test]
+    fn test_overlay_union_staggered() {
+        let (mesh1, mesh2) = make_staggered_squares(4);
+        let side = 1.0 + 1.0 / 4.0;
+        let expected = side * side;
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Union);
+        let actual = mesh_area(&cutted);
+        println!("union staggered: expected {expected}, actual {actual}");
+        assert_abs_diff_eq!(actual, expected, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_overlay_symmetric_difference_staggered() {
+        let (mesh1, mesh2) = make_staggered_squares(4);
+        let side = 1.0 + 1.0 / 4.0;
+        let expected = side * side - 1.0;
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::SymmetricDifference);
+        let actual = mesh_area(&cutted);
+        println!("symdiff staggered: expected {expected}, actual {actual}");
+        assert_abs_diff_eq!(actual, expected, epsilon = 1e-10);
+    }
+
+    /// Reproduces docs/python_examples/geometric_tools.ipynb (cell "Intersect 2d mesh"):
+    /// mesh1 is a 6x6 grid on [0,3]^2 (7 nodes per axis) and mesh2 is the same grid shifted
+    /// by dec = 3/7 + 0.1. Union must cover [0,3]^2 U [dec,3+dec]^2 = 18 - (3-dec)^2.
+    #[test]
+    fn test_overlay_union_notebook() {
+        let n = 6usize;
+        let x: Vec<f64> = (0..=n).map(|i| 3.0 * i as f64 / n as f64).collect();
+        let mesh1 = RegularUMeshBuilder::new()
+            .add_axis(x.clone())
+            .add_axis(x)
+            .build();
+        let dec = 3.0 / 7.0 + 0.1;
+        let x2: Vec<f64> = (0..=n).map(|i| dec + 3.0 * i as f64 / n as f64).collect();
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(x2.clone())
+            .add_axis(x2)
+            .build();
+
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Union);
+        let expected = 18.0 - (3.0 - dec) * (3.0 - dec);
+        let actual = mesh_area(&cutted);
+        println!("notebook union: expected {expected}, actual {actual}");
+        assert_abs_diff_eq!(actual, expected, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_overlay_staggered_sweep() {
+        for n in [2usize, 3, 4, 5, 6, 8] {
+            let (mesh1, mesh2) = make_staggered_squares(n);
+            let side = 1.0 + 1.0 / n as f64;
+            let union_expected = side * side;
+            let symdiff_expected = side * side - 1.0;
+            let union = mesh1.overlay(mesh2.clone(), OverlayOperation::Union);
+            let symdiff = mesh1.overlay(mesh2, OverlayOperation::SymmetricDifference);
+            let u = mesh_area(&union);
+            let s = mesh_area(&symdiff);
+            println!(
+                "n={n}: union {u} (exp {union_expected}), symdiff {s} (exp {symdiff_expected})"
+            );
+            assert_abs_diff_eq!(u, union_expected, epsilon = 1e-9);
+            assert_abs_diff_eq!(s, symdiff_expected, epsilon = 1e-9);
+        }
     }
 }

@@ -7,7 +7,7 @@ use std::{
 use mefikit::{
     prelude as mf,
     tools::{
-        Descendable, Measurable, MeshSelect, NodeDuplicates,
+        Descendable, Measurable, MeshSelect, NodeDuplicates, Overlayable,
         fieldexpr::{MeshEvalUpdatable, MeshEvaluable},
     },
 };
@@ -266,6 +266,17 @@ impl PyUMesh {
     fn eval_update(&mut self, name: &str, expr: PyField) {
         self.inner.eval_update_field(name, None, expr.into());
     }
+
+    /// Computes the boolean overlay of this mesh (as mesh1) with `mesh2`.
+    ///
+    /// The operation defaults to `OverlayOperation.IMPRINT` which refines the domain of
+    /// `self` with the edges of `mesh2`.
+    #[pyo3(signature = (mesh2, operation=None))]
+    fn overlay(&self, mesh2: &PyUMesh, operation: Option<PyOverlayOperation>) -> PyResult<PyUMesh> {
+        let operation = operation.unwrap_or(PyOverlayOperation::Imprint).into();
+        let result = self.inner.overlay(mesh2.inner.clone(), operation);
+        Ok(result.into())
+    }
 }
 
 impl Display for PyUMesh {
@@ -286,10 +297,35 @@ impl From<PyUMesh> for mf::UMesh {
     }
 }
 
-#[pyfunction]
-pub fn intersect_2d2d(mesh1: &PyUMesh, mesh2: &PyUMesh) -> PyResult<PyUMesh> {
-    let mesh1 = &mesh1.inner;
-    let mesh2 = mesh2.inner.clone();
-    let result = mefikit::tools::intersect_2d2d(mesh1, mesh2);
-    Ok(result.into())
+/// Boolean-like operation to perform on two 2D meshes.
+#[pyclass(eq, eq_int, name = "OverlayOperation")]
+#[derive(Clone, Copy, PartialEq)]
+pub enum PyOverlayOperation {
+    /// Refine `mesh1` with the edges of `mesh2` while keeping `mesh1`'s domain.
+    #[pyo3(name = "IMPRINT")]
+    Imprint,
+    /// Keep the domain covered by at least one of the two meshes.
+    #[pyo3(name = "UNION")]
+    Union,
+    /// Keep the domain covered by both meshes.
+    #[pyo3(name = "INTERSECTION")]
+    Intersection,
+    /// Keep the domain of `mesh1` not covered by `mesh2`.
+    #[pyo3(name = "DIFFERENCE")]
+    Difference,
+    /// Keep the domain covered by exactly one of the two meshes.
+    #[pyo3(name = "SYMMETRIC_DIFFERENCE")]
+    SymmetricDifference,
+}
+
+impl From<PyOverlayOperation> for mf::OverlayOperation {
+    fn from(op: PyOverlayOperation) -> Self {
+        match op {
+            PyOverlayOperation::Imprint => mf::OverlayOperation::Imprint,
+            PyOverlayOperation::Union => mf::OverlayOperation::Union,
+            PyOverlayOperation::Intersection => mf::OverlayOperation::Intersection,
+            PyOverlayOperation::Difference => mf::OverlayOperation::Difference,
+            PyOverlayOperation::SymmetricDifference => mf::OverlayOperation::SymmetricDifference,
+        }
+    }
 }

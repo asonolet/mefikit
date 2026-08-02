@@ -2,7 +2,7 @@ import importlib.util
 
 from . import data as data
 from . import io
-from .mefipy import UMesh, build_cmesh, intersect_2d2d, sel
+from .mefipy import UMesh, OverlayOperation, build_cmesh, sel
 
 
 def has(name: str) -> bool:
@@ -13,4 +13,4 @@ if has("meshio") and has("medcoupling") and has("pyvista"):
     io.install_conversions()
 del io
 
-__all__ = ("UMesh", "build_cmesh", "data", "intersect_2d2d", "sel")
+__all__ = ("UMesh", "OverlayOperation", "build_cmesh", "data", "sel")

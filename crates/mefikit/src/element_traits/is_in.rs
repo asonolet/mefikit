@@ -174,7 +174,7 @@ pub fn in_polygon_stable(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
             if t == 0.0 {
                 closest = Intersection::Point(i);
             } else if t == 1.0 {
-                closest = Intersection::Point(i + 1);
+                closest = Intersection::Point((i + 1) % n);
             } else {
                 closest = Intersection::OrthoProj(i);
             }
@@ -183,7 +183,7 @@ pub fn in_polygon_stable(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
 
     match closest {
         Intersection::Point(closest) => {
-            let [xa, ya] = pgon[(((closest as i64) - 1) % n as i64) as usize];
+            let [xa, ya] = pgon[(closest + n - 1) % n];
             let [xb, yb] = pgon[closest];
             let [xc, yc] = pgon[(closest + 1) % n];
             let a = ro::Coord { x: xa, y: ya };
@@ -191,9 +191,9 @@ pub fn in_polygon_stable(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
             let c = ro::Coord { x: xc, y: yc };
             let d = ro::Coord { x: px, y: py };
             if ro::orient2d(a, b, c) < 0. {
-                ro::orient2d(a, b, d) > 0. && ro::orient2d(b, c, d) > 0.
-            } else {
                 ro::orient2d(a, b, d) > 0. || ro::orient2d(b, c, d) > 0.
+            } else {
+                ro::orient2d(a, b, d) > 0. && ro::orient2d(b, c, d) > 0.
             }
         }
         Intersection::OrthoProj(closest) => {
@@ -205,6 +205,62 @@ pub fn in_polygon_stable(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
             ro::orient2d(a, b, p) > 0.
         }
     }
+}
+
+/// Returns a point strictly inside the polygon, or `None` if the polygon is degenerate
+/// (fewer than 3 points or zero area).
+///
+/// The interior point is found with a horizontal scan-line at the midpoint of the widest gap
+/// between distinct vertex y-coordinates, so the line passes through no vertex. The edges
+/// strictly straddling the line give the x-coordinates of its crossings; the interior along the
+/// line is the union of the open segments between consecutive crossing pairs, and the returned
+/// point is the midpoint of the first such segment. It therefore lies strictly inside the
+/// polygon, never on a boundary edge or on a vertex line.
+pub fn strict_interior_point(points: &[[f64; 2]]) -> Option<[f64; 2]> {
+    let n = points.len();
+    if n < 3 {
+        return None;
+    }
+
+    let mut area2 = 0.0;
+    for i in 0..n {
+        let [x0, y0] = points[i];
+        let [x1, y1] = points[(i + 1) % n];
+        area2 += x0 * y1 - x1 * y0;
+    }
+    if area2.abs() < 1e-30 {
+        return None;
+    }
+
+    let mut ys: Vec<f64> = points.iter().map(|p| p[1]).collect();
+    ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    ys.dedup();
+
+    let mut y_mid = None;
+    let mut widest = 0.0;
+    for gap in ys.windows(2) {
+        let g = gap[1] - gap[0];
+        if g > widest {
+            widest = g;
+            y_mid = Some((gap[0] + gap[1]) / 2.0);
+        }
+    }
+    let y_mid = y_mid?;
+
+    let mut xs: Vec<f64> = Vec::with_capacity(n);
+    for i in 0..n {
+        let [x0, y0] = points[i];
+        let [x1, y1] = points[(i + 1) % n];
+        if (y0 < y_mid) != (y1 < y_mid) {
+            xs.push(x0 + (y_mid - y0) * (x1 - x0) / (y1 - y0));
+        }
+    }
+    if xs.len() < 2 {
+        return None;
+    }
+
+    xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    Some([(xs[0] + xs[1]) / 2.0, y_mid])
 }
 
 /// Returns `true` if point `x` is inside a quadratic polygon.
@@ -609,6 +665,7 @@ mod tests {
 
     use super::in_polygon;
     use super::in_quadratic_polygon;
+    use super::strict_interior_point;
 
     fn square() -> Vec<[f64; 2]> {
         vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
@@ -616,6 +673,103 @@ mod tests {
 
     fn diamond() -> Vec<[f64; 2]> {
         vec![[0.0, 0.0], [1.0, 1.0], [0.0, 2.0], [-1.0, 1.0]]
+    }
+
+    /// Right triangle (counter-clockwise): interior = {x >= 0, y >= 0, x + y <= 1}.
+    fn right_triangle() -> Vec<[f64; 2]> {
+        vec![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]]
+    }
+
+    /// L-shaped polygon (counter-clockwise) with a reflex vertex at (1, 1).
+    fn l_shape() -> Vec<[f64; 2]> {
+        vec![
+            [0.0, 0.0],
+            [2.0, 0.0],
+            [2.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 2.0],
+            [0.0, 2.0],
+        ]
+    }
+
+    #[test]
+    fn outside_corner_diagonal() {
+        let pgon = vec![
+            [2.0 / 3.0, 1.0 / 3.0],
+            [1.0, 1.0 / 3.0],
+            [1.0, 2.0 / 3.0],
+            [2.0 / 3.0, 2.0 / 3.0],
+        ];
+        let p = [13.0 / 12.0, 1.0 / 3.0];
+        assert!(!in_polygon_stable(&p, &pgon), "stable should be outside");
+        assert!(!in_polygon(&p, &pgon), "raycast should be outside");
+    }
+
+    #[test]
+    fn outside_right_of_cell() {
+        let pgon = vec![[0.25, -0.25], [0.75, -0.25], [0.75, 0.25], [0.25, 0.25]];
+        let p = [0.875, 0.125];
+        assert!(!in_polygon_stable(&p, &pgon), "stable should be outside");
+    }
+
+    #[test]
+    fn outside_beyond_corner_above_edge() {
+        let pgon = square();
+        let p = [1.1, 0.05];
+        assert!(!in_polygon_stable(&p, &pgon), "stable should be outside");
+        assert!(!in_polygon(&p, &pgon), "raycast should be outside");
+    }
+
+    #[test]
+    fn inside_near_corner() {
+        let pgon = square();
+        let p = [0.9, 0.1];
+        assert!(in_polygon_stable(&p, &pgon), "stable should be inside");
+    }
+
+    /// The closest feature of a point beyond an acute convex corner is the corner vertex.
+    /// Such a point is outside the wedge unless it is to the left of both adjacent edges
+    /// (this is the regression test for the inverted `&&`/`||` in the vertex wedge test).
+    #[test]
+    fn convex_acute_corner_exterior_wedge() {
+        let pgon = right_triangle();
+        // Beyond the apex (0, 1): to the left of edge (0,1)->(0,0) but right of edge (1,0)->(0,1).
+        let p = [0.5, 1.5];
+        assert!(!in_polygon_stable(&p, &pgon), "stable should be outside");
+        assert!(!in_polygon(&p, &pgon), "raycast should be outside");
+        // Beyond the corner (1, 0): to the left of edge (0,0)->(1,0) but right of edge (1,0)->(0,1).
+        let p = [1.0, -1.0];
+        assert!(!in_polygon_stable(&p, &pgon), "stable should be outside");
+    }
+
+    /// A point in the wide (reflex) wedge of a reflex vertex, on the side where it is left of
+    /// only one of the two adjacent edges, must still be inside. Closest feature is the vertex.
+    #[test]
+    fn reflex_corner_interior_wedge() {
+        let pgon = l_shape();
+        // Below the reflex vertex (1, 1) of the L-shape: inside the horizontal bar.
+        let p = [1.0, 0.6];
+        assert!(in_polygon_stable(&p, &pgon), "stable should be inside");
+        assert!(in_polygon(&p, &pgon), "raycast should be inside");
+    }
+
+    /// A point in the notch of a concave polygon, where the closest feature is an edge interior.
+    #[test]
+    fn reflex_corner_exterior_notch() {
+        let pgon = l_shape();
+        // The missing corner [1,2]x[1,2] of the L-shape.
+        let p = [1.5, 1.5];
+        assert!(!in_polygon_stable(&p, &pgon), "stable should be outside");
+        assert!(!in_polygon(&p, &pgon), "raycast should be outside");
+    }
+
+    /// Point exactly aligned with a convex corner of an axis-aligned cell, beyond it, with the
+    /// corner vertex as closest feature and the point to the right of both adjacent edges.
+    #[test]
+    fn convex_corner_exterior_aligned() {
+        let pgon = square();
+        let p = [1.0, -0.5];
+        assert!(!in_polygon_stable(&p, &pgon), "stable should be outside");
     }
 
     #[test]
@@ -822,5 +976,63 @@ mod tests {
 
         let p = [0.5, 0.5];
         assert!(in_quadratic_polygon(&p, &pgon));
+    }
+
+    /// `strict_interior_point` returns a point strictly inside a convex polygon.
+    #[test]
+    fn strict_interior_point_convex() {
+        for pgon in [square(), diamond()] {
+            let p = strict_interior_point(&pgon).expect("convex polygon has an interior point");
+            assert!(
+                in_polygon_stable(&p, &pgon),
+                "interior point must be inside"
+            );
+        }
+    }
+
+    /// `strict_interior_point` returns a point strictly inside a concave polygon.
+    #[test]
+    fn strict_interior_point_concave() {
+        let pgon = l_shape();
+        let p = strict_interior_point(&pgon).expect("L-shape has an interior point");
+        assert!(
+            in_polygon_stable(&p, &pgon),
+            "interior point must be inside"
+        );
+    }
+
+    /// The non-convex L-shaped piece produced when a cell overlapping the `[0, 3]^2` boundary of
+    /// the first mesh is cut must yield an interior point outside that mesh (`x > 3` or `y > 3`).
+    /// Its centroid, in contrast, falls in the notch and lies inside `[0, 3]^2`, which is why the
+    /// previous centroid-based classification dropped the piece from the union.
+    #[test]
+    fn strict_interior_point_notebook_l_piece() {
+        let dec = 37.0 / 70.0;
+        let pgon = vec![
+            [3.0, 2.0 + dec],
+            [2.5 + dec, 2.0 + dec],
+            [2.5 + dec, 2.5 + dec],
+            [2.0 + dec, 2.5 + dec],
+            [2.0 + dec, 3.0],
+            [3.0, 3.0],
+        ];
+        let p = strict_interior_point(&pgon).expect("L-piece has an interior point");
+        assert!(
+            in_polygon_stable(&p, &pgon),
+            "interior point must be inside the piece"
+        );
+        assert!(
+            p[0] > 3.0 || p[1] > 3.0,
+            "interior point must be outside the [0,3]^2 mesh, got {p:?}"
+        );
+    }
+
+    /// Degenerate polygons have no strict interior point.
+    #[test]
+    fn strict_interior_point_degenerate() {
+        assert_eq!(strict_interior_point(&[]), None);
+        assert_eq!(strict_interior_point(&[[0.0, 0.0], [1.0, 1.0]]), None);
+        let flat = vec![[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]];
+        assert_eq!(strict_interior_point(&flat), None);
     }
 }
