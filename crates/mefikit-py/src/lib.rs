@@ -28,6 +28,9 @@ mod mefipy {
     use super::pyumesh::PyUMesh;
 
     #[pymodule_export]
+    use super::pyumesh::intersect_2d2d;
+
+    #[pymodule_export]
     use super::pyfield::PyField;
 
     #[pyfunction]

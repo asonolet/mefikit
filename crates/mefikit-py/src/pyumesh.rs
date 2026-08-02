@@ -285,3 +285,11 @@ impl From<PyUMesh> for mf::UMesh {
         pyumesh.inner
     }
 }
+
+#[pyfunction]
+pub fn intersect_2d2d(mesh1: &PyUMesh, mesh2: &PyUMesh) -> PyResult<PyUMesh> {
+    let mesh1 = &mesh1.inner;
+    let mesh2 = mesh2.inner.clone();
+    let result = mefikit::tools::intersect_2d2d(mesh1, mesh2);
+    Ok(result.into())
+}
