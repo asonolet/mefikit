@@ -469,6 +469,11 @@ impl UMesh {
         }
     }
 
+    /// Returns a view of the coordinates array.
+    pub fn coords_mut(&mut self) -> nd::ArrayViewMut2<'_, f64> {
+        self.coords.view_mut()
+    }
+
     /// Add a full regular block to the mesh (inplace)
     ///
     /// If the et given already has a block, this block is replaced with the new one.
