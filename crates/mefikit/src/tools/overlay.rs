@@ -48,7 +48,7 @@ use crate::tools::{Descendable, spatial_index::SpatiallyIndexable};
 /// to resolve intersection node ids.
 fn merge_on_reference_coords(subject: UMesh, reference: UMeshView) -> UMesh {
     // reference node id -> coincident subject node ids
-    let ref_to_subject_nodes = duplicates_from(subject.view(), reference.clone(), 1e-12);
+    let ref_to_subject_nodes = duplicates_from(&subject.view(), &reference.clone(), 1e-12);
     let shift = reference.coords().nrows();
     // In the merged mesh, subject node `n` lives at `n + shift`. When it coincides with reference
     // node `r`, re-point it to `r` so both meshes share the node id.

@@ -5,7 +5,7 @@ use nalgebra as na;
 use rstar::{RTree, primitives::GeomWithData};
 use rustc_hash::FxHashMap;
 
-fn snap_dim_n<const T: usize>(subject: &mut UMesh, reference: UMeshView, eps: f64) {
+fn snap_dim_n<const T: usize>(subject: &mut UMesh, reference: &UMeshView, eps: f64) {
     let ref_points: Vec<[f64; T]> = reference
         .used_nodes()
         .into_iter()
@@ -49,8 +49,8 @@ fn snap_dim_n<const T: usize>(subject: &mut UMesh, reference: UMeshView, eps: f6
 }
 
 fn duplicates_from_dim_n<const T: usize>(
-    subject: UMeshView,
-    reference: UMeshView,
+    subject: &UMeshView,
+    reference: &UMeshView,
     eps: f64,
 ) -> FxHashMap<usize, Vec<usize>> {
     let mut res: FxHashMap<usize, Vec<usize>> = FxHashMap::default();
@@ -103,8 +103,8 @@ fn duplicates_from_dim_n<const T: usize>(
 
 /// Find duplicates coords of subject mesh onto used nodes of reference.
 pub fn duplicates_from(
-    subject: UMeshView,
-    reference: UMeshView,
+    subject: &UMeshView,
+    reference: &UMeshView,
     eps: f64,
 ) -> FxHashMap<usize, Vec<usize>> {
     match subject.coords().ncols() {
@@ -119,7 +119,7 @@ pub fn duplicates_from(
 ///
 /// Be careful, the method could produce degenerated elements if eps is not lower than half the
 /// smallest distance between two points from the same element.
-pub fn snap(subject: &mut UMesh, reference: UMeshView, eps: f64) {
+pub fn snap(subject: &mut UMesh, reference: &UMeshView, eps: f64) {
     match subject.coords().ncols() {
         // 1 => snap_dim_n::<1>(subject, reference, eps),
         2 => snap_dim_n::<2>(subject, reference, eps),
@@ -128,7 +128,7 @@ pub fn snap(subject: &mut UMesh, reference: UMeshView, eps: f64) {
     }
 }
 
-fn duplicates_dim_n<const T: usize>(mesh: UMeshView, eps: f64) -> IndirectIndexOwned<usize> {
+fn duplicates_dim_n<const T: usize>(mesh: &UMeshView, eps: f64) -> IndirectIndexOwned<usize> {
     let used_nodes = mesh.used_nodes();
     let points: Vec<GeomWithData<[f64; T], usize>> = used_nodes
         .iter()
@@ -159,7 +159,7 @@ fn duplicates_dim_n<const T: usize>(mesh: UMeshView, eps: f64) -> IndirectIndexO
     res
 }
 
-pub fn duplicates(mesh: UMeshView, eps: f64) -> IndirectIndexOwned<usize> {
+pub fn duplicates(mesh: &UMeshView, eps: f64) -> IndirectIndexOwned<usize> {
     match mesh.coords().ncols() {
         1 => duplicates_dim_n::<1>(mesh, eps),
         2 => duplicates_dim_n::<2>(mesh, eps),
@@ -180,7 +180,7 @@ fn find_group(n: &usize, nodes: &[usize], groups: &[usize]) -> Option<usize> {
 /// Be careful, this method can produce degenerated elements if used with an epsilon greater than
 /// the distance between two nodes of the same element.
 pub fn merge_nodes(mesh: &mut UMesh, eps: f64) {
-    let dups = duplicates(mesh.view(), eps);
+    let dups = duplicates(&mesh.view(), eps);
     let sorted_nodes_dup: Vec<(usize, usize)> = dups
         .iter()
         .enumerate()
@@ -207,7 +207,7 @@ pub fn merge_nodes(mesh: &mut UMesh, eps: f64) {
 
 pub trait NodeDuplicates {
     fn merge_nodes(&mut self, eps: f64);
-    fn snap_on(&mut self, other: UMeshView, eps: f64);
+    fn snap_on(&mut self, other: &UMeshView, eps: f64);
 }
 
 impl NodeDuplicates for UMesh {
@@ -215,7 +215,7 @@ impl NodeDuplicates for UMesh {
         merge_nodes(self, eps)
     }
 
-    fn snap_on(&mut self, other: UMeshView, eps: f64) {
+    fn snap_on(&mut self, other: &UMeshView, eps: f64) {
         snap(self, other, eps);
     }
 }
@@ -242,7 +242,7 @@ mod tests {
         let mut reference = UMesh::new(reference_coords.into());
         reference.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
 
-        snap(&mut subject, reference.view(), 0.02);
+        snap(&mut subject, &reference.view(), 0.02);
         assert!((subject.coords()[[1, 0]] - 1.0).abs() < 1e-6);
     }
 
@@ -276,7 +276,7 @@ mod tests {
             None,
         );
 
-        let dups = duplicates(mesh.view(), 0.01);
+        let dups = duplicates(&mesh.view(), 0.01);
         // Should find at least one duplicate (nodes 0 and 1)
         assert!(dups.len() > 0);
     }

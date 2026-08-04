@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let t1 = now.elapsed().as_secs_f64();
     let (_, inner_bubbles) = volumes.select(sphere_union, false);
     let interface = inner_bubbles.boundaries(None, None);
-    let _cracked = mf::crack(volumes, interface.view());
+    let _cracked = mf::crack(volumes, &interface.view());
     let _bubble_groups = mf::compute_connected_components(&inner_bubbles, None, None, false);
 
     let t_tot = now.elapsed().as_secs_f64();

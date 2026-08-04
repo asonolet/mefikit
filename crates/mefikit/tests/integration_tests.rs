@@ -622,7 +622,7 @@ mod geometric_operations {
     #[test]
     fn measure_quad_area() {
         let mesh = make_mesh_2d_quad();
-        let measures = measure(mesh.view(), None);
+        let measures = measure(&mesh.view(), None);
         let quad_measures = measures.get(&ElementType::QUAD4).unwrap();
         assert_abs_diff_eq!(quad_measures[0], 1.0, epsilon = 1e-10);
     }
@@ -632,7 +632,7 @@ mod geometric_operations {
         // Create a mesh with only regular elements (QUAD4) for measure
         let mut mesh = make_mesh_2d_quad();
         mesh.add_element(ElementType::QUAD4, &[0, 1, 3, 2], None, None);
-        let measures = measure(mesh.view(), None);
+        let measures = measure(&mesh.view(), None);
         let quad_measures = measures.get(&ElementType::QUAD4).unwrap();
         let total: f64 = quad_measures.iter().sum();
         assert!(total > 0.0);
@@ -659,7 +659,7 @@ mod snap_operations {
         let mut reference = UMesh::new(reference_coords.clone().into());
         reference.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
 
-        snap(&mut subject, reference.view(), 0.02);
+        snap(&mut subject, &reference.view(), 0.02);
         assert_abs_diff_eq!(subject.coords()[[1, 0]], 1.0, epsilon = 1e-6);
     }
 }

@@ -190,7 +190,7 @@ impl PyUMesh {
     }
 
     fn measure<'py>(&self, py: Python<'py>) -> BTreeMap<String, Bound<'py, np::PyArray1<f64>>> {
-        mf::measure(self.inner.view(), None)
+        mf::measure(&self.inner.view(), None)
             .iter()
             .map(|(&et, arr)| (etype_to_str(et), np::PyArray1::from_array(py, arr)))
             .collect()
@@ -212,13 +212,13 @@ impl PyUMesh {
     // }
 
     fn crack(&self, cut_mesh: &PyUMesh) -> Self {
-        mf::crack(self.inner.clone(), cut_mesh.inner.view()).into()
+        mf::crack(self.inner.clone(), &cut_mesh.inner.view()).into()
     }
 
     #[pyo3(signature = (reference, eps=1e-12))]
     fn snap(&self, reference: &PyUMesh, eps: f64) -> Self {
         let mut snapped = self.inner.clone();
-        snapped.snap_on(reference.inner.view(), eps);
+        snapped.snap_on(&reference.inner.view(), eps);
         snapped.into()
     }
 
@@ -231,17 +231,17 @@ impl PyUMesh {
 
     fn extrude(&self, along: &Bound<'_, PyAny>) -> PyResult<Self> {
         let along: Vec<f64> = along.extract()?;
-        let new_mesh = mf::extrude(self.inner.view(), &along);
+        let new_mesh = mf::extrude(&self.inner.view(), &along);
         Ok(new_mesh.into())
     }
 
     fn extrude_parallel(&self, along: PyReadonlyArray2<'_, f64>) -> Self {
-        let new_mesh = mf::extrude_parallel(self.inner.view(), along.as_array());
+        let new_mesh = mf::extrude_parallel(&self.inner.view(), along.as_array());
         new_mesh.into()
     }
 
     fn extrude_curv(&self, along: PyReadonlyArray2<'_, f64>) -> Self {
-        let new_mesh = mf::extrude_curv(self.inner.view(), along.as_array());
+        let new_mesh = mf::extrude_curv(&self.inner.view(), along.as_array());
         new_mesh.into()
     }
 

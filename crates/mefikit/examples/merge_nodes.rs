@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let descending_mesh = mf::compute_descending(&mesh, None, None);
     let (_, descending_mesh) = descending_mesh.select(mf::sel::sphere([0.5, 0.5, 0.5], 0.5), false);
 
-    let mut cracked = mf::crack(mesh, descending_mesh.view());
+    let mut cracked = mf::crack(mesh, &descending_mesh.view());
 
     println!("Start: merge_nodes");
     let now = time::Instant::now();

@@ -27,7 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Start: building crackedmesh");
     let now = time::Instant::now();
-    let cracked = mf::crack::crack(mesh, partdescending_mesh.view());
+    let cracked = mf::crack::crack(mesh, &partdescending_mesh.view());
     let elapsed = now.elapsed();
     let ttot = elapsed.as_secs_f64();
     mf::write(Path::new("cracked.vtk"), cracked.view())?;

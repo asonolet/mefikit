@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 ///
 /// Returns a map of element types to arrays of measure values.
 pub fn centroids(
-    mesh: UMeshView,
+    mesh: &UMeshView,
     dim: Option<Dimension>,
 ) -> BTreeMap<ElementType, nd::Array2<f64>> {
     let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
@@ -61,7 +61,10 @@ pub fn centroids(
 /// Computes the x coord of each element center in the mesh.
 ///
 /// Returns a map of element types to arrays of measure values.
-pub fn x_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array2<f64>> {
+pub fn x_center(
+    mesh: &UMeshView,
+    dim: Option<Dimension>,
+) -> BTreeMap<ElementType, nd::Array2<f64>> {
     let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
     mesh.par_blocks()
         .filter(|(et, _)| et.dimension() == dim)
@@ -80,7 +83,10 @@ pub fn x_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType
 /// Computes the y coord of each element center in the mesh.
 ///
 /// Returns a map of element types to arrays of measure values.
-pub fn y_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array2<f64>> {
+pub fn y_center(
+    mesh: &UMeshView,
+    dim: Option<Dimension>,
+) -> BTreeMap<ElementType, nd::Array2<f64>> {
     let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
     mesh.par_blocks()
         .filter(|(et, _)| et.dimension() == dim)
@@ -99,7 +105,10 @@ pub fn y_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType
 /// Computes the z coord of each element center in the mesh.
 ///
 /// Returns a map of element types to arrays of measure values.
-pub fn z_center(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array2<f64>> {
+pub fn z_center(
+    mesh: &UMeshView,
+    dim: Option<Dimension>,
+) -> BTreeMap<ElementType, nd::Array2<f64>> {
     let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
     mesh.par_blocks()
         .filter(|(et, _)| et.dimension() == dim)

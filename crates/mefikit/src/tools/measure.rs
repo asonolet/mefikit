@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 /// Computes the geometric measure of each element in the mesh.
 ///
 /// Returns a map of element types to arrays of measure values.
-pub fn measure(mesh: UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array1<f64>> {
+pub fn measure(mesh: &UMeshView, dim: Option<Dimension>) -> BTreeMap<ElementType, nd::Array1<f64>> {
     let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
     mesh
         .par_blocks()
@@ -58,10 +58,10 @@ pub trait Measurable {
 
 impl Measurable for UMesh {
     fn measure(&self, dim: Option<Dimension>) -> FieldOwned<ndarray::Ix1> {
-        FieldOwned::new(measure(self.view(), dim))
+        FieldOwned::new(measure(&self.view(), dim))
     }
     fn measure_update(&mut self, name: &str, dim: Option<Dimension>) {
-        let field = FieldOwned::new(measure(self.view(), dim));
+        let field = FieldOwned::new(measure(&self.view(), dim));
         self.update_field(name, field.into_shared().into_dyn(), dim);
     }
 }
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn test_umesh_measure() {
         let mesh = me::make_mesh_2d_quad();
-        let measures = measure(mesh.view(), None);
+        let measures = measure(&mesh.view(), None);
         assert_eq!(measures.len(), 1);
         assert!(measures.contains_key(&ElementType::QUAD4));
         let measure_values = measures.get(&ElementType::QUAD4).unwrap();
@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn test_measure_seg2() {
         let mesh = me::make_mesh_3d_seg2();
-        let measures = measure(mesh.view(), Some(crate::mesh::Dimension::D1));
+        let measures = measure(&mesh.view(), Some(crate::mesh::Dimension::D1));
         assert!(measures.contains_key(&ElementType::SEG2));
         let measure_values = measures.get(&ElementType::SEG2).unwrap();
         assert_eq!(measure_values.len(), 2);
