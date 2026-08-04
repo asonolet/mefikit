@@ -11,6 +11,7 @@
 //! - Neighbor computation
 //! - Element selection
 //! - Node snapping
+//! - Field transfer between meshes
 
 /// Centroids of meshes.
 pub mod centroids;
@@ -64,6 +65,8 @@ pub mod snap;
 pub mod spatial_index;
 /// Cell splitting to create finer meshes.
 pub mod split_cells;
+/// Reusable field transfer operators between meshes.
+pub mod transfer;
 
 pub use centroids::*;
 pub use connected_components::*;
@@ -76,3 +79,4 @@ pub use overlay::*;
 pub use selector::*;
 pub use snap::*;
 pub use split_cells::*;
+pub use transfer::*;
