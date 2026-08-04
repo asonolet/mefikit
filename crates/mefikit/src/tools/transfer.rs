@@ -120,7 +120,7 @@ impl ConstantPiecewiseTransfer {
 
         let index = match src_space {
             2 => SpIndex::D2(source.bvh2()),
-            3 => SpIndex::D3(target.bvh3()),
+            3 => SpIndex::D3(source.bvh3()),
             _ => unreachable!(),
         };
 
@@ -261,6 +261,7 @@ fn contains_point(elem: &Element, sample: [f64; 3], space_dim: usize) -> bool {
             }
             is_in::in_polygon_stable(&[sample[0], sample[1]], &pgon)
         }
+        // TODO: this does not work for polyhedra as coords size does not match connectivity size.
         3 => {
             let coords: Vec<[f64; 3]> = elem.coords3().copied().collect();
             let local: BTreeMap<usize, usize> = elem

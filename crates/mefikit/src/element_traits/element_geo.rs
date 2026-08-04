@@ -73,8 +73,17 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
     }
 
     /// Returns an iterator over all coordinates as 3D array references.
-    fn coords3(&self) -> impl ExactSizeIterator<Item = &[f64; 3]> {
-        (0..self.connectivity().len()).map(|i| self.coord3_ref(i))
+    fn coords3(&self) -> impl Iterator<Item = &[f64; 3]> {
+        self.connectivity()
+            .iter()
+            .enumerate()
+            .filter_map(|(i, c)| {
+                match *c {
+                    usize::MAX => None, // Skip face boundaries in polyhedra
+                    _ => Some(i),
+                }
+            })
+            .map(|i| self.coord3_ref(i))
     }
 
     /// Returns an iterator over all coordinates as slices.
