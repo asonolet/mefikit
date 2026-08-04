@@ -57,3 +57,6 @@ class TestSplitCells:
             len(splitted_mesh.coords()) == 29
         )  # 9 originals + 12 edges + 4 centers + 4 duplicated edges
         assert splitted_mesh.num_elements() == 16
+
+        unique_nodes = set(splitted_mesh.blocks()["QUAD4"].flatten())
+        assert len(unique_nodes) == 25  # 4 edges have duplicated nodes

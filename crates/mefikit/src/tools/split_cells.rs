@@ -1,4 +1,5 @@
 use crate::mesh::{ConnectivityView, ElementType, UMesh, UMeshView};
+use crate::prelude::snap::merge_nodes;
 use ndarray as nd;
 
 pub fn split(mesh: UMeshView) -> UMesh {
@@ -31,6 +32,7 @@ pub fn split(mesh: UMeshView) -> UMesh {
         }
     }
 
+    merge_nodes(&mut new_mesh, f64::EPSILON);
     new_mesh
 }
 
