@@ -172,7 +172,7 @@ pub trait Cutable {
     fn cut_with_intersections(
         &self,
         seg_intersections: &SortedSegIntersections,
-        m2_edges: UMeshView,
+        m2_edges: &UMeshView,
         coords: nd::ArrayView2<'_, f64>,
         m2_candidates: &ElementIds,
     ) -> Option<IndirectIndexOwned<usize>>;
@@ -182,7 +182,7 @@ impl<'a, T: ElementLike<'a>> Cutable for T {
     fn cut_with_intersections(
         &self,
         seg_intersections: &SortedSegIntersections,
-        m2_edges: UMeshView,
+        m2_edges: &UMeshView,
         coords: nd::ArrayView2<'_, f64>,
         m2_candidates: &ElementIds,
     ) -> Option<IndirectIndexOwned<usize>> {
@@ -193,7 +193,7 @@ impl<'a, T: ElementLike<'a>> Cutable for T {
 
         let (initial_darts, mut dart_map) = build_cell_dart_map(
             seg_intersections,
-            &m2_edges,
+            m2_edges,
             m2_candidates,
             self.connectivity(),
         );

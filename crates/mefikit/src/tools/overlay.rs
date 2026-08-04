@@ -1,3 +1,24 @@
+//! Boolean-like overlay operations on 2D meshes.
+//!
+//! In this context, overlay operations can be separated in the following cases:
+//! - 2d + 1d: `intersect_2d1d` cuts a 2D mesh with a 1D mesh, producing a 2D mesh conformized
+//!   with the 1D mesh.
+//! - 2d + 2d: `Overlayable::overlay` with one of the [`OverlayOperation`]s:
+//!   - `Imprint`: refine `mesh1` with the edges of `mesh2` while keeping `mesh1`'s domain.
+//!   - `Union`: keep the domain covered by at least one of the two meshes.
+//!   - `Intersection`: keep the domain covered by both meshes.
+//!   - `Difference`: keep the domain of `mesh1` not covered by `mesh2`.
+//!   - `SymmetricDifference`: keep the domain covered by exactly one of the two meshes.
+//!
+//! The input meshes do not need to be clean (i.e. they can have unmerged nodes). They need to be
+//! conformed (i.e. no overlapping elements).
+//! In all cases, the operation gives a "conformized without merging nodes" mesh. The user can
+//! choose to merge nodes after the operation if needed.
+//!
+//! Note: The implementation of these operations is not trivial. The main difficulty is to
+//! manage non conformities and numerical precision issues. The implementation should be robust
+//! and handle these issues gracefully.
+
 use rustc_hash::FxHashMap;
 
 use nalgebra::Point2;
@@ -17,25 +38,36 @@ use crate::tools::duplicates_from;
 use crate::tools::spatial_index::SpIdx2;
 use crate::tools::{Descendable, spatial_index::SpatiallyIndexable};
 
-fn concat_merge_on_ref_coords(subject: UMesh, reference: UMeshView) -> UMesh {
-    let m1_to_m2_nodes = duplicates_from(subject.view(), reference.clone(), 1e-12);
+/// Merges `subject` onto `reference` in a single coordinate space.
+///
+/// The merged mesh coordinates are `[reference coords; subject coords]` and the `subject` blocks
+/// are remapped so that subject nodes coinciding with a reference node point to that reference
+/// node id. The two meshes therefore share the same node ids in the merged space.
+///
+/// NOTE: must be called before computing intersections because the merged coords indexing is used
+/// to resolve intersection node ids.
+fn merge_on_reference_coords(subject: UMesh, reference: UMeshView) -> UMesh {
+    // reference node id -> coincident subject node ids
+    let ref_to_subject_nodes = duplicates_from(subject.view(), reference.clone(), 1e-12);
     let shift = reference.coords().nrows();
-    let mut m2_to_m1_nodes: FxHashMap<usize, usize> = FxHashMap::default();
-    for (n1, ns2) in m1_to_m2_nodes {
-        for n2 in ns2 {
-            m2_to_m1_nodes.insert(n2 + shift, n1);
+    // In the merged mesh, subject node `n` lives at `n + shift`. When it coincides with reference
+    // node `r`, re-point it to `r` so both meshes share the node id.
+    let mut merged_to_ref_nodes: FxHashMap<usize, usize> = FxHashMap::default();
+    for (ref_node, subject_nodes) in ref_to_subject_nodes {
+        for subject_node in subject_nodes {
+            merged_to_ref_nodes.insert(subject_node + shift, ref_node);
         }
     }
     let new_coords = nd::concatenate![nd::Axis(0), reference.coords(), subject.coords()];
-    let mut new_mesh2 = UMesh::new(new_coords.into_shared());
+    let mut merged = UMesh::new(new_coords.into_shared());
     for (&et, b) in subject.blocks() {
         let mut new_block = b.clone();
         let co = &mut new_block.connectivity;
         co.shift_index(shift);
-        co.replace(&m2_to_m1_nodes);
-        new_mesh2.element_blocks.insert(et, new_block);
+        co.replace(&merged_to_ref_nodes);
+        merged.element_blocks.insert(et, new_block);
     }
-    new_mesh2
+    merged
 }
 
 /// Boolean-like operation to perform on two 2D meshes.
@@ -73,10 +105,8 @@ impl Overlayable for UMesh {
     fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh {
         match operation {
             OverlayOperation::Imprint => intersect_2d2d(self, mesh2),
-            OverlayOperation::Intersection => {
-                cut_and_classify(self.clone(), mesh2, |inside| inside)
-            }
-            OverlayOperation::Difference => cut_and_classify(self.clone(), mesh2, |inside| !inside),
+            OverlayOperation::Intersection => cut_and_classify(self, mesh2, |inside| inside),
+            OverlayOperation::Difference => cut_and_classify(self, mesh2, |inside| !inside),
             OverlayOperation::Union => cut_both(self, mesh2, |_| true, |inside| !inside),
             OverlayOperation::SymmetricDifference => {
                 cut_both(self, mesh2, |inside| !inside, |inside| !inside)
@@ -89,48 +119,32 @@ impl Overlayable for UMesh {
 ///
 /// Refines `mesh1`'s cells with the edges of `mesh2`.
 fn intersect_2d2d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
-    //NOTE: must be before the compute_intersections because mesh2 coords indexing is used.
-    let mesh2 = concat_merge_on_ref_coords(mesh2, mesh1.view());
+    let mesh2 = merge_on_reference_coords(mesh2, mesh1.view());
+    cut_2d_with_edges(
+        mesh1,
+        mesh2.descend(Some(Dimension::D2), Some(Dimension::D1)),
+    )
+}
 
+/// Cuts the 2D cells of `mesh1` with a 1D mesh of cutting edges, keeping all the resulting pieces.
+///
+/// `cutting_edges` must already live in `mesh1`'s coordinate space (see
+/// [`merge_on_reference_coords`]).
+fn cut_2d_with_edges(mesh1: &UMesh, cutting_edges: UMesh) -> UMesh {
     let m1_edges = mesh1.descend(Some(Dimension::D2), Some(Dimension::D1));
-    let m2_edges = mesh2.descend(Some(Dimension::D2), Some(Dimension::D1));
 
-    let m2bvh = m2_edges.view().bvh2();
+    let cutting_bvh = cutting_edges.view().bvh2();
 
-    let (intersections, added_coords) = compute_intersections(&m1_edges, &m2_edges, &m2bvh);
+    let (mut cutted_mesh, seg_intersections) =
+        compute_overlay(&m1_edges, &cutting_edges, &cutting_bvh);
 
-    // Concatenates m1 coords, m2 coords, new intersections coords
-    let new_coords = nd::concatenate![nd::Axis(0), mesh2.coords(), added_coords];
-
-    let mut cutted_mesh = UMesh::new(new_coords.into_shared());
-
-    let seg_intersections =
-        to_sorted_intersections(&intersections, &m2_edges.view(), &cutted_mesh.coords());
-
-    for cell in mesh1.elements_of_dim(Dimension::D2) {
-        let [bmin, bmax] = cell.bounds2();
-        let candidates = m2bvh.in_bounds(bmin, bmax);
-        let reconstructed = cell.cut_with_intersections(
-            &seg_intersections,
-            m2_edges.view(),
-            cutted_mesh.coords(),
-            &candidates,
-        );
-
-        // If the cell was cut, I add new polys from the cut
-        if let Some(polys) = reconstructed {
-            for new_cell in polys {
-                cutted_mesh.add_element(ElementType::PGON, &new_cell, Some(*cell.family), None);
-            }
-        } else {
-            cutted_mesh.add_element(
-                cell.element_type(),
-                cell.connectivity(),
-                Some(*cell.family),
-                cell.fields.clone(),
-            );
-        }
-    }
+    cut_cells_all(
+        &mut cutted_mesh,
+        mesh1,
+        &cutting_edges.view(),
+        &cutting_bvh,
+        &seg_intersections,
+    );
     cutted_mesh
 }
 
@@ -144,79 +158,30 @@ fn intersect_2d2d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
 /// # Assumptions
 /// - Input meshes are valid (non-self-intersecting)
 /// - Coordinates are in the same plane
-pub fn intersect_2d1d(mesh1: UMesh, mesh2: UMesh) -> UMesh {
-    //NOTE: must be before the compute_intersections because mesh2 coords indexing is used.
-    let mesh2 = concat_merge_on_ref_coords(mesh2, mesh1.view());
-
-    let m1_edges = mesh1.descend(Some(Dimension::D2), Some(Dimension::D1));
-
-    let m2bvh = mesh2.view().bvh2();
-
-    let (intersections, added_coords) = compute_intersections(&m1_edges, &mesh2, &m2bvh);
-
-    // Concatenates m1 coords, m2 coords, new intersections coords
-    let new_coords = nd::concatenate![nd::Axis(0), mesh2.coords(), added_coords];
-
-    let mut cutted_mesh = UMesh::new(new_coords.into_shared());
-
-    let seg_intersections =
-        to_sorted_intersections(&intersections, &mesh2.view(), &cutted_mesh.coords());
-
-    for cell in mesh1.elements_of_dim(Dimension::D2) {
-        let [bmin, bmax] = cell.bounds2();
-        let candidates = m2bvh.in_bounds(bmin, bmax);
-        let reconstructed = cell.cut_with_intersections(
-            &seg_intersections,
-            mesh2.view(),
-            cutted_mesh.coords(),
-            &candidates,
-        );
-
-        // If the cell was cut, I add new polys from the cut
-        if let Some(polys) = reconstructed {
-            for new_cell in polys {
-                cutted_mesh.add_element(ElementType::PGON, &new_cell, Some(*cell.family), None);
-            }
-        } else {
-            cutted_mesh.add_element(
-                cell.element_type(),
-                cell.connectivity(),
-                Some(*cell.family),
-                cell.fields.clone(),
-            );
-        }
-    }
-    cutted_mesh
+pub fn intersect_2d1d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
+    let mesh2 = merge_on_reference_coords(mesh2, mesh1.view());
+    cut_2d_with_edges(mesh1, mesh2)
 }
 
 /// Cut the cells of `subject` with the edges of `cutter` and keep the pieces for which the
 /// `keep` predicate returns `true`. The predicate receives `true` when the piece lies inside
 /// `cutter`.
-fn cut_and_classify(subject: UMesh, cutter: UMesh, keep: impl Fn(bool) -> bool) -> UMesh {
-    //NOTE: must be before the compute_intersections because mesh2 coords indexing is used.
-    let cutter = concat_merge_on_ref_coords(cutter, subject.view());
+fn cut_and_classify(subject: &UMesh, cutter: UMesh, keep: impl Fn(bool) -> bool) -> UMesh {
+    let cutter = merge_on_reference_coords(cutter, subject.view());
 
     let subject_edges = subject.descend(Some(Dimension::D2), Some(Dimension::D1));
     let cutter_edges = cutter.descend(Some(Dimension::D2), Some(Dimension::D1));
 
     let cutter_edges_bvh = cutter_edges.view().bvh2();
 
-    let (intersections, added_coords) =
-        compute_intersections(&subject_edges, &cutter_edges, &cutter_edges_bvh);
-
-    // Concatenates subject coords, cutter coords, new intersections coords
-    let new_coords = nd::concatenate![nd::Axis(0), cutter.coords(), added_coords];
-
-    let mut cutted_mesh = UMesh::new(new_coords.into_shared());
-
-    let seg_intersections =
-        to_sorted_intersections(&intersections, &cutter_edges.view(), &cutted_mesh.coords());
+    let (mut cutted_mesh, seg_intersections) =
+        compute_overlay(&subject_edges, &cutter_edges, &cutter_edges_bvh);
 
     cut_cells(
         &mut cutted_mesh,
         subject,
         &cutter,
-        &cutter_edges,
+        &cutter_edges.view(),
         &cutter_edges_bvh,
         &seg_intersections,
         &keep,
@@ -232,8 +197,7 @@ fn cut_both(
     keep1: impl Fn(bool) -> bool,
     keep2: impl Fn(bool) -> bool,
 ) -> UMesh {
-    //NOTE: must be before the compute_intersections because mesh2 coords indexing is used.
-    let mesh2 = concat_merge_on_ref_coords(mesh2, mesh1.view());
+    let mesh2 = merge_on_reference_coords(mesh2, mesh1.view());
 
     let m1_edges = mesh1.descend(Some(Dimension::D2), Some(Dimension::D1));
     let m2_edges = mesh2.descend(Some(Dimension::D2), Some(Dimension::D1));
@@ -241,30 +205,22 @@ fn cut_both(
     let m1edges_bvh = m1_edges.view().bvh2();
     let m2edges_bvh = m2_edges.view().bvh2();
 
-    let (intersections, added_coords) = compute_intersections(&m1_edges, &m2_edges, &m2edges_bvh);
-
-    // Concatenates subject coords, cutter coords, new intersections coords
-    let new_coords = nd::concatenate![nd::Axis(0), mesh2.coords(), added_coords];
-
-    let mut cutted_mesh = UMesh::new(new_coords.into_shared());
-
-    let seg_intersections =
-        to_sorted_intersections(&intersections, &m2_edges.view(), &cutted_mesh.coords());
+    let (mut cutted_mesh, seg_intersections) = compute_overlay(&m1_edges, &m2_edges, &m2edges_bvh);
 
     cut_cells(
         &mut cutted_mesh,
-        mesh1.clone(),
+        mesh1,
         &mesh2,
-        &m2_edges,
+        &m2_edges.view(),
         &m2edges_bvh,
         &seg_intersections,
         &keep1,
     );
     cut_cells(
         &mut cutted_mesh,
-        mesh2,
+        &mesh2,
         mesh1,
-        &m1_edges,
+        &m1_edges.view(),
         &m1edges_bvh,
         &seg_intersections,
         &keep2,
@@ -272,12 +228,69 @@ fn cut_both(
     cutted_mesh
 }
 
+/// Computes the intersections between `subject_edges` and `cutting_edges` (which must already
+/// share the same coordinate space) and builds the output mesh shell: concatenated coordinates
+/// plus the sorted per-edge intersection lists.
+fn compute_overlay(
+    subject_edges: &UMesh,
+    cutting_edges: &UMesh,
+    cutting_bvh: &SpIdx2,
+) -> (UMesh, SortedSegIntersections) {
+    let (intersections, added_coords) =
+        compute_intersections(subject_edges, cutting_edges, cutting_bvh);
+
+    // Concatenates subject coords, cutter coords, new intersections coords
+    let new_coords = nd::concatenate![nd::Axis(0), cutting_edges.coords(), added_coords];
+
+    let cutted_mesh = UMesh::new(new_coords.into_shared());
+
+    let seg_intersections =
+        to_sorted_intersections(&intersections, &cutting_edges.view(), &cutted_mesh.coords());
+
+    (cutted_mesh, seg_intersections)
+}
+
+/// Cut the D2 cells of `subject` with `cutting_edges` and append all the resulting pieces to
+/// `out`.
+fn cut_cells_all(
+    out: &mut UMesh,
+    subject: &UMesh,
+    cutting_edges: &UMeshView,
+    cutting_bvh: &SpIdx2,
+    seg_intersections: &SortedSegIntersections,
+) {
+    for cell in subject.elements_of_dim(Dimension::D2) {
+        let [bmin, bmax] = cell.bounds2();
+        let candidates = cutting_bvh.in_bounds(bmin, bmax);
+        let reconstructed = cell.cut_with_intersections(
+            seg_intersections,
+            cutting_edges,
+            out.coords(),
+            &candidates,
+        );
+
+        // If the cell was cut, I add new polys from the cut
+        if let Some(polys) = reconstructed {
+            for new_cell in polys {
+                out.add_element(ElementType::PGON, &new_cell, Some(*cell.family), None);
+            }
+        } else {
+            out.add_element(
+                cell.element_type(),
+                cell.connectivity(),
+                Some(*cell.family),
+                cell.fields.clone(),
+            );
+        }
+    }
+}
+
 /// Cut the D2 cells of `subject` with `cutting_edges` and append the kept pieces to `out`.
 fn cut_cells(
     out: &mut UMesh,
-    subject: UMesh,
+    subject: &UMesh,
     cutter: &UMesh,
-    cutting_edges: &UMesh,
+    cutting_edges: &UMeshView,
     cutting_bvh: &SpIdx2,
     seg_intersections: &SortedSegIntersections,
     keep: &impl Fn(bool) -> bool,
@@ -289,7 +302,7 @@ fn cut_cells(
         let candidates = cutting_bvh.in_bounds(bmin, bmax);
         let reconstructed = cell.cut_with_intersections(
             seg_intersections,
-            cutting_edges.view(),
+            cutting_edges,
             out.coords(),
             &candidates,
         );
@@ -516,27 +529,26 @@ fn to_sorted_intersections(
         let p1: Point2<f64> = Point2::from_slice(coords.row(eid[0]).as_slice().unwrap());
         let p2: Point2<f64> = Point2::from_slice(coords.row(eid[1]).as_slice().unwrap());
         let oriented_vec: Vector2<f64> = p2 - p1;
-
-        let mut sorted_ints: Vec<NodeId> = Vec::new();
+        let projection = |n: usize| {
+            let vn: Vector2<f64> = Point2::from_slice(coords.row(n).as_slice().unwrap()) - p1;
+            oriented_vec.dot(&vn)
+        };
 
         // First point
-        sorted_ints.push(eid[0]);
+        let mut sorted_ints: Vec<(f64, usize)> = Vec::with_capacity(v.len() + 2);
+        sorted_ints.push((projection(eid[0]), eid[0]));
         // Intersection points
-        sorted_ints.append(v);
+        sorted_ints.extend(v.iter().map(|&n| (projection(n), n)));
         // Sorting all intersections points
-        sorted_ints.sort_by(|a, b| {
-            let va: Vector2<f64> = Point2::from_slice(coords.row(*a).as_slice().unwrap()) - p1;
-            let vb: Vector2<f64> = Point2::from_slice(coords.row(*b).as_slice().unwrap()) - p1;
-            let da = oriented_vec.dot(&va);
-            let db = oriented_vec.dot(&vb);
-            da.total_cmp(&db)
-        });
+        sorted_ints.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut sorted_nodes: Vec<NodeId> = sorted_ints.into_iter().map(|(_, n)| n).collect();
         // Adding last point (known)
-        sorted_ints.push(eid[1]);
+        sorted_nodes.push(eid[1]);
 
         // Removing duplicates
-        sorted_ints.dedup();
-        v.append(&mut sorted_ints);
+        sorted_nodes.dedup();
+        v.clear();
+        v.append(&mut sorted_nodes);
     }
     non_sorted_intersections
 }

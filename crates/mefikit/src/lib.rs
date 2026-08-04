@@ -235,7 +235,7 @@ mod io;
 ///
 /// ## 📚 Related Modules
 ///
-/// - `geometry`, `topology`, `intersect` — operation-specific logic
+/// - `geometry`, `topology`, `overlay` — operation-specific logic
 /// - `io` — file import/export (serde_json, serde_yaml, MED, CGNS, etc.)
 pub mod mesh;
 #[cfg(test)]
