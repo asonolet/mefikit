@@ -15,7 +15,7 @@ use crate::tools::spatial_index::{SpIdx2, SpIdx3, SpatiallyIndexable};
 ///
 /// This is a pure sample of the containing source cell: `FieldNature` does not affect the
 /// transferred value (extensive conservation requires a measure-weighted scheme).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ConstantPiecewiseTransfer {
     src_dim: Dimension,
     tgt_dim: Dimension,

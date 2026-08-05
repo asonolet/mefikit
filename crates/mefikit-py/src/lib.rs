@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 mod element;
 mod element_ids;
 mod pyfield;
+mod pytransfer;
 mod pyumesh;
 mod select;
 
@@ -10,6 +11,12 @@ mod select;
 mod sel {
     #[pymodule_export]
     use super::select::{bbox, circle, ids, nbbox, ncircle, nids, nrect, nsphere, rect, sphere};
+}
+
+#[pymodule]
+mod transfer {
+    #[pymodule_export]
+    use super::pytransfer::PyConstantPiecewise;
 }
 
 /// A Python module implemented in Rust. The name of this function must match

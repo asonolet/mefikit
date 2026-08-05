@@ -288,6 +288,14 @@ impl PyUMesh {
     }
 }
 
+pub fn into_view(mesh: &PyUMesh) -> mf::UMeshView<'_> {
+    mesh.inner.view()
+}
+
+pub fn into_mut(mesh: &mut PyUMesh) -> &mut mf::UMesh {
+    &mut mesh.inner
+}
+
 impl Display for PyUMesh {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:#?}", self.inner)
@@ -303,6 +311,12 @@ impl From<mf::UMesh> for PyUMesh {
 impl From<PyUMesh> for mf::UMesh {
     fn from(pyumesh: PyUMesh) -> Self {
         pyumesh.inner
+    }
+}
+
+impl<'a> From<&'a PyUMesh> for &'a mf::UMesh {
+    fn from(pyumesh: &'a PyUMesh) -> Self {
+        &pyumesh.inner
     }
 }
 
