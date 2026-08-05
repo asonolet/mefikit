@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Start: snapping");
     let now = time::Instant::now();
-    mesh1.snap_on(mesh2.view(), 1e-12);
+    mesh1.snap_on(&mesh2.view(), 1e-12);
     let elapsed = now.elapsed();
     let ttot = elapsed.as_secs_f64();
     mf::write(Path::new("snapped.vtk"), mesh1.view())?;

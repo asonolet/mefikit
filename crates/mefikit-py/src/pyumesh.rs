@@ -7,7 +7,7 @@ use std::{
 use mefikit::{
     prelude as mf,
     tools::{
-        Descendable, Measurable, MeshSelect, NodeDuplicates,
+        Descendable, Measurable, MeshSelect, NodeDuplicates, Overlayable,
         fieldexpr::{MeshEvalUpdatable, MeshEvaluable},
     },
 };
@@ -190,7 +190,7 @@ impl PyUMesh {
     }
 
     fn measure<'py>(&self, py: Python<'py>) -> BTreeMap<String, Bound<'py, np::PyArray1<f64>>> {
-        mf::measure(self.inner.view(), None)
+        mf::measure(&self.inner.view(), None)
             .iter()
             .map(|(&et, arr)| (etype_to_str(et), np::PyArray1::from_array(py, arr)))
             .collect()
@@ -212,13 +212,13 @@ impl PyUMesh {
     // }
 
     fn crack(&self, cut_mesh: &PyUMesh) -> Self {
-        mf::crack(self.inner.clone(), cut_mesh.inner.view()).into()
+        mf::crack(self.inner.clone(), &cut_mesh.inner.view()).into()
     }
 
     #[pyo3(signature = (reference, eps=1e-12))]
     fn snap(&self, reference: &PyUMesh, eps: f64) -> Self {
         let mut snapped = self.inner.clone();
-        snapped.snap_on(reference.inner.view(), eps);
+        snapped.snap_on(&reference.inner.view(), eps);
         snapped.into()
     }
 
@@ -231,17 +231,17 @@ impl PyUMesh {
 
     fn extrude(&self, along: &Bound<'_, PyAny>) -> PyResult<Self> {
         let along: Vec<f64> = along.extract()?;
-        let new_mesh = mf::extrude(self.inner.view(), &along);
+        let new_mesh = mf::extrude(&self.inner.view(), &along);
         Ok(new_mesh.into())
     }
 
     fn extrude_parallel(&self, along: PyReadonlyArray2<'_, f64>) -> Self {
-        let new_mesh = mf::extrude_parallel(self.inner.view(), along.as_array());
+        let new_mesh = mf::extrude_parallel(&self.inner.view(), along.as_array());
         new_mesh.into()
     }
 
     fn extrude_curv(&self, along: PyReadonlyArray2<'_, f64>) -> Self {
-        let new_mesh = mf::extrude_curv(self.inner.view(), along.as_array());
+        let new_mesh = mf::extrude_curv(&self.inner.view(), along.as_array());
         new_mesh.into()
     }
 
@@ -275,6 +275,17 @@ impl PyUMesh {
     fn num_elements(&self) -> usize {
         self.inner.num_elements()
     }
+
+    /// Computes the boolean overlay of this mesh (as mesh1) with `mesh2`.
+    ///
+    /// The operation defaults to `OverlayOperation.IMPRINT` which refines the domain of
+    /// `self` with the edges of `mesh2`.
+    #[pyo3(signature = (mesh2, operation=None))]
+    fn overlay(&self, mesh2: &PyUMesh, operation: Option<PyOverlayOperation>) -> PyResult<PyUMesh> {
+        let operation = operation.unwrap_or(PyOverlayOperation::Imprint).into();
+        let result = self.inner.overlay(mesh2.inner.clone(), operation);
+        Ok(result.into())
+    }
 }
 
 impl Display for PyUMesh {
@@ -292,5 +303,38 @@ impl From<mf::UMesh> for PyUMesh {
 impl From<PyUMesh> for mf::UMesh {
     fn from(pyumesh: PyUMesh) -> Self {
         pyumesh.inner
+    }
+}
+
+/// Boolean-like operation to perform on two 2D meshes.
+#[pyclass(eq, eq_int, from_py_object, name = "OverlayOperation")]
+#[derive(Clone, Copy, PartialEq)]
+pub enum PyOverlayOperation {
+    /// Refine `mesh1` with the edges of `mesh2` while keeping `mesh1`'s domain.
+    #[pyo3(name = "IMPRINT")]
+    Imprint,
+    /// Keep the domain covered by at least one of the two meshes.
+    #[pyo3(name = "UNION")]
+    Union,
+    /// Keep the domain covered by both meshes.
+    #[pyo3(name = "INTERSECTION")]
+    Intersection,
+    /// Keep the domain of `mesh1` not covered by `mesh2`.
+    #[pyo3(name = "DIFFERENCE")]
+    Difference,
+    /// Keep the domain covered by exactly one of the two meshes.
+    #[pyo3(name = "SYMMETRIC_DIFFERENCE")]
+    SymmetricDifference,
+}
+
+impl From<PyOverlayOperation> for mf::OverlayOperation {
+    fn from(op: PyOverlayOperation) -> Self {
+        match op {
+            PyOverlayOperation::Imprint => mf::OverlayOperation::Imprint,
+            PyOverlayOperation::Union => mf::OverlayOperation::Union,
+            PyOverlayOperation::Intersection => mf::OverlayOperation::Intersection,
+            PyOverlayOperation::Difference => mf::OverlayOperation::Difference,
+            PyOverlayOperation::SymmetricDifference => mf::OverlayOperation::SymmetricDifference,
+        }
     }
 }

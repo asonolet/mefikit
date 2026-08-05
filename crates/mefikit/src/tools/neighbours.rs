@@ -79,7 +79,7 @@ pub fn par_compute_neighbours(
             neighbors.add_element(et, conn.as_slice(), None, None);
             let subentity_id = neighbors.block(et).unwrap().len() - 1;
             let new_id = ElementId::new(et, subentity_id);
-            ids.iter().tuple_combinations().for_each(|(eid_a, eid_b)| {
+            ids.iter().array_combinations().for_each(|[eid_a, eid_b]| {
                 elem_to_elem.add_edge(*eid_a, *eid_b, new_id);
             });
         });
@@ -140,7 +140,7 @@ pub fn compute_neighbours(
         elem_to_elem.add_node(elem.id());
     }
     for (_, (fid, eids)) in subentities_hashmap {
-        eids.iter().tuple_combinations().for_each(|(eid_a, eid_b)| {
+        eids.iter().array_combinations().for_each(|[eid_a, eid_b]| {
             elem_to_elem.add_edge(*eid_a, *eid_b, fid);
         });
     }
@@ -186,7 +186,7 @@ pub fn compute_neighbours_graph(
         elem_to_elem.add_node(elem.id());
     }
     for (fkey, eids) in subentities_hashmap {
-        eids.iter().tuple_combinations().for_each(|(eid_a, eid_b)| {
+        eids.iter().array_combinations().for_each(|[eid_a, eid_b]| {
             elem_to_elem.add_edge(*eid_a, *eid_b, fkey.clone());
         });
     }

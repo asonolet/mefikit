@@ -3,8 +3,7 @@
 //! Provides functions for computing distances, areas, and volumes of
 //! geometric primitives.
 
-use na::{Point1, Point2, Vector4};
-use nalgebra as na;
+use nalgebra::*;
 use ndarray::prelude::*;
 
 /// Computes the Euclidean distance between two points (generic dimension).
@@ -48,6 +47,19 @@ pub fn dist3(a: &[f64; 3], b: &[f64; 3]) -> f64 {
 /// Computes the area of a 2D triangle (generic input).
 pub fn surf_tri(_a: ArrayView1<f64>, _b: ArrayView1<f64>, _c: ArrayView1<f64>) -> f64 {
     todo!()
+}
+
+pub fn othogonal_proj(p: Point2<f64>, a: Point2<f64>, b: Point2<f64>) -> f64 {
+    let ab = b - a;
+    let ap = p - a;
+    ab.dot(&ap) / ab.dot(&ab)
+}
+
+pub fn ortho_dist2(p: Point2<f64>, a: Point2<f64>, b: Point2<f64>) -> (f64, f64) {
+    let t = othogonal_proj(p, a, b);
+    let tc = t.clamp(0.0, 1.0);
+    let proj = a + tc * (b - a);
+    (tc, (proj - p).norm_squared())
 }
 
 /// Computes the area of a 2D triangle.
@@ -128,6 +140,7 @@ pub fn vol_hexa(_a: ArrayView1<f64>, _b: ArrayView1<f64>, _c: ArrayView1<f64>) -
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;
+    use nalgebra as na;
 
     #[test]
     fn test_dist2() {

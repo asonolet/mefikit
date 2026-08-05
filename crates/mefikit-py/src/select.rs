@@ -6,7 +6,7 @@ use mefikit::prelude as mf;
 
 use super::element_ids::PyElementIds;
 
-#[pyclass(str)]
+#[pyclass(str, from_py_object)]
 #[pyo3(name = "Selection")]
 #[derive(Clone)]
 pub struct PySelection {

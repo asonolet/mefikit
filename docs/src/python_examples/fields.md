@@ -114,9 +114,9 @@ mesh2.eval(m2 - 4.0 * m.square())
 print(4.0 * m * m)
 ```
 
-    BinarayExpr {
+    BinaryExpr {
         operator: Mul,
-        left: BinarayExpr {
+        left: BinaryExpr {
             operator: Mul,
             left: Array(
                 4.0, shape=[], strides=[], layout=CFcf (0xf), dynamic ndim=0,

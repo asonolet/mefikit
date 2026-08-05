@@ -7,7 +7,6 @@ use super::measures as mes;
 use crate::mesh::{ElementLike, ElementType};
 
 use nalgebra as na;
-use rstar::AABB;
 
 /// Geometric operations for mesh elements.
 ///
@@ -145,14 +144,32 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         todo!()
     }
 
-    /// Computes the 2D axis-aligned bounding box of the element.
-    fn to_aabb2(&self) -> AABB<[f64; 2]> {
-        AABB::from_points(self.coords2())
+    fn bounds2(&self) -> [[f64; 2]; 2] {
+        self.coords2()
+            .fold([[f64::INFINITY; 2], [-f64::INFINITY; 2]], |a, c| {
+                [
+                    [f64::min(a[0][0], c[0]), f64::min(a[0][1], c[1])],
+                    [f64::max(a[1][0], c[0]), f64::max(a[1][1], c[1])],
+                ]
+            })
     }
 
-    /// Computes the 3D axis-aligned bounding box of the element.
-    fn to_aabb(&self) -> AABB<[f64; 3]> {
-        AABB::from_points(self.coords3())
+    fn bounds3(&self) -> [[f64; 3]; 2] {
+        self.coords3()
+            .fold([[f64::INFINITY; 3], [-f64::INFINITY; 3]], |a, c| {
+                [
+                    [
+                        f64::min(a[0][0], c[0]),
+                        f64::min(a[0][1], c[1]),
+                        f64::min(a[0][2], c[2]),
+                    ],
+                    [
+                        f64::max(a[1][0], c[0]),
+                        f64::max(a[1][1], c[1]),
+                        f64::max(a[1][2], c[2]),
+                    ],
+                ]
+            })
     }
 
     /// Computes the 2D centroid of the element.
@@ -380,45 +397,5 @@ mod tests {
         assert_abs_diff_eq!(centroid[0], 0.25, epsilon = 1e-10);
         assert_abs_diff_eq!(centroid[1], 0.25, epsilon = 1e-10);
         assert_abs_diff_eq!(centroid[2], 0.25, epsilon = 1e-10);
-    }
-
-    #[test]
-    fn test_to_aabb2() {
-        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
-        let conn = &[0, 1, 2];
-        let groups = BTreeMap::new();
-        let family = 0;
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            &groups,
-            conn,
-            ElementType::TRI3,
-        );
-        let aabb = elem.to_aabb2();
-        assert_eq!(aabb.lower(), [0.0, 0.0]);
-        assert_eq!(aabb.upper(), [1.0, 1.0]);
-    }
-
-    #[test]
-    fn test_to_aabb() {
-        let coords = nd::array![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
-        let conn = &[0, 1, 2];
-        let groups = BTreeMap::new();
-        let family = 0;
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            &groups,
-            conn,
-            ElementType::TRI3,
-        );
-        let aabb = elem.to_aabb();
-        assert_eq!(aabb.lower(), [0.0, 0.0, 0.0]);
-        assert_eq!(aabb.upper(), [1.0, 1.0, 0.0]);
     }
 }

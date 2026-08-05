@@ -282,14 +282,14 @@ impl Evaluable for FieldExpr {
                 }
             }
             FieldExpr::Measure => FieldOwnedD::new(
-                measure(mesh.clone(), None)
+                measure(mesh, None)
                     .into_iter()
                     .map(|(k, v)| (k, v.into_dyn()))
                     .collect(),
             )
             .into(),
             FieldExpr::Centroids => FieldOwnedD::new(
-                centroids(mesh.clone(), None)
+                centroids(mesh, None)
                     .into_iter()
                     .map(|(k, v)| (k, v.into_dyn()))
                     .collect(),

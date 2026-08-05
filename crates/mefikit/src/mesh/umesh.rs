@@ -469,6 +469,11 @@ impl UMesh {
         }
     }
 
+    /// Returns a view of the coordinates array.
+    pub fn coords_mut(&mut self) -> nd::ArrayViewMut2<'_, f64> {
+        self.coords.view_mut()
+    }
+
     /// Add a full regular block to the mesh (inplace)
     ///
     /// If the et given already has a block, this block is replaced with the new one.
@@ -512,7 +517,7 @@ impl UMesh {
         element_type: ElementType,
         connectivity: &[usize],
         family: Option<usize>,
-        fields: Option<BTreeMap<String, nd::ArrayViewD<f64>>>,
+        fields: Option<BTreeMap<&str, nd::ArrayViewD<f64>>>,
     ) -> ElementId {
         match element_type.regularity() {
             Regularity::Regular => {

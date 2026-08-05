@@ -298,8 +298,8 @@ mod connectivity {
     fn poly_connectivity_access() {
         let mesh = make_mesh_2d_multi();
         let (data, offsets) = mesh.poly_connectivity(ElementType::PGON).unwrap();
-        assert!(data.len() > 0);
-        assert!(offsets.len() > 0);
+        assert!(!data.is_empty());
+        assert!(!offsets.is_empty());
     }
 
     #[test]
@@ -578,7 +578,6 @@ mod extract_mesh {
 
 mod selection {
     use super::*;
-    use sel;
 
     #[test]
     fn select_all_elements() {
@@ -613,7 +612,7 @@ mod selection {
     fn select_by_node_ids() {
         let mesh = make_mesh_2d_multi();
         let ids = mesh.select_ids(sel::nids(vec![0, 1], false));
-        assert!(ids.len() > 0);
+        assert!(!ids.is_empty());
     }
 }
 
@@ -623,7 +622,7 @@ mod geometric_operations {
     #[test]
     fn measure_quad_area() {
         let mesh = make_mesh_2d_quad();
-        let measures = measure(mesh.view(), None);
+        let measures = measure(&mesh.view(), None);
         let quad_measures = measures.get(&ElementType::QUAD4).unwrap();
         assert_abs_diff_eq!(quad_measures[0], 1.0, epsilon = 1e-10);
     }
@@ -633,7 +632,7 @@ mod geometric_operations {
         // Create a mesh with only regular elements (QUAD4) for measure
         let mut mesh = make_mesh_2d_quad();
         mesh.add_element(ElementType::QUAD4, &[0, 1, 3, 2], None, None);
-        let measures = measure(mesh.view(), None);
+        let measures = measure(&mesh.view(), None);
         let quad_measures = measures.get(&ElementType::QUAD4).unwrap();
         let total: f64 = quad_measures.iter().sum();
         assert!(total > 0.0);
@@ -660,7 +659,7 @@ mod snap_operations {
         let mut reference = UMesh::new(reference_coords.clone().into());
         reference.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
 
-        snap(&mut subject, reference.view(), 0.02);
+        snap(&mut subject, &reference.view(), 0.02);
         assert_abs_diff_eq!(subject.coords()[[1, 0]], 1.0, epsilon = 1e-6);
     }
 }

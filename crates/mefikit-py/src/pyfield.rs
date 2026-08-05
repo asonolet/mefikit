@@ -12,7 +12,7 @@ use mefikit::prelude::fieldexpr::FieldExpr;
 
 use crate::select::PySelection;
 
-#[pyclass(str)]
+#[pyclass(str, from_py_object)]
 #[pyo3(name = "Field")]
 #[derive(Clone)]
 pub struct PyField {

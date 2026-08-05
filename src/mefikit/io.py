@@ -13,6 +13,7 @@ type_order = [
     "TRI6",
     "QUAD4",
     "QUAD8",
+    "PGON",
     "TET4",
     "TET10",
     "HEX8",
@@ -43,6 +44,7 @@ mf_types_dim = {
     "TRI6": 2,
     "QUAD4": 2,
     "QUAD8": 2,
+    "PGON": 2,
     "TET4": 3,
     "TET10": 3,
     "HEX8": 3,
@@ -155,6 +157,7 @@ def install_conversions():
             "TRI6": pv.CellType.QUADRATIC_TRIANGLE,
             "QUAD4": pv.CellType.QUAD,
             "QUAD8": pv.CellType.QUADRATIC_QUAD,
+            "PGON": pv.CellType.POLYGON,
             "TET4": pv.CellType.TETRA,
             "TET10": pv.CellType.QUADRATIC_TETRA,
             "HEX8": pv.CellType.HEXAHEDRON,
@@ -174,6 +177,17 @@ def install_conversions():
             elems_type = np.array([mf_types_to_pv[et]] * n_elem)
             return new_connectivity, elems_type
 
+        def _mf_poly_to_pv_connectivity(et: str, conn: np.ndarray, offsets: np.ndarray):
+            n_elem = offsets.shape[0]
+            offsets = offsets.astype(int)
+
+            num_nodes = np.r_[offsets[0], offsets[1:] - offsets[:-1]]
+            pos = np.r_[0, offsets[:-1]]
+
+            new_connectivity = np.insert(conn.flatten(), pos, num_nodes)
+            elems_type = np.array([mf_types_to_pv[et]] * n_elem)
+            return new_connectivity, elems_type
+
         conns = []
         et_typess = []
         fields_dict = {f: [] for f in fields}
@@ -181,7 +195,11 @@ def install_conversions():
             if et not in blocks or (dim != "all" and mf_types_dim[et] != dim):
                 continue
 
-            conn, et_types = _mf_reg_to_pv_connectivity(et, blocks[et])
+            if et == "PGON":
+                conn, offsets = blocks[et]
+                conn, et_types = _mf_poly_to_pv_connectivity(et, conn, offsets)
+            else:
+                conn, et_types = _mf_reg_to_pv_connectivity(et, blocks[et])
             conns.append(conn)
             et_typess.append(et_types)
             for f, v in fields.items():

@@ -100,7 +100,7 @@ close to the data, while remaining concise and expressive.
   - `snap` - To snap nodes of one mesh on another mesh nodes
   - `merge_nodes` - Merges duplicated nodes
   - `fuse` – Merge two meshes into one.
-  - `intersect` – Compute boolean mesh intersection.
+  - `overlay` – Boolean mesh overlay (imprint, union, intersection, difference).
   - `split` – Cut a mesh using another.
   - `conformize` – Intersect shared faces, snap and merge near-nodes.
 

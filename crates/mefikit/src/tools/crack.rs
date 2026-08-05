@@ -16,7 +16,7 @@ use crate::tools::selector::{MeshSelect, sel};
 /// Gets the ids of elements from partmesh which are in mesh_ref.
 ///
 /// Supposes that the coordinates array is the same.
-fn find_equals(mesh_ref: UMeshView, partmesh: UMeshView) -> Vec<Option<ElementId>> {
+fn find_equals(mesh_ref: &UMeshView, partmesh: &UMeshView) -> Vec<Option<ElementId>> {
     let dims: FxHashSet<Dimension> = partmesh.element_types().map(|&et| et.dimension()).collect();
     let mut hash_to_ref: FxHashMap<SortedVecKey, ElementId> = HashMap::default();
     for dim in dims {
@@ -53,7 +53,7 @@ fn build_subgraph(
     subgraph
 }
 
-fn compute_node_to_elems(mesh: UMeshView) -> FxHashMap<usize, ElementIds> {
+fn compute_node_to_elems(mesh: &UMeshView) -> FxHashMap<usize, ElementIds> {
     let mut node_to_elem: FxHashMap<usize, ElementIds> =
         FxHashMap::with_capacity_and_hasher(mesh.used_nodes().len(), FxBuildHasher);
     for e in mesh.elements() {
@@ -68,14 +68,14 @@ fn compute_node_to_elems(mesh: UMeshView) -> FxHashMap<usize, ElementIds> {
     node_to_elem
 }
 
-pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
+pub fn crack(mut mesh: UMesh, cut: &UMeshView) -> UMesh {
     // First extract the vicinity of the cut
     let nodes = cut.used_nodes();
     let index = mesh.select_ids(sel::nids(nodes.clone(), false));
     let mut near_mesh = mesh.extract(&index, true);
     let (descending_mesh, f2c) = compute_sub_to_elem(&near_mesh, None, None);
     // Throws if some element in cut is not in descending_mesh
-    let cut_ids = find_equals(descending_mesh.view(), cut.view());
+    let cut_ids = find_equals(&descending_mesh.view(), &cut.view());
     let cut_c2c: Vec<[ElementId; 2]> = cut_ids
         .into_iter()
         .map(|x| x.expect("cut elements should be found in mesh descending_mesh."))
@@ -93,7 +93,7 @@ pub fn crack(mut mesh: UMesh, cut: UMeshView) -> UMesh {
     // let mut n2o_nodes: FxHashMap<usize, usize> =
     //     FxHashMap::with_capacity_and_hasher(2 * nodes.len(), FxBuildHasher);
 
-    let node_to_elem: FxHashMap<usize, ElementIds> = compute_node_to_elems(near_mesh.view());
+    let node_to_elem: FxHashMap<usize, ElementIds> = compute_node_to_elems(&near_mesh.view());
 
     for n in nodes {
         // 1. Build graph of cells touching node n

@@ -236,7 +236,7 @@ fn cross(a: ArrayView1<f64>, b: ArrayView1<f64>) -> Array1<f64> {
 //     nd::concatenate(nd::Axis(0), &new_coords_views).unwrap()
 // }
 
-fn extrude_dup_connectivity(mesh: UMeshView, et: ElementType, n: usize) -> nd::Array2<usize> {
+fn extrude_dup_connectivity(mesh: &UMeshView, et: ElementType, n: usize) -> nd::Array2<usize> {
     let old_connectivity = mesh.regular_connectivity(et).unwrap();
     let n_nodes = mesh.coords().nrows();
     let old_elem_size = old_connectivity.ncols();
@@ -260,7 +260,7 @@ fn extrude_dup_connectivity(mesh: UMeshView, et: ElementType, n: usize) -> nd::A
     new_connectivity
 }
 
-fn extrude_inv_connectivity(mesh: UMeshView, et: ElementType, n: usize) -> nd::Array2<usize> {
+fn extrude_inv_connectivity(mesh: &UMeshView, et: ElementType, n: usize) -> nd::Array2<usize> {
     let old_connectivity = mesh.regular_connectivity(et).unwrap();
     let n_nodes = mesh.coords().nrows();
     let old_elem_size = old_connectivity.ncols();
@@ -285,7 +285,7 @@ fn extrude_inv_connectivity(mesh: UMeshView, et: ElementType, n: usize) -> nd::A
 }
 
 fn extrude_connectivity(
-    mesh: UMeshView,
+    mesh: &UMeshView,
     n: usize,
     new_coords: ndarray::ArrayBase<ndarray::OwnedRepr<f64>, ndarray::Dim<[usize; 2]>, f64>,
 ) -> UMesh {
@@ -296,17 +296,17 @@ fn extrude_connectivity(
         match et {
             VERTEX => extruded_mesh.add_regular_block(
                 SEG2,
-                extrude_dup_connectivity(mesh.view(), et, n).into_shared(),
+                extrude_dup_connectivity(&mesh.view(), et, n).into_shared(),
                 None,
             ),
             SEG2 => extruded_mesh.add_regular_block(
                 QUAD4,
-                extrude_inv_connectivity(mesh.view(), et, n).into_shared(),
+                extrude_inv_connectivity(&mesh.view(), et, n).into_shared(),
                 None,
             ),
             QUAD4 => extruded_mesh.add_regular_block(
                 HEX8,
-                extrude_dup_connectivity(mesh.view(), et, n).into_shared(),
+                extrude_dup_connectivity(&mesh.view(), et, n).into_shared(),
                 None,
             ),
             _ => todo!("Extrusion of {et:?} is not implemented yet"),
@@ -315,7 +315,7 @@ fn extrude_connectivity(
     extruded_mesh
 }
 
-pub fn extrude(mesh: UMeshView, along: &[f64]) -> UMesh {
+pub fn extrude(mesh: &UMeshView, along: &[f64]) -> UMesh {
     if along.is_empty() {
         return mesh.to_shared();
     }
@@ -328,7 +328,7 @@ pub fn extrude(mesh: UMeshView, along: &[f64]) -> UMesh {
     extrude_connectivity(mesh, along.len() - 1, new_coords)
 }
 
-pub fn extrude_parallel(mesh: UMeshView, along: nd::ArrayView2<'_, f64>) -> UMesh {
+pub fn extrude_parallel(mesh: &UMeshView, along: nd::ArrayView2<'_, f64>) -> UMesh {
     if along.is_empty() {
         return mesh.to_shared();
     }
@@ -341,7 +341,7 @@ pub fn extrude_parallel(mesh: UMeshView, along: nd::ArrayView2<'_, f64>) -> UMes
     extrude_connectivity(mesh, along.nrows() - 1, new_coords)
 }
 
-pub fn extrude_curv(mesh: UMeshView, along: nd::ArrayView2<'_, f64>) -> UMesh {
+pub fn extrude_curv(mesh: &UMeshView, along: nd::ArrayView2<'_, f64>) -> UMesh {
     if along.is_empty() {
         return mesh.to_shared();
     }
@@ -364,29 +364,29 @@ pub trait Extrudable {
 
 impl Extrudable for UMeshView<'_> {
     fn extrude(&self, along: &[f64]) -> UMesh {
-        extrude(self.clone(), along)
+        extrude(self, along)
     }
 
     fn extrude_parallel(&self, along: ndarray::ArrayView2<'_, f64>) -> UMesh {
-        extrude_parallel(self.clone(), along)
+        extrude_parallel(self, along)
     }
 
     fn extrude_curv(&self, along: ndarray::ArrayView2<'_, f64>) -> UMesh {
-        extrude_curv(self.clone(), along)
+        extrude_curv(self, along)
     }
 }
 
 impl Extrudable for UMesh {
     fn extrude(&self, along: &[f64]) -> UMesh {
-        extrude(self.view(), along)
+        extrude(&self.view(), along)
     }
 
     fn extrude_parallel(&self, along: ndarray::ArrayView2<'_, f64>) -> UMesh {
-        extrude_parallel(self.view(), along)
+        extrude_parallel(&self.view(), along)
     }
 
     fn extrude_curv(&self, along: ndarray::ArrayView2<'_, f64>) -> UMesh {
-        extrude_curv(self.view(), along)
+        extrude_curv(&self.view(), along)
     }
 }
 

@@ -14,7 +14,7 @@ fn merge_nodes(c: &mut Criterion) {
                         .add_axis((0..(i + 1)).map(|k| (k as f64) / (i as f64)).collect())
                         .build();
                     let cut = mf::compute_descending(&m1, None, None);
-                    mf::crack(m1, cut.view())
+                    mf::crack(m1, &cut.view())
                 },
                 |mut cracked| {
                     mf::merge_nodes(std::hint::black_box(&mut cracked), 1e-12);

@@ -19,7 +19,7 @@ fn snap(c: &mut Criterion) {
                 },
                 |(m1, m2)| {
                     let mut m1 = m1.clone();
-                    let m2_view = m2.view();
+                    let m2_view = &m2.view();
                     mf::snap(black_box(&mut m1), black_box(m2_view), 1e-12);
                 },
                 BatchSize::LargeInput,

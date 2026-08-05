@@ -15,7 +15,7 @@ fn measure2(c: &mut Criterion) {
                         .build()
                 },
                 |mesh| {
-                    let view = mesh.view();
+                    let view = &mesh.view();
                     std::hint::black_box(mf::measure(view, None));
                 },
                 BatchSize::LargeInput,

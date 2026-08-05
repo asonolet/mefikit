@@ -41,6 +41,20 @@ pub enum Intersections {
     Segment([PointId; 2]),
 }
 
+impl Intersections {
+    pub fn len(&self) -> usize {
+        match self {
+            Self::None => 0,
+            Self::One(_) => 1,
+            Self::Two(_) => 2,
+            Self::Segment(_) => 2,
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::None)
+    }
+}
+
 #[inline(always)]
 fn cross_prod2(v1: Vector2<f64>, v2: Vector2<f64>) -> f64 {
     v1[0] * v2[1] - v1[1] * v2[0]
@@ -115,7 +129,7 @@ fn colinear_seg_intersection(
     let or = na::Point2::origin();
     let o = or + ((p1 - or) + (p2 - or) + (p3 - or) + (p4 - or)) / 4.0;
     let dir = p2 - p1;
-    let ts = if dir[0] > dir[1] {
+    let ts = if dir[0].abs() > dir[1].abs() {
         [
             (p1[0] - o[0]) / dir[0],
             (p2[0] - o[0]) / dir[0],
@@ -140,6 +154,7 @@ fn colinear_seg_intersection(
         [P1, a, P2, _] => Intersections::Segment([a, P2]),
         [P1, a, b, P2] => Intersections::Segment([a, b]),
         [_, P1, a, P2] => Intersections::Segment([P1, a]),
+        [_, P1, P2, _] => Intersections::Segment([P1, P2]),
         _ => {
             panic!(
                 "This situation should not be possible as P1 is before P2 along the P2 - P1 vec."

@@ -126,3 +126,70 @@ plotter.show()
 
 
 ![png](geometric_tools_files/geometric_tools_11_0.png)
+
+
+
+## Overlay
+
+The intersection is valid in the following counditions :
+- mesh1 and mesh2 are valid (no self recovering),
+- mesh1 and mesh2 are 2d (xy),
+- correctly oriented (CCW element connectivity),
+- and fully merged (no unmerged nodes).
+
+Mesh1 and mesh2 may have any number of kind of 2d elements of the first order (TRI3, QUAD4, PGON).
+A future version of this algorithm will work with quadratic elements (TRI7, QUAD8, QPGON).
+
+
+```python
+x = np.linspace(0.0, 3.0, 4, endpoint=True)
+mesh = mf.build_cmesh(x, x)
+
+eps = 0.5
+dec = x[-1] / len(x) + eps
+x2 = np.linspace(dec, x[-1] + dec, len(x), endpoint=True)
+mesh2 = mf.build_cmesh(x2, x2)
+
+imprint2on1 = mesh.overlay(mesh2, mf.OverlayOperation.IMPRINT)
+imprint1on2 = mesh2.overlay(mesh, mf.OverlayOperation.IMPRINT)
+
+union = mesh.overlay(mesh2, mf.OverlayOperation.UNION)
+diff = mesh.overlay(mesh2, mf.OverlayOperation.DIFFERENCE)
+symdiff = mesh.overlay(mesh2, mf.OverlayOperation.SYMMETRIC_DIFFERENCE)
+intersection = mesh.overlay(mesh2, mf.OverlayOperation.INTERSECTION)
+
+meshes = [
+    [mesh, mesh2],
+    [union, intersection],
+    [diff, symdiff],
+    [imprint2on1, imprint1on2],
+]
+labels = [
+    ["Mesh1", "Mesh2, staggered"],
+    ["Union", "Intersection"],
+    ["Difference", "Symmetric difference"],
+    ["Imprint over 1", "Imprint over 2"],
+]
+```
+
+
+```python
+pt = pv.Plotter(shape=(4, 2))
+for i in range(4):
+    for j in range(2):
+        m = meshes[i][j]
+        t = labels[i][j]
+        pt.subplot(i, j)
+        pt.add_text(t)
+        pt.add_mesh(m.to_pyvista(), show_edges=True)
+        pt.camera_position = "xy"
+pt.show(cpos="xy")
+```
+
+
+
+![png](geometric_tools_files/geometric_tools_15_0.png)
+
+
+
+The ugly cell in the center in the difference and symmetric difference comes from the plotting of non convex cells in pyvista. It is just a known plotting bug (due to optimisation quirks).

@@ -17,7 +17,7 @@ fn crack(c: &mut Criterion) {
                     (m1, cut)
                 },
                 |(m1, cut)| {
-                    let cut_view = cut.view();
+                    let cut_view = &cut.view();
                     std::hint::black_box(mf::crack(m1, cut_view));
                 },
                 BatchSize::LargeInput,

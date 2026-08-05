@@ -108,7 +108,7 @@ mod tests {
         };
         let ids = mesh.select_ids(Selection::CentroidSelection(selection));
         // Quad centroid is at (0.5, 0.5) which is within radius 0.5
-        assert!(ids.len() > 0);
+        assert!(!ids.is_empty());
     }
 
     #[test]
@@ -119,7 +119,7 @@ mod tests {
             r2: 0.5,
         };
         let ids = mesh.select_ids(Selection::CentroidSelection(selection));
-        assert!(ids.len() > 0);
+        assert!(!ids.is_empty());
     }
 
     #[test]
@@ -130,7 +130,7 @@ mod tests {
             max: [1.0, 1.0],
         });
         let ids = mesh.select_ids(selection);
-        assert!(ids.len() > 0);
+        assert!(!ids.is_empty());
     }
 
     #[test]
@@ -141,6 +141,6 @@ mod tests {
             max: [1.0, 1.0],
         });
         let ids = mesh.select_ids(selection);
-        assert!(ids.len() > 0);
+        assert!(!ids.is_empty());
     }
 }
