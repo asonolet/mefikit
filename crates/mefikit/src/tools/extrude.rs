@@ -1,3 +1,8 @@
+//! Mesh extrusion to build a higher-dimensional mesh.
+//!
+//! This module builds a mesh of one dimension higher than the input mesh by extruding it.
+//! Duplicated nodes are allowed, both in the original mesh and the 1d mesh.
+
 use crate::mesh::{ElementType, UMesh, UMeshView};
 
 use ndarray::{self as nd, ArrayView1, s};
