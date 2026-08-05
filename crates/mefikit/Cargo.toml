@@ -17,8 +17,9 @@ keywords = ["mesh", "cfd", "geometry", "hpc"]
 arrayvec = { workspace = true }
 bvh = "0.12.0"
 derive-where = { workspace = true, features = ["serde"] }
-hdf5-metno = { version = "0.14.0", features = ["static"] }
+hdf5-metno = { version = "0.14.0", features = ["static"], optional = true }
 itertools = { workspace = true }
+kiddo = { version = "6.0.0", default-features = false, features = ["fixed"] }
 nalgebra = { workspace = true }
 ndarray = { workspace = true, public = true }
 once_cell = { workspace = true }
@@ -35,8 +36,8 @@ vtkio = { workspace = true, optional = true }
 
 [features]
 default = ["io"]
-io = ["dep:vtkio"]
-rayon = ["dep:rayon"]
+io = ["dep:vtkio", "dep:hdf5-metno"]
+rayon = ["dep:rayon", "kiddo/multi-threaded"]
 
 [lib]
 bench = false
