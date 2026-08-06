@@ -62,7 +62,7 @@ impl Measurable for UMesh {
     }
     fn measure_update(&mut self, name: &str, dim: Option<Dimension>) {
         let field = FieldOwned::new(measure(&self.view(), dim));
-        self.update_field(name, field.into_shared().into_dyn(), dim);
+        self.update_field(name, field.into_shared().into_dyn());
     }
 }
 

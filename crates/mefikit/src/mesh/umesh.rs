@@ -152,6 +152,14 @@ where
             .flat_map(|block| block.iter(self.coords.view()))
     }
 
+    /// Returns an iterator over all elements in the mesh.
+    pub fn elements_of_type(&self, et: ElementType) -> impl Iterator<Item = Element<'_>> {
+        self.element_blocks
+            .iter()
+            .filter_map(move |(e, b)| if *e == et { Some(b) } else { None })
+            .flat_map(|block| block.iter(self.coords.view()))
+    }
+
     /// Parallel iterator over all elements (serial fallback without `rayon`).
     #[cfg(feature = "rayon")]
     pub fn par_elements(&self) -> impl ParallelIterator<Item = Element<'_>>
@@ -367,14 +375,8 @@ where
         &mut self,
         name: &str,
         mut field: FieldBase<F, nd::IxDyn>,
-        dim: Option<Dimension>,
     ) -> Option<FieldBase<F, nd::IxDyn>> {
-        let dim = match dim {
-            Some(d) => d,
-            None => self
-                .topological_dimension()
-                .expect("This mesh should not be empty"),
-        };
+        let dim = field.dimension()?;
         let etypes: Vec<_> = self
             .element_types()
             .filter(|et| et.dimension() == dim)

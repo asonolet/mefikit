@@ -5,6 +5,7 @@ use std::{
 };
 
 use mefikit::{
+    mesh::{ElementType, FieldArcD},
     prelude as mf,
     tools::{
         Descendable, Measurable, MeshSelect, NodeDuplicates, Overlayable,
@@ -120,6 +121,19 @@ impl PyUMesh {
         });
         self.inner
             .add_regular_block(str_to_etype(et), block.as_array().to_shared(), fields);
+    }
+
+    /// Add a field to the mesh.
+    fn set_field(
+        &mut self,
+        name: &str,
+        field: BTreeMap<String, np::PyReadonlyArray<'_, f64, nd::IxDyn>>,
+    ) {
+        let field: BTreeMap<ElementType, _> = field
+            .iter()
+            .map(|(et, f)| (str_to_etype(et), f.as_array().to_shared()))
+            .collect();
+        self.inner.update_field(name, FieldArcD::new(field));
     }
 
     #[staticmethod]

@@ -328,7 +328,7 @@ mod fields {
         let mut field_map = BTreeMap::new();
         field_map.insert(ElementType::QUAD4, field_data);
         let field_base = FieldBase::new(field_map);
-        mesh.update_field("temperature", field_base, Some(Dimension::D2));
+        mesh.update_field("temperature", field_base);
         let field = mesh.field("temperature", Some(Dimension::D2));
         assert!(field.is_some());
     }
@@ -340,7 +340,7 @@ mod fields {
         let mut field_map = BTreeMap::new();
         field_map.insert(ElementType::QUAD4, field_data);
         let field_base = FieldBase::new(field_map);
-        mesh.update_field("temperature", field_base, Some(Dimension::D2));
+        mesh.update_field("temperature", field_base);
         let field_names: Vec<_> = mesh.fields().map(|(name, _)| name).collect();
         assert_eq!(field_names.len(), 1);
         assert_eq!(field_names[0], "temperature");
@@ -353,7 +353,7 @@ mod fields {
         let mut field_map = BTreeMap::new();
         field_map.insert(ElementType::QUAD4, field_data);
         let field_base = FieldBase::new(field_map);
-        mesh.update_field("temperature", field_base, Some(Dimension::D2));
+        mesh.update_field("temperature", field_base);
         let removed = mesh.remove_field("temperature", Some(Dimension::D2));
         assert!(removed.is_some());
         let field = mesh.field("temperature", Some(Dimension::D2));

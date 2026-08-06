@@ -58,6 +58,6 @@ pub trait Transfer {
         Self: Sized,
     {
         let field = self.apply(field, field_nature, default);
-        target.update_field(name, field.into_shared(), Some(self.tgt_dim()))
+        target.update_field(name, field.into_shared())
     }
 }

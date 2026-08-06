@@ -348,7 +348,7 @@ impl MeshEvalUpdatable for UMesh {
         expr: FieldExpr,
     ) -> Option<FieldArcD> {
         let field = self.eval_field(dim, expr);
-        self.update_field(name, field.into_shared(), dim)
+        self.update_field(name, field.into_shared())
     }
 }
 
