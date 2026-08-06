@@ -974,6 +974,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
+name = "lstsq"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23ec6a3ba23bb2580ae4ea21f002edff262671a7bcc833f87728e2f8007a5ea2"
+dependencies = [
+ "nalgebra",
+]
+
+[[package]]
 name = "lz4_flex"
 version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1025,6 +1034,7 @@ dependencies = [
  "hdf5-metno",
  "itertools 0.15.0",
  "kiddo",
+ "lstsq",
  "nalgebra",
  "ndarray",
  "once_cell",

@@ -59,3 +59,59 @@ impl PyConstantPiecewise {
             .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
     }
 }
+
+#[pyclass(str, from_py_object)]
+#[pyo3(name = "MovingLeastSquares")]
+#[derive(Clone)]
+pub struct PyMovingLeastSquares {
+    inner: mf::MovingLeastSquaresTransfer,
+}
+
+impl Display for PyMovingLeastSquares {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self.inner)
+    }
+}
+
+impl From<mf::MovingLeastSquaresTransfer> for PyMovingLeastSquares {
+    fn from(transfer: mf::MovingLeastSquaresTransfer) -> Self {
+        PyMovingLeastSquares { inner: transfer }
+    }
+}
+
+impl From<PyMovingLeastSquares> for mf::MovingLeastSquaresTransfer {
+    fn from(pytransfer: PyMovingLeastSquares) -> Self {
+        pytransfer.inner
+    }
+}
+
+#[pymethods]
+impl PyMovingLeastSquares {
+    #[new]
+    fn new(src_mesh: &PyUMesh, tgt_mesh: &PyUMesh) -> Self {
+        mf::MovingLeastSquaresTransfer::new(
+            &into_view(src_mesh),
+            &into_view(tgt_mesh),
+            10,
+            mf::DistanceWeighting::None,
+        )
+        .into()
+    }
+
+    #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0))]
+    fn apply_update(
+        &self,
+        src_mesh: &PyUMesh,
+        field_name: &str,
+        tgt_mesh: &mut PyUMesh,
+        tgt_field_name: Option<&str>,
+        def_val: f64,
+    ) {
+        let name = tgt_field_name.unwrap_or(field_name);
+        let src_view = into_view(src_mesh);
+        let field = src_view.field(field_name, None).unwrap();
+        let field_nature = mf::FieldNature::Intensive;
+        self.inner
+            .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+    }
+}

@@ -244,7 +244,7 @@ mod tests {
     fn source_with_field(values: nd::Array<f64, nd::IxDyn>) -> UMesh {
         let mut source = me::make_imesh_2d(1);
         let field = FieldOwnedD::new(BTreeMap::from([(ElementType::QUAD4, values)]));
-        source.update_field("f", field.into_shared(), Some(Dimension::D2));
+        source.update_field("f", field.into_shared());
         source
     }
 
@@ -283,7 +283,7 @@ mod tests {
             ElementType::QUAD4,
             nd::array![1.0, 2.0].into_dyn(),
         )]));
-        source.update_field("f", field.into_shared(), Some(Dimension::D2));
+        source.update_field("f", field.into_shared());
         let target = me::make_imesh_2d(4);
         let op =
             ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
@@ -339,8 +339,8 @@ mod tests {
             ElementType::QUAD4,
             nd::array![3.0].into_dyn(),
         )]));
-        source.update_field("f1", f1.into_shared(), Some(Dimension::D2));
-        source.update_field("f2", f2.into_shared(), Some(Dimension::D2));
+        source.update_field("f1", f1.into_shared());
+        source.update_field("f2", f2.into_shared());
         let target = me::make_imesh_2d(2);
         let op =
             ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
@@ -395,7 +395,7 @@ mod tests {
             ElementType::TET4,
             nd::array![5.0].into_dyn(),
         )]));
-        source.update_field("f", field.into_shared(), Some(Dimension::D3));
+        source.update_field("f", field.into_shared());
         let tcoords = nd::ArcArray2::from_shape_vec(
             (4, 3),
             vec![0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.5, 0.0],

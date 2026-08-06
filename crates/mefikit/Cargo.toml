@@ -20,6 +20,7 @@ derive-where = { workspace = true, features = ["serde"] }
 hdf5-metno = { version = "0.14.0", features = ["static"], optional = true }
 itertools = { workspace = true }
 kiddo = { version = "6.0.0", default-features = false, features = ["fixed"] }
+lstsq = "0.7.0"
 nalgebra = { workspace = true }
 ndarray = { workspace = true, public = true }
 once_cell = { workspace = true }

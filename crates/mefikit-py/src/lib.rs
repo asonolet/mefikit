@@ -32,6 +32,9 @@ mod mefipy {
     use super::sel;
 
     #[pymodule_export]
+    use super::transfer;
+
+    #[pymodule_export]
     use super::pyumesh::{PyOverlayOperation, PyUMesh};
 
     #[pymodule_export]
