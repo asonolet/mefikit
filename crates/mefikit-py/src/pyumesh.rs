@@ -268,7 +268,7 @@ impl PyUMesh {
     }
 
     fn split(&self) -> Self {
-        let new_mesh = mf::split(self.inner.view());
+        let new_mesh = mf::split(&self.inner.view());
         new_mesh.into()
     }
 
