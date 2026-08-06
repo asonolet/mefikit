@@ -1,72 +1,139 @@
 use std::num::NonZero;
 
 use kiddo::{ImmutableKdTree, dist::SquaredEuclidean};
-use ndarray::{Array2, ArrayD, ArrayView2, ArrayViewD, Zip};
+use nalgebra as na;
+use ndarray::{Array2, ArrayD, ArrayView1, ArrayView2, ArrayViewD, Zip};
 
+/// How the distance from a target interpolation point to its `k` nearest source points is turned
+/// into a weight of the local (moving) least-squares fit.
+///
+/// All kernels are written as a function of `s^2 = (r / h)^2`, where `r` is the distance from the
+/// target point to a source point and `h` is a characteristic length chosen per target point (the
+/// distance to its farthest selected neighbour).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DistanceWeighting {
+    /// All selected neighbours get the same weight: a plain linear least-squares fit.
+    None,
+    /// Inverse-distance weight `w = (h / r)^exponent` (`2.0` gives the usual inverse squared
+    /// distance).
+    InverseDistance { exponent: f64 },
+    /// Compact-support moving least squares kernel `w = (1 - s^2)^exponent` for `s < 1`, zero
+    /// otherwise (`exponent = 2` or `3` are the usual choices).
+    CompactSupport { exponent: f64 },
+    /// Gaussian kernel `w = exp(-s^2)`.
+    Gaussian,
+}
+
+impl DistanceWeighting {
+    /// Evaluates the kernel on the squared scaled distance `s2 = (r / h)^2`.
+    fn kernel(self, s2: f64) -> f64 {
+        match self {
+            Self::None => 1.0,
+            Self::InverseDistance { exponent } => s2.powf(-0.5 * exponent),
+            Self::CompactSupport { exponent } => {
+                if s2 >= 1.0 {
+                    0.0
+                } else {
+                    (1.0 - s2).powf(exponent)
+                }
+            }
+            Self::Gaussian => (-s2).exp(),
+        }
+    }
+}
+
+/// A linear (moving least-squares) interpolation transfer between point clouds.
+///
+/// The operator is built from the coordinates only, so it can be reused to evaluate many fields
+/// (e.g. across time steps) as long as the point sets do not change.
 pub struct LinearInterpTransfer {
-    /// Interpolation operator
-    indices: Array2<usize>, // (n_tgt × k)
-    weights: Array2<f64>, // (n_tgt × k)
+    /// Number of source points the operator was built from.
+    n_src: usize,
+    /// Indices of the `k` source points used for each target point. Shape `(n_tgt × k)`.
+    indices: Array2<usize>,
+    /// Interpolation weights, one per selected source point. Shape `(n_tgt × k)`.
+    weights: Array2<f64>,
 }
 
 impl LinearInterpTransfer {
+    /// Builds a linear (moving least-squares) interpolation operator from source points to target
+    /// points.
+    ///
+    /// For each target point the `k` nearest source points are gathered and a degree-1 polynomial
+    /// is fitted through them by weighted least squares, the weights coming from
+    /// [`DistanceWeighting`]. The fit is evaluated at the target point, which yields `k`
+    /// interpolation weights `w_i` such that the transferred value is `sum_i w_i f(x_i)`. Affine
+    /// fields are reproduced exactly when `k == d + 1` and the neighbours are not degenerate. The
+    /// characteristic length `h` of the weighting kernel is the distance from the target point to
+    /// its farthest selected neighbour.
+    ///
+    /// # Panics
+    ///
+    /// - If `src_coords` and `tgt_coords` do not share the same space dimension, or if it is not 2
+    ///   or 3.
+    /// - If `k` is zero.
     pub fn from_coords(
         src_coords: &ArrayView2<f64>,
         tgt_coords: &ArrayView2<f64>,
         k: usize,
+        weighting: DistanceWeighting,
     ) -> Self {
         let dim = src_coords.ncols();
-        assert_eq!(dim, 3); // simplify for now
-
-        let source = as_points3(src_coords).unwrap();
-
-        let tree = ImmutableKdTree::new_from_slice(source).unwrap();
+        assert_eq!(
+            dim,
+            tgt_coords.ncols(),
+            "Source and target coordinates should have the same number of columns, got source = {dim} and target = {}",
+            tgt_coords.ncols()
+        );
+        assert!(
+            (2..=3).contains(&dim),
+            "Linear interpolation is only supported in 2D and 3D space, got {dim}D"
+        );
+        assert!(k > 0, "k should be at least 1");
 
         let n_tgt = tgt_coords.nrows();
+        let n_src = src_coords.nrows();
+        let mut indices = Array2::<usize>::zeros((n_tgt, k));
+        let mut weights = Array2::<f64>::zeros((n_tgt, k));
 
-        let mut indices: Array2<usize> = Array2::zeros((n_tgt, k));
-        let mut weights = Array2::zeros((n_tgt, k));
-
-        for (j, p) in tgt_coords.outer_iter().enumerate() {
-            //------------------------------------------
-            // 1. k nearest neighbours
-            //------------------------------------------
-
-            let nn = tree
-                .query(&[p[0], p[1], p[2]])
-                .nearest_n::<SquaredEuclidean<f64>>(NonZero::new(k).unwrap())
-                .execute();
-
-            //------------------------------------------
-            // 2. Compute interpolation weights
-            //------------------------------------------
-
-            // Placeholder
-            let w = vec![1.0; k];
-
-            for l in 0..k {
-                indices[[j, l]] = nn[l].item as usize;
-            }
-
-            // TODO:
-            //
-            // Compute weights from
-            //   self.src_coords
-            //   target point p
-            //   neighbour indices
-            //
-            // Store them in w[]
-
-            for l in 0..k {
-                weights[[j, l]] = w[l];
-            }
+        match dim {
+            2 => solve_points::<2>(
+                src_coords,
+                tgt_coords,
+                k,
+                weighting,
+                &mut indices,
+                &mut weights,
+            ),
+            3 => solve_points::<3>(
+                src_coords,
+                tgt_coords,
+                k,
+                weighting,
+                &mut indices,
+                &mut weights,
+            ),
+            _ => unreachable!(),
         }
-        Self { indices, weights }
+
+        Self {
+            n_src,
+            indices,
+            weights,
+        }
     }
 
+    /// Evaluates the operator on a field defined on the source points.
+    ///
+    /// `src_field` has shape `(n_src, ...)`; the result has the same trailing shape with the first
+    /// dimension replaced by the number of target points.
     pub fn apply_on_array(&self, src_field: &ArrayViewD<f64>) -> ArrayD<f64> {
         let n_src = src_field.shape()[0];
-        assert_eq!(n_src, self.indices.nrows());
+        assert_eq!(
+            n_src, self.n_src,
+            "The field should have one entry per source point, got {n_src} for {}",
+            self.n_src
+        );
 
         let n_compo = src_field.len() / n_src;
 
@@ -98,23 +165,337 @@ impl LinearInterpTransfer {
     }
 }
 
-fn as_points3<'a, 'b>(coords: &'a ArrayView2<'b, f64>) -> Option<&'b [[f64; 3]]>
-where
-    'b: 'a,
-{
-    if coords.ncols() != 3 {
-        return None;
+/// Computes the interpolation weights for every target point.
+fn solve_points<const D: usize>(
+    src_coords: &ArrayView2<f64>,
+    tgt_coords: &ArrayView2<f64>,
+    k: usize,
+    weighting: DistanceWeighting,
+    indices: &mut Array2<usize>,
+    weights: &mut Array2<f64>,
+) {
+    let tree = ImmutableKdTree::new_from_slice(as_points::<D>(src_coords)).unwrap();
+
+    for (j, p) in tgt_coords.outer_iter().enumerate() {
+        let query: [f64; D] = std::array::from_fn(|c| p[c]);
+        let nn = tree
+            .query(&query)
+            .nearest_n::<SquaredEuclidean<f64>>(NonZero::new(k).unwrap())
+            .execute();
+
+        let nb_idx: Vec<usize> = nn.iter().map(|r| r.item as usize).collect();
+        let r2: Vec<f64> = nn.iter().map(|r| r.distance).collect();
+
+        for (l, &i) in nb_idx.iter().enumerate() {
+            indices[[j, l]] = i;
+        }
+
+        // A target point coinciding with a source point interpolates it exactly.
+        if let Some(l) = r2.iter().position(|&r2| r2 == 0.0) {
+            weights.row_mut(j).fill(0.0);
+            weights[[j, l]] = 1.0;
+            continue;
+        }
+
+        // h = max(r), slightly inflated so that compact-support kernels keep the farthest neighbour
+        // inside their support and the least-squares matrix full rank.
+        let r_max = r2.iter().copied().fold(0.0_f64, f64::max).sqrt();
+        let h2 = r_max * r_max * (1.0 + 1e-12);
+
+        let w_kernel: Vec<f64> = r2.iter().map(|&r2| weighting.kernel(r2 / h2)).collect();
+        let finite = w_kernel.iter().all(|w| w.is_finite());
+
+        let w_interp = if finite {
+            weighted_least_squares(src_coords, &nb_idx, &p, &w_kernel)
+        } else {
+            None
+        };
+
+        let w_interp = match w_interp {
+            Some(w) if w.iter().all(|w| w.is_finite()) => w,
+            _ => {
+                // Degenerate or singular local system: fall back to normalized kernel weights
+                // (Shepard's method), then to a plain average.
+                let sum: f64 = w_kernel.iter().filter(|w| w.is_finite()).sum();
+                if sum > 0.0 {
+                    w_kernel
+                        .iter()
+                        .map(|&w| if w.is_finite() { w / sum } else { 0.0 })
+                        .collect()
+                } else {
+                    vec![1.0 / k as f64; k]
+                }
+            }
+        };
+
+        for (l, w) in w_interp.into_iter().enumerate() {
+            weights[[j, l]] = w;
+        }
+    }
+}
+
+/// Fits `a + b·x` to the selected source points, weighted by `w_kernel`, and returns the
+/// interpolation weights such that the value at `p` is a weighted sum of the neighbour values.
+///
+/// With `A` the `k × (d+1)` design matrix whose rows are `[1, x]` and `W` the diagonal
+/// kernel-weight matrix, the interpolation weights are `w = W A (Aᵀ W A)⁻¹ [1; p]`. The
+/// `(d+1) × (d+1)` normal-equations system is symmetric positive semi-definite and is solved by a
+/// Cholesky decomposition; `None` is returned when it is not (numerically) positive definite.
+fn weighted_least_squares(
+    src_coords: &ArrayView2<f64>,
+    nb_idx: &[usize],
+    p: &ArrayView1<f64>,
+    w_kernel: &[f64],
+) -> Option<Vec<f64>> {
+    let d = src_coords.ncols();
+    let k = nb_idx.len();
+    let m = d + 1;
+
+    let mut gram = na::DMatrix::<f64>::zeros(m, m);
+    let mut rhs = na::DVector::<f64>::zeros(m);
+    rhs[0] = 1.0;
+    for (c, &pc) in p.iter().enumerate() {
+        rhs[c + 1] = pc;
     }
 
-    let slice = coords.as_slice()?;
+    for (l, &i) in nb_idx.iter().enumerate() {
+        let w = w_kernel[l];
+        gram[(0, 0)] += w;
+        for a in 0..d {
+            let xa = src_coords[[i, a]];
+            gram[(0, a + 1)] += w * xa;
+            gram[(a + 1, 0)] += w * xa;
+        }
+        for a in 0..d {
+            let xa = src_coords[[i, a]];
+            for b in 0..d {
+                gram[(a + 1, b + 1)] += w * xa * src_coords[[i, b]];
+            }
+        }
+    }
+
+    let chol = gram.cholesky()?;
+    let coeff = chol.solve(&rhs);
+
+    let mut w = vec![0.0; k];
+    for (l, &i) in nb_idx.iter().enumerate() {
+        let mut ac = coeff[0];
+        for a in 0..d {
+            ac += src_coords[[i, a]] * coeff[a + 1];
+        }
+        w[l] = w_kernel[l] * ac;
+    }
+    Some(w)
+}
+
+/// Views an `n × D` contiguous coordinate array as a slice of `[f64; D]` points.
+fn as_points<'a, const D: usize>(coords: &ArrayView2<'a, f64>) -> &'a [[f64; D]] {
+    assert_eq!(coords.ncols(), D);
+    let slice = coords.as_slice().expect("coordinates should be contiguous");
 
     // Safety:
-    // - slice length is 3*n
-    // - f64 has the same alignment
-    // - [[f64;3]] is a contiguous array of 3 f64 values
-    let ptr = slice.as_ptr() as *const [f64; 3];
+    // - the slice length is a multiple of D
+    // - f64 is properly aligned
+    // - `[f64; D]` is a contiguous run of D f64 values
+    let len = slice.len() / D;
+    unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const [f64; D], len) }
+}
 
-    let len = slice.len() / 3;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use approx::assert_relative_eq;
+    use ndarray as nd;
 
-    Some(unsafe { std::slice::from_raw_parts(ptr, len) })
+    fn src_grid_3d() -> nd::Array2<f64> {
+        let mut pts = Vec::new();
+        for z in 0..=4 {
+            for y in 0..=4 {
+                for x in 0..=4 {
+                    pts.extend([x as f64 * 0.25, y as f64 * 0.25, z as f64 * 0.25]);
+                }
+            }
+        }
+        nd::Array2::from_shape_vec((125, 3), pts).unwrap()
+    }
+
+    #[test]
+    fn kernel_values() {
+        assert_eq!(DistanceWeighting::None.kernel(0.25), 1.0);
+        let inv = DistanceWeighting::InverseDistance { exponent: 2.0 };
+        assert_relative_eq!(inv.kernel(1.0), 1.0, epsilon = 1e-12);
+        assert_relative_eq!(inv.kernel(4.0), 0.25, epsilon = 1e-12);
+        let compact = DistanceWeighting::CompactSupport { exponent: 2.0 };
+        assert_relative_eq!(compact.kernel(0.25), 0.5625, epsilon = 1e-12);
+        assert_eq!(compact.kernel(1.0), 0.0);
+        assert_eq!(compact.kernel(2.0), 0.0);
+        let gaussian = DistanceWeighting::Gaussian;
+        assert_relative_eq!(gaussian.kernel(1.0), (-1.0_f64).exp(), epsilon = 1e-12);
+    }
+
+    #[test]
+    fn reproduces_affine_field_exactly_3d() {
+        let src = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ];
+        let tgt = nd::array![[0.25, 0.25, 0.25], [0.1, 0.2, 0.3]];
+        // f = 1 + 2x - 3y + 4z
+        let field = nd::array![1.0, 3.0, -2.0, 5.0].into_dyn();
+        let expected = nd::array![1.75, 1.8].into_dyn();
+        for weighting in [
+            DistanceWeighting::None,
+            DistanceWeighting::Gaussian,
+            DistanceWeighting::CompactSupport { exponent: 2.0 },
+        ] {
+            let op = LinearInterpTransfer::from_coords(&src.view(), &tgt.view(), 4, weighting);
+            let out = op.apply_on_array(&field.view());
+            for (o, e) in out.iter().zip(expected.iter()) {
+                assert!(
+                    (o - e).abs() < 1e-9,
+                    "weighting = {weighting:?}: got {o}, expected {e}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn reproduces_affine_field_exactly_2d() {
+        let src = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let tgt = nd::array![[1.0 / 3.0, 1.0 / 3.0], [0.2, 0.4]];
+        // f = 1 + 2x - 3y
+        let field = nd::array![1.0, 3.0, -2.0].into_dyn();
+        let expected = nd::array![2.0 / 3.0, 0.2].into_dyn();
+        let op =
+            LinearInterpTransfer::from_coords(&src.view(), &tgt.view(), 3, DistanceWeighting::None);
+        let out = op.apply_on_array(&field.view());
+        for (o, e) in out.iter().zip(expected.iter()) {
+            assert_relative_eq!(o, e, epsilon = 1e-9);
+        }
+    }
+
+    #[test]
+    fn reproduces_constant_field_on_grid() {
+        let src = src_grid_3d();
+        let tgt = nd::array![[0.32, 0.17, 0.71], [0.9, 0.1, 0.9]];
+        let field = nd::Array::from_elem(nd::IxDyn(&[125]), 7.0);
+        for weighting in [
+            DistanceWeighting::None,
+            DistanceWeighting::InverseDistance { exponent: 2.0 },
+            DistanceWeighting::CompactSupport { exponent: 3.0 },
+            DistanceWeighting::Gaussian,
+        ] {
+            let op = LinearInterpTransfer::from_coords(&src.view(), &tgt.view(), 8, weighting);
+            let out = op.apply_on_array(&field.view());
+            assert!(
+                out.iter().all(|&v| (v - 7.0).abs() < 1e-9),
+                "constant not reproduced with weighting = {weighting:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn coincident_target_is_exact() {
+        let src = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.5, 0.5, 0.5]
+        ];
+        let tgt = nd::array![[0.5, 0.5, 0.5], [0.25, 0.25, 0.25]];
+        let field = nd::array![1.0, 2.0, 3.0, 4.0, 9.0].into_dyn();
+        let op = LinearInterpTransfer::from_coords(
+            &src.view(),
+            &tgt.view(),
+            4,
+            DistanceWeighting::Gaussian,
+        );
+        let out = op.apply_on_array(&field.view());
+        assert_eq!(out[0], 9.0);
+        assert!(out[1].is_finite());
+    }
+
+    #[test]
+    fn singular_cloud_falls_back() {
+        // Coplanar source points: the 3D linear system is rank-deficient and the solve fails,
+        // but the transfer must not panic and a constant field is still reproduced.
+        let src = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0]
+        ];
+        let tgt = nd::array![[0.4, 0.3, 0.0]];
+        let field = nd::Array::from_elem(nd::IxDyn(&[4]), 5.0);
+        for weighting in [
+            DistanceWeighting::None,
+            DistanceWeighting::Gaussian,
+            DistanceWeighting::InverseDistance { exponent: 2.0 },
+            DistanceWeighting::CompactSupport { exponent: 2.0 },
+        ] {
+            let op = LinearInterpTransfer::from_coords(&src.view(), &tgt.view(), 4, weighting);
+            let out = op.apply_on_array(&field.view());
+            assert_relative_eq!(out[0], 5.0, epsilon = 1e-9);
+        }
+    }
+
+    #[test]
+    fn vector_valued_field() {
+        let src = src_grid_3d();
+        let tgt = nd::array![[0.32, 0.17, 0.71], [0.5, 0.5, 0.5]];
+        let mut field = nd::Array2::<f64>::zeros((125, 3));
+        for i in 0..125 {
+            field[[i, 0]] = 1.0;
+            field[[i, 1]] = i as f64;
+            field[[i, 2]] = 2.0 * i as f64;
+        }
+        let op = LinearInterpTransfer::from_coords(
+            &src.view(),
+            &tgt.view(),
+            8,
+            DistanceWeighting::InverseDistance { exponent: 2.0 },
+        );
+        let out = op.apply_on_array(&field.view().into_dyn());
+        assert_eq!(out.shape(), &[2, 3]);
+        // constant component reproduced
+        assert_relative_eq!(out[[0, 0]], 1.0, epsilon = 1e-9);
+        // coincident target at (0.5,0.5,0.5) is exact
+        let i50 = 2 * 25 + 2 * 5 + 2;
+        assert_eq!(out[[1, 1]], i50 as f64);
+        assert_eq!(out[[1, 2]], 2.0 * i50 as f64);
+    }
+
+    #[test]
+    fn weighted_differs_from_unweighted() {
+        // With k > d + 1 the weighting scheme changes the interpolation weights.
+        let src = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0]
+        ];
+        let tgt = nd::array![[0.4, 0.3, 0.2]];
+        let plain =
+            LinearInterpTransfer::from_coords(&src.view(), &tgt.view(), 8, DistanceWeighting::None);
+        let inverse = LinearInterpTransfer::from_coords(
+            &src.view(),
+            &tgt.view(),
+            8,
+            DistanceWeighting::InverseDistance { exponent: 4.0 },
+        );
+        let field = nd::array![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0].into_dyn();
+        let a = plain.apply_on_array(&field.view());
+        let b = inverse.apply_on_array(&field.view());
+        assert!(
+            (a[0] - b[0]).abs() > 1e-6,
+            "weighted and unweighted interpolation should differ, got {a:?} vs {b:?}"
+        );
+    }
 }
