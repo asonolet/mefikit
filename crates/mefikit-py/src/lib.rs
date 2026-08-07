@@ -16,7 +16,9 @@ mod sel {
 #[pymodule]
 mod transfer {
     #[pymodule_export]
-    use super::pytransfer::{PyConstantPiecewise, PyDistanceWeighting, PyMovingLeastSquares};
+    use super::pytransfer::{
+        PyConstantPiecewise, PyDistanceWeighting, PyInverseDistance, PyMovingLeastSquares,
+    };
 }
 
 /// A Python module implemented in Rust. The name of this function must match

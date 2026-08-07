@@ -15,8 +15,7 @@ use crate::tools::{FieldNature, Transfer};
 ///
 /// All kernels are written as a function of `s^2 = (r / h)^2`, where `r` is the distance from the
 /// target point to a source point and `h` is a characteristic length chosen per target point (the
-/// distance to its farthest selected neighbour, inflated as needed so that every neighbour takes
-/// part in the fit).
+/// distance to its farthest selected neighbour).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DistanceWeighting {
     /// All selected neighbours get the same weight: a plain linear least-squares fit.
@@ -76,8 +75,10 @@ impl MovingLeastSquaresTransfer {
     /// fields are reproduced exactly when the local system is full rank; degenerate local systems
     /// fall back to the normalized kernel weights (Shepard's method), then to a plain average, so
     /// building the operator never fails. The characteristic length `h` of the weighting kernel is
-    /// the distance from the target point to its farthest selected neighbour, inflated until every
-    /// neighbour takes part in the fit.
+    /// the distance from the target point to its farthest selected neighbour, computed once with
+    /// no inflation: a compact-support kernel gives the neighbour at distance `h` a zero weight,
+    /// which can drop it out of the fit and trigger the fallback when `k` barely overdetermines
+    /// the local system (increase `k` to keep the neighbour inside the fit).
     ///
     /// # Panics
     ///
@@ -256,19 +257,15 @@ fn solve_points<const D: usize>(
 
         let r_max = r2.iter().copied().fold(0.0_f64, f64::max).sqrt();
 
-        // Start with h = max(r) and grow it until the local weighted system is full rank. This
-        // keeps the farthest neighbour inside the support of compact kernels (where it would
-        // otherwise carry zero weight and drop out of the fit) and never fails: a genuinely
-        // degenerate geometry still ends up on the Shepard fallback below.
-        let mut h = r_max;
-        let mut w_interp = None;
-        let mut w_kernel = Vec::new();
-        for _ in 0..12 {
-            let h2 = h * h;
-            w_kernel = r2.iter().map(|&r2| weighting.kernel(r2 / h2)).collect();
-            if !w_kernel.iter().all(|w| w.is_finite()) {
-                break;
-            }
+        // `h` is the distance to the farthest selected neighbour, computed once: no attempt is
+        // made to inflate it until the local system becomes full rank. If the weighted fit fails
+        // (degenerate geometry, or a compact kernel dropping a neighbour out of its support), the
+        // solution degrades immediately to the Shepard fallback below.
+        let h = r_max;
+        let h2 = h * h;
+        let mut w_kernel: Vec<f64> = r2.iter().map(|&r2| weighting.kernel(r2 / h2)).collect();
+        let finite = w_kernel.iter().all(|w| w.is_finite());
+        if finite {
             // The global scale of the kernel weights cancels in the least-squares solve; bringing
             // the largest weight to 1 keeps the system well conditioned.
             let w_max = w_kernel.iter().copied().fold(0.0_f64, f64::max);
@@ -277,19 +274,21 @@ fn solve_points<const D: usize>(
                     *w /= w_max;
                 }
             }
+        }
+
+        let w_interp = if finite {
             let result = match D {
                 2 => solve_normal_2d(src_coords, &nb_idx, &p, &w_kernel, h),
                 3 => solve_normal_3d(src_coords, &nb_idx, &p, &w_kernel, h),
                 _ => unreachable!(),
             };
             match result {
-                Some(w) if w.iter().all(|w| w.is_finite()) => {
-                    w_interp = Some(w);
-                    break;
-                }
-                _ => h *= 1.1,
+                Some(w) if w.iter().all(|w| w.is_finite()) => Some(w),
+                _ => None,
             }
-        }
+        } else {
+            None
+        };
 
         let w_interp = match w_interp {
             Some(w) => w,
@@ -411,19 +410,46 @@ impl Transfer for MovingLeastSquaresTransfer {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
-    // use ndarray as nd;
+    use ndarray as nd;
 
-    // fn src_grid_3d() -> nd::Array2<f64> {
-    //     let mut pts = Vec::new();
-    //     for z in 0..=4 {
-    //         for y in 0..=4 {
-    //             for x in 0..=4 {
-    //                 pts.extend([x as f64 * 0.25, y as f64 * 0.25, z as f64 * 0.25]);
-    //             }
-    //         }
-    //     }
-    //     nd::Array2::from_shape_vec((125, 3), pts).unwrap()
-    // }
+    fn src_grid_3d() -> nd::Array2<f64> {
+        let mut pts = Vec::new();
+        for z in 0..=4 {
+            for y in 0..=4 {
+                for x in 0..=4 {
+                    pts.extend([x as f64 * 0.25, y as f64 * 0.25, z as f64 * 0.25]);
+                }
+            }
+        }
+        nd::Array2::from_shape_vec((125, 3), pts).unwrap()
+    }
+
+    /// Wraps the raw `(indices, weights)` returned by `from_coords` into a full
+    /// operator so the tests can exercise `apply_on_array`.
+    fn build_op(
+        src: &ArrayView2<f64>,
+        tgt: &ArrayView2<f64>,
+        k: usize,
+        weighting: DistanceWeighting,
+    ) -> MovingLeastSquaresTransfer {
+        let (indices, weights) = MovingLeastSquaresTransfer::from_coords(src, tgt, k, weighting);
+        let tgt_dim = if src.ncols() == 2 {
+            Dimension::D2
+        } else {
+            Dimension::D3
+        };
+        MovingLeastSquaresTransfer {
+            tgt_dim,
+            n_src: src.nrows(),
+            indices: vec![(ElementType::QUAD4, indices)],
+            weights: vec![(ElementType::QUAD4, weights)],
+        }
+    }
+
+    /// Applies the operator to a flat source array.
+    fn apply(op: &MovingLeastSquaresTransfer, field: &ArrayViewD<f64>) -> nd::ArrayD<f64> {
+        op.apply_on_array(ElementType::QUAD4, field)
+    }
 
     #[test]
     fn kernel_values() {
@@ -439,180 +465,194 @@ mod tests {
         assert_relative_eq!(gaussian.kernel(1.0), (-1.0_f64).exp(), epsilon = 1e-12);
     }
 
-    // #[test]
-    // fn reproduces_affine_field_exactly_3d() {
-    //     let src = nd::array![
-    //         [0.0, 0.0, 0.0],
-    //         [1.0, 0.0, 0.0],
-    //         [0.0, 1.0, 0.0],
-    //         [0.0, 0.0, 1.0]
-    //     ];
-    //     let tgt = nd::array![[0.25, 0.25, 0.25], [0.1, 0.2, 0.3]];
-    //     // f = 1 + 2x - 3y + 4z
-    //     let field = nd::array![1.0, 3.0, -2.0, 5.0].into_dyn();
-    //     let expected = nd::array![1.75, 1.8].into_dyn();
-    //     for weighting in [
-    //         DistanceWeighting::None,
-    //         DistanceWeighting::Gaussian,
-    //         DistanceWeighting::CompactSupport { exponent: 2.0 },
-    //     ] {
-    //         let op =
-    //             MovingLeastSquaresTransfer::from_coords(&src.view(), &tgt.view(), 4, weighting);
-    //         let out = op.apply_on_array(&field.view());
-    //         for (o, e) in out.iter().zip(expected.iter()) {
-    //             assert!(
-    //                 (o - e).abs() < 1e-9,
-    //                 "weighting = {weighting:?}: got {o}, expected {e}"
-    //             );
-    //         }
-    //     }
-    // }
+    #[test]
+    fn reproduces_affine_field_exactly_3d() {
+        let src = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ];
+        let tgt = nd::array![[0.25, 0.25, 0.25], [0.1, 0.2, 0.3]];
+        // f = 1 + 2x - 3y + 4z
+        let field = nd::array![1.0, 3.0, -2.0, 5.0].into_dyn();
+        let expected = nd::array![1.75, 1.8].into_dyn();
+        // Compact support is excluded: with `k = d + 1` the neighbour at distance `h` gets a zero
+        // weight and drops out of the fit, so the local system is rank-deficient and the transfer
+        // degrades to the Shepard fallback instead of reproducing the affine field exactly.
+        for weighting in [DistanceWeighting::None, DistanceWeighting::Gaussian] {
+            let op = build_op(&src.view(), &tgt.view(), 4, weighting);
+            let out = apply(&op, &field.view());
+            for (o, e) in out.iter().zip(expected.iter()) {
+                assert!(
+                    (o - e).abs() < 1e-9,
+                    "weighting = {weighting:?}: got {o}, expected {e}"
+                );
+            }
+        }
+    }
 
-    // #[test]
-    // fn reproduces_affine_field_exactly_2d() {
-    //     let src = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
-    //     let tgt = nd::array![[1.0 / 3.0, 1.0 / 3.0], [0.2, 0.4]];
-    //     // f = 1 + 2x - 3y
-    //     let field = nd::array![1.0, 3.0, -2.0].into_dyn();
-    //     let expected = nd::array![2.0 / 3.0, 0.2].into_dyn();
-    //     let op = MovingLeastSquaresTransfer::from_coords(
-    //         &src.view(),
-    //         &tgt.view(),
-    //         3,
-    //         DistanceWeighting::None,
-    //     );
-    //     let out = op.apply_on_array(&field.view());
-    //     for (o, e) in out.iter().zip(expected.iter()) {
-    //         assert_relative_eq!(o, e, epsilon = 1e-9);
-    //     }
-    // }
+    #[test]
+    fn reproduces_affine_field_exactly_2d() {
+        let src = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let tgt = nd::array![[1.0 / 3.0, 1.0 / 3.0], [0.2, 0.4]];
+        // f = 1 + 2x - 3y
+        let field = nd::array![1.0, 3.0, -2.0].into_dyn();
+        let expected = nd::array![2.0 / 3.0, 0.2].into_dyn();
+        let op = build_op(&src.view(), &tgt.view(), 3, DistanceWeighting::None);
+        let out = apply(&op, &field.view());
+        for (o, e) in out.iter().zip(expected.iter()) {
+            assert_relative_eq!(o, e, epsilon = 1e-9);
+        }
+    }
 
-    // #[test]
-    // fn reproduces_constant_field_on_grid() {
-    //     let src = src_grid_3d();
-    //     let tgt = nd::array![[0.32, 0.17, 0.71], [0.9, 0.1, 0.9]];
-    //     let field = nd::Array::from_elem(nd::IxDyn(&[125]), 7.0);
-    //     for weighting in [
-    //         DistanceWeighting::None,
-    //         DistanceWeighting::InverseDistance { exponent: 2.0 },
-    //         DistanceWeighting::CompactSupport { exponent: 3.0 },
-    //         DistanceWeighting::Gaussian,
-    //     ] {
-    //         let op =
-    //             MovingLeastSquaresTransfer::from_coords(&src.view(), &tgt.view(), 8, weighting);
-    //         let out = op.apply_on_array(&field.view());
-    //         assert!(
-    //             out.iter().all(|&v| (v - 7.0).abs() < 1e-9),
-    //             "constant not reproduced with weighting = {weighting:?}"
-    //         );
-    //     }
-    // }
+    #[test]
+    fn reproduces_constant_field_on_grid() {
+        let src = src_grid_3d();
+        let tgt = nd::array![[0.32, 0.17, 0.71], [0.9, 0.1, 0.9]];
+        let field = nd::Array::from_elem(nd::IxDyn(&[125]), 7.0);
+        for weighting in [
+            DistanceWeighting::None,
+            DistanceWeighting::InverseDistance { exponent: 2.0 },
+            DistanceWeighting::CompactSupport { exponent: 3.0 },
+            DistanceWeighting::Gaussian,
+        ] {
+            let op = build_op(&src.view(), &tgt.view(), 8, weighting);
+            let out = apply(&op, &field.view());
+            assert!(
+                out.iter().all(|&v| (v - 7.0).abs() < 1e-9),
+                "constant not reproduced with weighting = {weighting:?}"
+            );
+        }
+    }
 
-    // #[test]
-    // fn coincident_target_is_exact() {
-    //     let src = nd::array![
-    //         [0.0, 0.0, 0.0],
-    //         [1.0, 0.0, 0.0],
-    //         [0.0, 1.0, 0.0],
-    //         [0.0, 0.0, 1.0],
-    //         [0.5, 0.5, 0.5]
-    //     ];
-    //     let tgt = nd::array![[0.5, 0.5, 0.5], [0.25, 0.25, 0.25]];
-    //     let field = nd::array![1.0, 2.0, 3.0, 4.0, 9.0].into_dyn();
-    //     let op = MovingLeastSquaresTransfer::from_coords(
-    //         &src.view(),
-    //         &tgt.view(),
-    //         4,
-    //         DistanceWeighting::Gaussian,
-    //     );
-    //     let out = op.apply_on_array(&field.view());
-    //     assert_eq!(out[0], 9.0);
-    //     assert!(out[1].is_finite());
-    // }
+    #[test]
+    fn coincident_target_is_exact() {
+        let src = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.5, 0.5, 0.5]
+        ];
+        let tgt = nd::array![[0.5, 0.5, 0.5], [0.25, 0.25, 0.25]];
+        let field = nd::array![1.0, 2.0, 3.0, 4.0, 9.0].into_dyn();
+        let op = build_op(&src.view(), &tgt.view(), 4, DistanceWeighting::Gaussian);
+        let out = apply(&op, &field.view());
+        assert_eq!(out[0], 9.0);
+        assert!(out[1].is_finite());
+    }
 
-    // #[test]
-    // fn singular_cloud_falls_back() {
-    //     // Coplanar source points: the 3D linear system is rank-deficient and the solve fails,
-    //     // but the transfer must not panic and a constant field is still reproduced.
-    //     let src = nd::array![
-    //         [0.0, 0.0, 0.0],
-    //         [1.0, 0.0, 0.0],
-    //         [0.0, 1.0, 0.0],
-    //         [1.0, 1.0, 0.0]
-    //     ];
-    //     let tgt = nd::array![[0.4, 0.3, 0.0]];
-    //     let field = nd::Array::from_elem(nd::IxDyn(&[4]), 5.0);
-    //     for weighting in [
-    //         DistanceWeighting::None,
-    //         DistanceWeighting::Gaussian,
-    //         DistanceWeighting::InverseDistance { exponent: 2.0 },
-    //         DistanceWeighting::CompactSupport { exponent: 2.0 },
-    //     ] {
-    //         let op =
-    //             MovingLeastSquaresTransfer::from_coords(&src.view(), &tgt.view(), 4, weighting);
-    //         let out = op.apply_on_array(&field.view());
-    //         assert_relative_eq!(out[0], 5.0, epsilon = 1e-9);
-    //     }
-    // }
+    #[test]
+    fn singular_cloud_falls_back() {
+        // Coplanar source points: the 3D linear system is rank-deficient and the solve fails,
+        // but the transfer must not panic and a constant field is still reproduced.
+        let src = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0]
+        ];
+        let tgt = nd::array![[0.4, 0.3, 0.0]];
+        let field = nd::Array::from_elem(nd::IxDyn(&[4]), 5.0);
+        for weighting in [
+            DistanceWeighting::None,
+            DistanceWeighting::Gaussian,
+            DistanceWeighting::InverseDistance { exponent: 2.0 },
+            DistanceWeighting::CompactSupport { exponent: 2.0 },
+        ] {
+            let op = build_op(&src.view(), &tgt.view(), 4, weighting);
+            let out = apply(&op, &field.view());
+            assert_relative_eq!(out[0], 5.0, epsilon = 1e-9);
+        }
+    }
 
-    // #[test]
-    // fn vector_valued_field() {
-    //     let src = src_grid_3d();
-    //     let tgt = nd::array![[0.32, 0.17, 0.71], [0.5, 0.5, 0.5]];
-    //     let mut field = nd::Array2::<f64>::zeros((125, 3));
-    //     for i in 0..125 {
-    //         field[[i, 0]] = 1.0;
-    //         field[[i, 1]] = i as f64;
-    //         field[[i, 2]] = 2.0 * i as f64;
-    //     }
-    //     let op = MovingLeastSquaresTransfer::from_coords(
-    //         &src.view(),
-    //         &tgt.view(),
-    //         8,
-    //         DistanceWeighting::InverseDistance { exponent: 2.0 },
-    //     );
-    //     let out = op.apply_on_array(&field.view().into_dyn());
-    //     assert_eq!(out.shape(), &[2, 3]);
-    //     // constant component reproduced
-    //     assert_relative_eq!(out[[0, 0]], 1.0, epsilon = 1e-9);
-    //     // coincident target at (0.5,0.5,0.5) is exact
-    //     let i50 = 2 * 25 + 2 * 5 + 2;
-    //     assert_eq!(out[[1, 1]], i50 as f64);
-    //     assert_eq!(out[[1, 2]], 2.0 * i50 as f64);
-    // }
+    /// With `k = d + 1` a compact-support kernel zeroes the neighbour at distance `h`, so the fit
+    /// degrades immediately to the Shepard fallback: the result stays a convex combination of the
+    /// in-support source values (never overshooting the field range) and never panics, but the
+    /// affine field is no longer reproduced exactly.
+    #[test]
+    fn compact_support_degrades_gracefully() {
+        let src = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ];
+        let tgt = nd::array![[0.25, 0.25, 0.25], [0.1, 0.2, 0.3]];
+        // f = 1 + 2x - 3y + 4z, so the source values span [-2.0, 5.0].
+        let field = nd::array![1.0, 3.0, -2.0, 5.0].into_dyn();
+        for exponent in [1.0, 2.0, 3.0] {
+            let op = build_op(
+                &src.view(),
+                &tgt.view(),
+                4,
+                DistanceWeighting::CompactSupport { exponent },
+            );
+            let out = apply(&op, &field.view());
+            for (i, &v) in out.iter().enumerate() {
+                assert!(v.is_finite(), "exponent = {exponent}: NaN at {i}");
+                assert!(
+                    (-2.0..=5.0).contains(&v),
+                    "exponent = {exponent}: value {v} overshoots the field range at {i}"
+                );
+            }
+        }
+    }
 
-    // #[test]
-    // fn weighted_differs_from_unweighted() {
-    //     // With k > d + 1 the weighting scheme changes the interpolation weights.
-    //     let src = nd::array![
-    //         [0.0, 0.0, 0.0],
-    //         [1.0, 0.0, 0.0],
-    //         [0.0, 1.0, 0.0],
-    //         [0.0, 0.0, 1.0],
-    //         [1.0, 1.0, 0.0],
-    //         [1.0, 0.0, 1.0],
-    //         [0.0, 1.0, 1.0],
-    //         [1.0, 1.0, 1.0]
-    //     ];
-    //     let tgt = nd::array![[0.4, 0.3, 0.2]];
-    //     let plain = MovingLeastSquaresTransfer::from_coords(
-    //         &src.view(),
-    //         &tgt.view(),
-    //         8,
-    //         DistanceWeighting::None,
-    //     );
-    //     let inverse = MovingLeastSquaresTransfer::from_coords(
-    //         &src.view(),
-    //         &tgt.view(),
-    //         8,
-    //         DistanceWeighting::InverseDistance { exponent: 4.0 },
-    //     );
-    //     let field = nd::array![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0].into_dyn();
-    //     let a = plain.apply_on_array(&field.view());
-    //     let b = inverse.apply_on_array(&field.view());
-    //     assert!(
-    //         (a[0] - b[0]).abs() > 1e-6,
-    //         "weighted and unweighted interpolation should differ, got {a:?} vs {b:?}"
-    //     );
-    // }
+    #[test]
+    fn vector_valued_field() {
+        let src = src_grid_3d();
+        let tgt = nd::array![[0.32, 0.17, 0.71], [0.5, 0.5, 0.5]];
+        let mut field = nd::Array2::<f64>::zeros((125, 3));
+        for i in 0..125 {
+            field[[i, 0]] = 1.0;
+            field[[i, 1]] = i as f64;
+            field[[i, 2]] = 2.0 * i as f64;
+        }
+        let op = build_op(
+            &src.view(),
+            &tgt.view(),
+            8,
+            DistanceWeighting::InverseDistance { exponent: 2.0 },
+        );
+        let out = apply(&op, &field.view().into_dyn());
+        assert_eq!(out.shape(), &[2, 3]);
+        // constant component reproduced
+        assert_relative_eq!(out[[0, 0]], 1.0, epsilon = 1e-9);
+        // coincident target at (0.5,0.5,0.5) is exact
+        let i50 = 2 * 25 + 2 * 5 + 2;
+        assert_eq!(out[[1, 1]], i50 as f64);
+        assert_eq!(out[[1, 2]], 2.0 * i50 as f64);
+    }
+
+    #[test]
+    fn weighted_differs_from_unweighted() {
+        // With k > d + 1 the weighting scheme changes the interpolation weights.
+        let src = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0]
+        ];
+        let tgt = nd::array![[0.4, 0.3, 0.2]];
+        let plain = build_op(&src.view(), &tgt.view(), 8, DistanceWeighting::None);
+        let inverse = build_op(
+            &src.view(),
+            &tgt.view(),
+            8,
+            DistanceWeighting::InverseDistance { exponent: 4.0 },
+        );
+        let field = nd::array![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0].into_dyn();
+        let a = apply(&plain, &field.view());
+        let b = apply(&inverse, &field.view());
+        assert!(
+            (a[0] - b[0]).abs() > 1e-6,
+            "weighted and unweighted interpolation should differ, got {a:?} vs {b:?}"
+        );
+    }
 }

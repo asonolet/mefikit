@@ -142,3 +142,55 @@ impl PyMovingLeastSquares {
             .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
     }
 }
+
+#[pyclass(str, from_py_object)]
+#[pyo3(name = "InverseDistance")]
+#[derive(Clone)]
+pub struct PyInverseDistance {
+    inner: mf::InverseDistanceTransfer,
+}
+
+impl Display for PyInverseDistance {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self.inner)
+    }
+}
+
+impl From<mf::InverseDistanceTransfer> for PyInverseDistance {
+    fn from(transfer: mf::InverseDistanceTransfer) -> Self {
+        PyInverseDistance { inner: transfer }
+    }
+}
+
+impl From<PyInverseDistance> for mf::InverseDistanceTransfer {
+    fn from(pytransfer: PyInverseDistance) -> Self {
+        pytransfer.inner
+    }
+}
+
+#[pymethods]
+impl PyInverseDistance {
+    #[new]
+    #[pyo3(signature = (src_mesh, tgt_mesh, k=4, exponent=2.0))]
+    fn new(src_mesh: &PyUMesh, tgt_mesh: &PyUMesh, k: usize, exponent: f64) -> Self {
+        mf::InverseDistanceTransfer::new(&into_view(src_mesh), &into_view(tgt_mesh), k, exponent)
+            .into()
+    }
+
+    #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0))]
+    fn apply_update(
+        &self,
+        src_mesh: &PyUMesh,
+        field_name: &str,
+        tgt_mesh: &mut PyUMesh,
+        tgt_field_name: Option<&str>,
+        def_val: f64,
+    ) {
+        let name = tgt_field_name.unwrap_or(field_name);
+        let src_view = into_view(src_mesh);
+        let field = src_view.field(field_name, None).unwrap();
+        let field_nature = mf::FieldNature::Intensive;
+        self.inner
+            .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+    }
+}
