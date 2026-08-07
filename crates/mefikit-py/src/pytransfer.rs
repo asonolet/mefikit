@@ -5,6 +5,27 @@ use mefikit::{prelude as mf, tools::Transfer};
 
 use crate::pyumesh::{PyUMesh, into_mut, into_view};
 
+#[pyclass(from_py_object)]
+#[pyo3(name = "DistanceWeighting")]
+#[derive(Clone)]
+pub enum PyDistanceWeighting {
+    None(),
+    InverseDistance { exponent: f64 },
+    Gaussian(),
+}
+
+impl From<PyDistanceWeighting> for mf::DistanceWeighting {
+    fn from(weighting: PyDistanceWeighting) -> Self {
+        match weighting {
+            PyDistanceWeighting::None() => mf::DistanceWeighting::None,
+            PyDistanceWeighting::InverseDistance { exponent } => {
+                mf::DistanceWeighting::InverseDistance { exponent }
+            }
+            PyDistanceWeighting::Gaussian() => mf::DistanceWeighting::Gaussian,
+        }
+    }
+}
+
 #[pyclass(str, from_py_object)]
 #[pyo3(name = "ConstantPiecewise")]
 #[derive(Clone)]
@@ -88,12 +109,18 @@ impl From<PyMovingLeastSquares> for mf::MovingLeastSquaresTransfer {
 #[pymethods]
 impl PyMovingLeastSquares {
     #[new]
-    fn new(src_mesh: &PyUMesh, tgt_mesh: &PyUMesh) -> Self {
+    #[pyo3(signature = (src_mesh, tgt_mesh, k=10, weighting=PyDistanceWeighting::None()))]
+    fn new(
+        src_mesh: &PyUMesh,
+        tgt_mesh: &PyUMesh,
+        k: usize,
+        weighting: PyDistanceWeighting,
+    ) -> Self {
         mf::MovingLeastSquaresTransfer::new(
             &into_view(src_mesh),
             &into_view(tgt_mesh),
-            10,
-            mf::DistanceWeighting::None,
+            k,
+            weighting.into(),
         )
         .into()
     }
