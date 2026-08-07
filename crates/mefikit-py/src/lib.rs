@@ -17,7 +17,8 @@ mod sel {
 mod transfer {
     #[pymodule_export]
     use super::pytransfer::{
-        PyConstantPiecewise, PyDistanceWeighting, PyInverseDistance, PyMovingLeastSquares,
+        PyConservativeP0, PyConstantPiecewise, PyDistanceWeighting, PyInverseDistance,
+        PyMovingLeastSquares,
     };
 }
 

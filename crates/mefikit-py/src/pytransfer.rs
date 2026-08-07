@@ -144,6 +144,64 @@ impl PyMovingLeastSquares {
 }
 
 #[pyclass(str, from_py_object)]
+#[pyo3(name = "ConservativeP0")]
+#[derive(Clone)]
+pub struct PyConservativeP0 {
+    inner: mf::ConservativeP0Transfer,
+}
+
+impl Display for PyConservativeP0 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#?}", self.inner)
+    }
+}
+
+impl From<mf::ConservativeP0Transfer> for PyConservativeP0 {
+    fn from(transfer: mf::ConservativeP0Transfer) -> Self {
+        PyConservativeP0 { inner: transfer }
+    }
+}
+
+impl From<PyConservativeP0> for mf::ConservativeP0Transfer {
+    fn from(pytransfer: PyConservativeP0) -> Self {
+        pytransfer.inner
+    }
+}
+
+#[pymethods]
+impl PyConservativeP0 {
+    #[new]
+    fn new(src_mesh: &PyUMesh, tgt_mesh: &PyUMesh) -> Self {
+        mf::ConservativeP0Transfer::new(&into_view(src_mesh), &into_view(tgt_mesh)).into()
+    }
+
+    /// Transfers a field defined on 2D source cells to the 2D target cells, weighted by the cell
+    /// intersection measures. By default the transferred values are intensive (integral over the
+    /// target cell divided by its measure); set `extensive=True` to keep the raw summed values.
+    #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0, extensive=false))]
+    fn apply_update(
+        &self,
+        src_mesh: &PyUMesh,
+        field_name: &str,
+        tgt_mesh: &mut PyUMesh,
+        tgt_field_name: Option<&str>,
+        def_val: f64,
+        extensive: bool,
+    ) {
+        let name = tgt_field_name.unwrap_or(field_name);
+        let src_view = into_view(src_mesh);
+        let field = src_view.field(field_name, None).unwrap();
+        let field_nature = if extensive {
+            mf::FieldNature::Extensive
+        } else {
+            mf::FieldNature::Intensive
+        };
+        self.inner
+            .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+    }
+}
+
+#[pyclass(str, from_py_object)]
 #[pyo3(name = "InverseDistance")]
 #[derive(Clone)]
 pub struct PyInverseDistance {
