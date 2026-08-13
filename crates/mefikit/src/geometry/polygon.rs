@@ -80,14 +80,7 @@ impl<const D: usize> Polygon<D> {
     /// This is the average of the node coordinates, not the area-weighted centroid (see
     /// [`Self::geometric_centroid`]).
     pub fn centroid(&self) -> [f64; D] {
-        let mut c = [0.0; D];
-        for p in &self.points {
-            for (ck, pk) in c.iter_mut().zip(p.iter()) {
-                *ck += *pk;
-            }
-        }
-        let n = self.points.len() as f64;
-        c.map(|v| v / n)
+        vertex_centroid(&self.points)
     }
 
     /// Returns the known convexity of the polygon.
@@ -132,6 +125,91 @@ fn orient2d2(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
         ro::Coord { x: b[0], y: b[1] },
         ro::Coord { x: c[0], y: c[1] },
     )
+}
+
+/// Computes the area of a 2D triangle.
+///
+/// Bit-exact reproduction of the pre-refactoring `surf_tri2` formula.
+#[inline(always)]
+pub(crate) fn area_tri2(a: &[f64; 2], b: &[f64; 2], c: &[f64; 2]) -> f64 {
+    0.5 * ((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])).abs()
+}
+
+/// Computes the area of a 2D quadrilateral.
+///
+/// Bit-exact reproduction of the pre-refactoring `surf_quad2` formula.
+#[inline(always)]
+pub(crate) fn area_quad2(p: &[[f64; 2]; 4]) -> f64 {
+    let pxys = [
+        p[0][0] * p[1][1],
+        p[1][0] * p[2][1],
+        p[2][0] * p[3][1],
+        p[3][0] * p[0][1],
+    ];
+    let pyxs = [
+        p[0][1] * p[1][0],
+        p[1][1] * p[2][0],
+        p[2][1] * p[3][0],
+        p[3][1] * p[0][0],
+    ];
+    0.5 * (pxys.iter().sum::<f64>() - pyxs.iter().sum::<f64>()).abs()
+}
+
+/// Computes the area of a planar polygon embedded in 3D space using Newell's method.
+///
+/// Shared by [`Polygon::area`] and the allocation-free element measure path.
+pub(crate) fn area_polygon3(points: &[[f64; 3]]) -> f64 {
+    let n = points.len();
+    let mut nx = 0.0;
+    let mut ny = 0.0;
+    let mut nz = 0.0;
+    for i in 0..n {
+        let a = points[i];
+        let b = points[(i + 1) % n];
+        nx += a[1] * b[2] - a[2] * b[1];
+        ny += a[2] * b[0] - a[0] * b[2];
+        nz += a[0] * b[1] - a[1] * b[0];
+    }
+    0.5 * (nx * nx + ny * ny + nz * nz).sqrt()
+}
+
+/// Computes the vertex centroid: the arithmetic mean of the given vertices.
+///
+/// Shared by [`Polygon::centroid`], [`crate::geometry::Polyhedron::centroid`] and the
+/// allocation-free element centroid path.
+pub(crate) fn vertex_centroid<const D: usize>(points: &[[f64; D]]) -> [f64; D] {
+    let mut c = [0.0; D];
+    for p in points {
+        for (ck, pk) in c.iter_mut().zip(p.iter()) {
+            *ck += *pk;
+        }
+    }
+    let n = points.len() as f64;
+    c.map(|v| v / n)
+}
+
+/// Returns `true` if `x` lies inside the convex polygon given in counter-clockwise order.
+///
+/// Half-plane test using exact orientation predicates; boundary semantics are not guaranteed.
+/// Shared by [`Polygon::contains`] and the allocation-free element point-in-polygon path.
+pub(crate) fn convex_polygon_contains2(points: &[[f64; 2]], x: &[f64; 2]) -> bool {
+    let n = points.len();
+    if n < 3 {
+        return false;
+    }
+    let mut sign: f64 = 0.0;
+    for i in 0..n {
+        let a = points[i];
+        let b = points[(i + 1) % n];
+        let s = orient2d2(a, b, [x[0], x[1]]);
+        if s != 0.0 {
+            if sign != 0.0 && s.is_sign_positive() != sign.is_sign_positive() {
+                return false;
+            }
+            sign = s;
+        }
+    }
+    true
 }
 
 /// Projects a point onto the dominant axis plane: the axis with the largest absolute coordinate
@@ -261,23 +339,7 @@ impl Polygon<2> {
     }
 
     fn convex_contains(&self, x: &[f64; 2]) -> bool {
-        let n = self.points.len();
-        if n < 3 {
-            return false;
-        }
-        let mut sign: f64 = 0.0;
-        for i in 0..n {
-            let a = self.points[i];
-            let b = self.points[(i + 1) % n];
-            let s = orient2d2(a, b, [x[0], x[1]]);
-            if s != 0.0 {
-                if sign != 0.0 && s.is_sign_positive() != sign.is_sign_positive() {
-                    return false;
-                }
-                sign = s;
-            }
-        }
-        true
+        convex_polygon_contains2(&self.points, x)
     }
 
     fn raycast_contains(&self, x: &[f64; 2]) -> bool {
@@ -441,18 +503,7 @@ impl Polygon<3> {
     ///
     /// This is valid for planar polygons embedded in 3D space.
     pub fn area(&self) -> f64 {
-        let n = self.points.len();
-        let mut nx = 0.0;
-        let mut ny = 0.0;
-        let mut nz = 0.0;
-        for i in 0..n {
-            let a = self.points[i];
-            let b = self.points[(i + 1) % n];
-            nx += a[1] * b[2] - a[2] * b[1];
-            ny += a[2] * b[0] - a[0] * b[2];
-            nz += a[0] * b[1] - a[1] * b[0];
-        }
-        0.5 * (nx * nx + ny * ny + nz * nz).sqrt()
+        area_polygon3(&self.points)
     }
 
     /// Computes the geometric centroid of the polygon as the area-weighted average of its
@@ -1207,5 +1258,60 @@ mod tests {
         assert!(in_bezier_polygon(&p, &pgon));
         let p = [2.0, 0.5];
         assert!(!in_bezier_polygon(&p, &pgon));
+    }
+
+    #[test]
+    fn area_tri2_matches_polygon_area() {
+        let pts = [[0.0, 0.0], [2.0, 0.0], [1.0, 1.0]];
+        let poly = Polygon::unknown(pts);
+        assert_eq!(
+            area_tri2(&pts[0], &pts[1], &pts[2]),
+            poly.area(),
+            "TRI3 fast path must stay bit-exact with Polygon::area"
+        );
+    }
+
+    #[test]
+    fn area_quad2_matches_polygon_area() {
+        let pts = [[0.0, 0.0], [2.0, 0.0], [2.0, 1.0], [0.0, 1.0]];
+        let poly = Polygon::unknown(pts);
+        assert_eq!(
+            area_quad2(&pts),
+            poly.area(),
+            "QUAD4 fast path must stay bit-exact with Polygon::area"
+        );
+    }
+
+    #[test]
+    fn vertex_centroid_matches_polygon_centroid() {
+        let pts = [[0.0, 0.0], [2.0, 0.0], [2.0, 1.0], [0.0, 1.0]];
+        let poly = Polygon::unknown(pts);
+        assert_eq!(vertex_centroid(&pts), poly.centroid());
+        let pts3 = [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [1.0, 1.0, 0.0]];
+        assert_eq!(vertex_centroid(&pts3), [1.0, 1.0 / 3.0, 0.0]);
+    }
+
+    #[test]
+    fn convex_polygon_contains2_matches_polygon_contains() {
+        let tri = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
+        let quad = [[0.0, 0.0], [2.0, 0.0], [2.0, 1.0], [0.0, 1.0]];
+        for pts in [tri.as_slice(), quad.as_slice()] {
+            let poly = Polygon::unknown(pts.to_vec());
+            for p in [
+                [0.5, 0.5],
+                [0.1, 0.1],
+                [0.9, 0.9],
+                [0.0, 0.0],
+                [1.0, 1.0],
+                [1.5, 0.5],
+                [-0.1, 0.5],
+            ] {
+                assert_eq!(
+                    convex_polygon_contains2(pts, &p),
+                    poly.contains(&p),
+                    "convex fast path must match Polygon::contains for {p:?}"
+                );
+            }
+        }
     }
 }

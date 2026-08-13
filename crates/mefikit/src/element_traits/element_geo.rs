@@ -5,7 +5,10 @@
 //! types of the [`crate::geometry`] module.
 
 use super::element_topo::ElementTopo;
-use crate::geometry::{Polygon, Polyhedron, Segment};
+use crate::geometry::{
+    Polygon, Polyhedron, Segment, area_polygon3, area_quad2, area_tri2, convex_polygon_contains2,
+    hex_volume, tet_volume,
+};
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
 use nalgebra as na;
@@ -169,7 +172,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => self.as_segment1().length(),
+            SEG2 => (self.coord1(0) - self.coord1(1)).norm(),
             _ => todo!(),
         }
     }
@@ -181,8 +184,21 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => self.as_segment2().length(),
-            TRI3 | QUAD4 | PGON => self.as_polygon2().area(),
+            SEG2 => {
+                let a = *self.coord2_ref(0);
+                let b = *self.coord2_ref(1);
+                let dx = a[0] - b[0];
+                let dy = a[1] - b[1];
+                (dx * dx + dy * dy).sqrt()
+            }
+            TRI3 => area_tri2(self.coord2_ref(0), self.coord2_ref(1), self.coord2_ref(2)),
+            QUAD4 => area_quad2(&[
+                *self.coord2_ref(0),
+                *self.coord2_ref(1),
+                *self.coord2_ref(2),
+                *self.coord2_ref(3),
+            ]),
+            PGON => self.as_polygon2().area(),
             _ => todo!(),
         }
     }
@@ -194,9 +210,42 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => self.as_segment3().length(),
-            TRI3 | QUAD4 => self.as_polygon3().area(),
-            TET4 | HEX8 | PHED => self.as_polyhedron().volume(),
+            SEG2 => {
+                let a = *self.coord3_ref(0);
+                let b = *self.coord3_ref(1);
+                let dx = a[0] - b[0];
+                let dy = a[1] - b[1];
+                let dz = a[2] - b[2];
+                (dx * dx + dy * dy + dz * dz).sqrt()
+            }
+            TRI3 => area_polygon3(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+            ]),
+            QUAD4 => area_polygon3(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+                *self.coord3_ref(3),
+            ]),
+            TET4 => tet_volume(
+                self.coord3_ref(0),
+                self.coord3_ref(1),
+                self.coord3_ref(2),
+                self.coord3_ref(3),
+            ),
+            HEX8 => hex_volume(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+                *self.coord3_ref(3),
+                *self.coord3_ref(4),
+                *self.coord3_ref(5),
+                *self.coord3_ref(6),
+                *self.coord3_ref(7),
+            ]),
+            PHED => self.as_polyhedron().volume(),
             _ => todo!(),
         }
     }
@@ -206,7 +255,24 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => self.coord(0) == point,
-            TRI3 | QUAD4 | PGON => self.as_polygon2().contains(&[point[0], point[1]]),
+            TRI3 => convex_polygon_contains2(
+                &[
+                    *self.coord2_ref(0),
+                    *self.coord2_ref(1),
+                    *self.coord2_ref(2),
+                ],
+                &[point[0], point[1]],
+            ),
+            QUAD4 => convex_polygon_contains2(
+                &[
+                    *self.coord2_ref(0),
+                    *self.coord2_ref(1),
+                    *self.coord2_ref(2),
+                    *self.coord2_ref(3),
+                ],
+                &[point[0], point[1]],
+            ),
+            PGON => self.as_polygon2().contains(&[point[0], point[1]]),
             TET4 | HEX8 | PHED => self
                 .as_polyhedron()
                 .contains(&[point[0], point[1], point[2]]),
@@ -248,8 +314,22 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => *self.coord2_ref(0),
-            SEG2 => self.as_segment2().midpoint(),
-            TRI3 | QUAD4 | PGON => self.as_polygon2().centroid(),
+            SEG2 => {
+                let a = *self.coord2_ref(0);
+                let b = *self.coord2_ref(1);
+                [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0]
+            }
+            TRI3 | QUAD4 => {
+                let mut c = [0.0; 2];
+                let mut n = 0;
+                for p in self.coords2() {
+                    c[0] += p[0];
+                    c[1] += p[1];
+                    n += 1;
+                }
+                [c[0] / n as f64, c[1] / n as f64]
+            }
+            PGON => self.as_polygon2().centroid(),
             _ => todo!(),
         }
     }
@@ -260,9 +340,27 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => *self.coord3_ref(0),
-            SEG2 => self.as_segment3().midpoint(),
-            TRI3 | QUAD4 => self.as_polygon3().centroid(),
-            TET4 | HEX8 | PHED => self.as_polyhedron().centroid(),
+            SEG2 => {
+                let a = *self.coord3_ref(0);
+                let b = *self.coord3_ref(1);
+                [
+                    (a[0] + b[0]) / 2.0,
+                    (a[1] + b[1]) / 2.0,
+                    (a[2] + b[2]) / 2.0,
+                ]
+            }
+            TRI3 | QUAD4 | TET4 | HEX8 => {
+                let mut c = [0.0; 3];
+                let mut n = 0;
+                for p in self.coords3() {
+                    c[0] += p[0];
+                    c[1] += p[1];
+                    c[2] += p[2];
+                    n += 1;
+                }
+                [c[0] / n as f64, c[1] / n as f64, c[2] / n as f64]
+            }
+            PHED => self.as_polyhedron().centroid(),
             _ => todo!(),
         }
     }

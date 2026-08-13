@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 
 use super::convexity::Convexity;
 use super::polygon::{Polygon, dominant_axis, newell_normal, project2};
+use super::vertex_centroid;
 
 /// An owned polyhedron in 3D space.
 ///
@@ -174,14 +175,7 @@ impl Polyhedron {
     /// This is the average of the node coordinates, not the volume-weighted centroid (see
     /// [`Self::geometric_centroid`]).
     pub fn centroid(&self) -> [f64; 3] {
-        let mut c = [0.0; 3];
-        for p in &self.points {
-            for (ck, pk) in c.iter_mut().zip(p.iter()) {
-                *ck += *pk;
-            }
-        }
-        let n = self.points.len() as f64;
-        c.map(|v| v / n)
+        vertex_centroid(&self.points)
     }
 
     /// Computes the geometric centroid of the polyhedron as the volume-weighted average of the
@@ -245,6 +239,124 @@ fn triple_product(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
         b[0] * c[1] - b[1] * c[0],
     ];
     a[0] * cross[0] + a[1] * cross[1] + a[2] * cross[2]
+}
+
+/// The six quadrilateral faces of a HEX8 in `subentities(D1)` connectivity order.
+const HEX8_FACES: [[usize; 4]; 6] = [
+    [0, 1, 2, 3],
+    [0, 3, 7, 4],
+    [0, 4, 5, 1],
+    [1, 5, 6, 2],
+    [2, 6, 7, 3],
+    [4, 7, 6, 5],
+];
+
+/// Computes the volume of a tetrahedron.
+///
+/// Bit-exact with [`Polyhedron::volume`] on a tetrahedron: the four face triple products are
+/// summed in the face layout produced by `as_polyhedron` before taking the magnitude.
+#[inline(always)]
+pub(crate) fn tet_volume(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3], d: &[f64; 3]) -> f64 {
+    let v6 = triple_product(*a, *b, *c)
+        + triple_product(*b, *c, *d)
+        + triple_product(*c, *d, *a)
+        + triple_product(*d, *a, *b);
+    v6.abs() / 6.0
+}
+
+/// Computes the volume of a hexahedron.
+///
+/// Bit-exact with [`Polyhedron::volume`] on a hexahedron: each of the six quad faces is
+/// ear-clipped into two triangles, as in `ear_clip_triangles`, and the triple products are summed
+/// over the face layout produced by `as_polyhedron`.
+pub(crate) fn hex_volume(p: &[[f64; 3]; 8]) -> f64 {
+    let mut v6 = 0.0;
+    for face in HEX8_FACES {
+        let (tris, n) = ear_clip_quad(face, p);
+        for t in &tris[..n] {
+            v6 += triple_product(p[t[0]], p[t[1]], p[t[2]]);
+        }
+    }
+    v6.abs() / 6.0
+}
+
+/// Triangulates a quad face with the same deterministic ear-clipping used by
+/// `ear_clip_triangles`, writing at most two triangles into `tris` and returning the count.
+fn ear_clip_quad(face: [usize; 4], points: &[[f64; 3]]) -> ([[usize; 3]; 2], usize) {
+    let mut tris = [[0; 3]; 2];
+    let mut tris_len = 0;
+    let pts = [
+        points[face[0]],
+        points[face[1]],
+        points[face[2]],
+        points[face[3]],
+    ];
+    let axis = dominant_axis(newell_normal(&pts));
+    let mut ring = [
+        (face[0], project2(pts[0], axis)),
+        (face[1], project2(pts[1], axis)),
+        (face[2], project2(pts[2], axis)),
+        (face[3], project2(pts[3], axis)),
+    ];
+    let mut ring_len = 4;
+    let mut area = 0.0;
+    for k in 0..ring_len {
+        let a = ring[k].1;
+        let b = ring[(k + 1) % ring_len].1;
+        area += a[0] * b[1] - a[1] * b[0];
+    }
+    let orient = if area >= 0.0 { 1.0 } else { -1.0 };
+    while ring_len > 3 {
+        let m = ring_len;
+        let mut clipped = false;
+        for k in 0..m {
+            let (ai, a) = ring[(k + m - 1) % m];
+            let (bi, b) = ring[k];
+            let (ci, c) = ring[(k + 1) % m];
+            if cross2(a, b, c) * orient < 0.0 {
+                continue;
+            }
+            let blocked = ring.iter().any(|&(_, p)| {
+                p != a && p != b && p != c && point_in_triangle_strict(p, a, b, c, orient)
+            });
+            if !blocked {
+                tris[tris_len] = [ai, bi, ci];
+                tris_len += 1;
+                for j in k..ring_len - 1 {
+                    ring[j] = ring[j + 1];
+                }
+                ring_len -= 1;
+                clipped = true;
+                break;
+            }
+        }
+        if !clipped {
+            let m = ring_len;
+            for k in 0..m {
+                let (ai, a) = ring[(k + m - 1) % m];
+                let (bi, b) = ring[k];
+                let (ci, c) = ring[(k + 1) % m];
+                if cross2(a, b, c) * orient >= 0.0 {
+                    tris[tris_len] = [ai, bi, ci];
+                    tris_len += 1;
+                    for j in k..m - 1 {
+                        ring[j] = ring[j + 1];
+                    }
+                    ring_len -= 1;
+                    clipped = true;
+                    break;
+                }
+            }
+        }
+        if !clipped {
+            break;
+        }
+    }
+    if ring_len == 3 {
+        tris[tris_len] = [ring[0].0, ring[1].0, ring[2].0];
+        tris_len += 1;
+    }
+    (tris, tris_len)
 }
 
 /// Returns `true` if a point is inside a polyhedron using ray-casting.
@@ -605,5 +717,70 @@ mod tests {
         assert!(!point_in_phed2(&[1.5, 0.5, 0.5], &points, &flat));
         assert!(point_in_phed(&[0.5, 0.5, 0.5], &points, &flat));
         assert!(!point_in_phed(&[1.5, 0.5, 0.5], &points, &flat));
+    }
+
+    #[test]
+    fn tet_volume_helper_matches_polyhedron_volume() {
+        let p = unit_tet();
+        assert_eq!(
+            super::tet_volume(&p.points[0], &p.points[1], &p.points[2], &p.points[3]),
+            p.volume(),
+            "TET4 fast path must stay bit-exact with Polyhedron::volume"
+        );
+        // Reversed orientation: signed volume flips, helper returns the absolute value.
+        assert_eq!(
+            super::tet_volume(&p.points[0], &p.points[2], &p.points[1], &p.points[3]),
+            p.volume(),
+            "TET4 fast path must be orientation-independent like Polyhedron::volume"
+        );
+    }
+
+    #[test]
+    fn hex_volume_helper_matches_polyhedron_volume() {
+        let p = unit_cube();
+        assert_eq!(
+            super::hex_volume(&[
+                p.points[0],
+                p.points[1],
+                p.points[2],
+                p.points[3],
+                p.points[4],
+                p.points[5],
+                p.points[6],
+                p.points[7]
+            ]),
+            p.volume(),
+            "HEX8 fast path must stay bit-exact with Polyhedron::volume"
+        );
+    }
+
+    #[test]
+    fn hex_volume_helper_on_skewed_hex() {
+        let pts = [
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [2.0, 2.0, 0.0],
+            [0.0, 2.0, 0.0],
+            [0.5, 0.5, 3.0],
+            [2.5, 0.5, 3.0],
+            [2.5, 2.5, 3.0],
+            [0.5, 2.5, 3.0],
+        ];
+        let phed = Polyhedron::convex(
+            pts.to_vec(),
+            vec![
+                vec![0, 1, 2, 3],
+                vec![0, 3, 7, 4],
+                vec![0, 4, 5, 1],
+                vec![1, 5, 6, 2],
+                vec![2, 6, 7, 3],
+                vec![4, 7, 6, 5],
+            ],
+        );
+        assert_eq!(
+            super::hex_volume(&pts),
+            phed.volume(),
+            "HEX8 fast path must stay bit-exact with Polyhedron::volume"
+        );
     }
 }
