@@ -1,5 +1,5 @@
 use crate::element_traits::ElementGeo;
-use crate::element_traits::is_in as geo;
+use crate::geometry as geo;
 use crate::mesh::{ElementIdsSet, UMeshView};
 
 #[derive(Clone, Debug)]

@@ -1,10 +1,12 @@
 //! Geometric operations for mesh elements.
 //!
 //! Provides the [`ElementGeo`] trait for coordinate access, measures,
-//! bounding boxes, and centroid calculations.
+//! bounding boxes, and centroid calculations. All computations delegate to the owned geometry
+//! types of the [`crate::geometry`] module.
 
-use super::measures as mes;
-use crate::mesh::{ElementLike, ElementType};
+use super::element_topo::ElementTopo;
+use crate::geometry::{Polygon, Polyhedron, Segment};
+use crate::mesh::{Dimension, ElementLike, ElementType};
 
 use nalgebra as na;
 
@@ -12,7 +14,7 @@ use nalgebra as na;
 ///
 /// Extends [`ElementLike`] with methods for accessing coordinates as nalgebra
 /// points, computing measures (length/area/volume), bounding boxes, and centroids.
-pub trait ElementGeo<'a>: ElementLike<'a> {
+pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
     /// Returns the i-th coordinate as a 1D point.
     ///
     /// # Panics
@@ -91,6 +93,75 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         (0..self.connectivity().len()).map(|i| self.coord(i))
     }
 
+    /// Builds the element as a 1D segment.
+    ///
+    /// # Panics
+    /// Panics if the element does not have exactly two nodes.
+    fn as_segment1(&self) -> Segment<1> {
+        assert_eq!(self.num_nodes(), 2);
+        Segment::new(self.coord1(0).into(), self.coord1(1).into())
+    }
+
+    /// Builds the element as a 2D segment.
+    ///
+    /// # Panics
+    /// Panics if the element does not have exactly two nodes.
+    fn as_segment2(&self) -> Segment<2> {
+        assert_eq!(self.num_nodes(), 2);
+        Segment::new(*self.coord2_ref(0), *self.coord2_ref(1))
+    }
+
+    /// Builds the element as a 3D segment.
+    ///
+    /// # Panics
+    /// Panics if the element does not have exactly two nodes.
+    fn as_segment3(&self) -> Segment<3> {
+        assert_eq!(self.num_nodes(), 2);
+        Segment::new(*self.coord3_ref(0), *self.coord3_ref(1))
+    }
+
+    /// Builds the element as a 2D polygon.
+    fn as_polygon2(&self) -> Polygon<2> {
+        Polygon::with_convexity(
+            self.coords2().copied(),
+            self.element_type().known_convexity(),
+        )
+    }
+
+    /// Builds the element as a 3D polygon.
+    fn as_polygon3(&self) -> Polygon<3> {
+        Polygon::with_convexity(
+            self.coords3().copied(),
+            self.element_type().known_convexity(),
+        )
+    }
+
+    /// Builds the element as a 3D polyhedron from its faces.
+    fn as_polyhedron(&self) -> Polyhedron {
+        let coords: Vec<[f64; 3]> = self.coords3().copied().collect();
+        let mut local: Vec<usize> = Vec::with_capacity(self.num_nodes());
+        for &node in self.connectivity() {
+            if node != usize::MAX {
+                local.push(node);
+            }
+        }
+        let faces: Vec<Vec<usize>> = self
+            .subentities(Some(Dimension::D1))
+            .into_iter()
+            .flat_map(|(_, face_conn)| {
+                face_conn
+                    .iter()
+                    .map(|face| {
+                        face.iter()
+                            .map(|&node| local.iter().position(|&n| n == node).unwrap())
+                            .collect::<Vec<usize>>()
+                    })
+                    .collect::<Vec<Vec<usize>>>()
+            })
+            .collect();
+        Polyhedron::with_convexity(coords, faces, self.element_type().known_convexity())
+    }
+
     /// Computes the geometric measure of the element in 1D space.
     ///
     /// Returns length for 1D elements.
@@ -98,7 +169,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => mes::dist1(self.coord1(0), self.coord1(1)),
+            SEG2 => self.as_segment1().length(),
             _ => todo!(),
         }
     }
@@ -110,14 +181,8 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => mes::dist2(self.coord2(0), self.coord2(1)),
-            TRI3 => mes::surf_tri2(self.coord2(0), self.coord2(1), self.coord2(2)),
-            QUAD4 => mes::surf_quad2(
-                &self.coord2(0),
-                &self.coord2(1),
-                &self.coord2(2),
-                &self.coord2(3),
-            ),
+            SEG2 => self.as_segment2().length(),
+            TRI3 | QUAD4 | PGON => self.as_polygon2().area(),
             _ => todo!(),
         }
     }
@@ -129,28 +194,24 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => mes::dist3(self.coord3_ref(0), self.coord3_ref(1)),
-            TRI3 => mes::surf_tri3(
-                self.coord3(0).into(),
-                self.coord3(1).into(),
-                self.coord3(2).into(),
-            ),
-            QUAD4 => mes::surf_quad3(
-                self.coord3_ref(0),
-                self.coord3_ref(1),
-                self.coord3_ref(2),
-                self.coord3_ref(3),
-            ),
+            SEG2 => self.as_segment3().length(),
+            TRI3 | QUAD4 => self.as_polygon3().area(),
+            TET4 | HEX8 | PHED => self.as_polyhedron().volume(),
             _ => todo!(),
         }
     }
 
     /// Returns `true` if the given point lies inside the element.
-    ///
-    /// # Note
-    /// This method is not yet implemented.
-    fn is_point_inside(&self, _point: &[f64]) -> bool {
-        todo!()
+    fn is_point_inside(&self, point: &[f64]) -> bool {
+        use ElementType::*;
+        match self.element_type() {
+            VERTEX => self.coord(0) == point,
+            TRI3 | QUAD4 | PGON => self.as_polygon2().contains(&[point[0], point[1]]),
+            TET4 | HEX8 | PHED => self
+                .as_polyhedron()
+                .contains(&[point[0], point[1], point[2]]),
+            _ => todo!(),
+        }
     }
 
     fn bounds2(&self) -> [[f64; 2]; 2] {
@@ -183,20 +244,25 @@ pub trait ElementGeo<'a>: ElementLike<'a> {
 
     /// Computes the 2D centroid of the element.
     fn centroid2(&self) -> [f64; 2] {
-        let mut p: na::Point2<f64> = na::Point2::origin();
-        for i in 0..self.connectivity().len() {
-            p += self.coord2(i) - na::Point2::origin();
+        use ElementType::*;
+        match self.element_type() {
+            VERTEX => *self.coord2_ref(0),
+            SEG2 => self.as_segment2().midpoint(),
+            TRI3 | QUAD4 | PGON => self.as_polygon2().centroid(),
+            _ => todo!(),
         }
-        (p / (self.connectivity().len() as f64)).into()
     }
 
     /// Computes the 3D centroid of the element.
     fn centroid3(&self) -> [f64; 3] {
-        let mut p: na::Point3<f64> = na::Point3::origin();
-        for i in 0..self.connectivity().len() {
-            p += self.coord3(i) - na::Point3::origin();
+        use ElementType::*;
+        match self.element_type() {
+            VERTEX => *self.coord3_ref(0),
+            SEG2 => self.as_segment3().midpoint(),
+            TRI3 | QUAD4 => self.as_polygon3().centroid(),
+            TET4 | HEX8 | PHED => self.as_polyhedron().centroid(),
+            _ => todo!(),
         }
-        (p / (self.connectivity().len() as f64)).into()
     }
 }
 

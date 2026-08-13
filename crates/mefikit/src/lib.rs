@@ -17,6 +17,8 @@
 ///
 /// The operations are provided through the `ElementGeo` trait.
 pub mod element_traits;
+/// Owned geometric primitives and point-in-region tests used by the element traits and tools.
+pub mod geometry;
 /// This module defines a `read` and a `write` functions that can use various mesh formats
 mod io;
 /// This module serves as the **central container** for all mesh-related data and logic in the

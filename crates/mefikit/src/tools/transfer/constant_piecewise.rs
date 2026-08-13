@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use ndarray as nd;
 
 use super::transfer_trait::{FieldNature, PointLocation, Transfer};
-use crate::element_traits::{ElementGeo, ElementTopo, is_in};
+use crate::element_traits::{ElementGeo, ElementTopo};
+use crate::geometry::{Polygon, point_in_phed};
 use crate::mesh::{
     Dimension, Element, ElementId, ElementIds, ElementLike, ElementType, FieldOwnedD, FieldViewD,
     UMeshView,
@@ -194,11 +195,10 @@ fn locate(
 fn contains_point(elem: &Element, sample: [f64; 3], space_dim: usize) -> bool {
     match space_dim {
         2 => {
-            let mut pgon: Vec<[f64; 2]> = elem.coords2().copied().collect();
-            if signed_area2(&pgon) < 0.0 {
-                pgon.reverse();
-            }
-            is_in::in_polygon_stable(&[sample[0], sample[1]], &pgon)
+            let pgon =
+                Polygon::unknown((0..elem.connectivity().len()).map(|i| elem.coord2(i).into()))
+                    .into_ccw();
+            pgon.contains_stable(&[sample[0], sample[1]])
         }
         // TODO: this does not work for polyhedra as coords size does not match connectivity size.
         3 => {
@@ -216,22 +216,10 @@ fn contains_point(elem: &Element, sample: [f64; 3], space_dim: usize) -> bool {
                     faces.push(usize::MAX);
                 }
             }
-            is_in::point_in_phed(&sample, &coords, &faces)
+            point_in_phed(&sample, &coords, &faces)
         }
         _ => unreachable!(),
     }
-}
-
-/// Signed area of a polygon using the shoelace formula.
-fn signed_area2(pgon: &[[f64; 2]]) -> f64 {
-    let n = pgon.len();
-    let mut area2 = 0.0;
-    for i in 0..n {
-        let [x0, y0] = pgon[i];
-        let [x1, y1] = pgon[(i + 1) % n];
-        area2 += x0 * y1 - x1 * y0;
-    }
-    area2 / 2.0
 }
 
 #[cfg(test)]

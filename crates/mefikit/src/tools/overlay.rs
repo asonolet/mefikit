@@ -28,10 +28,8 @@ use ndarray as nd;
 use crate::element_traits::cut::{
     IntersectionIds, M1M2Intersections, NodeId, SortedSegIntersections,
 };
-use crate::element_traits::is_in::{in_polygon_stable, strict_interior_point};
-use crate::element_traits::{
-    Cutable, Intersection, Intersections, PointId, SortedVecKey, intersect_seg_seg,
-};
+use crate::element_traits::{Cutable, SortedVecKey};
+use crate::geometry::{Intersection, Intersections, PointId, Polygon, Segment};
 use crate::mesh::{Dimension, Element, ElementLike, ElementType, UMesh, UMeshView};
 use crate::prelude::ElementGeo;
 use crate::tools::duplicates_from;
@@ -327,11 +325,9 @@ fn cut_cells(
 }
 
 /// Returns the cell vertices in counter-clockwise order.
-fn cell_points(cell: Element<'_>) -> Vec<[f64; 2]> {
-    let points: Vec<[f64; 2]> = (0..cell.connectivity().len())
-        .map(|i| cell.coord2(i).into())
-        .collect();
-    oriented_ccw(points)
+fn cell_points(cell: Element<'_>) -> Polygon<2> {
+    let pgon = Polygon::unknown((0..cell.connectivity().len()).map(|i| cell.coord2(i).into()));
+    pgon.into_ccw()
 }
 
 /// Returns `true` if the polygon given by node ids lies inside any cell of `cutter_cells`.
@@ -364,58 +360,15 @@ fn cell_inside(cell: &Element<'_>, cutter: &UMesh, cutter_bvh: &SpIdx2) -> bool 
 /// non-convex piece (e.g. an L-shape) can fall outside its own interior, so it is not a valid
 /// witness.
 fn point_inside(points: &[[f64; 2]], cutter: &UMesh, cutter_bvh: &SpIdx2) -> bool {
-    let Some(interior) = strict_interior_point(points) else {
+    let Some(interior) = Polygon::unknown(points.iter().copied()).strict_interior_point() else {
         return false;
     };
     let candidates = cutter_bvh.intersects(interior);
     candidates
         .iter()
         .map(|eid| cutter.element(eid))
-        .map(|e| cell_points(e))
-        .any(|cell| in_polygon_stable(&interior, &cell))
-}
-
-/// Signed area of a polygon using the shoelace formula.
-/// Positive result indicates counter-clockwise orientation.
-fn shoelace_signed_area(points: &[[f64; 2]]) -> f64 {
-    let n = points.len();
-    let mut area2 = 0.0;
-    for i in 0..n {
-        let [x0, y0] = points[i];
-        let [x1, y1] = points[(i + 1) % n];
-        area2 += x0 * y1 - x1 * y0;
-    }
-    area2 / 2.0
-}
-
-/// Centroid of a polygon using the shoelace formula.
-/// Returns the first vertex for a degenerate polygon.
-#[allow(dead_code)]
-fn shoelace_centroid(points: &[[f64; 2]]) -> [f64; 2] {
-    let n = points.len();
-    let mut area2 = 0.0;
-    let mut cx = 0.0;
-    let mut cy = 0.0;
-    for i in 0..n {
-        let [x0, y0] = points[i];
-        let [x1, y1] = points[(i + 1) % n];
-        let cross = x0 * y1 - x1 * y0;
-        area2 += cross;
-        cx += (x0 + x1) * cross;
-        cy += (y0 + y1) * cross;
-    }
-    if area2.abs() < 1e-30 {
-        return points[0];
-    }
-    [cx / (3.0 * area2), cy / (3.0 * area2)]
-}
-
-/// Returns the polygon points in counter-clockwise order.
-fn oriented_ccw(mut points: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
-    if shoelace_signed_area(&points) < 0.0 {
-        points.reverse();
-    }
-    points
+        .map(cell_points)
+        .any(|cell| cell.contains_stable(&interior))
 }
 
 /// Compute all intersections between mesh1 and mesh2 where mesh1 and mesh2 should be 2d mesh of
@@ -460,12 +413,8 @@ fn add_intersection(
 ) {
     use crate::mesh::ElementType::*;
     let int = match (edge.element_type(), edge2.element_type()) {
-        (SEG2, SEG2) => intersect_seg_seg(
-            edge.coord2(0),
-            edge.coord2(1),
-            edge2.coord2(0),
-            edge2.coord2(1),
-        ),
+        (SEG2, SEG2) => Segment::new(edge.coord2(0).into(), edge.coord2(1).into())
+            .intersect(Segment::new(edge2.coord2(0).into(), edge2.coord2(1).into())),
         _ => todo!("Intersection with SEG3 is not yet implemented"),
     };
     match int {
@@ -745,10 +694,9 @@ mod tests {
     fn mesh_area(mesh: &UMesh) -> f64 {
         mesh.elements_of_dim(Dimension::D2)
             .map(|cell| {
-                let points: Vec<[f64; 2]> = (0..cell.connectivity().len())
-                    .map(|i| cell.coord2(i).into())
-                    .collect();
-                shoelace_signed_area(&points).abs()
+                let pgon =
+                    Polygon::unknown((0..cell.connectivity().len()).map(|i| cell.coord2(i).into()));
+                pgon.area()
             })
             .sum()
     }

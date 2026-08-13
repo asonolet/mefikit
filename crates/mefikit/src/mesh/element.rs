@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::Dimension;
+use crate::geometry::Convexity;
 
 /// Indicates whether an element has a fixed or variable number of nodes.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
@@ -179,6 +180,17 @@ impl ElementType {
             HEX8 => Some(8),
             HEX21 => Some(21),
             PHED => None, // Polyhedron can have arbitrary number of nodes
+        }
+    }
+
+    /// Returns the convexity known from the element type alone.
+    ///
+    /// Fixed-node element types are always convex; arbitrary polygon, polyhedron and spline
+    /// elements (PGON, PHED, SPLINE) can be concave and their convexity must be tested on demand.
+    pub fn known_convexity(&self) -> Convexity {
+        match self.regularity() {
+            Regularity::Regular => Convexity::Convex,
+            Regularity::Poly => Convexity::Unknown,
         }
     }
 }
