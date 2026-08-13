@@ -242,7 +242,8 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
             })
     }
 
-    /// Computes the 2D centroid of the element.
+    /// Computes the 2D vertex centroid of the element: the arithmetic mean of its node
+    /// coordinates.
     fn centroid2(&self) -> [f64; 2] {
         use ElementType::*;
         match self.element_type() {
@@ -253,7 +254,8 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         }
     }
 
-    /// Computes the 3D centroid of the element.
+    /// Computes the 3D vertex centroid of the element: the arithmetic mean of its node
+    /// coordinates.
     fn centroid3(&self) -> [f64; 3] {
         use ElementType::*;
         match self.element_type() {

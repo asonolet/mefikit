@@ -75,6 +75,21 @@ impl<const D: usize> Polygon<D> {
             })
     }
 
+    /// Computes the vertex centroid of the polygon: the arithmetic mean of its vertices.
+    ///
+    /// This is the average of the node coordinates, not the area-weighted centroid (see
+    /// [`Self::geometric_centroid`]).
+    pub fn centroid(&self) -> [f64; D] {
+        let mut c = [0.0; D];
+        for p in &self.points {
+            for (ck, pk) in c.iter_mut().zip(p.iter()) {
+                *ck += *pk;
+            }
+        }
+        let n = self.points.len() as f64;
+        c.map(|v| v / n)
+    }
+
     /// Returns the known convexity of the polygon.
     pub fn convexity(&self) -> Convexity {
         self.convexity
@@ -202,10 +217,11 @@ impl Polygon<2> {
         self.signed_area().abs()
     }
 
-    /// Computes the centroid of the polygon using the shoelace formula.
+    /// Computes the geometric centroid of the polygon using the shoelace formula (area-weighted).
     ///
-    /// Returns the first vertex for a degenerate polygon.
-    pub fn centroid(&self) -> [f64; 2] {
+    /// This is the centroid of the area enclosed by the polygon, not the average of its vertices
+    /// (see [`Self::centroid`]). Returns the first vertex for a degenerate polygon.
+    pub fn geometric_centroid(&self) -> [f64; 2] {
         let n = self.points.len();
         let mut area2 = 0.0;
         let mut cx = 0.0;
@@ -439,9 +455,12 @@ impl Polygon<3> {
         0.5 * (nx * nx + ny * ny + nz * nz).sqrt()
     }
 
-    /// Computes the centroid of the polygon as the area-weighted average of its fan-triangle
-    /// centroids.
-    pub fn centroid(&self) -> [f64; 3] {
+    /// Computes the geometric centroid of the polygon as the area-weighted average of its
+    /// fan-triangle centroids.
+    ///
+    /// This is the centroid of the area enclosed by the polygon, not the average of its vertices
+    /// (see [`Self::centroid`]).
+    pub fn geometric_centroid(&self) -> [f64; 3] {
         let n = self.points.len();
         if n < 3 {
             return self.points[0];
@@ -681,6 +700,9 @@ mod tests {
         let c = square().centroid();
         assert_abs_diff_eq!(c[0], 0.5, epsilon = 1e-12);
         assert_abs_diff_eq!(c[1], 0.5, epsilon = 1e-12);
+        let g = square().geometric_centroid();
+        assert_abs_diff_eq!(g[0], 0.5, epsilon = 1e-12);
+        assert_abs_diff_eq!(g[1], 0.5, epsilon = 1e-12);
     }
 
     #[test]
@@ -688,17 +710,32 @@ mod tests {
         let c = right_triangle().centroid();
         assert_abs_diff_eq!(c[0], 1.0 / 3.0, epsilon = 1e-12);
         assert_abs_diff_eq!(c[1], 1.0 / 3.0, epsilon = 1e-12);
+        let g = right_triangle().geometric_centroid();
+        assert_abs_diff_eq!(g[0], 1.0 / 3.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(g[1], 1.0 / 3.0, epsilon = 1e-12);
     }
 
-    /// The centroid of a concave polygon must lie inside its own interior (regression: the
-    /// previous arithmetic-mean centroid of an L-shape falls in the notch).
+    /// The geometric centroid of a concave polygon must lie inside its own interior (regression:
+    /// the vertex centroid of an L-shape, the arithmetic mean of its nodes, falls in the notch).
     #[test]
-    fn concave_centroid_inside() {
-        let c = l_shape().centroid();
+    fn concave_geometric_centroid_inside() {
+        let c = l_shape().geometric_centroid();
         let pgon = l_shape();
         assert!(
             pgon.contains_stable(&c),
-            "centroid {c:?} must be inside the L-shape"
+            "geometric centroid {c:?} must be inside the L-shape"
+        );
+    }
+
+    #[test]
+    fn vertex_centroid_differs_from_geometric() {
+        // The vertex centroid of the L-shape is the mean of its nodes: (1, 1), the reflex vertex.
+        let vertex = l_shape().centroid();
+        assert_eq!(vertex, [1.0, 1.0]);
+        let geometric = l_shape().geometric_centroid();
+        assert!(
+            (vertex[0] - geometric[0]).abs() > 1e-9 && (vertex[1] - geometric[1]).abs() > 1e-9,
+            "vertex centroid {vertex:?} must differ from geometric centroid {geometric:?}"
         );
     }
 
@@ -1043,6 +1080,9 @@ mod tests {
         let c = p.centroid();
         assert_abs_diff_eq!(c[0], 0.5, epsilon = 1e-12);
         assert_abs_diff_eq!(c[1], 0.5, epsilon = 1e-12);
+        let g = p.geometric_centroid();
+        assert_abs_diff_eq!(g[0], 0.5, epsilon = 1e-12);
+        assert_abs_diff_eq!(g[1], 0.5, epsilon = 1e-12);
     }
 
     #[test]

@@ -151,34 +151,55 @@ impl Polyhedron {
         self.signed_volume6().abs() / 6.0
     }
 
+    /// Triangulates every face into triangles that exactly tile the face, so the signed volume
+    /// and geometric centroid are correct even for concave faces.
+    fn face_triangles(&self) -> Vec<[usize; 3]> {
+        let mut tris = Vec::new();
+        for face in &self.faces {
+            tris.extend(ear_clip_triangles(face, &self.points));
+        }
+        tris
+    }
+
     fn signed_volume6(&self) -> f64 {
         let mut v6 = 0.0;
-        for face in &self.faces {
-            let a = self.points[face[0]];
-            for i in 1..face.len() - 1 {
-                let b = self.points[face[i]];
-                let c = self.points[face[i + 1]];
-                v6 += triple_product(a, b, c);
-            }
+        for [i, j, k] in self.face_triangles() {
+            v6 += triple_product(self.points[i], self.points[j], self.points[k]);
         }
         v6
     }
 
-    /// Computes the centroid of the polyhedron as the volume-weighted average of the signed
-    /// tetrahedra formed by the origin and each face triangle.
+    /// Computes the vertex centroid of the polyhedron: the arithmetic mean of its vertices.
+    ///
+    /// This is the average of the node coordinates, not the volume-weighted centroid (see
+    /// [`Self::geometric_centroid`]).
     pub fn centroid(&self) -> [f64; 3] {
+        let mut c = [0.0; 3];
+        for p in &self.points {
+            for (ck, pk) in c.iter_mut().zip(p.iter()) {
+                *ck += *pk;
+            }
+        }
+        let n = self.points.len() as f64;
+        c.map(|v| v / n)
+    }
+
+    /// Computes the geometric centroid of the polyhedron as the volume-weighted average of the
+    /// signed tetrahedra formed by the origin and each face triangle.
+    ///
+    /// This is the centroid of the volume enclosed by the polyhedron, not the average of its
+    /// vertices (see [`Self::centroid`]).
+    pub fn geometric_centroid(&self) -> [f64; 3] {
         let mut v6 = 0.0;
         let mut c = [0.0; 3];
-        for face in &self.faces {
-            let a = self.points[face[0]];
-            for i in 1..face.len() - 1 {
-                let b = self.points[face[i]];
-                let cpt = self.points[face[i + 1]];
-                let det = triple_product(a, b, cpt);
-                v6 += det;
-                for k in 0..3 {
-                    c[k] += (a[k] + b[k] + cpt[k]) * det;
-                }
+        for [i, j, k] in self.face_triangles() {
+            let a = self.points[i];
+            let b = self.points[j];
+            let cpt = self.points[k];
+            let det = triple_product(a, b, cpt);
+            v6 += det;
+            for kk in 0..3 {
+                c[kk] += (a[kk] + b[kk] + cpt[kk]) * det;
             }
         }
         if v6.abs() < 1e-30 {
@@ -322,6 +343,97 @@ fn even_odd_contains(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
     inside
 }
 
+/// Triangulates a planar face by ear clipping, returning triangles that exactly tile the face
+/// while preserving its winding, so concave faces are handled correctly.
+fn ear_clip_triangles(face: &[usize], points: &[[f64; 3]]) -> Vec<[usize; 3]> {
+    let mut tris = Vec::with_capacity(face.len().saturating_sub(2));
+    if face.len() < 3 {
+        return tris;
+    }
+    let pts: Vec<[f64; 3]> = face.iter().map(|&i| points[i]).collect();
+    let axis = dominant_axis(newell_normal(&pts));
+    let mut ring: Vec<(usize, [f64; 2])> = pts
+        .iter()
+        .copied()
+        .zip(face.iter().copied())
+        .map(|(p, i)| (i, project2(p, axis)))
+        .collect();
+    let mut area = 0.0;
+    for k in 0..ring.len() {
+        let a = ring[k].1;
+        let b = ring[(k + 1) % ring.len()].1;
+        area += a[0] * b[1] - a[1] * b[0];
+    }
+    let orient = if area >= 0.0 { 1.0 } else { -1.0 };
+    while ring.len() > 3 {
+        let m = ring.len();
+        let mut clipped = false;
+        for k in 0..m {
+            let (ai, a) = ring[(k + m - 1) % m];
+            let (bi, b) = ring[k];
+            let (ci, c) = ring[(k + 1) % m];
+            if (cross2(a, b, c)) * orient < 0.0 {
+                continue;
+            }
+            let mut blocked = false;
+            for &(_, p) in &ring {
+                if p == a || p == b || p == c {
+                    continue;
+                }
+                if point_in_triangle_strict(p, a, b, c, orient) {
+                    blocked = true;
+                    break;
+                }
+            }
+            if !blocked {
+                tris.push([ai, bi, ci]);
+                ring.remove(k);
+                clipped = true;
+                break;
+            }
+        }
+        if !clipped {
+            for k in 0..ring.len() {
+                let m = ring.len();
+                let (ai, a) = ring[(k + m - 1) % m];
+                let (bi, b) = ring[k];
+                let (ci, c) = ring[(k + 1) % m];
+                if cross2(a, b, c) * orient >= 0.0 {
+                    tris.push([ai, bi, ci]);
+                    ring.remove(k);
+                    clipped = true;
+                    break;
+                }
+            }
+        }
+        if !clipped {
+            break;
+        }
+    }
+    if ring.len() == 3 {
+        tris.push([ring[0].0, ring[1].0, ring[2].0]);
+    }
+    tris
+}
+
+/// Cross product `(b - a) × (c - a)` in 2D.
+fn cross2(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+}
+
+/// Returns `true` if `p` lies strictly inside triangle `(a, b, c)` of the given orientation.
+fn point_in_triangle_strict(
+    p: [f64; 2],
+    a: [f64; 2],
+    b: [f64; 2],
+    c: [f64; 2],
+    orient: f64,
+) -> bool {
+    cross2(a, b, p) * orient > 0.0
+        && cross2(b, c, p) * orient > 0.0
+        && cross2(c, a, p) * orient > 0.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,7 +498,7 @@ mod tests {
             vec![3, 2, 8, 9],
             vec![2, 1, 7, 8],
             vec![1, 0, 6, 7],
-            vec![6, 7, 8, 9, 10, 11],
+            vec![6, 11, 10, 9, 8, 7],
         ];
         Polyhedron::unknown(points, faces)
     }
@@ -402,6 +514,10 @@ mod tests {
         assert_abs_diff_eq!(c[0], 0.5, epsilon = 1e-12);
         assert_abs_diff_eq!(c[1], 0.5, epsilon = 1e-12);
         assert_abs_diff_eq!(c[2], 0.5, epsilon = 1e-12);
+        let g = unit_cube().geometric_centroid();
+        assert_abs_diff_eq!(g[0], 0.5, epsilon = 1e-12);
+        assert_abs_diff_eq!(g[1], 0.5, epsilon = 1e-12);
+        assert_abs_diff_eq!(g[2], 0.5, epsilon = 1e-12);
     }
 
     #[test]
@@ -415,6 +531,28 @@ mod tests {
         assert_abs_diff_eq!(c[0], 0.25, epsilon = 1e-12);
         assert_abs_diff_eq!(c[1], 0.25, epsilon = 1e-12);
         assert_abs_diff_eq!(c[2], 0.25, epsilon = 1e-12);
+        let g = unit_tet().geometric_centroid();
+        assert_abs_diff_eq!(g[0], 0.25, epsilon = 1e-12);
+        assert_abs_diff_eq!(g[1], 0.25, epsilon = 1e-12);
+        assert_abs_diff_eq!(g[2], 0.25, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn centroid_differs_from_geometric_on_concave() {
+        // Vertex centroid of the L-polyhedron: the arithmetic mean of its nodes.
+        let vertex = l_polyhedron().centroid();
+        assert_eq!(vertex, [1.0, 1.0, 0.5]);
+        let geometric = l_polyhedron().geometric_centroid();
+        assert!(
+            (vertex[0] - geometric[0]).abs() > 1e-9
+                || (vertex[1] - geometric[1]).abs() > 1e-9
+                || (vertex[2] - geometric[2]).abs() > 1e-9,
+            "vertex centroid {vertex:?} must differ from geometric centroid {geometric:?}"
+        );
+        assert!(
+            l_polyhedron().contains(&geometric),
+            "geometric centroid {geometric:?} must be inside the L-polyhedron (vertex {vertex:?})"
+        );
     }
 
     #[test]
