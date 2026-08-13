@@ -15,6 +15,7 @@ use ndarray as nd;
 
 use super::transfer_trait::{FieldNature, Transfer};
 use crate::element_traits::ElementGeo;
+use crate::geometry::{into_ccw2, signed_area2};
 use crate::mesh::{Dimension, ElementId, ElementType, FieldOwnedD, FieldViewD, UMeshView};
 use crate::tools::spatial_index::SpatiallyIndexable;
 
@@ -112,8 +113,9 @@ impl ConservativeP0Transfer {
             let mut src_idx = Vec::new();
             let mut overlap = Vec::new();
             for (j, elem) in block.iter(mesh_tgt.coords()).enumerate() {
-                let pgon = orient_ccw(elem.coords2().copied().collect());
-                target_measure[j] = shoelace_area(&pgon);
+                let mut pgon: Vec<[f64; 2]> = elem.coords2().copied().collect();
+                into_ccw2(&mut pgon);
+                target_measure[j] = signed_area2(&pgon).abs();
 
                 let [min, max] = elem.bounds2();
                 // The BVH stores f32 boxes: inflate the query by a small epsilon so a source cell
@@ -134,7 +136,8 @@ impl ConservativeP0Transfer {
                     let offset = src_offsets[&src_et];
                     for &i in &indices {
                         let src_elem = mesh_src.element(ElementId::new(src_et, i));
-                        let src_pgon = orient_ccw(src_elem.coords2().copied().collect());
+                        let mut src_pgon: Vec<[f64; 2]> = src_elem.coords2().copied().collect();
+                        into_ccw2(&mut src_pgon);
                         let area = convex_intersection_area(&src_pgon, &pgon);
                         if area > 1e-15 {
                             src_idx.push(offset + i);
@@ -239,29 +242,9 @@ impl Transfer for ConservativeP0Transfer {
     }
 }
 
-/// Signed area of a polygon using the shoelace formula.
-fn signed_area2(pgon: &[[f64; 2]]) -> f64 {
-    let n = pgon.len();
-    let mut area2 = 0.0;
-    for i in 0..n {
-        let [x0, y0] = pgon[i];
-        let [x1, y1] = pgon[(i + 1) % n];
-        area2 += x0 * y1 - x1 * y0;
-    }
-    area2 / 2.0
-}
-
-/// Area of a simple polygon, always non-negative.
-fn shoelace_area(pgon: &[[f64; 2]]) -> f64 {
-    signed_area2(pgon).abs()
-}
-
-/// Orients a polygon counter-clockwise (CCW has positive signed area).
-fn orient_ccw(mut pgon: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
-    if signed_area2(&pgon) < 0.0 {
-        pgon.reverse();
-    }
-    pgon
+/// Area of the intersection of two convex polygons.
+fn convex_intersection_area(p: &[[f64; 2]], q: &[[f64; 2]]) -> f64 {
+    signed_area2(&clip_convex(p, q)).abs()
 }
 
 /// Signed side of `p` with respect to the directed edge `a -> b` (cross product).
@@ -314,11 +297,6 @@ fn clip_convex(subject: &[[f64; 2]], clip: &[[f64; 2]]) -> Vec<[f64; 2]> {
     output
 }
 
-/// Area of the intersection of two convex polygons.
-fn convex_intersection_area(p: &[[f64; 2]], q: &[[f64; 2]]) -> f64 {
-    shoelace_area(&clip_convex(p, q))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,7 +318,11 @@ mod tests {
     /// Area of each 2D cell of a mesh, used to check the conservation integrals in tests.
     fn cell_areas(mesh: &UMesh) -> Vec<f64> {
         mesh.elements_of_dim(Dimension::D2)
-            .map(|e| shoelace_area(&orient_ccw(e.coords2().copied().collect())))
+            .map(|e| {
+                let mut pgon: Vec<[f64; 2]> = e.coords2().copied().collect();
+                into_ccw2(&mut pgon);
+                signed_area2(&pgon).abs()
+            })
             .collect()
     }
 

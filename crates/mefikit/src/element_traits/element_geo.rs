@@ -7,7 +7,7 @@
 use super::element_topo::ElementTopo;
 use crate::geometry::{
     Polygon, Polyhedron, Segment, area_polygon3, area_quad2, area_tri2, convex_polygon_contains2,
-    hex_volume, tet_volume,
+    hex_volume, tet_volume, vertex_centroid,
 };
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
@@ -96,45 +96,10 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         (0..self.connectivity().len()).map(|i| self.coord(i))
     }
 
-    /// Builds the element as a 1D segment.
-    ///
-    /// # Panics
-    /// Panics if the element does not have exactly two nodes.
-    fn as_segment1(&self) -> Segment<1> {
-        assert_eq!(self.num_nodes(), 2);
-        Segment::new(self.coord1(0).into(), self.coord1(1).into())
-    }
-
-    /// Builds the element as a 2D segment.
-    ///
-    /// # Panics
-    /// Panics if the element does not have exactly two nodes.
-    fn as_segment2(&self) -> Segment<2> {
-        assert_eq!(self.num_nodes(), 2);
-        Segment::new(*self.coord2_ref(0), *self.coord2_ref(1))
-    }
-
-    /// Builds the element as a 3D segment.
-    ///
-    /// # Panics
-    /// Panics if the element does not have exactly two nodes.
-    fn as_segment3(&self) -> Segment<3> {
-        assert_eq!(self.num_nodes(), 2);
-        Segment::new(*self.coord3_ref(0), *self.coord3_ref(1))
-    }
-
     /// Builds the element as a 2D polygon.
     fn as_polygon2(&self) -> Polygon<2> {
         Polygon::with_convexity(
             self.coords2().copied(),
-            self.element_type().known_convexity(),
-        )
-    }
-
-    /// Builds the element as a 3D polygon.
-    fn as_polygon3(&self) -> Polygon<3> {
-        Polygon::with_convexity(
-            self.coords3().copied(),
             self.element_type().known_convexity(),
         )
     }
@@ -172,8 +137,8 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => (self.coord1(0) - self.coord1(1)).norm(),
-            _ => todo!(),
+            SEG2 => Segment::new(self.coord1(0).into(), self.coord1(1).into()).length(),
+            other => unimplemented!("measure1 is not implemented for element type {other:?}"),
         }
     }
 
@@ -184,13 +149,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => {
-                let a = *self.coord2_ref(0);
-                let b = *self.coord2_ref(1);
-                let dx = a[0] - b[0];
-                let dy = a[1] - b[1];
-                (dx * dx + dy * dy).sqrt()
-            }
+            SEG2 => Segment::new(*self.coord2_ref(0), *self.coord2_ref(1)).length(),
             TRI3 => area_tri2(self.coord2_ref(0), self.coord2_ref(1), self.coord2_ref(2)),
             QUAD4 => area_quad2(&[
                 *self.coord2_ref(0),
@@ -199,7 +158,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord2_ref(3),
             ]),
             PGON => self.as_polygon2().area(),
-            _ => todo!(),
+            other => unimplemented!("measure2 is not implemented for element type {other:?}"),
         }
     }
 
@@ -210,14 +169,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
-            SEG2 => {
-                let a = *self.coord3_ref(0);
-                let b = *self.coord3_ref(1);
-                let dx = a[0] - b[0];
-                let dy = a[1] - b[1];
-                let dz = a[2] - b[2];
-                (dx * dx + dy * dy + dz * dz).sqrt()
-            }
+            SEG2 => Segment::new(*self.coord3_ref(0), *self.coord3_ref(1)).length(),
             TRI3 => area_polygon3(&[
                 *self.coord3_ref(0),
                 *self.coord3_ref(1),
@@ -246,7 +198,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord3_ref(7),
             ]),
             PHED => self.as_polyhedron().volume(),
-            _ => todo!(),
+            other => unimplemented!("measure3 is not implemented for element type {other:?}"),
         }
     }
 
@@ -276,7 +228,9 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
             TET4 | HEX8 | PHED => self
                 .as_polyhedron()
                 .contains(&[point[0], point[1], point[2]]),
-            _ => todo!(),
+            other => {
+                unimplemented!("is_point_inside is not implemented for element type {other:?}")
+            }
         }
     }
 
@@ -314,23 +268,20 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => *self.coord2_ref(0),
-            SEG2 => {
-                let a = *self.coord2_ref(0);
-                let b = *self.coord2_ref(1);
-                [(a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0]
-            }
-            TRI3 | QUAD4 => {
-                let mut c = [0.0; 2];
-                let mut n = 0;
-                for p in self.coords2() {
-                    c[0] += p[0];
-                    c[1] += p[1];
-                    n += 1;
-                }
-                [c[0] / n as f64, c[1] / n as f64]
-            }
+            SEG2 => Segment::new(*self.coord2_ref(0), *self.coord2_ref(1)).midpoint(),
+            TRI3 => vertex_centroid(&[
+                *self.coord2_ref(0),
+                *self.coord2_ref(1),
+                *self.coord2_ref(2),
+            ]),
+            QUAD4 => vertex_centroid(&[
+                *self.coord2_ref(0),
+                *self.coord2_ref(1),
+                *self.coord2_ref(2),
+                *self.coord2_ref(3),
+            ]),
             PGON => self.as_polygon2().centroid(),
-            _ => todo!(),
+            other => unimplemented!("centroid2 is not implemented for element type {other:?}"),
         }
     }
 
@@ -340,28 +291,36 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => *self.coord3_ref(0),
-            SEG2 => {
-                let a = *self.coord3_ref(0);
-                let b = *self.coord3_ref(1);
-                [
-                    (a[0] + b[0]) / 2.0,
-                    (a[1] + b[1]) / 2.0,
-                    (a[2] + b[2]) / 2.0,
-                ]
-            }
-            TRI3 | QUAD4 | TET4 | HEX8 => {
-                let mut c = [0.0; 3];
-                let mut n = 0;
-                for p in self.coords3() {
-                    c[0] += p[0];
-                    c[1] += p[1];
-                    c[2] += p[2];
-                    n += 1;
-                }
-                [c[0] / n as f64, c[1] / n as f64, c[2] / n as f64]
-            }
+            SEG2 => Segment::new(*self.coord3_ref(0), *self.coord3_ref(1)).midpoint(),
+            TRI3 => vertex_centroid(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+            ]),
+            QUAD4 => vertex_centroid(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+                *self.coord3_ref(3),
+            ]),
+            TET4 => vertex_centroid(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+                *self.coord3_ref(3),
+            ]),
+            HEX8 => vertex_centroid(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+                *self.coord3_ref(3),
+                *self.coord3_ref(4),
+                *self.coord3_ref(5),
+                *self.coord3_ref(6),
+                *self.coord3_ref(7),
+            ]),
             PHED => self.as_polyhedron().centroid(),
-            _ => todo!(),
+            other => unimplemented!("centroid3 is not implemented for element type {other:?}"),
         }
     }
 }

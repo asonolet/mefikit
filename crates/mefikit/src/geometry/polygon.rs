@@ -212,6 +212,29 @@ pub(crate) fn convex_polygon_contains2(points: &[[f64; 2]], x: &[f64; 2]) -> boo
     true
 }
 
+/// Signed area of a polygon in 2D using the shoelace formula.
+///
+/// Shared by [`Polygon::signed_area`] and the allocation-free element measure path.
+pub(crate) fn signed_area2(points: &[[f64; 2]]) -> f64 {
+    let n = points.len();
+    let mut area2 = 0.0;
+    for i in 0..n {
+        let [x0, y0] = points[i];
+        let [x1, y1] = points[(i + 1) % n];
+        area2 += x0 * y1 - x1 * y0;
+    }
+    area2 / 2.0
+}
+
+/// Reverses the polygon in place when its winding is clockwise (negative signed area).
+///
+/// Shared by [`Polygon::into_ccw`] and the allocation-free element path.
+pub(crate) fn into_ccw2(points: &mut [[f64; 2]]) {
+    if signed_area2(points) < 0.0 {
+        points.reverse();
+    }
+}
+
 /// Projects a point onto the dominant axis plane: the axis with the largest absolute coordinate
 /// of the normal is dropped.
 pub(crate) fn project2<const D: usize>(p: [f64; D], axis: usize) -> [f64; 2] {
@@ -280,14 +303,7 @@ impl Polygon<2> {
     ///
     /// Positive result indicates counter-clockwise orientation.
     pub fn signed_area(&self) -> f64 {
-        let n = self.points.len();
-        let mut area2 = 0.0;
-        for i in 0..n {
-            let [x0, y0] = self.points[i];
-            let [x1, y1] = self.points[(i + 1) % n];
-            area2 += x0 * y1 - x1 * y0;
-        }
-        area2 / 2.0
+        signed_area2(&self.points)
     }
 
     /// Computes the area of the polygon.
@@ -320,9 +336,7 @@ impl Polygon<2> {
 
     /// Returns the polygon vertices in counter-clockwise order.
     pub fn into_ccw(mut self) -> Self {
-        if self.signed_area() < 0.0 {
-            self.points.reverse();
-        }
+        into_ccw2(&mut self.points);
         self
     }
 
