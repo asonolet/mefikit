@@ -113,21 +113,17 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 local.push(node);
             }
         }
-        let faces: Vec<Vec<usize>> = self
-            .subentities(Some(Dimension::D1))
-            .into_iter()
-            .flat_map(|(_, face_conn)| {
-                face_conn
+        let mut faces = crate::mesh::IndirectIndexOwned::new();
+        for (_, face_conn) in self.subentities(Some(Dimension::D1)) {
+            for face in face_conn.iter() {
+                let face: Vec<usize> = face
                     .iter()
-                    .map(|face| {
-                        face.iter()
-                            .map(|&node| local.iter().position(|&n| n == node).unwrap())
-                            .collect::<Vec<usize>>()
-                    })
-                    .collect::<Vec<Vec<usize>>>()
-            })
-            .collect();
-        Polyhedron::with_convexity(coords, faces, self.element_type().known_convexity())
+                    .map(|&node| local.iter().position(|&n| n == node).unwrap())
+                    .collect();
+                faces.push(&face);
+            }
+        }
+        Polyhedron::with_indirect_index(coords, faces, self.element_type().known_convexity())
     }
 
     /// Computes the geometric measure of the element in 1D space.

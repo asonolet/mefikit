@@ -31,6 +31,10 @@
 //!   helper for ear clipping and Sutherland–Hodgman clipping, where vertices come from an already
 //!   constructed face and small scale error is acceptable. Do not silently swap one for the
 //!   other. (`point_in_phed2` is a backward-compatibility alias of `point_in_phed`.)
+//! - **Accepted dependency edge**: `Polyhedron` stores its face connectivity as
+//!   [`crate::mesh::IndirectIndexOwned`] (flat data plus cumulative offsets — one contiguous
+//!   allocation instead of one `Vec` per face, mirroring `Connectivity::Poly` in the mesh layer).
+//!   This is the single geometry→mesh edge; keep it to this one data structure.
 
 mod convexity;
 mod polygon;

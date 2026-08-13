@@ -5,17 +5,20 @@ use std::sync::OnceLock;
 use super::convexity::Convexity;
 use super::polygon::{Polygon, cross2, dominant_axis, newell_normal, project2};
 use super::{bounds_iter, vertex_centroid};
+use crate::mesh::IndirectIndexOwned;
 
 /// An owned polyhedron in 3D space.
 ///
-/// The faces are lists of vertex indices into [`Self::points`]. They are expected to be
-/// consistently oriented so that the signed volume computed by the divergence theorem is
-/// non-zero; the magnitude of [`Self::volume`] and [`Self::centroid`] do not depend on the
-/// orientation, only on its consistency.
+/// The faces are lists of vertex indices into [`Self::points`], stored as an
+/// [`IndirectIndexOwned`]: a flat data array plus cumulative offsets, so variable-length faces
+/// use one contiguous allocation instead of one per face. They are expected to be consistently
+/// oriented so that the signed volume computed by the divergence theorem is non-zero; the
+/// magnitude of [`Self::volume`] and [`Self::centroid`] do not depend on the orientation, only on
+/// its consistency.
 #[derive(Clone, Debug)]
 pub struct Polyhedron {
     points: Vec<[f64; 3]>,
-    faces: Vec<Vec<usize>>,
+    faces: IndirectIndexOwned<usize>,
     convexity: Convexity,
     convexity_cache: OnceLock<bool>,
 }
@@ -27,9 +30,33 @@ impl Polyhedron {
         faces: impl IntoIterator<Item = Vec<usize>>,
         convexity: Convexity,
     ) -> Self {
+        let mut data = Vec::new();
+        let mut offsets = Vec::new();
+        for face in faces {
+            data.extend_from_slice(&face);
+            offsets.push(data.len());
+        }
         Polyhedron {
             points: points.into_iter().collect(),
-            faces: faces.into_iter().collect(),
+            faces: IndirectIndexOwned {
+                data: data.into(),
+                offsets: offsets.into(),
+            },
+            convexity,
+            convexity_cache: OnceLock::new(),
+        }
+    }
+
+    /// Creates a polyhedron from the given vertices and an indirect index of face vertex
+    /// indices, with an explicit convexity.
+    pub(crate) fn with_indirect_index(
+        points: impl IntoIterator<Item = [f64; 3]>,
+        faces: IndirectIndexOwned<usize>,
+        convexity: Convexity,
+    ) -> Self {
+        Polyhedron {
+            points: points.into_iter().collect(),
+            faces,
             convexity,
             convexity_cache: OnceLock::new(),
         }
@@ -110,7 +137,8 @@ impl Polyhedron {
         if self.points.len() < 4 {
             return true;
         }
-        for face in &self.faces {
+        for fi in 0..self.faces.len() {
+            let face = &self.faces[fi];
             if face.len() < 3 {
                 continue;
             }
@@ -146,8 +174,8 @@ impl Polyhedron {
     /// and geometric centroid are correct even for concave faces.
     fn face_triangles(&self) -> Vec<[usize; 3]> {
         let mut tris = Vec::new();
-        for face in &self.faces {
-            tris.extend(ear_clip_triangles(face, &self.points));
+        for fi in 0..self.faces.len() {
+            tris.extend(ear_clip_triangles(&self.faces[fi], &self.points));
         }
         tris
     }
@@ -198,8 +226,8 @@ impl Polyhedron {
         let py = point[1];
         let pz = point[2];
         let mut inside = false;
-        for face in &self.faces {
-            if ray_crosses_face(px, py, pz, face, &self.points) {
+        for fi in 0..self.faces.len() {
+            if ray_crosses_face(px, py, pz, &self.faces[fi], &self.points) {
                 inside = !inside;
             }
         }
@@ -826,6 +854,54 @@ mod tests {
                 ),
                 p.contains(&pt),
                 "HEX8 contains fast path must stay bit-exact with Polyhedron::contains at {pt:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn indirect_index_faces_match_vec_of_vec_construction() {
+        let points: Vec<[f64; 3]> = unit_cube().points.clone();
+        let faces: Vec<Vec<usize>> = vec![
+            vec![0, 1, 2, 3],
+            vec![0, 3, 7, 4],
+            vec![0, 4, 5, 1],
+            vec![1, 5, 6, 2],
+            vec![2, 6, 7, 3],
+            vec![4, 7, 6, 5],
+        ];
+        let mut data = Vec::new();
+        let mut offsets = Vec::new();
+        for face in &faces {
+            data.extend_from_slice(face);
+            offsets.push(data.len());
+        }
+        let indirect = Polyhedron::with_indirect_index(
+            points.clone(),
+            IndirectIndexOwned {
+                data: data.into(),
+                offsets: offsets.into(),
+            },
+            Convexity::Unknown,
+        );
+        let vec_of_vec = Polyhedron::with_convexity(points, faces, Convexity::Unknown);
+        assert_eq!(indirect.volume(), vec_of_vec.volume());
+        assert_eq!(indirect.centroid(), vec_of_vec.centroid());
+        assert_eq!(
+            indirect.geometric_centroid(),
+            vec_of_vec.geometric_centroid()
+        );
+        assert_eq!(indirect.is_convex(), vec_of_vec.is_convex());
+        for pt in [
+            [0.5, 0.5, 0.5],
+            [1.5, 0.5, 0.5],
+            [0.5, -0.5, 0.5],
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+        ] {
+            assert_eq!(
+                indirect.contains(&pt),
+                vec_of_vec.contains(&pt),
+                "IndirectIndex-backed faces must match Vec<Vec> at {pt:?}"
             );
         }
     }
