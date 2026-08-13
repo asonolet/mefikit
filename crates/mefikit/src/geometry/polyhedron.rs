@@ -905,4 +905,62 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn point_in_phed_with_shuffled_global_indices() {
+        // Unit cube whose 8 vertices sit at scattered rows of a larger coords array, so the
+        // connectivity indices (4, 9, 2, ...) do not equal the row order.
+        let coords: Vec<[f64; 3]> = vec![
+            [0.0, 0.0, 1.0], // row 0: cube vertex 4
+            [9.0, 9.0, 9.0], // row 1: filler
+            [1.0, 1.0, 0.0], // row 2: cube vertex 2
+            [9.0, 9.0, 9.0], // row 3: filler
+            [0.0, 0.0, 0.0], // row 4: cube vertex 0
+            [1.0, 1.0, 1.0], // row 5: cube vertex 6
+            [9.0, 9.0, 9.0], // row 6: filler
+            [0.0, 1.0, 0.0], // row 7: cube vertex 3
+            [0.0, 1.0, 1.0], // row 8: cube vertex 7
+            [1.0, 0.0, 0.0], // row 9: cube vertex 1
+            [9.0, 9.0, 9.0], // row 10: filler
+            [1.0, 0.0, 1.0], // row 11: cube vertex 5
+        ];
+        let flat: Vec<usize> = vec![
+            4,
+            9,
+            2,
+            7,
+            usize::MAX, //
+            4,
+            7,
+            8,
+            0,
+            usize::MAX, //
+            4,
+            0,
+            11,
+            9,
+            usize::MAX, //
+            9,
+            11,
+            5,
+            2,
+            usize::MAX, //
+            2,
+            5,
+            8,
+            7,
+            usize::MAX, //
+            0,
+            8,
+            5,
+            11,
+            usize::MAX, //
+        ];
+        let inside = [0.5, 0.5, 0.5];
+        let outside = [1.5, 0.5, 0.5];
+        assert!(point_in_phed(&inside, &coords, &flat));
+        assert!(point_in_phed2(&inside, &coords, &flat));
+        assert!(!point_in_phed(&outside, &coords, &flat));
+        assert!(!point_in_phed2(&outside, &coords, &flat));
+    }
 }

@@ -587,4 +587,109 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn as_polyhedron_maps_global_to_local_faces() {
+        let expected_faces = [
+            [0, 1, 2, 3],
+            [0, 3, 7, 4],
+            [0, 4, 5, 1],
+            [1, 5, 6, 2],
+            [2, 6, 7, 3],
+            [4, 7, 6, 5],
+        ];
+        let mesh = crate::mesh_examples::make_imesh_3d(2);
+        for elem in mesh.elements() {
+            let phed = elem.as_polyhedron();
+            assert_eq!(phed.num_faces(), 6);
+            let coords: Vec<[f64; 3]> = elem.coords3().copied().collect();
+            assert_eq!(
+                phed.volume(),
+                hex_volume(&coords.try_into().unwrap()),
+                "as_polyhedron must reproduce the element geometry (element {:?})",
+                elem.connectivity()
+            );
+            for (i, row) in expected_faces.iter().enumerate() {
+                let expected: Vec<[f64; 3]> = row.iter().map(|&k| *elem.coord3_ref(k)).collect();
+                let actual: Vec<[f64; 3]> = phed.face(i).iter().copied().collect();
+                assert_eq!(
+                    actual,
+                    expected,
+                    "face {i} must resolve the element's global connectivity to local vertex \
+                     positions (element {:?}, local face {row:?})",
+                    elem.connectivity()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn as_polyhedron_phed_uses_local_connectivity() {
+        // Unit cube whose 8 vertices sit at scattered rows of the global coords array, so the
+        // global node ids (4, 9, 2, ...) do not match local indices (0..8).
+        let coords = nd::array![
+            [0.0, 0.0, 1.0], // row 0: cube vertex 4
+            [9.0, 9.0, 9.0], // row 1: filler
+            [1.0, 1.0, 0.0], // row 2: cube vertex 2
+            [9.0, 9.0, 9.0], // row 3: filler
+            [0.0, 0.0, 0.0], // row 4: cube vertex 0
+            [1.0, 1.0, 1.0], // row 5: cube vertex 6
+            [9.0, 9.0, 9.0], // row 6: filler
+            [0.0, 1.0, 0.0], // row 7: cube vertex 3
+            [0.0, 1.0, 1.0], // row 8: cube vertex 7
+            [1.0, 0.0, 0.0], // row 9: cube vertex 1
+            [9.0, 9.0, 9.0], // row 10: filler
+            [1.0, 0.0, 1.0], // row 11: cube vertex 5
+        ];
+        let conn: &[usize] = &[
+            4,
+            9,
+            2,
+            7,
+            usize::MAX, //
+            4,
+            7,
+            8,
+            0,
+            usize::MAX, //
+            4,
+            0,
+            11,
+            9,
+            usize::MAX, //
+            9,
+            11,
+            5,
+            2,
+            usize::MAX, //
+            2,
+            5,
+            8,
+            7,
+            usize::MAX, //
+            0,
+            8,
+            5,
+            11,
+            usize::MAX, //
+        ];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::PHED,
+        );
+        let phed = elem.as_polyhedron();
+        assert_eq!(phed.num_faces(), 6);
+        assert_abs_diff_eq!(phed.volume(), 1.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(phed.face(0).area(), 1.0, epsilon = 1e-12);
+        assert!(elem.is_point_inside(&[0.5, 0.5, 0.5]));
+        assert!(!elem.is_point_inside(&[1.5, 0.5, 0.5]));
+        assert!(!elem.is_point_inside(&[0.5, 1.5, 0.5]));
+    }
 }
