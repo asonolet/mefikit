@@ -3,8 +3,8 @@
 use std::sync::OnceLock;
 
 use super::convexity::Convexity;
-use super::polygon::{Polygon, dominant_axis, newell_normal, project2};
-use super::vertex_centroid;
+use super::polygon::{Polygon, cross2, dominant_axis, newell_normal, project2};
+use super::{bounds_iter, vertex_centroid};
 
 /// An owned polyhedron in 3D space.
 ///
@@ -73,17 +73,7 @@ impl Polyhedron {
 
     /// Returns the axis-aligned bounding box as `[min, max]`.
     pub fn bounds(&self) -> [[f64; 3]; 2] {
-        self.points
-            .iter()
-            .fold([[f64::INFINITY; 3], [-f64::INFINITY; 3]], |acc, p| {
-                let mut lo = acc[0];
-                let mut hi = acc[1];
-                for k in 0..3 {
-                    lo[k] = lo[k].min(p[k]);
-                    hi[k] = hi[k].max(p[k]);
-                }
-                [lo, hi]
-            })
+        bounds_iter(self.points.iter().copied())
     }
 
     /// Returns the `i`-th face as a 3D polygon.
@@ -209,8 +199,7 @@ impl Polyhedron {
         let pz = point[2];
         let mut inside = false;
         for face in &self.faces {
-            let face_points: Vec<[f64; 3]> = face.iter().map(|&j| self.points[j]).collect();
-            if ray_crosses_face(px, py, pz, &face_points) {
+            if ray_crosses_face(px, py, pz, face, &self.points) {
                 inside = !inside;
             }
         }
@@ -280,34 +269,98 @@ pub(crate) fn hex_volume(p: &[[f64; 3]; 8]) -> f64 {
     v6.abs() / 6.0
 }
 
+/// The four triangular faces of a TET4 in `subentities(D1)` connectivity order.
+const TET4_FACES: [[usize; 3]; 4] = [[0, 1, 2], [1, 2, 3], [2, 3, 0], [3, 0, 1]];
+
+/// Returns `true` if `point` lies inside the tetrahedron with vertices `a, b, c, d`.
+///
+/// Bit-exact with [`Polyhedron::contains`] on a tetrahedron (same ray casting and plane tests over
+/// the face layout produced by `as_polyhedron`) but allocates nothing.
+#[inline(always)]
+pub(crate) fn tet_contains(
+    point: &[f64; 3],
+    a: &[f64; 3],
+    b: &[f64; 3],
+    c: &[f64; 3],
+    d: &[f64; 3],
+) -> bool {
+    let coords = [*a, *b, *c, *d];
+    even_odd_contains_phed(point, &coords, &TET4_FACES)
+}
+
+/// Returns `true` if `point` lies inside the hexahedron `p`.
+///
+/// Bit-exact with [`Polyhedron::contains`] on a HEX8 (same ray casting over the six quad faces
+/// produced by `as_polyhedron`) but allocates nothing.
+#[inline(always)]
+pub(crate) fn hex_contains(point: &[f64; 3], p: &[[f64; 3]; 8]) -> bool {
+    even_odd_contains_phed(point, p, &HEX8_FACES)
+}
+
+/// Half-open ray-casting point-in-polyhedron test over `faces`, sharing the per-face plane test
+/// and projected even-odd face test of [`Polyhedron::contains`].
+fn even_odd_contains_phed<const NF: usize, const NV: usize>(
+    point: &[f64; 3],
+    coords: &[[f64; 3]],
+    faces: &[[usize; NV]; NF],
+) -> bool {
+    let px = point[0];
+    let py = point[1];
+    let pz = point[2];
+    let mut inside = false;
+    for face in faces {
+        if ray_crosses_face(px, py, pz, face, coords) {
+            inside = !inside;
+        }
+    }
+    inside
+}
+
 /// Triangulates a quad face with the same deterministic ear-clipping used by
 /// `ear_clip_triangles`, writing at most two triangles into `tris` and returning the count.
 fn ear_clip_quad(face: [usize; 4], points: &[[f64; 3]]) -> ([[usize; 3]; 2], usize) {
-    let mut tris = [[0; 3]; 2];
-    let mut tris_len = 0;
-    let pts = [
+    let axis = dominant_axis(newell_normal(&[
         points[face[0]],
         points[face[1]],
         points[face[2]],
         points[face[3]],
-    ];
-    let axis = dominant_axis(newell_normal(&pts));
+    ]));
     let mut ring = [
-        (face[0], project2(pts[0], axis)),
-        (face[1], project2(pts[1], axis)),
-        (face[2], project2(pts[2], axis)),
-        (face[3], project2(pts[3], axis)),
+        (face[0], project2(points[face[0]], axis)),
+        (face[1], project2(points[face[1]], axis)),
+        (face[2], project2(points[face[2]], axis)),
+        (face[3], project2(points[face[3]], axis)),
     ];
-    let mut ring_len = 4;
+    let mut len = 4;
+    let mut tris = [[0; 3]; 2];
+    let mut n = 0;
+    ear_clip_ring(&mut ring, &mut len, |t| {
+        tris[n] = t;
+        n += 1;
+    });
+    (tris, n)
+}
+
+/// Deterministic ear-clipping of a planar face, emitting triangles that exactly tile the face
+/// while preserving its winding, so concave faces are handled correctly.
+///
+/// The live vertices form the prefix `ring[..len]`; clipping shifts the tail left and decrements
+/// `len`. Shared by [`ear_clip_triangles`] (arbitrary faces) and [`ear_clip_quad`] (stack-only
+/// quads), so both produce bit-identical triangulations.
+fn ear_clip_ring(
+    ring: &mut [(usize, [f64; 2])],
+    len: &mut usize,
+    mut emit: impl FnMut([usize; 3]),
+) {
     let mut area = 0.0;
-    for k in 0..ring_len {
+    for k in 0..*len {
         let a = ring[k].1;
-        let b = ring[(k + 1) % ring_len].1;
+        let b = ring[(k + 1) % *len].1;
         area += a[0] * b[1] - a[1] * b[0];
     }
     let orient = if area >= 0.0 { 1.0 } else { -1.0 };
-    while ring_len > 3 {
-        let m = ring_len;
+    while *len > 3 {
+        let m = *len;
         let mut clipped = false;
         for k in 0..m {
             let (ai, a) = ring[(k + m - 1) % m];
@@ -316,33 +369,31 @@ fn ear_clip_quad(face: [usize; 4], points: &[[f64; 3]]) -> ([[usize; 3]; 2], usi
             if cross2(a, b, c) * orient < 0.0 {
                 continue;
             }
-            let blocked = ring.iter().any(|&(_, p)| {
+            let blocked = ring[..*len].iter().any(|&(_, p)| {
                 p != a && p != b && p != c && point_in_triangle_strict(p, a, b, c, orient)
             });
             if !blocked {
-                tris[tris_len] = [ai, bi, ci];
-                tris_len += 1;
-                for j in k..ring_len - 1 {
+                emit([ai, bi, ci]);
+                for j in k..*len - 1 {
                     ring[j] = ring[j + 1];
                 }
-                ring_len -= 1;
+                *len -= 1;
                 clipped = true;
                 break;
             }
         }
         if !clipped {
-            let m = ring_len;
+            let m = *len;
             for k in 0..m {
                 let (ai, a) = ring[(k + m - 1) % m];
                 let (bi, b) = ring[k];
                 let (ci, c) = ring[(k + 1) % m];
                 if cross2(a, b, c) * orient >= 0.0 {
-                    tris[tris_len] = [ai, bi, ci];
-                    tris_len += 1;
+                    emit([ai, bi, ci]);
                     for j in k..m - 1 {
                         ring[j] = ring[j + 1];
                     }
-                    ring_len -= 1;
+                    *len -= 1;
                     clipped = true;
                     break;
                 }
@@ -352,11 +403,9 @@ fn ear_clip_quad(face: [usize; 4], points: &[[f64; 3]]) -> ([[usize; 3]; 2], usi
             break;
         }
     }
-    if ring_len == 3 {
-        tris[tris_len] = [ring[0].0, ring[1].0, ring[2].0];
-        tris_len += 1;
+    if *len == 3 {
+        emit([ring[0].0, ring[1].0, ring[2].0]);
     }
-    (tris, tris_len)
 }
 
 /// Returns `true` if a point is inside a polyhedron using ray-casting.
@@ -380,15 +429,10 @@ pub fn point_in_phed(point: &[f64; 3], coords: &[[f64; 3]], connectivity: &[usiz
         }
 
         // Face has at least 3 vertices
-        if face_end - face_start >= 3 {
-            let face_points: Vec<[f64; 3]> = connectivity[face_start..face_end]
-                .iter()
-                .map(|&j| coords[j])
-                .collect();
-
-            if ray_crosses_face(px, py, pz, &face_points) {
-                inside = !inside;
-            }
+        if face_end - face_start >= 3
+            && ray_crosses_face(px, py, pz, &connectivity[face_start..face_end], coords)
+        {
+            inside = !inside;
         }
 
         face_start = face_end + 1;
@@ -403,14 +447,23 @@ pub fn point_in_phed2(point: &[f64; 3], coords: &[[f64; 3]], connectivity: &[usi
 }
 
 /// Returns `true` if the ray from `(px, py, pz)` in the `+x` direction crosses the (planar)
-/// polygon `face_points`.
+/// polygon `face`.
 ///
 /// The crossing is tested once per face on the face's plane: a plane-parallel face is skipped,
 /// the ray-plane intersection point is computed, and the point is tested against the face polygon
 /// projected onto its dominant axis plane. Counting each face once avoids double-counting the
-/// coplanar triangles of a fan triangulation.
-fn ray_crosses_face(px: f64, py: f64, pz: f64, face_points: &[[f64; 3]]) -> bool {
-    let n = newell_normal(face_points);
+/// coplanar triangles of a fan triangulation. Vertices are read from `coords` directly, so no
+/// per-face buffer is allocated.
+fn ray_crosses_face(px: f64, py: f64, pz: f64, face: &[usize], coords: &[[f64; 3]]) -> bool {
+    let mut n = [0.0; 3];
+    let len = face.len();
+    for i in 0..len {
+        let a = coords[face[i]];
+        let b = coords[face[(i + 1) % len]];
+        n[0] += (a[1] - b[1]) * (a[2] + b[2]);
+        n[1] += (a[2] - b[2]) * (a[0] + b[0]);
+        n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+    }
     let denom = n[0];
 
     let scale = n[0].abs().max(n[1].abs()).max(n[2].abs()).max(1.0);
@@ -420,34 +473,25 @@ fn ray_crosses_face(px: f64, py: f64, pz: f64, face_points: &[[f64; 3]]) -> bool
         return false;
     }
 
-    let v0 = face_points[0];
+    let v0 = coords[face[0]];
     let t = (n[0] * (v0[0] - px) + n[1] * (v0[1] - py) + n[2] * (v0[2] - pz)) / denom;
 
     if t <= 0.0 {
         return false;
     }
 
-    let ip = [px + t, py, pz];
     let axis = dominant_axis(n);
-    let p2d = project2(ip, axis);
-    let face2d: Vec<[f64; 2]> = face_points.iter().map(|&p| project2(p, axis)).collect();
+    let p2 = project2([px + t, py, pz], axis);
 
-    even_odd_contains(&p2d, &face2d)
-}
-
-/// Standard even-odd ray-casting point-in-polygon test in 2D.
-fn even_odd_contains(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
-    let px = x[0];
-    let py = x[1];
-    let n = pgon.len();
+    // Standard even-odd ray-casting point-in-polygon test over the projected face.
     let mut inside = false;
-    for i in 0..n {
-        let a = pgon[i];
-        let b = pgon[(i + 1) % n];
-        if (a[1] > py) != (b[1] > py) {
-            let t = (py - a[1]) / (b[1] - a[1]);
+    for i in 0..len {
+        let a = project2(coords[face[i]], axis);
+        let b = project2(coords[face[(i + 1) % len]], axis);
+        if (a[1] > p2[1]) != (b[1] > p2[1]) {
+            let t = (p2[1] - a[1]) / (b[1] - a[1]);
             let xi = a[0] + t * (b[0] - a[0]);
-            if px < xi {
+            if p2[0] < xi {
                 inside = !inside;
             }
         }
@@ -470,70 +514,16 @@ fn ear_clip_triangles(face: &[usize], points: &[[f64; 3]]) -> Vec<[usize; 3]> {
         .zip(face.iter().copied())
         .map(|(p, i)| (i, project2(p, axis)))
         .collect();
-    let mut area = 0.0;
-    for k in 0..ring.len() {
-        let a = ring[k].1;
-        let b = ring[(k + 1) % ring.len()].1;
-        area += a[0] * b[1] - a[1] * b[0];
-    }
-    let orient = if area >= 0.0 { 1.0 } else { -1.0 };
-    while ring.len() > 3 {
-        let m = ring.len();
-        let mut clipped = false;
-        for k in 0..m {
-            let (ai, a) = ring[(k + m - 1) % m];
-            let (bi, b) = ring[k];
-            let (ci, c) = ring[(k + 1) % m];
-            if (cross2(a, b, c)) * orient < 0.0 {
-                continue;
-            }
-            let mut blocked = false;
-            for &(_, p) in &ring {
-                if p == a || p == b || p == c {
-                    continue;
-                }
-                if point_in_triangle_strict(p, a, b, c, orient) {
-                    blocked = true;
-                    break;
-                }
-            }
-            if !blocked {
-                tris.push([ai, bi, ci]);
-                ring.remove(k);
-                clipped = true;
-                break;
-            }
-        }
-        if !clipped {
-            for k in 0..ring.len() {
-                let m = ring.len();
-                let (ai, a) = ring[(k + m - 1) % m];
-                let (bi, b) = ring[k];
-                let (ci, c) = ring[(k + 1) % m];
-                if cross2(a, b, c) * orient >= 0.0 {
-                    tris.push([ai, bi, ci]);
-                    ring.remove(k);
-                    clipped = true;
-                    break;
-                }
-            }
-        }
-        if !clipped {
-            break;
-        }
-    }
-    if ring.len() == 3 {
-        tris.push([ring[0].0, ring[1].0, ring[2].0]);
-    }
+    let mut len = ring.len();
+    ear_clip_ring(&mut ring, &mut len, |t| tris.push(t));
     tris
 }
 
-/// Cross product `(b - a) × (c - a)` in 2D.
-fn cross2(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
-    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-}
-
 /// Returns `true` if `p` lies strictly inside triangle `(a, b, c)` of the given orientation.
+///
+/// Uses the naive [`cross2`] orientation: points on the triangle edges are excluded (strict
+/// inside), and a point is reported inside only when it is strictly on the correct side of all
+/// three edges. Boundary and collinear cases are resolved by the caller's fallback clipping.
 fn point_in_triangle_strict(
     p: [f64; 2],
     a: [f64; 2],
@@ -676,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn tet_contains() {
+    fn tet_polyhedron_contains() {
         let phed = unit_tet();
         assert!(phed.contains(&[0.25, 0.25, 0.25]));
         assert!(!phed.contains(&[0.75, 0.75, 0.75]));
@@ -782,5 +772,61 @@ mod tests {
             phed.volume(),
             "HEX8 fast path must stay bit-exact with Polyhedron::volume"
         );
+    }
+
+    #[test]
+    fn tet_contains_matches_polyhedron_contains() {
+        let p = unit_tet();
+        let points: [[f64; 3]; 7] = [
+            [0.25, 0.25, 0.25],
+            [0.1, 0.1, 0.1],
+            [0.75, 0.75, 0.75],
+            [1.5, 0.5, 0.5],
+            [0.5, 0.0, 0.0],
+            [0.0, 0.0, 0.5],
+            [1.0, 0.0, 0.0],
+        ];
+        for pt in points {
+            assert_eq!(
+                super::tet_contains(&pt, &p.points[0], &p.points[1], &p.points[2], &p.points[3]),
+                p.contains(&pt),
+                "TET4 contains fast path must stay bit-exact with Polyhedron::contains at {pt:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn hex_contains_matches_polyhedron_contains() {
+        let p = unit_cube();
+        let points: [[f64; 3]; 9] = [
+            [0.5, 0.5, 0.5],
+            [1.5, 0.5, 0.5],
+            [0.5, -0.5, 0.5],
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+            [0.5, 0.0, 0.5],
+            [0.25, 0.75, 0.25],
+            [2.0, 2.0, 2.0],
+            [-0.5, 0.5, 0.5],
+        ];
+        for pt in points {
+            assert_eq!(
+                super::hex_contains(
+                    &pt,
+                    &[
+                        p.points[0],
+                        p.points[1],
+                        p.points[2],
+                        p.points[3],
+                        p.points[4],
+                        p.points[5],
+                        p.points[6],
+                        p.points[7]
+                    ]
+                ),
+                p.contains(&pt),
+                "HEX8 contains fast path must stay bit-exact with Polyhedron::contains at {pt:?}"
+            );
+        }
     }
 }

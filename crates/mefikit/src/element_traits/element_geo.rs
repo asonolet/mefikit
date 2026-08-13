@@ -6,8 +6,8 @@
 
 use super::element_topo::ElementTopo;
 use crate::geometry::{
-    Polygon, Polyhedron, Segment, area_polygon3, area_quad2, area_tri2, convex_polygon_contains2,
-    hex_volume, tet_volume, vertex_centroid,
+    Polygon, Polyhedron, Segment, area_polygon3, area_quad2, area_tri2, bounds_iter,
+    convex_polygon_contains2, hex_contains, hex_volume, tet_contains, tet_volume, vertex_centroid,
 };
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
@@ -225,7 +225,27 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 &[point[0], point[1]],
             ),
             PGON => self.as_polygon2().contains(&[point[0], point[1]]),
-            TET4 | HEX8 | PHED => self
+            TET4 => tet_contains(
+                &[point[0], point[1], point[2]],
+                self.coord3_ref(0),
+                self.coord3_ref(1),
+                self.coord3_ref(2),
+                self.coord3_ref(3),
+            ),
+            HEX8 => hex_contains(
+                &[point[0], point[1], point[2]],
+                &[
+                    *self.coord3_ref(0),
+                    *self.coord3_ref(1),
+                    *self.coord3_ref(2),
+                    *self.coord3_ref(3),
+                    *self.coord3_ref(4),
+                    *self.coord3_ref(5),
+                    *self.coord3_ref(6),
+                    *self.coord3_ref(7),
+                ],
+            ),
+            PHED => self
                 .as_polyhedron()
                 .contains(&[point[0], point[1], point[2]]),
             other => {
@@ -235,31 +255,11 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
     }
 
     fn bounds2(&self) -> [[f64; 2]; 2] {
-        self.coords2()
-            .fold([[f64::INFINITY; 2], [-f64::INFINITY; 2]], |a, c| {
-                [
-                    [f64::min(a[0][0], c[0]), f64::min(a[0][1], c[1])],
-                    [f64::max(a[1][0], c[0]), f64::max(a[1][1], c[1])],
-                ]
-            })
+        bounds_iter(self.coords2().copied())
     }
 
     fn bounds3(&self) -> [[f64; 3]; 2] {
-        self.coords3()
-            .fold([[f64::INFINITY; 3], [-f64::INFINITY; 3]], |a, c| {
-                [
-                    [
-                        f64::min(a[0][0], c[0]),
-                        f64::min(a[0][1], c[1]),
-                        f64::min(a[0][2], c[2]),
-                    ],
-                    [
-                        f64::max(a[1][0], c[0]),
-                        f64::max(a[1][1], c[1]),
-                        f64::max(a[1][2], c[2]),
-                    ],
-                ]
-            })
+        bounds_iter(self.coords3().copied())
     }
 
     /// Computes the 2D vertex centroid of the element: the arithmetic mean of its node
@@ -531,5 +531,64 @@ mod tests {
         assert_abs_diff_eq!(centroid[0], 0.25, epsilon = 1e-10);
         assert_abs_diff_eq!(centroid[1], 0.25, epsilon = 1e-10);
         assert_abs_diff_eq!(centroid[2], 0.25, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn is_point_inside_tet4_matches_as_polyhedron() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ];
+        let conn = &[0, 1, 2, 3];
+        let groups = BTreeMap::new();
+        let family = 0;
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &groups,
+            conn,
+            ElementType::TET4,
+        );
+        let phed = elem.as_polyhedron();
+        for p in [
+            [0.25, 0.25, 0.25],
+            [0.1, 0.1, 0.1],
+            [0.75, 0.75, 0.75],
+            [1.5, 0.5, 0.5],
+            [0.5, 0.0, 0.0],
+            [0.0, 0.0, 0.5],
+        ] {
+            assert_eq!(
+                elem.is_point_inside(&p),
+                phed.contains(&p),
+                "TET4 is_point_inside must match as_polyhedron().contains at {p:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_point_inside_hex8_matches_as_polyhedron() {
+        let mesh = crate::mesh_examples::make_imesh_3d(2);
+        for elem in mesh.elements() {
+            let phed = elem.as_polyhedron();
+            for p in [
+                [0.25, 0.25, 0.25],
+                [0.75, 0.75, 0.75],
+                [1.5, 1.5, 1.5],
+                [0.0, 0.0, 0.0],
+                [-0.5, 0.5, 0.5],
+                [0.5, 0.0, 0.5],
+            ] {
+                assert_eq!(
+                    elem.is_point_inside(&p),
+                    phed.contains(&p),
+                    "HEX8 is_point_inside must match as_polyhedron().contains at {p:?}"
+                );
+            }
+        }
     }
 }

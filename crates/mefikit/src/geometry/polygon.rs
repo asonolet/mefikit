@@ -62,17 +62,7 @@ impl<const D: usize> Polygon<D> {
 
     /// Returns the axis-aligned bounding box as `[min, max]`.
     pub fn bounds(&self) -> [[f64; D]; 2] {
-        self.points
-            .iter()
-            .fold([[f64::INFINITY; D], [-f64::INFINITY; D]], |acc, p| {
-                let mut lo = acc[0];
-                let mut hi = acc[1];
-                for k in 0..D {
-                    lo[k] = lo[k].min(p[k]);
-                    hi[k] = hi[k].max(p[k]);
-                }
-                [lo, hi]
-            })
+        bounds_iter(self.points.iter().copied())
     }
 
     /// Computes the vertex centroid of the polygon: the arithmetic mean of its vertices.
@@ -119,12 +109,27 @@ impl<const D: usize> Polygon<D> {
     }
 }
 
+/// Exact sign of the 2D orientation `(b - a) × (c - a)` using adaptive-precision predicates
+/// (Shewchuk via the `robust` crate).
+///
+/// Use this where the sign must be exact: convexity tests and boundary-sensitive containment.
+/// For interior clipping/ear-selection where plain `f64` arithmetic is acceptable, use
+/// [`cross2`] instead.
 fn orient2d2(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
     ro::orient2d(
         ro::Coord { x: a[0], y: a[1] },
         ro::Coord { x: b[0], y: b[1] },
         ro::Coord { x: c[0], y: c[1] },
     )
+}
+
+/// Naive 2D cross product `(b - a) × (c - a)` in plain `f64` arithmetic.
+///
+/// Shared by the ear-clipping paths and the 2D polygon clipping in the conservative transfer.
+/// Not exact near collinearity — prefer [`orient2d2`] when the sign is correctness-critical.
+#[inline(always)]
+pub(crate) fn cross2(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
+    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 }
 
 /// Computes the area of a 2D triangle.
@@ -235,6 +240,26 @@ pub(crate) fn into_ccw2(points: &mut [[f64; 2]]) {
     }
 }
 
+/// Axis-aligned bounding box of the given points as `[min, max]`.
+///
+/// Shared by [`Polygon::bounds`], [`crate::geometry::Polyhedron::bounds`] and the element
+/// bounding-box paths.
+pub(crate) fn bounds_iter<const D: usize>(
+    points: impl IntoIterator<Item = [f64; D]>,
+) -> [[f64; D]; 2] {
+    points
+        .into_iter()
+        .fold([[f64::INFINITY; D], [-f64::INFINITY; D]], |acc, p| {
+            let mut lo = acc[0];
+            let mut hi = acc[1];
+            for k in 0..D {
+                lo[k] = lo[k].min(p[k]);
+                hi[k] = hi[k].max(p[k]);
+            }
+            [lo, hi]
+        })
+}
+
 /// Projects a point onto the dominant axis plane: the axis with the largest absolute coordinate
 /// of the normal is dropped.
 pub(crate) fn project2<const D: usize>(p: [f64; D], axis: usize) -> [f64; 2] {
@@ -272,6 +297,11 @@ pub(crate) fn dominant_axis(n: [f64; 3]) -> usize {
     }
 }
 
+/// Exact 2D orientation of the vertices `i, j, k` of `points`; for 3D input the vertices are
+/// first projected onto the dominant axis plane of the Newell normal.
+///
+/// Exactness relies on [`orient2d2`], so the sign is robust for near-collinear and near-coplanar
+/// configurations.
 fn polygon_orient<const D: usize>(points: &[[f64; D]], i: usize, j: usize, k: usize) -> f64 {
     let a = points[i];
     let b = points[j];

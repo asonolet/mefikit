@@ -15,7 +15,7 @@ use ndarray as nd;
 
 use super::transfer_trait::{FieldNature, Transfer};
 use crate::element_traits::ElementGeo;
-use crate::geometry::{into_ccw2, signed_area2};
+use crate::geometry::{cross2, into_ccw2, signed_area2};
 use crate::mesh::{Dimension, ElementId, ElementType, FieldOwnedD, FieldViewD, UMeshView};
 use crate::tools::spatial_index::SpatiallyIndexable;
 
@@ -247,9 +247,34 @@ fn convex_intersection_area(p: &[[f64; 2]], q: &[[f64; 2]]) -> f64 {
     signed_area2(&clip_convex(p, q)).abs()
 }
 
-/// Signed side of `p` with respect to the directed edge `a -> b` (cross product).
-fn orient(a: [f64; 2], b: [f64; 2], p: [f64; 2]) -> f64 {
-    (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])
+/// Clips the convex polygon `subject` (CCW) by the convex polygon `clip` (CCW), keeping the part
+/// on or to the left of each directed edge of `clip` (Sutherland–Hodgman).
+fn clip_convex(subject: &[[f64; 2]], clip: &[[f64; 2]]) -> Vec<[f64; 2]> {
+    let mut output = subject.to_vec();
+    for i in 0..clip.len() {
+        if output.len() < 3 {
+            return Vec::new();
+        }
+        let (a, b) = (clip[i], clip[(i + 1) % clip.len()]);
+        let input = output;
+        output = Vec::new();
+        for k in 0..input.len() {
+            let p = input[k];
+            let q = input[(k + 1) % input.len()];
+            let p_in = cross2(a, b, p) >= 0.0;
+            let q_in = cross2(a, b, q) >= 0.0;
+            match (p_in, q_in) {
+                (true, true) => output.push(q),
+                (true, false) => output.push(segment_intersection(a, b, p, q)),
+                (false, true) => {
+                    output.push(segment_intersection(a, b, p, q));
+                    output.push(q);
+                }
+                (false, false) => {}
+            }
+        }
+    }
+    output
 }
 
 /// Intersection point of the segments `[a, b]` and `[p, q]`.
@@ -265,36 +290,6 @@ fn segment_intersection(a: [f64; 2], b: [f64; 2], p: [f64; 2], q: [f64; 2]) -> [
     }
     let t = ((p[0] - a[0]) * dpy - (p[1] - a[1]) * dpx) / denom;
     [a[0] + t * dax, a[1] + t * day]
-}
-
-/// Clips the convex polygon `subject` (CCW) by the convex polygon `clip` (CCW), keeping the part
-/// on or to the left of each directed edge of `clip` (Sutherland–Hodgman).
-fn clip_convex(subject: &[[f64; 2]], clip: &[[f64; 2]]) -> Vec<[f64; 2]> {
-    let mut output = subject.to_vec();
-    for i in 0..clip.len() {
-        if output.len() < 3 {
-            return Vec::new();
-        }
-        let (a, b) = (clip[i], clip[(i + 1) % clip.len()]);
-        let input = output;
-        output = Vec::new();
-        for k in 0..input.len() {
-            let p = input[k];
-            let q = input[(k + 1) % input.len()];
-            let p_in = orient(a, b, p) >= 0.0;
-            let q_in = orient(a, b, q) >= 0.0;
-            match (p_in, q_in) {
-                (true, true) => output.push(q),
-                (true, false) => output.push(segment_intersection(a, b, p, q)),
-                (false, true) => {
-                    output.push(segment_intersection(a, b, p, q));
-                    output.push(q);
-                }
-                (false, false) => {}
-            }
-        }
-    }
-    output
 }
 
 #[cfg(test)]
