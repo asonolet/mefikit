@@ -17,7 +17,7 @@ use super::convexity::Convexity;
 /// Vertices are stored in counter-clockwise order. Only `D = 2` and `D = 3` are supported.
 #[derive(Clone, Debug)]
 pub struct Polygon<const D: usize> {
-    points: SmallVec<[[f64; D]; 8]>,
+    points: SmallVec<[[f64; D]; 4]>,
     convexity: Convexity,
     convexity_cache: OnceLock<bool>,
 }

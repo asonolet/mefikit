@@ -97,7 +97,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
     }
 
     /// Builds the element as a 2D polygon.
-    fn as_polygon2(&self) -> Polygon<2> {
+    fn to_polygon2(&self) -> Polygon<2> {
         Polygon::with_convexity(
             self.coords2().copied(),
             self.element_type().known_convexity(),
@@ -105,7 +105,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
     }
 
     /// Builds the element as a 3D polyhedron from its faces.
-    fn as_polyhedron(&self) -> Polyhedron {
+    fn to_polyhedron(&self) -> Polyhedron {
         let coords: Vec<[f64; 3]> = self.coords3().copied().collect();
         let mut local: Vec<usize> = Vec::with_capacity(self.num_nodes());
         for &node in self.connectivity() {
@@ -153,7 +153,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord2_ref(2),
                 *self.coord2_ref(3),
             ]),
-            PGON => self.as_polygon2().area(),
+            PGON => self.to_polygon2().area(),
             other => unimplemented!("measure2 is not implemented for element type {other:?}"),
         }
     }
@@ -193,7 +193,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord3_ref(6),
                 *self.coord3_ref(7),
             ]),
-            PHED => self.as_polyhedron().volume(),
+            PHED => self.to_polyhedron().volume(),
             other => unimplemented!("measure3 is not implemented for element type {other:?}"),
         }
     }
@@ -220,7 +220,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 ],
                 &[point[0], point[1]],
             ),
-            PGON => self.as_polygon2().contains(&[point[0], point[1]]),
+            PGON => self.to_polygon2().contains(&[point[0], point[1]]),
             TET4 => tet_contains(
                 &[point[0], point[1], point[2]],
                 self.coord3_ref(0),
@@ -242,7 +242,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 ],
             ),
             PHED => self
-                .as_polyhedron()
+                .to_polyhedron()
                 .contains(&[point[0], point[1], point[2]]),
             other => {
                 unimplemented!("is_point_inside is not implemented for element type {other:?}")
@@ -276,7 +276,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord2_ref(2),
                 *self.coord2_ref(3),
             ]),
-            PGON => self.as_polygon2().centroid(),
+            PGON => self.to_polygon2().centroid(),
             other => unimplemented!("centroid2 is not implemented for element type {other:?}"),
         }
     }
@@ -315,7 +315,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord3_ref(6),
                 *self.coord3_ref(7),
             ]),
-            PHED => self.as_polyhedron().centroid(),
+            PHED => self.to_polyhedron().centroid(),
             other => unimplemented!("centroid3 is not implemented for element type {other:?}"),
         }
     }
@@ -549,7 +549,7 @@ mod tests {
             conn,
             ElementType::TET4,
         );
-        let phed = elem.as_polyhedron();
+        let phed = elem.to_polyhedron();
         for p in [
             [0.25, 0.25, 0.25],
             [0.1, 0.1, 0.1],
@@ -570,7 +570,7 @@ mod tests {
     fn is_point_inside_hex8_matches_as_polyhedron() {
         let mesh = crate::mesh_examples::make_imesh_3d(2);
         for elem in mesh.elements() {
-            let phed = elem.as_polyhedron();
+            let phed = elem.to_polyhedron();
             for p in [
                 [0.25, 0.25, 0.25],
                 [0.75, 0.75, 0.75],
@@ -600,7 +600,7 @@ mod tests {
         ];
         let mesh = crate::mesh_examples::make_imesh_3d(2);
         for elem in mesh.elements() {
-            let phed = elem.as_polyhedron();
+            let phed = elem.to_polyhedron();
             assert_eq!(phed.num_faces(), 6);
             let coords: Vec<[f64; 3]> = elem.coords3().copied().collect();
             assert_eq!(
@@ -684,7 +684,7 @@ mod tests {
             conn,
             ElementType::PHED,
         );
-        let phed = elem.as_polyhedron();
+        let phed = elem.to_polyhedron();
         assert_eq!(phed.num_faces(), 6);
         assert_abs_diff_eq!(phed.volume(), 1.0, epsilon = 1e-12);
         assert_abs_diff_eq!(phed.face(0).area(), 1.0, epsilon = 1e-12);
