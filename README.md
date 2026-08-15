@@ -42,7 +42,9 @@ For scientific developers, it offers:
 - Unified, ergonomic `UMesh` structure:
   - Supports **mixed element types** in the same mesh
   - Named **fields of doubles** over elements or nodes
-  - **Element groups** for flexible subdomain handling
+  - **Element families and groups** for flexible subdomain handling (WIP)
+- Python bindings for all high-level tools (`build_cmesh`, `sel`, `Field`,
+  `transfer`, ...)
 
 ### 🧠 Expression DSL for Fields & Mesh Queries (python and rust)
 
@@ -67,7 +69,8 @@ submesh = mesh.select(domain & energy > 1e6)  # field and space filtering
 ```
 
 - **Symbolic expressions**: build computations without touching raw arrays
-- **Unified queries**: combine fields, geometry, and groups (`mf.sel.inside(...)`)
+- **Unified queries**: combine fields and geometry (`mf.sel.bbox`, `mf.sel.sphere`,
+  `mf.sel.ids`, ...) with the boolean operators `&`, `|`, `^`, `-` and `~`
 - **Efficient execution**: evaluated in Rust, with optional NumPy output
 
 This avoids manual indexing over unstructured meshes and keeps computations
@@ -75,48 +78,67 @@ close to the data, while remaining concise and expressive.
 
 ### 🔄 Input/Output Support
 
-- Built-in (python and rust) support for major file formats:
-  - `vtk`
-  - `CGNS` (planned)
+- Built-in (python and rust) support for major file formats, driven by the
+  file extension in `mf.UMesh.read` / `mf.UMesh.write`:
   - `json` and `yaml` with `serde`
-- Python conversions
-  - `PyVista`
-  - `medcoupling`
-  - `meshio`
+  - `vtk` / `vtu`
+  - `vtkhdf` / `h5` / `hdf5` (HDF5-based VTK)
+  - `CGNS` (planned)
+- Python in memory conversions (`UMesh` methods, available when the optional `io`
+  dependencies are installed):
+  - `to_pyvista()` — `PyVista`
+  - `to_mc()` — `medcoupling`
+  - `to_meshio()` — `meshio`
 
 ### 🧮 High-Level mesh operations (Python and rust)
 
 - 🏗️ Mesh Builders
-  - `cmesh_builder` - Builds a grid mesh (1d, 2d or 3d).
-  - `extrude` - Create an extruded mesh (1d x 1d, 2d x 1d)
-  - `duplicate` - Create a mesh by duplication (0d, 1d, 2d, 3d)
-  - `aggregate` – Build a mesh from multiple non overlapping cell groups.
+  - `build_cmesh(*axes)` - Builds a structured grid mesh (1d, 2d or 3d) of
+    `SEG2`, `QUAD4` or `HEX8` cells.
+  - `extrude`, `extrude_parallel`, `extrude_curv` - Raise the dimension of a
+    mesh along a vector, or along a vector per node (parallel/curved extrusion).
 - 🧠 Topological operations
-  - `descend` – Build the descending connectivity mesh (faces from volumes, etc)
-  - `boundaries` – Build the boundaries mesh
+  - `descend` / `descend_update` – Build the descending connectivity mesh (faces from volumes, etc)
+  - `boundaries` / `boundaries_update` – Build the boundaries mesh
   - `crack` – Introduce topological cracks along internal faces.
   - `connected_components` – Split the mesh in connected meshes
 - 📐 Geometric operations
   - `snap` - To snap nodes of one mesh on another mesh nodes
   - `merge_nodes` - Merges duplicated nodes
-  - `fuse` – Merge two meshes into one.
-  - `overlay` – Boolean mesh overlay (imprint, union, intersection, difference).
-  - `split` – Cut a mesh using another.
-  - `conformize` – Intersect shared faces, snap and merge near-nodes.
+  - `overlay` – Boolean mesh overlay on 2D meshes: `IMPRINT`, `UNION`,
+    `INTERSECTION`, `DIFFERENCE`, `SYMMETRIC_DIFFERENCE` (`OverlayOperation`)
+  - `split` – Split the cells into smaller cells of the same element type
+- 🔁 Field transfers
+  - `mf.transfer.ConstantPiecewise` – Point-location based assignment
+  - `mf.transfer.MovingLeastSquares` – MLS regression on the k nearest source cells
+  - `mf.transfer.InverseDistance` – Inverse-distance weighted average
+  - `mf.transfer.ConservativeP0` – Measure-weighted P0 remapping (2D)
+  - `mf.transfer.DistanceWeighting` – Weighting schemes for MLS (`None`,
+    `InverseDistance(exponent)`, `Gaussian`)
 
-### 🧠 Element kit (rust only)
+The transfers separate the (potentially expensive) geometric precompute
+performed when the operator is constructed from the `apply_update` call that
+transfers a field:
 
-This element kit provide a nice way to implement new features on elements and
-use them to build mesh new operations.
+```python
+op = mf.transfer.MovingLeastSquares(m_src, m_tgt, k=10)
+op.apply_update(m_src, "temperature", m_tgt)
+```
 
-- Descending elements (edges/faces of volumes, etc.)
-- Equivalence classes of elements
-- Simplexization
-- Bounding box trees
-- Element intersections
-- Normal and orientation computation
-- Barycentre and volume evaluation
-- ...
+### 🧠 Element traits & geometry (rust only)
+
+This element kit provides a nice way to implement new features on elements and
+use them to build mesh new operations. It is split between the `element_traits`
+module (generic operations on mesh elements - zero copy views) and the
+`geometry` module (owned geometric primitives).
+
+- Descending elements (`ElementTopo::subentities`, `to_simplexes` WIP)
+- Equivalence classes of elements (`symmetry`, WIP)
+- Simplexization (WIP)
+- Bounding box trees (`spatial_index`, `SpatiallyIndexable`)
+- Element intersections and cutting (`cut`, `segment`, `polygon`, `polyhedron`)
+- Measures, centroids and point-in tests (`ElementGeo`)
+- Convexity computation (`geometry::convexity`)
 
 ## 🧪 Developer Notes
 
@@ -124,19 +146,22 @@ use them to build mesh new operations.
 
 ```text
 mefikit/
-├── crates/      # The rust core library and pyo3 bindings. You can use it as a rust dependency
-├── src/         # The python package
-├── docs/        # The Mefikit Book
+├── crates/
+│   ├── mefikit/     # The rust core library. You can use it as a rust dependency
+│   └── mefikit-py/  # The PyO3 bindings used to build the python package
+├── src/             # The python package
+├── docs/            # The Mefikit Book
 ```
 
 ### Rust core library
 
 ```text
-src/
-├── mesh/          # Mesh & field data model, the Element API
-├── tools/         # The home to all high-level functionnalities
-├── io/            # Readers/writers
-├── element_kit/   # Element toolbox used to build higher level functionnalities
+crates/mefikit/src/
+├── mesh/            # Mesh & field data model, the Element API
+├── element_traits/  # Element toolbox (geo/topo) used to build higher level functionnalities
+├── geometry/        # Owned geometric primitives (segment, polygon, polyhedron, region)
+├── tools/           # The home to all high-level functionnalities
+└── io/              # Readers/writers
 ```
 
 To build the library, you need to have Rust installed. You can install Rust
@@ -160,16 +185,19 @@ directory.
 
 ### API philosophy: Explicit is better than implicit
 
-- Out-of-place functional API for heavy op (`UMeshView` or `&UMesh`): `compute_descending`,
-  `intersect_meshes`, ...
+- Out-of-place functional API for heavy op (`UMeshView` or `&UMesh`):
+  `descend`, `boundaries`, `overlay`, `split`, `compute_connected_components`, ...
 - In-place for metadata manipulations and non destructive op (`&mut UMesh`):
-  `assign_field`, `merge_close_nodes`, `add_group`, `snap`, ...
+  `descend_update`, `boundaries_update`, `update_field`, `merge_nodes`, `snap`, ...
+
+Most out-of-place operations also expose an `*_update` variant that adds the
+result to the mesh in-place.
 
 ### Python package
 
-The crate with the python bindings is called `mefikit-py`. It contains all the PyO3
-stuff. This crate is used as the basis of the python `mefikit` library. The
-same name was used for the python library for the sake of simplicity.
+The PyO3 bindings live in the `crates/mefikit-py` crate (package name
+`mefipy`). They are compiled into the `mefikit.mefipy` module which is wrapped
+by the python package `mefikit` (in `src/`).
 
 To build the bindings and the python package please run:
 
@@ -227,13 +255,12 @@ prek install
 git commit -a # pre-commit runs on your committed files
 ```
 
-This will check the coding style and report any issues. You can also run
-the following command to automatically format the code:
+This will check the coding style and report any issues.
 
 ### Benchmarks
 
-The `mefkit/benches/` directory contains `Mefikit` benchmarks. They use the
-[Criterion](https://bheisler.github.io/criterion.rs/book/getting_started.html)
+The `crates/mefikit/benches/` directory contains `Mefikit` benchmarks. They use
+the [Criterion](https://bheisler.github.io/criterion.rs/book/getting_started.html)
 framework.
 
 To launch the benchmarks, run:
