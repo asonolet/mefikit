@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-57159255.js";
+            window.path_to_searchindex_js = "../searchindex-0595345a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-49e3bc73.js"></script>
@@ -363,6 +363,24 @@ for i, compo in enumerate(compos_cracked):
 plotter.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_22_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_22_0.png" alt="png"></span></label></p>
+<h2 id="split"><a class="header" href="#split">Split</a></h2>
+<p>This tool is usefull to split cells into smaller cells. It does not change the topology of the domain not the element type.
+Using it it gives you 2^n times the number of elements where n is the dimension of of the elements.</p>
+<pre><code class="language-python">x = np.linspace(0.0, 3.0, 2, endpoint=True)
+y = np.logspace(0.0, 1.0, 2, endpoint=True)
+z = range(2)
+surf = mf.build_cmesh(x, y, z)
+</code></pre>
+<pre><code class="language-python">surf_splitted = surf.split()
+</code></pre>
+<pre><code class="language-python"># pv.set_jupyter_backend("trame")
+pt = pv.Plotter()
+pt.add_mesh(surf_splitted.to_pyvista().shrink(0.9), show_edges=True, edge_color="red")
+# pt.add_mesh(surf.to_pyvista().shrink(0.9), show_edges=True)
+pt.camera_position
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_26_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_26_0.png" alt="png"></span></label></p>
 
                     </main>
 
