@@ -388,6 +388,22 @@ impl PyUMesh {
         let result = self.inner.overlay(mesh2.inner.clone(), operation);
         Ok(result.into())
     }
+
+    /// Imprints this surface mesh with `mesh2` wherever the two coincide in 3D space.
+    ///
+    /// Both meshes must be 2D meshes embedded in 3D space (TRI3, QUAD4 or PGON faces).
+    /// The two refined surfaces returned in the `SurfaceOverlay` result share the same
+    /// coordinates array, so intersection nodes exist once and both sides become mutually
+    /// conformal on the coincident areas. Areas not covered by the other surface are
+    /// copied verbatim. Raises `ValueError` when coplanar patches only partially overlap.
+    #[pyo3(signature = (mesh2, tol=1e-9))]
+    fn overlay_surfaces(&self, mesh2: &PyUMesh, tol: f64) -> PyResult<PySurfaceOverlay> {
+        let out = self
+            .inner
+            .overlay_surfaces(&mesh2.inner.view(), tol)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+        Ok(out.into())
+    }
 }
 
 pub fn into_view(mesh: &PyUMesh) -> mf::UMeshView<'_> {
@@ -452,5 +468,68 @@ impl From<PyOverlayOperation> for mf::OverlayOperation {
             PyOverlayOperation::Difference => mf::OverlayOperation::Difference,
             PyOverlayOperation::SymmetricDifference => mf::OverlayOperation::SymmetricDifference,
         }
+    }
+}
+
+/// Result of `UMesh.overlay_surfaces`.
+///
+/// `refined1` and `refined2` hold the imprinted faces of the first and second input
+/// surface respectively; they share the same coordinates array. The parents maps relate
+/// each input face `(type, index)` to the elements it produced in the refined mesh.
+#[pyclass]
+#[pyo3(name = "SurfaceOverlay")]
+pub struct PySurfaceOverlay {
+    inner: mf::SurfaceOverlay,
+}
+
+/// Parent map key/value type: element ids as `(type name, index)` pairs.
+type PyParents = BTreeMap<(String, usize), Vec<(String, usize)>>;
+
+fn parents_to_py<'a>(
+    parents: impl IntoIterator<Item = (&'a mf::ElementId, &'a Vec<mf::ElementId>)>,
+) -> PyParents {
+    parents
+        .into_iter()
+        .map(|(face, pieces)| {
+            let key = (etype_to_str(face.element_type()), face.index());
+            let pieces = pieces
+                .iter()
+                .map(|id| (etype_to_str(id.element_type()), id.index()))
+                .collect();
+            (key, pieces)
+        })
+        .collect()
+}
+
+#[pymethods]
+impl PySurfaceOverlay {
+    /// Refined faces of the first input surface.
+    #[getter]
+    fn refined1(&self) -> PyUMesh {
+        self.inner.refined1.clone().into()
+    }
+
+    /// Refined faces of the second input surface.
+    #[getter]
+    fn refined2(&self) -> PyUMesh {
+        self.inner.refined2.clone().into()
+    }
+
+    /// Input face id -> produced elements, for the first surface.
+    #[getter]
+    fn parents1(&self) -> PyParents {
+        parents_to_py(&self.inner.parents1)
+    }
+
+    /// Input face id -> produced elements, for the second surface.
+    #[getter]
+    fn parents2(&self) -> PyParents {
+        parents_to_py(&self.inner.parents2)
+    }
+}
+
+impl From<mf::SurfaceOverlay> for PySurfaceOverlay {
+    fn from(inner: mf::SurfaceOverlay) -> Self {
+        PySurfaceOverlay { inner }
     }
 }

@@ -8,10 +8,11 @@
 //!    [`Polygon`](crate::geometry::Polygon) and [`Polyhedron`](crate::geometry::Polyhedron) — the
 //!    canonical API, carrying their own data and lazily tracked convexity. Everything here is
 //!    `pub` and is the supported surface for element traits and mesh tools.
-//! 2. **`pub(crate)` helpers**: `area_tri2`, `area_quad2`, `area_polygon3`, `signed_area2`,
-//!    `into_ccw2`, `vertex_centroid`, `bounds_iter`, `cross2`, `convex_polygon_contains2`,
-//!    `tet_volume`, `hex_volume`, `tet_contains`, `hex_contains`. These are allocation-free,
-//!    bit-exact shortcuts for the common regular element types (TRI3, QUAD4, SEG2, TET4, HEX8).
+//! 2. **`pub(crate)` helpers**: `area_tri2`, `area_quad2`, `area_polygon3`, `newell_normal3`,
+//!    `signed_area2`, `into_ccw2`, `vertex_centroid`, `bounds_iter`, `cross2`,
+//!    `convex_polygon_contains2`, `tet_volume`, `hex_volume`, `tet_contains`, `hex_contains`.
+//!    These are allocation-free, bit-exact shortcuts for the common regular element types
+//!    (TRI3, QUAD4, SEG2, TET4, HEX8).
 //!
 //! Rules:
 //!
@@ -37,12 +38,14 @@
 //!   This is the single geometry→mesh edge; keep it to this one data structure.
 
 mod convexity;
+mod plane;
 mod polygon;
 mod polyhedron;
 mod region;
 mod segment;
 
 pub use convexity::Convexity;
+pub use plane::PlaneFrame;
 pub use polygon::{Polygon, in_bezier_polygon, in_quadratic_polygon};
 pub use polyhedron::{Polyhedron, point_in_phed, point_in_phed2};
 pub use region::{in_aa_bbox, in_aa_rectangle, in_circle, in_sphere};
@@ -50,6 +53,6 @@ pub use segment::{Intersection, Intersections, PointId, Segment, intersect_seg_s
 
 pub(crate) use polygon::{
     area_polygon3, area_quad2, area_tri2, bounds_iter, convex_polygon_contains2, cross2, into_ccw2,
-    signed_area2, vertex_centroid,
+    newell_normal3, signed_area2, vertex_centroid,
 };
 pub(crate) use polyhedron::{hex_contains, hex_volume, tet_contains, tet_volume};

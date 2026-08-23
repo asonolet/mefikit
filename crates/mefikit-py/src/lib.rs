@@ -41,7 +41,7 @@ mod mefipy {
     use super::transfer;
 
     #[pymodule_export]
-    use super::pyumesh::{PyOverlayOperation, PyUMesh};
+    use super::pyumesh::{PyOverlayOperation, PySurfaceOverlay, PyUMesh};
 
     #[pymodule_export]
     use super::pyfield::PyField;

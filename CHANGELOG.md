@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Add
+
+- Surface mesh overlay in 3D space: `Overlayable::overlay_surfaces` /
+  `overlay_surfaces(skin1, skin2, tol)` imprints two 2D meshes embedded in 3D
+  onto each other wherever they coincide. Faces are clustered into maximal
+  coplanar patches, patches of the two surfaces are paired (coplanarity, area
+  and bounding box agreement within `tol`), and each pair is processed with the
+  2D overlay machinery on a fitted planar frame. Both refined surfaces share
+  the same coordinates array so intersection nodes exist once; families and
+  fields propagate to the produced faces; untouched faces are copied verbatim.
+  Partial overlaps between coplanar patches are rejected through
+  `SurfaceOverlayError`.
+
 ## v0.1.5
 
 ### Add

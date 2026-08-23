@@ -160,10 +160,14 @@ pub(crate) fn area_quad2(p: &[[f64; 2]; 4]) -> f64 {
     0.5 * (pxys.iter().sum::<f64>() - pyxs.iter().sum::<f64>()).abs()
 }
 
-/// Computes the area of a planar polygon embedded in 3D space using Newell's method.
+/// Computes the un-normalized Newell normal of a planar polygon embedded in 3D space.
 ///
-/// Shared by [`Polygon::area`] and the allocation-free element measure path.
-pub(crate) fn area_polygon3(points: &[[f64; 3]]) -> f64 {
+/// The result is the area vector: its magnitude is twice the polygon area and its direction
+/// follows the right-hand rule around the vertex winding. For a degenerate (zero-area)
+/// polygon the result is `[0.0, 0.0, 0.0]`.
+///
+/// Shared by [`Polygon::area`], [`Polygon::normal`] and the allocation-free element measure path.
+pub(crate) fn newell_normal3(points: &[[f64; 3]]) -> [f64; 3] {
     let n = points.len();
     let mut nx = 0.0;
     let mut ny = 0.0;
@@ -175,7 +179,15 @@ pub(crate) fn area_polygon3(points: &[[f64; 3]]) -> f64 {
         ny += a[2] * b[0] - a[0] * b[2];
         nz += a[0] * b[1] - a[1] * b[0];
     }
-    0.5 * (nx * nx + ny * ny + nz * nz).sqrt()
+    [nx, ny, nz]
+}
+
+/// Computes the area of a planar polygon embedded in 3D space using Newell's method.
+///
+/// Shared by [`Polygon::area`] and the allocation-free element measure path.
+pub(crate) fn area_polygon3(points: &[[f64; 3]]) -> f64 {
+    let n = newell_normal3(points);
+    0.5 * (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt()
 }
 
 /// Computes the vertex centroid: the arithmetic mean of the given vertices.
@@ -548,6 +560,19 @@ impl Polygon<3> {
     /// This is valid for planar polygons embedded in 3D space.
     pub fn area(&self) -> f64 {
         area_polygon3(&self.points)
+    }
+
+    /// Computes the unit normal of the planar polygon using Newell's method.
+    ///
+    /// The direction follows the right-hand rule around the vertex winding. Returns
+    /// `[0.0, 0.0, 0.0]` for a degenerate (zero-area) polygon.
+    pub fn normal(&self) -> [f64; 3] {
+        let n = newell_normal3(&self.points);
+        let norm = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+        if norm == 0.0 {
+            return [0.0; 3];
+        }
+        [n[0] / norm, n[1] / norm, n[2] / norm]
     }
 
     /// Computes the geometric centroid of the polygon as the area-weighted average of its
