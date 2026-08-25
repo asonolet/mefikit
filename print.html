@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-0595345a.js";
+            window.path_to_searchindex_js = "searchindex-814423fe.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-49e3bc73.js"></script>
+        <script src="toc-0d7758d6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -341,6 +341,107 @@ it does not preserve the shape of the element. But it is very useful to detect
 duplicate elements in a mesh.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="python-guide"><a class="header" href="#python-guide">Python guide</a></h1>
+<p>This page is a compact reference for the Python API. The notebooks under
+<a href="#python-examples">Python Examples</a> show the same features in
+context; here they are gathered as tables.</p>
+<p>Meshes are <code>UMesh</code> objects. Fields and element groups live in two dict-like
+mappings on the mesh, and selections are lazy views that only evaluate when
+queried.</p>
+<h2 id="the-fields-mapping"><a class="header" href="#the-fields-mapping">The fields mapping</a></h2>
+<p><code>mesh.fields</code> behaves like a dict keyed by field name. Each entry returns a
+<code>FieldRef</code>, a handle to read, reduce, or write the stored values.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Call</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>list names</td><td><code>mesh.fields.keys()</code> / <code>items()</code> / <code>len()</code> / <code>name in mesh.fields</code></td><td>sorted, deterministic</td></tr>
+<tr><td>get a handle</td><td><code>ref = mesh.fields["T"]</code></td><td><code>KeyError</code> if missing</td></tr>
+<tr><td>create / replace</td><td><code>mesh.fields["T"] = value</code></td><td>see accepted values below</td></tr>
+<tr><td>delete</td><td><code>del mesh.fields["T"]</code></td><td>removes every instance</td></tr>
+<tr><td>rename</td><td><code>mesh.fields.rename("T", "T2")</code></td><td><code>KeyError</code> / <code>ValueError</code> on bad names</td></tr>
+<tr><td>bulk export</td><td><code>mesh.fields.to_dict()</code></td><td><code>{name: {etype: array}}</code></td></tr>
+<tr><td>per-etype values</td><td><code>ref.values()</code></td><td><code>{etype: array}</code></td></tr>
+<tr><td>single array</td><td><code>ref.numpy()</code></td><td>one array when the mesh has one element type</td></tr>
+<tr><td>metadata</td><td><code>ref.shape</code>, <code>ref.dimension()</code>, <code>len(ref)</code></td><td>component shape, mesh dimension, element count</td></tr>
+</tbody>
+</table>
+</div>
+<p>Accepted values for creation and writes:</p>
+<ul>
+<li>a <code>float</code> — broadcast to every row</li>
+<li>an <code>np.ndarray</code> — full column or per-block rows</li>
+<li>a dict <code>{etype: array}</code> — per element type</li>
+<li>an expression: <code>mf.Field("T") * 2</code> or another field object</li>
+<li>a string naming an existing field (e.g. <code>"T"</code>) — copies it</li>
+</ul>
+<p>Reductions over all elements carrying the field:
+<code>min()</code>, <code>max()</code>, <code>sum()</code>, <code>mean()</code>, <code>var(ddof=0)</code>, <code>std(ddof=0)</code>,
+<code>integral()</code> (measure-weighted).</p>
+<h3 id="partial-reads-and-writes"><a class="header" href="#partial-reads-and-writes">Partial reads and writes</a></h3>
+<p><code>ref[selector]</code> gathers the selected rows as <code>{etype: array}</code>; assigning
+through <code>ref[selector] = value</code> writes them. Selectors are:</p>
+<ul>
+<li>wildcards: <code>...</code>, <code>:</code> (full slice), or <code>None</code></li>
+<li>an ids dict: <code>{"QUAD4": [0, 3]}</code></li>
+<li>any selection expression: <code>mf.sel.rect(...)</code>, <code>mf.Field("T") &gt; 1.0</code>, …</li>
+</ul>
+<h2 id="the-groups-mapping"><a class="header" href="#the-groups-mapping">The groups mapping</a></h2>
+<p><code>mesh.groups</code> behaves like a dict keyed by group name. Each entry is a
+<code>GroupRef</code>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Call</th></tr>
+</thead>
+<tbody>
+<tr><td>create / replace</td><td><code>mesh.groups["wall"] = sel_expr</code> or <code>= {"QUAD4": [0, 1]}</code></td></tr>
+<tr><td>grow / shrink</td><td><code>ref.add(source)</code> / <code>ref.remove(source)</code></td></tr>
+<tr><td>element ids</td><td><code>ref.ids()</code> → <code>{etype: uint64 array}</code>, <code>len(ref)</code></td></tr>
+<tr><td>rename</td><td><code>mesh.groups.rename("old", "new")</code></td></tr>
+<tr><td>delete</td><td><code>del mesh.groups["wall"]</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Groups feed back into selections through
+<code>mf.sel.group("wall")</code> and <code>mf.sel.exclude_group("wall")</code>.</p>
+<h2 id="selections"><a class="header" href="#selections">Selections</a></h2>
+<p>Selection factories live in the <code>mf.sel</code> module:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Factory</th><th>Elements matched by</th></tr>
+</thead>
+<tbody>
+<tr><td><code>bbox(min, max)</code> / <code>sphere(center, r2)</code></td><td>centroid position (3D)</td></tr>
+<tr><td><code>rect(min, max)</code> / <code>circle(center, r2)</code></td><td>centroid position (2D); bounds are min-inclusive / max-exclusive</td></tr>
+<tr><td><code>nbbox</code> / <code>nsphere</code> / <code>nrect</code> / <code>ncircle(..., all)</code></td><td>node positions, with all/any semantics</td></tr>
+<tr><td><code>ids({"ETYPE": [...]})</code></td><td>explicit element ids</td></tr>
+<tr><td><code>types(["QUAD4", ...])</code></td><td>element types</td></tr>
+<tr><td><code>group(name)</code> / <code>exclude_group(name)</code></td><td>membership in a named group</td></tr>
+<tr><td><code>all()</code> — also <code>None</code>, <code>...</code>, <code>[:]</code> where a selector is expected</td><td>everything</td></tr>
+</tbody>
+</table>
+</div>
+<p>Selections compose with <code>&amp;</code>, <code>|</code>, <code>^</code>, <code>-</code>, <code>~</code>. Field thresholds produce
+selections too: <code>mf.Field("T") &gt; 1.0</code>.</p>
+<h3 id="lazy-results"><a class="header" href="#lazy-results">Lazy results</a></h3>
+<p><code>mesh.select(expr)</code> does not build a mesh; it returns a lightweight
+<code>SelectionResult</code> that re-evaluates on every call:</p>
+<ul>
+<li><code>result.ids()</code> → <code>{etype: array}</code></li>
+<li><code>len(result)</code></li>
+<li>reductions with any field expression: <code>min/max/sum/mean(expr)</code>,
+<code>var/std(expr, ddof=0)</code>, <code>integral(expr)</code></li>
+<li><code>result.to_mesh(with_fields=True)</code> materializes a sub-mesh when needed</li>
+</ul>
+<pre><code class="language-python">hot = mesh.select(mf.Field("energy") &gt; 1e6)
+print(hot.mean("energy"))
+submesh = hot.to_mesh()
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="python-examples"><a class="header" href="#python-examples">Python Examples</a></h1>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="umesh-basics"><a class="header" href="#umesh-basics">UMesh basics</a></h1>
@@ -357,7 +458,7 @@ pv.set_jupyter_backend("static")
 )
 volumes
 </code></pre>
-<pre><code>&lt;UMesh at 0x7474980e7750&gt;
+<pre><code>&lt;UMesh at 0x7f41a0463ed0&gt;
 </code></pre>
 <pre><code class="language-python">print(volumes)
 </code></pre>
@@ -399,7 +500,9 @@ volumes
             ),
             fields: {},
             families: [0, 0, 0, 0, 0, 0], shape=[6], strides=[1], layout=CFcf (0xf), const ndim=1,
-            groups: {},
+            groups: ArcGroups(
+                {},
+            ),
         },
     },
 }
@@ -452,9 +555,13 @@ mes
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/umesh_basics_files/umesh_basics_15_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/umesh_basics_files/umesh_basics_15_0.png" alt="png"></span></label></p>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="intput--output"><a class="header" href="#intput--output">Intput / Output</a></h1>
+<h1 id="input--output"><a class="header" href="#input--output">Input / Output</a></h1>
 <pre><code class="language-python">import mefikit as mf
 import numpy as np
+import pyvista as pv
+
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
 </code></pre>
 <pre><code class="language-python">volumes = mf.build_cmesh(
     range(2), np.linspace(0.0, 1.0, 5), np.logspace(0.0, 1.0, 5) / 10.0
@@ -477,27 +584,11 @@ import numpy as np
 </ul>
 <pre><code class="language-python">volumes.to_mc()
 </code></pre>
-<pre><code>MEDCouplingUMesh C++ instance at 0x2e9f50f0. Name : "mf_UMesh". Not set !
+<pre><code>MEDCouplingUMesh C++ instance at 0x16bbb020. Name : "mf_UMesh". Not set !
 </code></pre>
-<pre><code class="language-python">volumes.to_pyvista()
+<pre><code class="language-python">volumes.to_pyvista().plot()
 </code></pre>
-<table style="width: 100%;">
-<tr><th>UnstructuredGrid</th><th>Information</th></tr>
-
-<tr><td>N Cells</td><td>16</td></tr>
-
-<tr><td>N Points</td><td>50</td></tr>
-
-<tr><td>X Bounds</td><td>0.000e+00, 1.000e+00</td></tr>
-
-<tr><td>Y Bounds</td><td>0.000e+00, 1.000e+00</td></tr>
-
-<tr><td>Z Bounds</td><td>1.000e-01, 1.000e+00</td></tr>
-
-<tr><td>N Arrays</td><td>0</td></tr>
-
-</table>
-
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/input_output_files/input_output_5_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/input_output_files/input_output_5_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">volumes.to_meshio()
 </code></pre>
 <pre><code>&lt;meshio mesh object&gt;
@@ -511,18 +602,22 @@ import numpy as np
 </code></pre>
 <h2 id="file-readwrite"><a class="header" href="#file-readwrite">File read/write</a></h2>
 <ul>
-<li>On rust side, file I/O with the <code>read</code>/<code>write</code> methods:
+<li>On rust side, file I/O with the <code>read</code>/<code>write</code> methods, driven by the file extension:
 <ul>
-<li>vtk</li>
+<li>vtk (legacy binary vtk 2.0)</li>
 <li>yaml</li>
 <li>json</li>
+<li>vtkhdf / h5 / hdf5 (HDF5-based VTK)</li>
 </ul>
 </li>
 </ul>
-<p>Note that for now the vtk reader/writer is only based on the binary vtk 2.0 file format (which is quite old). No rust crate is doing better. I am planning on implementing a HDF5/CGNS compliant rust reader/writer (based on the hdf5 lib) in order to support a more HPC file format.</p>
-<pre><code class="language-python">for ext in ("vtk", "yaml", "json"):
+<p>The legacy vtk reader/writer only supports the old binary vtk 2.0 file format (no rust crate is doing better so far). The HDF5-based <code>.vtkhdf</code> reader/writer is the recommended option for a more modern and HPC friendly format. CGNS support is planned.</p>
+<pre><code class="language-python">import pathlib
+
+pathlib.Path("data").mkdir(exist_ok=True)
+for ext in ("vtk", "yaml", "json", "vtkhdf"):
     volumes.write(f"data/volumes.{ext}")
-    volumes_from_disk = mf.UMesh.read("data/volumes.vtk")
+    volumes_from_disk = mf.UMesh.read(f"data/volumes.{ext}")
     assert volumes_from_disk
     assert (
         volumes != volumes_from_disk
@@ -537,7 +632,7 @@ import pyvista as pv
 pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")
 </code></pre>
-<h3 id="building-mesh-with-custom-connectivity-1"><a class="header" href="#building-mesh-with-custom-connectivity-1">Building mesh with custom connectivity</a></h3>
+<h2 id="building-mesh-with-custom-connectivity-1"><a class="header" href="#building-mesh-with-custom-connectivity-1">Building mesh with custom connectivity</a></h2>
 <p>First let’s build a 2D mesh wich will by used to demonstrate extrusions.</p>
 <pre><code class="language-python">x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
 coords = np.c_[x.flatten(), y.flatten()]
@@ -585,12 +680,10 @@ extruded_par = mesh.extrude_parallel(line)
 <pre><code class="language-python">extruded_par.to_pyvista(dim="all").plot(show_edges=True)
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/extrusions_files/extrusions_12_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/extrusions_files/extrusions_12_0.png" alt="png"></span></label></p>
-<h3 id="build-curviliear-extrusion-mesh"><a class="header" href="#build-curviliear-extrusion-mesh">Build curviliear extrusion mesh</a></h3>
+<h3 id="build-curvilinear-extrusion-mesh"><a class="header" href="#build-curvilinear-extrusion-mesh">Build curvilinear extrusion mesh</a></h3>
 <pre><code class="language-python">mesh = mf.build_cmesh(range(2), range(2))
 n = 20
-# x = np.linspace(0, 4, n)
 x = np.zeros((n,))
-# x = np.sin(np.linspace(0.0, np.pi, n))
 y = np.cos(np.linspace(0.0, np.pi, n))
 z = np.sin(np.linspace(0.0, np.pi, n))
 line = np.c_[x, y, z]
@@ -616,7 +709,7 @@ z = np.logspace(-0.5, 1, 4, endpoint=True)
 volumes = mf.build_cmesh(x, y, z)
 </code></pre>
 <h3 id="simple-descending_mesh"><a class="header" href="#simple-descending_mesh">Simple descending_mesh</a></h3>
-<p>This functionality is able to compute the descending connectivity of the porvided mesh.
+<p>This functionality is able to compute the descending connectivity of the provided mesh.
 It can act on elements of dimension 1, 2 or 3.</p>
 <pre><code class="language-python">faces = volumes.descend()
 edges = faces.descend()
@@ -633,7 +726,7 @@ plotter.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_5_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_5_0.png" alt="png"></span></label></p>
 <h3 id="submesh-in-one-go"><a class="header" href="#submesh-in-one-go">Submesh in one go</a></h3>
-<p>You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining mutliple <code>.descend()</code> calls.</p>
+<p>You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining multiple <code>.descend()</code> calls.</p>
 <pre><code class="language-python">edges = volumes.descend(target_dim=1)
 nodes = volumes.descend(target_dim=0)
 
@@ -641,12 +734,12 @@ plotter = pv.Plotter(shape=(1, 2))
 plotter.subplot(0, 0)
 plotter.add_mesh(edges.to_pyvista().shrink(0.8))
 plotter.subplot(0, 1)
-plotter.add_mesh(vertex.to_pyvista())
+plotter.add_mesh(nodes.to_pyvista())
 plotter.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_7_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_7_0.png" alt="png"></span></label></p>
 <h2 id="boundaries-computation"><a class="header" href="#boundaries-computation">Boundaries computation</a></h2>
-<p>As it is very common to compute boundaries on a mesh (for boundary counditions for ex), there is a custom <code>boundaries</code> computation method.</p>
+<p>As it is very common to compute boundaries on a mesh (for boundary conditions for ex), there is a custom <code>boundaries</code> computation method.</p>
 <pre><code class="language-python">face_bounds = volumes.boundaries()
 edge_bounds = volumes.boundaries(target_dim=1)
 vertex_bounds = volumes.boundaries(target_dim=0)
@@ -898,7 +991,7 @@ plotter.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/geometric_tools_files/geometric_tools_11_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/geometric_tools_files/geometric_tools_11_0.png" alt="png"></span></label></p>
 <h2 id="overlay"><a class="header" href="#overlay">Overlay</a></h2>
-<p>The intersection is valid in the following counditions :</p>
+<p>The intersection is valid in the following conditions :</p>
 <ul>
 <li>mesh1 and mesh2 are valid (no self recovering),</li>
 <li>mesh1 and mesh2 are 2d (xy),</li>
@@ -959,13 +1052,13 @@ pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")
 </code></pre>
 <h2 id="element-selection"><a class="header" href="#element-selection">Element selection</a></h2>
-<p>Elements can be selected based on there:</p>
+<p>Elements can be selected based on their:</p>
 <ul>
 <li>types</li>
 <li>ids</li>
 <li>dimensions</li>
 </ul>
-<p>Elements can be selected based on there centroid position. The selection methods using centroids are :</p>
+<p>Elements can be selected based on their centroid position. The selection methods using centroids are :</p>
 <ul>
 <li>bbox</li>
 <li>sphere</li>
@@ -973,7 +1066,7 @@ pv.set_jupyter_backend("static")
 <li>circle</li>
 </ul>
 <p>As you can guess, bbox and sphere should be used for 3d meshes and rectangle and circle for 2d meshes.</p>
-<p>Elements can be selected based on the nodes position and a boolean : whether to select element with all nodes matching the coundition or any node matching the coundition.</p>
+<p>Elements can be selected based on the nodes position and a boolean : whether to select element with all nodes matching the condition or any node matching the condition.</p>
 <ul>
 <li>nbbox</li>
 <li>nsphere</li>
@@ -981,10 +1074,10 @@ pv.set_jupyter_backend("static")
 <li>ncircle</li>
 <li>nids</li>
 </ul>
-<p>Elements can be selected based on their group appartenance :</p>
+<p>Elements can be selected based on their group membership :</p>
 <ul>
-<li>inside</li>
-<li>outside</li>
+<li>group(name)</li>
+<li>exclude_group(name)</li>
 </ul>
 <p>Elements can be selected based on their scalar fields values :</p>
 <ul>
@@ -994,6 +1087,7 @@ pv.set_jupyter_backend("static")
 <li>FieldExpr &lt;= FieldExpr</li>
 <li>FieldExpr == FieldExpr</li>
 </ul>
+<p>Wherever a selector is expected, the wildcards <code>None</code>, <code>...</code> and <code>[:]</code> select every element — the explicit form is <code>mf.sel.all()</code>.</p>
 <h3 id="the-selection-type"><a class="header" href="#the-selection-type">The Selection type</a></h3>
 <p>Here the types manipulated are <code>Selection</code>. They are simple objects that know how to compose themselves.</p>
 <pre><code class="language-python">clip = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.5])
@@ -1002,15 +1096,15 @@ sphere = mf.sel.sphere([0.5, 0.5, 0.5], 0.5)
 <pre><code class="language-python">x = np.linspace(0.0, 1.0, 20, endpoint=True)
 volumes = mf.build_cmesh(x, x, x)
 </code></pre>
-<pre><code class="language-python">volumes.select(clip).to_pyvista().plot()
+<pre><code class="language-python">volumes.select(clip).to_mesh().to_pyvista().plot()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_6_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_6_0.png" alt="png"></span></label></p>
-<pre><code class="language-python">volumes.select(sphere).to_pyvista().plot()
+<pre><code class="language-python">volumes.select(sphere).to_mesh().to_pyvista().plot()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_7_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_7_0.png" alt="png"></span></label></p>
 <h2 id="selection-composition"><a class="header" href="#selection-composition">Selection composition</a></h2>
 <p>One of the great strength of the select method is its composability !
-Whatch by yourself.</p>
+Watch by yourself.</p>
 <p>The operators <code>&amp;</code>, <code>|</code>, <code>^</code>, <code>-</code> and <code>~</code> are available.</p>
 <pre><code class="language-python">x = np.linspace(0.0, 2.0, 100)
 y = np.linspace(0.0, 1.0, 50)
@@ -1019,7 +1113,7 @@ faces = mf.build_cmesh(x, y)
 <pre><code class="language-python">circle1 = mf.sel.circle([0.75, 0.5], 0.5)
 circle2 = mf.sel.circle([1.25, 0.5], 0.5)
 </code></pre>
-<pre><code class="language-python">union = faces.select(circle1 | circle2)
+<pre><code class="language-python">union = faces.select(circle1 | circle2).to_mesh()
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
 pt.add_mesh(faces.descend().to_pyvista())
@@ -1028,7 +1122,7 @@ pt.camera_position = "xy"
 pt.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_12_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_12_0.png" alt="png"></span></label></p>
-<pre><code class="language-python">intersection = faces.select(circle1 &amp; circle2)
+<pre><code class="language-python">intersection = faces.select(circle1 &amp; circle2).to_mesh()
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
 pt.add_mesh(faces.descend().to_pyvista())
@@ -1037,7 +1131,7 @@ pt.camera_position = "xy"
 pt.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_14_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_14_0.png" alt="png"></span></label></p>
-<pre><code class="language-python">sym_diff = faces.select(circle1 ^ circle2)
+<pre><code class="language-python">sym_diff = faces.select(circle1 ^ circle2).to_mesh()
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
 pt.add_mesh(faces.descend().to_pyvista())
@@ -1046,7 +1140,7 @@ pt.camera_position = "xy"
 pt.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_16_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_16_0.png" alt="png"></span></label></p>
-<pre><code class="language-python">diff = faces.select(circle1 - circle2)
+<pre><code class="language-python">diff = faces.select(circle1 - circle2).to_mesh()
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
 pt.add_mesh(faces.descend().to_pyvista())
@@ -1055,7 +1149,7 @@ pt.camera_position = "xy"
 pt.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_18_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_18_0.png" alt="png"></span></label></p>
-<pre><code class="language-python">notsel = faces.select(~circle1)
+<pre><code class="language-python">notsel = faces.select(~circle1).to_mesh()
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
 pt.add_mesh(faces.descend().to_pyvista())
@@ -1071,7 +1165,7 @@ clip_z = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.5])  # z &l
 </code></pre>
 <pre><code class="language-python">volumes.select(
     (clip_x &amp; sphere &amp; clip_z) | (sphere &amp; ~clip_x &amp; ~clip_z)
-).to_pyvista().plot()
+).to_mesh().to_pyvista().plot()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/selection_files/selection_23_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/selection_files/selection_23_0.png" alt="png"></span></label></p>
 <h2 id="how-does-it-works-"><a class="header" href="#how-does-it-works-">How does it works ?</a></h2>
@@ -1126,6 +1220,55 @@ clip_z = mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.5])  # z &l
 )
 </code></pre>
 <p>You can see two layers of NotExpr and BinaryExpr. That is perfectly normal, it does not mean that the operation is applied twice, both NotExpr operations and both BinaryExpr op actually comes from different namespaces and it is just a form of encapsulation (first is a variant, second is an enum).</p>
+<pre><code class="language-python"># select returns a lazy view; ids(), len() and reductions evaluate it on demand.
+volumes.select(sphere)
+</code></pre>
+<pre><code>SelectionResult(n_elements=3695)
+</code></pre>
+<pre><code class="language-python">two_quarters_expr = (clip_x &amp; sphere &amp; clip_z) | (sphere &amp; ~clip_x &amp; ~clip_z)
+</code></pre>
+<pre><code class="language-python">volumes.select(two_quarters_expr).ids()
+</code></pre>
+<pre><code>{'HEX8': array([ 143,  144,  162, ..., 6715, 6716, 6735],
+       shape=(1838,), dtype=uint64)}
+</code></pre>
+<h2 id="named-groups"><a class="header" href="#named-groups">Named groups</a></h2>
+<p>Selections can be stored on the mesh as named groups. The <code>mesh.groups</code> mapping behaves like a dict: assign a selection expression (or a <code>{etype: ids}</code> dict) to create or replace a group, then manage groups with the usual operations.</p>
+<pre><code class="language-python">volumes.groups["two_quarters"] = two_quarters_expr
+</code></pre>
+<pre><code class="language-python">volumes.groups["two_quarters"].ids()
+</code></pre>
+<pre><code>{'HEX8': array([ 143,  144,  162, ..., 6715, 6716, 6735],
+       shape=(1838,), dtype=uint64)}
+</code></pre>
+<pre><code class="language-python"># Grow or shrink an existing group, either with a selection...
+n = len(volumes.groups["two_quarters"])
+volumes.groups["two_quarters"].add(
+    mf.sel.bbox([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, 0.2])
+)
+print(len(volumes.groups["two_quarters"]), "after adding a slab (was", n, ")")
+</code></pre>
+<pre><code>3089 after adding a slab (was 1838 )
+</code></pre>
+<pre><code class="language-python"># ...or directly with element ids per element type.
+volumes.groups["two_quarters"].add({"HEX8": [0, 1]})
+volumes.groups["two_quarters"].remove({"HEX8": [0, 1]})
+print(len(volumes.groups["two_quarters"]), "back to the original size")
+</code></pre>
+<pre><code>3087 back to the original size
+</code></pre>
+<pre><code class="language-python"># Groups support the usual mapping operations.
+print(volumes.groups.keys())
+print("two_quarters" in volumes.groups, len(volumes.groups))
+
+volumes.groups.rename("two_quarters", "quarter_tag")
+del volumes.groups["quarter_tag"]
+print(volumes.groups.keys())
+</code></pre>
+<pre><code>['two_quarters']
+True 1
+[]
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="fields"><a class="header" href="#fields">Fields</a></h1>
 <pre><code class="language-python">import mefikit as mf
@@ -1163,23 +1306,66 @@ mesh2 = mf.build_cmesh(x, x)
 </code></pre>
 <pre><code class="language-python">mesh2.measure_update()
 </code></pre>
+<h2 id="the-fields-mapping-1"><a class="header" href="#the-fields-mapping-1">The fields mapping</a></h2>
+<p>Fields live in a dict-like mapping on the mesh, keyed by name. Each entry is a handle (<code>FieldRef</code>) to read values, reduce them, or write through selectors.</p>
+<pre><code class="language-python"># List and look up fields by name.
+print(mesh2.fields.keys())
+ref = mesh2.fields["Measure"]
+print("shape:", ref.shape, "| elements:", len(ref))
+</code></pre>
+<pre><code>['Measure']
+shape: (1,) | elements: 998001
+</code></pre>
+<pre><code class="language-python"># Bulk export as {etype: array} (or a single array via `.numpy()` when the
+# mesh has one element type).
+vals = ref.values()["QUAD4"]
+assert np.allclose(vals.ravel(), np.asarray(ref.numpy()).ravel())
+</code></pre>
+<pre><code class="language-python"># Whole-domain reductions over every element carrying the field.
+print(ref.min(), ref.max(), ref.mean())
+</code></pre>
+<pre><code>1.3435388258527605e-14 0.00013129258865784976 1.0019829640451095e-06
+</code></pre>
+<pre><code class="language-python"># Regional reductions: combine a lazy selection with any field expression,
+# including plain existing field names as strings.
+zone = mesh2.select(mf.sel.rect([0.25, 0.25], [0.7, 0.7]))
+print(zone.mean("Measure"), zone.max(mf.Field("Measure") * 4))
+</code></pre>
+<pre><code>2.542318151469843e-05 0.00025703359604145604
+</code></pre>
+<pre><code class="language-python"># Writes accept scalars, arrays, field expressions or existing field names,
+# targeted by wildcards (`...`) or selectors.
+mesh2.fields["Scratch"] = 0.0  # create by broadcast
+mesh2.fields["Scratch"][...] = "Measure"  # copy an existing field
+
+sel = mf.sel.rect([0.0, 0.0], [0.3, 1.0])
+mesh2.fields["Scratch"][sel] = mf.Field("Measure") * 2  # scaled sub-region
+
+sample = mesh2.fields["Scratch"].values()["QUAD4"].ravel()
+measure = mesh2.fields["Measure"].values()["QUAD4"].ravel()
+scaled = np.isclose(sample, measure * 2) &amp; ~np.isclose(sample, measure)
+print("scaled inside:", int(scaled.sum()))
+print("untouched outside:", int(np.isclose(sample, measure).sum()))
+
+del mesh2.fields["Scratch"]  # remove it again
+</code></pre>
+<pre><code>scaled inside: 258840
+untouched outside: 739161
+</code></pre>
 <pre><code class="language-python">mesh2.to_pyvista().plot()
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_5_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_5_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_11_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_11_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">m = mf.Field("Measure")
 </code></pre>
 <h2 id="field-operations-evaluation"><a class="header" href="#field-operations-evaluation">Field operations evaluation</a></h2>
-<pre><code class="language-python">mesh2.eval_update("4 * M2", m * m * 4.0)
+<pre><code class="language-python">mesh2.fields["4 * M2"] = m * m * 4.0
 </code></pre>
 <pre><code class="language-python">mesh2.to_pyvista().plot()
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_9_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_9_0.png" alt="png"></span></label></p>
-<pre><code class="language-python">mesh2.fields()
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_15_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_15_0.png" alt="png"></span></label></p>
+<pre><code class="language-python">mesh2.fields
 </code></pre>
-<pre><code>{'4 * M2': {'QUAD4': array([7.22038631e-28, 7.38874101e-28, 7.56102117e-28, ...,
-         6.58446349e-08, 6.73799065e-08, 6.89509753e-08], shape=(998001,))},
- 'Measure': {'QUAD4': array([1.34353883e-14, 1.35911194e-14, 1.37486555e-14, ...,
-         1.28301047e-04, 1.29788199e-04, 1.31292589e-04], shape=(998001,))}}
+<pre><code>FieldsMapping(["4 * M2", "Measure"])
 </code></pre>
 <pre><code class="language-python">m2 = mf.Field("4 * M2")
 mesh2.eval(m2 - 4.0 * m.square())
@@ -1215,20 +1401,44 @@ mesh2.eval(m2 - 4.0 * m.square())
 <p>Fields can be converted to threshold selections :</p>
 <pre><code class="language-python">th = (m &gt; 3.25e-5) &amp; (m &lt; 1e-4)
 </code></pre>
-<pre><code class="language-python">m2sel = mesh2.select(th)
+<pre><code class="language-python">m2sel = mesh2.select(th).to_mesh()
 pvm2: pv.UnstructuredGrid = m2sel.to_pyvista()
 pvm2.active_scalars_name = "Measure"
 pvm2.plot()
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_17_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_17_0.png" alt="png"></span></label></p>
-<p>Thoses threasholds selections can be combined with other selections.</p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_23_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_23_0.png" alt="png"></span></label></p>
+<p>Those threshold selections can be combined with other selections.</p>
 <pre><code class="language-python">r = mf.sel.rect([0.25, 0.25], [0.7, 0.7])
 c = mf.sel.circle([0.875, 0.875], 0.05)
 </code></pre>
-<pre><code class="language-python">mesh2.select((m2 &gt; 4e-9) - r - c).to_pyvista().plot()
+<pre><code class="language-python">mesh2.select((m2 &gt; 4e-9) - r - c).to_mesh().to_pyvista().plot()
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_20_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_20_0.png" alt="png"></span></label></p>
-<h2 id="transfering-fields"><a class="header" href="#transfering-fields">Transfering fields</a></h2>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_26_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_26_0.png" alt="png"></span></label></p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="field-transfers"><a class="header" href="#field-transfers">Field transfers</a></h1>
+<p>This notebook shows how to remap fields between meshes with the
+<code>mf.transfer</code> operators: interpolation, extrapolation and conservative
+remapping, all sharing the same prepare / apply split.</p>
+<pre><code class="language-python">import mefikit as mf
+import numpy as np
+import pyvista as pv
+
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
+
+# Same mesh and selection context as the Fields notebook.
+x = np.logspace(-5, 0.0, 1000)
+mesh2 = mf.build_cmesh(x, x)
+mesh2.measure_update()
+
+m = mf.Field("Measure")
+m2 = mf.Field("4 * M2")
+mesh2.fields["4 * M2"] = m * m * 4.0
+
+r = mf.sel.rect([0.25, 0.25], [0.7, 0.7])
+c = mf.sel.circle([0.875, 0.875], 0.05)
+</code></pre>
+<h2 id="transferring-fields"><a class="header" href="#transferring-fields">Transferring fields</a></h2>
 <p>The transfer function can be</p>
 <ul>
 <li>interpolation</li>
@@ -1242,7 +1452,7 @@ c = mf.sel.circle([0.875, 0.875], 0.05)
 <p>They are many.</p>
 <h3 id="constantpiecewise-transfer"><a class="header" href="#constantpiecewise-transfer">ConstantPiecewise Transfer</a></h3>
 <p>The transfer is very simple. It is based on the cells of src_mesh and the cells center of the target mesh. It assigns to a cell from the target the value of the cell in which the center is located in. This is a point location based value assignment. By default the centroid (mean of cell nodes) is used because it is fast to comupute and is accurate with regular cells.</p>
-<pre><code class="language-python">m_src = mesh2.select((m2 &gt; 4e-9) - r - c)
+<pre><code class="language-python">m_src = mesh2.select((m2 &gt; 4e-9) - r - c).to_mesh()
 m_tgt = mf.build_cmesh(np.linspace(0.0, 1.5, 20), np.linspace(0.0, 1.5, 20))
 
 # The transfer is computed between source and target geometry.
@@ -1254,7 +1464,7 @@ cpt.apply_update(m_src, "Measure", m_tgt, tgt_field_name="Projection", def_val=n
 </code></pre>
 <pre><code class="language-python">m_tgt.to_pyvista().plot(show_edges=True)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_25_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_25_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_7_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_7_0.png" alt="png"></span></label></p>
 <p>As you can see the <code>"Measure"</code> field from m_src was used to compute the <code>"Projection"</code> field on m_tgt. Both mesh are not completly overlapping but that is not an issue. Cells from m_tgt whose center is not in a cell from m_src take a default value <code>def_val</code>. Default is 0.0 but any floating point value, such as <code>np.nan</code> is accepted.</p>
 <p>This interpolation is good when coarseing a mesh and you do not need conservation. It might be useful in other circumstances I do not know of. It is quite fast but not that much because of the <code>is_in_cell</code> exact geometrical query.</p>
 <h3 id="movingmean-transfer"><a class="header" href="#movingmean-transfer">MovingMean Transfer</a></h3>
@@ -1278,7 +1488,7 @@ cpt.apply_update(m_src, "Measure", m_tgt, tgt_field_name="Projection", def_val=n
 <li>linear least square : the projection is the least square linear approx of the solution (can be an extrapolation)</li>
 <li>weighted least square : the projection is the weighted least square linear approx of the solution, there are several possibilities for the weighting function but it depends on the relative distance to the target interpolation point.</li>
 </ul>
-<pre><code class="language-python">m_src = mesh2.select((m2 &gt; 4e-9) - r - c)
+<pre><code class="language-python">m_src = mesh2.select((m2 &gt; 4e-9) - r - c).to_mesh()
 m_tgt = mf.build_cmesh(np.linspace(0.0, 1.5, 20), np.linspace(0.0, 1.5, 20))
 
 # The transfer is computed between source and target geometry.
@@ -1290,8 +1500,8 @@ mlsqt.apply_update(m_src, "Measure", m_tgt, tgt_field_name="Projection", def_val
 </code></pre>
 <pre><code class="language-python">m_tgt.to_pyvista().plot(show_edges=True)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_31_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_31_0.png" alt="png"></span></label></p>
-<p>As you can see the projection gets a valeu everywhere, even outside the initial domain. This can lead to bad extrapolations, so it is to your responsability. Here as an example the extrapolated Measure can have negative values.</p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_13_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_13_0.png" alt="png"></span></label></p>
+<p>As you can see the projection gets a value everywhere, even outside the initial domain. This can lead to bad extrapolations, so it is to your responsability. Here as an example the extrapolated Measure can have negative values.</p>
 <p>Inside the domain the interpolation works like a charm.</p>
 <h3 id="transfer-methods-comparison"><a class="header" href="#transfer-methods-comparison">Transfer methods comparison</a></h3>
 <pre><code class="language-python">def compare_src_tgt(m_src, m_tgt):
@@ -1359,17 +1569,17 @@ for T, label in zip(transfers, trasfers_labels):
 
     compare_src_tgt(m_src, m_tgt)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_0.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_1.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_1.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_2.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_2.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_3.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_3.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_4.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_4.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_5.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_5.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_6.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_6.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_7.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_7.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_8.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_8.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_9.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_9.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_35_10.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_35_10.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_1.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_1.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_2.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_2.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_3.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_3.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_4.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_4.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_5.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_5.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_6.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_6.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_7.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_7.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_8.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_8.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_9.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_9.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_17_10.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_17_10.png" alt="png"></span></label></p>
 <pre><code class="language-python">import matplotlib.pyplot as plt
 
 chart_data = {
@@ -1390,7 +1600,7 @@ ax.legend(loc="upper left", ncols=3)
 fig.tight_layout()
 plt.show()
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/fields_files/fields_36_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/fields_files/fields_36_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_18_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_18_0.png" alt="png"></span></label></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bubbles-example"><a class="header" href="#bubbles-example">Bubbles example</a></h1>
 <pre><code class="language-python">import mefikit as mf
@@ -1401,6 +1611,7 @@ rng = np.random.default_rng(seed=123)
 pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")
 </code></pre>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
 <pre><code class="language-python">xmax = 5.0
 ymax = 1.0
 r = 0.17
@@ -1427,14 +1638,24 @@ volumes = mf.build_cmesh(x, y, y)
 </code></pre>
 <pre><code class="language-python">volumes.boundaries().to_pyvista().plot(opacity=0.4)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_6_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_6_0.png" alt="png"></span></label></p>
-<pre><code class="language-python">inner_bubbles = volumes.select(sphere_union)
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_7_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_7_0.png" alt="png"></span></label></p>
+<h2 id="selecting-bubbles"><a class="header" href="#selecting-bubbles">Selecting bubbles</a></h2>
+<pre><code class="language-python"># `select` returns a lazy view: materialize it into a sub-mesh with `.to_mesh()`.
+inner_bubbles = volumes.select(sphere_union).to_mesh()
 interface = inner_bubbles.boundaries()
 cracked = volumes.crack(interface)
 </code></pre>
+<pre><code class="language-python"># Named groups live in a dict-like mapping on the mesh:
+# assign any selection expression (or {etype: ids} dict) to tag elements.
+volumes.groups["bubbles"] = sphere_union
+print(len(volumes.groups["bubbles"]), "elements tagged in group 'bubbles'")
+</code></pre>
+<pre><code>105990 elements tagged in group 'bubbles'
+</code></pre>
+<h2 id="cracking-and-connected-components"><a class="header" href="#cracking-and-connected-components">Cracking and connected components</a></h2>
 <pre><code class="language-python">cracked.boundaries().to_pyvista().plot(opacity=0.4)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_8_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_8_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_12_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_12_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">bubble_groups = inner_bubbles.connected_components()
 </code></pre>
 <pre><code class="language-python">pv.global_theme.color_cycler = "default"
@@ -1446,14 +1667,14 @@ pl.add_mesh(volumes.boundaries(target_dim=1).to_pyvista())
 pl.show()
 pv.global_theme.color_cycler = None
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_10_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_10_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_14_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_14_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">clip1 = mf.sel.bbox([-np.inf] * 3, [np.inf, ymax / 3.0, np.inf])
 pl = pv.Plotter()
-pl.add_mesh(volumes.select(clip1 &amp; ~sphere_union).to_pyvista())
+pl.add_mesh(volumes.select(clip1 &amp; ~sphere_union).to_mesh().to_pyvista())
 pl.add_mesh(interface.to_pyvista(), opacity=0.4)
 pl.show()
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_11_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_11_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/example_bubbles_files/example_bubbles_15_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/example_bubbles_files/example_bubbles_15_0.png" alt="png"></span></label></p>
 
                     </main>
 

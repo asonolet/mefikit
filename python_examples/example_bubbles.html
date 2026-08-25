@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0595345a.js";
+            window.path_to_searchindex_js = "../searchindex-814423fe.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-49e3bc73.js"></script>
+        <script src="../toc-0d7758d6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -183,6 +183,7 @@ rng = np.random.default_rng(seed=123)
 pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")
 </code></pre>
+<h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
 <pre><code class="language-python">xmax = 5.0
 ymax = 1.0
 r = 0.17
@@ -209,14 +210,24 @@ volumes = mf.build_cmesh(x, y, y)
 </code></pre>
 <pre><code class="language-python">volumes.boundaries().to_pyvista().plot(opacity=0.4)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_6_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_6_0.png" alt="png"></span></label></p>
-<pre><code class="language-python">inner_bubbles = volumes.select(sphere_union)
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_7_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_7_0.png" alt="png"></span></label></p>
+<h2 id="selecting-bubbles"><a class="header" href="#selecting-bubbles">Selecting bubbles</a></h2>
+<pre><code class="language-python"># `select` returns a lazy view: materialize it into a sub-mesh with `.to_mesh()`.
+inner_bubbles = volumes.select(sphere_union).to_mesh()
 interface = inner_bubbles.boundaries()
 cracked = volumes.crack(interface)
 </code></pre>
+<pre><code class="language-python"># Named groups live in a dict-like mapping on the mesh:
+# assign any selection expression (or {etype: ids} dict) to tag elements.
+volumes.groups["bubbles"] = sphere_union
+print(len(volumes.groups["bubbles"]), "elements tagged in group 'bubbles'")
+</code></pre>
+<pre><code>105990 elements tagged in group 'bubbles'
+</code></pre>
+<h2 id="cracking-and-connected-components"><a class="header" href="#cracking-and-connected-components">Cracking and connected components</a></h2>
 <pre><code class="language-python">cracked.boundaries().to_pyvista().plot(opacity=0.4)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_8_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_8_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_12_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_12_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">bubble_groups = inner_bubbles.connected_components()
 </code></pre>
 <pre><code class="language-python">pv.global_theme.color_cycler = "default"
@@ -228,20 +239,20 @@ pl.add_mesh(volumes.boundaries(target_dim=1).to_pyvista())
 pl.show()
 pv.global_theme.color_cycler = None
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_10_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_10_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_14_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_14_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">clip1 = mf.sel.bbox([-np.inf] * 3, [np.inf, ymax / 3.0, np.inf])
 pl = pv.Plotter()
-pl.add_mesh(volumes.select(clip1 &amp; ~sphere_union).to_pyvista())
+pl.add_mesh(volumes.select(clip1 &amp; ~sphere_union).to_mesh().to_pyvista())
 pl.add_mesh(interface.to_pyvista(), opacity=0.4)
 pl.show()
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_11_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_11_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_15_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_15_0.png" alt="png"></span></label></p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../python_examples/fields.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../python_examples/transfers.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -252,7 +263,7 @@ pl.show()
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../python_examples/fields.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../python_examples/transfers.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

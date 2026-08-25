@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0595345a.js";
+            window.path_to_searchindex_js = "../searchindex-814423fe.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-49e3bc73.js"></script>
+        <script src="../toc-0d7758d6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -182,7 +182,7 @@ import pyvista as pv
 pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")
 </code></pre>
-<h3 id="building-mesh-with-custom-connectivity"><a class="header" href="#building-mesh-with-custom-connectivity">Building mesh with custom connectivity</a></h3>
+<h2 id="building-mesh-with-custom-connectivity"><a class="header" href="#building-mesh-with-custom-connectivity">Building mesh with custom connectivity</a></h2>
 <p>First let’s build a 2D mesh wich will by used to demonstrate extrusions.</p>
 <pre><code class="language-python">x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
 coords = np.c_[x.flatten(), y.flatten()]
@@ -230,12 +230,10 @@ extruded_par = mesh.extrude_parallel(line)
 <pre><code class="language-python">extruded_par.to_pyvista(dim="all").plot(show_edges=True)
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="extrusions_files/extrusions_12_0.png" alt="png"><span class="img-wrapper"><img src="extrusions_files/extrusions_12_0.png" alt="png"></span></label></p>
-<h3 id="build-curviliear-extrusion-mesh"><a class="header" href="#build-curviliear-extrusion-mesh">Build curviliear extrusion mesh</a></h3>
+<h3 id="build-curvilinear-extrusion-mesh"><a class="header" href="#build-curvilinear-extrusion-mesh">Build curvilinear extrusion mesh</a></h3>
 <pre><code class="language-python">mesh = mf.build_cmesh(range(2), range(2))
 n = 20
-# x = np.linspace(0, 4, n)
 x = np.zeros((n,))
-# x = np.sin(np.linspace(0.0, np.pi, n))
 y = np.cos(np.linspace(0.0, np.pi, n))
 z = np.sin(np.linspace(0.0, np.pi, n))
 line = np.c_[x, y, z]

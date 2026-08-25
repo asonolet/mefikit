@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-0595345a.js";
+            window.path_to_searchindex_js = "../searchindex-814423fe.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-49e3bc73.js"></script>
+        <script src="../toc-0d7758d6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -189,7 +189,7 @@ z = np.logspace(-0.5, 1, 4, endpoint=True)
 volumes = mf.build_cmesh(x, y, z)
 </code></pre>
 <h3 id="simple-descending_mesh"><a class="header" href="#simple-descending_mesh">Simple descending_mesh</a></h3>
-<p>This functionality is able to compute the descending connectivity of the porvided mesh.
+<p>This functionality is able to compute the descending connectivity of the provided mesh.
 It can act on elements of dimension 1, 2 or 3.</p>
 <pre><code class="language-python">faces = volumes.descend()
 edges = faces.descend()
@@ -206,7 +206,7 @@ plotter.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_5_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_5_0.png" alt="png"></span></label></p>
 <h3 id="submesh-in-one-go"><a class="header" href="#submesh-in-one-go">Submesh in one go</a></h3>
-<p>You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining mutliple <code>.descend()</code> calls.</p>
+<p>You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining multiple <code>.descend()</code> calls.</p>
 <pre><code class="language-python">edges = volumes.descend(target_dim=1)
 nodes = volumes.descend(target_dim=0)
 
@@ -214,12 +214,12 @@ plotter = pv.Plotter(shape=(1, 2))
 plotter.subplot(0, 0)
 plotter.add_mesh(edges.to_pyvista().shrink(0.8))
 plotter.subplot(0, 1)
-plotter.add_mesh(vertex.to_pyvista())
+plotter.add_mesh(nodes.to_pyvista())
 plotter.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="topological_tools_files/topological_tools_7_0.png" alt="png"><span class="img-wrapper"><img src="topological_tools_files/topological_tools_7_0.png" alt="png"></span></label></p>
 <h2 id="boundaries-computation"><a class="header" href="#boundaries-computation">Boundaries computation</a></h2>
-<p>As it is very common to compute boundaries on a mesh (for boundary counditions for ex), there is a custom <code>boundaries</code> computation method.</p>
+<p>As it is very common to compute boundaries on a mesh (for boundary conditions for ex), there is a custom <code>boundaries</code> computation method.</p>
 <pre><code class="language-python">face_bounds = volumes.boundaries()
 edge_bounds = volumes.boundaries(target_dim=1)
 vertex_bounds = volumes.boundaries(target_dim=0)
