@@ -4,16 +4,8 @@ use super::hdf_utils::{read_index_array, read_string_data};
 use crate::mesh::{Dimension, ElementLike, ElementType, UMesh, UMeshView};
 use hdf5_metno::types::FixedAscii;
 use hdf5_metno::{File, Group};
-use hdf5_metno_sys::h5a::{H5Aclose, H5Acreate2, H5Awrite};
-use hdf5_metno_sys::h5i::hid_t;
-use hdf5_metno_sys::h5p::H5P_DEFAULT;
-use hdf5_metno_sys::h5s::{H5S_class_t, H5Sclose, H5Screate};
-use hdf5_metno_sys::h5t::{
-    H5T_C_S1, H5T_cset_t, H5T_str_t, H5Tclose, H5Tcopy, H5Tset_cset, H5Tset_size, H5Tset_strpad,
-};
 use ndarray::{Array1, arr1, arr2};
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::path::Path;
 
 // The cgns module is responsible for reading and writing CGNS files. It is strictly limited to cgns hdf format files since it uses hdf5-metno as an interface to the hdf5 library.
@@ -375,71 +367,27 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
 
 // ── write primitives ──────────────────────────────────────────────────────────
 //
-// CGNS/HDF5 stores each node's `label`, `name` and `type` as fixed-length,
-// NULL-terminated ASCII string attributes (33 bytes for label/name, 3 bytes for
-// type). hdf5-metno's safe `FixedAscii` attribute API does not let us pin the
-// string padding to NULLTERM with an exact byte size, so — as in the original
-// standalone writer — we drop to the raw HDF5 C API for these three attributes.
-//
-// # Safety
-// All handles created here (`tid`, `sid`, `aid`) are released before returning,
-// and `loc_id` must be a valid, open HDF5 location id (obtained from a live
-// `Group`/`File` via `.id()`).
-unsafe fn write_nullterm_str_attr(
-    loc_id: hid_t,
-    attr_name: &str,
+// ── CGNS node attribute helpers ──────────────────────────────────────────────
+// Fixed-length, null-padded ASCII string attributes are required by CGNS SIDS
+// for the "name", "label", and "type" attributes on every node (see CGNS SIDS
+// §2.3.1 and §2.4.1).  `FixedAscii<N>` from hdf5-metno produces the correct
+// on-disk format (H5T_STR_NULLPAD, which is byte-identical to NULLTERM for
+// fixed-length strings).
+
+fn write_str_attr<const N: usize>(
+    group: &Group,
+    name: &str,
     value: &str,
-    size: usize, // 3 for "type", 33 for "label"/"name"
 ) -> Result<(), MefikitIOError> {
-    unsafe {
-        // Build the fixed-size, null-terminated ASCII datatype.
-        let tid = H5Tcopy(*H5T_C_S1);
-        H5Tset_size(tid, size);
-        H5Tset_strpad(tid, H5T_str_t::H5T_STR_NULLTERM);
-        H5Tset_cset(tid, H5T_cset_t::H5T_CSET_ASCII);
-
-        // Scalar dataspace.
-        let sid = H5Screate(H5S_class_t::H5S_SCALAR);
-
-        let attr_name_c = CString::new(attr_name)
-            .map_err(|e| MefikitIOError::Encode(format!("invalid attribute name: {e}")))?;
-        let aid = H5Acreate2(
-            loc_id,
-            attr_name_c.as_ptr(),
-            tid,
-            sid,
-            H5P_DEFAULT,
-            H5P_DEFAULT,
-        );
-
-        // Pad `value` to `size` bytes, null-terminated, then write.
-        let mut buf = vec![0u8; size];
-        let bytes = value.as_bytes();
-        if bytes.len() >= size {
-            H5Aclose(aid);
-            H5Sclose(sid);
-            H5Tclose(tid);
-            return Err(MefikitIOError::Encode(format!(
-                "attribute '{attr_name}' value {value:?} does not fit in {size} bytes (needs a trailing NUL)"
-            )));
-        }
-        buf[..bytes.len()].copy_from_slice(bytes);
-        let write_status = if aid < 0 {
-            -1
-        } else {
-            H5Awrite(aid, tid, buf.as_ptr() as *const std::ffi::c_void)
-        };
-
-        H5Aclose(aid);
-        H5Sclose(sid);
-        H5Tclose(tid);
-
-        if aid < 0 || write_status < 0 {
-            return Err(MefikitIOError::Hdf5Sys(format!(
-                "failed to write string attribute '{attr_name}'"
-            )));
-        }
-    }
+    let ascii = FixedAscii::<N>::from_ascii(value)
+        .map_err(|e| MefikitIOError::Encode(format!("invalid attribute '{name}': {e}")))?;
+    group
+        .new_attr::<FixedAscii<N>>()
+        .shape(())
+        .create(name)
+        .map_err(MefikitIOError::Hdf)?
+        .write_scalar(&ascii)
+        .map_err(MefikitIOError::Hdf)?;
     Ok(())
 }
 
@@ -450,12 +398,9 @@ fn write_node_attrs(
     type_str: &str,
     flags: i32,
 ) -> Result<(), MefikitIOError> {
-    let loc = group.id(); // hid_t
-    unsafe {
-        write_nullterm_str_attr(loc, "label", label, 33)?;
-        write_nullterm_str_attr(loc, "name", name, 33)?;
-        write_nullterm_str_attr(loc, "type", type_str, 3)?;
-    }
+    write_str_attr::<33>(group, "label", label)?;
+    write_str_attr::<33>(group, "name", name)?;
+    write_str_attr::<3>(group, "type", type_str)?;
     group
         .new_attr::<i32>()
         .shape([1])
@@ -466,12 +411,9 @@ fn write_node_attrs(
 
 fn write_root_attrs(file: &File) -> Result<(), MefikitIOError> {
     let root = file.as_group()?;
-    let loc = root.id();
-    unsafe {
-        write_nullterm_str_attr(loc, "label", "Root Node of HDF5 File", 33)?;
-        write_nullterm_str_attr(loc, "name", "HDF5 MotherNode", 33)?;
-        write_nullterm_str_attr(loc, "type", "MT", 3)?;
-    }
+    write_str_attr::<33>(&root, "label", "Root Node of HDF5 File")?;
+    write_str_attr::<33>(&root, "name", "HDF5 MotherNode")?;
+    write_str_attr::<3>(&root, "type", "MT")?;
     Ok(())
 }
 
@@ -917,5 +859,69 @@ mod tests {
             }
         }
         let _ = std::fs::remove_file(&dst);
+    }
+
+    #[test]
+    fn strpad_nullterm_vs_nullpad_produce_identical_bytes() {
+        use hdf5_metno::types::FixedAscii;
+
+        let _guard = hdf5_test_guard();
+        let path = tmp("mefikit_strpad_compare.h5");
+        let _ = std::fs::remove_file(&path);
+        let file = File::create(&path).unwrap();
+
+        // ---- group written with unsafe C API: H5T_STR_NULLTERM ----
+        let grp_nt = file.create_group("nullterm").unwrap();
+        {
+            use hdf5_metno_sys::h5a::{H5Aclose, H5Acreate2, H5Awrite};
+            use hdf5_metno_sys::h5p::H5P_DEFAULT;
+            use hdf5_metno_sys::h5s::{H5S_class_t, H5Sclose, H5Screate};
+            use hdf5_metno_sys::h5t::{
+                H5T_C_S1, H5T_cset_t, H5T_str_t, H5Tclose, H5Tcopy, H5Tset_cset, H5Tset_size,
+                H5Tset_strpad,
+            };
+            use std::ffi::CString;
+
+            unsafe {
+                let tid = H5Tcopy(*H5T_C_S1);
+                H5Tset_size(tid, 16);
+                H5Tset_strpad(tid, H5T_str_t::H5T_STR_NULLTERM);
+                H5Tset_cset(tid, H5T_cset_t::H5T_CSET_ASCII);
+                let sid = H5Screate(H5S_class_t::H5S_SCALAR);
+                let name = CString::new("attr").unwrap();
+                let aid = H5Acreate2(
+                    grp_nt.id(),
+                    name.as_ptr(),
+                    tid,
+                    sid,
+                    H5P_DEFAULT,
+                    H5P_DEFAULT,
+                );
+                let mut buf = [0u8; 16];
+                buf[..4].copy_from_slice(b"test");
+                H5Awrite(aid, tid, buf.as_ptr() as *const _);
+                H5Aclose(aid);
+                H5Sclose(sid);
+                H5Tclose(tid);
+            }
+        }
+
+        // ---- group written with safe hdf5-metno API: H5T_STR_NULLPAD ----
+        let grp_np = file.create_group("nullpad").unwrap();
+        grp_np
+            .new_attr::<FixedAscii<16>>()
+            .shape(())
+            .create("attr")
+            .unwrap()
+            .write_scalar(&FixedAscii::<16>::from_ascii("test").unwrap())
+            .unwrap();
+
+        // ---- read both back and compare raw bytes ----
+        let raw_nt: FixedAscii<16> = grp_nt.attr("attr").unwrap().read_scalar().unwrap();
+        let raw_np: FixedAscii<16> = grp_np.attr("attr").unwrap().read_scalar().unwrap();
+        assert_eq!(raw_nt.as_str(), raw_np.as_str());
+        assert_eq!(raw_nt.as_bytes(), raw_np.as_bytes());
+
+        let _ = std::fs::remove_file(&path);
     }
 }
