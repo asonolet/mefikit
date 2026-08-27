@@ -182,6 +182,25 @@ where
         FieldOwned::new(result)
     }
 
+    /// Applies a binary function element-wise with braodcast to this field and another.
+    pub fn map_zip_broadcast<F>(&self, other: &Self, f: F) -> FieldOwned<nd::IxDyn>
+    where
+        F: Fn(f64, f64) -> f64 + Copy,
+    {
+        let mut result = BTreeMap::new();
+        for (elem_type, left_array) in &self.0 {
+            if let Some(right_array) = other.0.get(elem_type) {
+                let res = broadcast_binary_op(left_array, right_array, f);
+                nd::Zip::from(&mut res)
+                    .and_broadcast(left_array)
+                    .and_broadcast(right_array)
+                    .for_each(|a, &b, &c| *a = f(b, c));
+                result.insert(*elem_type, res.into_owned());
+            }
+        }
+        FieldOwned::new(result)
+    }
+
     /// Returns element IDs where a binary predicate holds.
     pub fn map_zip_where<F>(&self, other: &Self, mut f: F) -> ElementIds
     where
@@ -382,6 +401,36 @@ where
         }
         FieldOwned::new(result)
     }
+}
+
+fn broadcast_binary_op<T, F>(lhs: &nd::ArrayRefD<T>, rhs: &nd::ArrayRefD<T>, op: F) -> nd::ArrayD<T>
+where
+    T: Clone,
+    F: Fn(T, T) -> T + Copy,
+{
+    if lhs.shape() == rhs.shape() {
+        return nd::Zip::from(lhs)
+            .and(rhs)
+            .map_collect(|a, b| op(a.clone(), b.clone()));
+    }
+
+    if let Some(rhs) = rhs.broadcast(lhs.raw_dim()) {
+        return nd::Zip::from(lhs)
+            .and(rhs)
+            .map_collect(|a, b| op(a.clone(), b.clone()));
+    }
+
+    if let Some(lhs) = lhs.broadcast(rhs.raw_dim()) {
+        return nd::Zip::from(lhs)
+            .and(rhs)
+            .map_collect(|a, b| op(a.clone(), b.clone()));
+    }
+
+    panic!(
+        "incompatible shapes: {:?} and {:?}",
+        lhs.shape(),
+        rhs.shape()
+    );
 }
 
 impl<S> Mul<&FieldBase<S, nd::IxDyn>> for &FieldBase<S, nd::IxDyn>
