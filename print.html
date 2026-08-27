@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-814423fe.js";
+            window.path_to_searchindex_js = "searchindex-d39a58f9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-0d7758d6.js"></script>
+        <script src="toc-c0f193b5.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -294,20 +294,197 @@ MeshGems and various meshing libraries.</li>
 </li>
 </ol>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="mefikit-mesh-format"><a class="header" href="#mefikit-mesh-format"><code>mefikit</code> Mesh Format</a></h1>
-<p>The <strong><code>mefikit</code> format</strong> defines a compact, extensible, and expressive way to
-represent unstructured meshes composed of heterogeneous elements — including
-vertices, edges, faces, and volumetric cells. Supported element types include,
-but are not limited to:</p>
+<h1 id="element-conventions"><a class="header" href="#element-conventions">Element Conventions</a></h1>
+<p>This chapter defines the node ordering and face orientation conventions used
+throughout <code>mefikit</code>. These conventions follow the <strong>VTK</strong> convention for
+element node ordering and face definitions.</p>
+<p><strong>Note:</strong> TET10 uses MEDFile mid-side node numbering (deferred migration).</p>
+<h2 id="element-types"><a class="header" href="#element-types">Element types</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Type</th><th>Dim</th><th>Nodes</th><th>Regularity</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>VERTEX</td><td>0D</td><td>1</td><td>Regular</td><td>Point</td></tr>
+<tr><td>SEG2</td><td>1D</td><td>2</td><td>Regular</td><td>Linear segment</td></tr>
+<tr><td>SEG3</td><td>1D</td><td>3</td><td>Regular</td><td>Quadratic segment</td></tr>
+<tr><td>SEG4</td><td>1D</td><td>4</td><td>Regular</td><td>Cubic segment</td></tr>
+<tr><td>TRI3</td><td>2D</td><td>3</td><td>Regular</td><td>Linear triangle</td></tr>
+<tr><td>TRI6</td><td>2D</td><td>6</td><td>Regular</td><td>Quadratic triangle</td></tr>
+<tr><td>TRI7</td><td>2D</td><td>7</td><td>Regular</td><td>Quadratic triangle + centroid</td></tr>
+<tr><td>QUAD4</td><td>2D</td><td>4</td><td>Regular</td><td>Linear quadrilateral</td></tr>
+<tr><td>QUAD8</td><td>2D</td><td>8</td><td>Regular</td><td>Quadratic quadrilateral (serendipity)</td></tr>
+<tr><td>QUAD9</td><td>2D</td><td>9</td><td>Regular</td><td>Biquadratic quadrilateral</td></tr>
+<tr><td>TET4</td><td>3D</td><td>4</td><td>Regular</td><td>Linear tetrahedron</td></tr>
+<tr><td>TET10</td><td>3D</td><td>10</td><td>Regular</td><td>Quadratic tetrahedron</td></tr>
+<tr><td>HEX8</td><td>3D</td><td>8</td><td>Regular</td><td>Linear hexahedron</td></tr>
+<tr><td>HEX21</td><td>3D</td><td>21</td><td>Regular</td><td>Tricubic hexahedron</td></tr>
+<tr><td>SPLINE</td><td>1D</td><td>var.</td><td>Poly</td><td>Polyline</td></tr>
+<tr><td>PGON</td><td>2D</td><td>var.</td><td>Poly</td><td>Polygon</td></tr>
+<tr><td>PHED</td><td>3D</td><td>var.</td><td>Poly</td><td>Polyhedron</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="poly-element-representation"><a class="header" href="#poly-element-representation">Poly element representation</a></h2>
+<p>Poly elements (SPLINE, PGON, PHED) store their connectivity as a flat array of
+node indices. <strong>Faces are delimited by <code>usize::MAX</code> sentinel values.</strong></p>
 <ul>
-<li><strong>0D:</strong> vertices</li>
-<li><strong>1D:</strong> segments, polylines</li>
-<li><strong>2D:</strong> triangles, quadrilaterals, polygons</li>
-<li><strong>3D:</strong> tetrahedra, hexahedra, prisms, pyramids, polyhedra</li>
+<li>
+<p><strong>PGON</strong>: nodes form a single face, no sentinel needed.
+<code>[n0, n1, n2, n3]</code> — a 4-node polygon.</p>
+</li>
+<li>
+<p><strong>PHED</strong>: each face is a closed polygon (PGON), separated by sentinels.</p>
+<pre><code>[f0_n0, f0_n1, f0_n2, MAX, f1_n0, f1_n1, f1_n2, f1_n3, MAX, ...]
+</code></pre>
+<p>The last face has no trailing sentinel.</p>
+</li>
 </ul>
-<p>In addition, any element can carry fields (scalar, vector, or tensor) that
-reside directly on its topological dimension. This enables workflows akin to
-VTK field data. Fields must be defined upon all elements of a given topological dimension.</p>
+<h2 id="face-orientation-convention"><a class="header" href="#face-orientation-convention">Face orientation convention</a></h2>
+<p>All subentities (edges of 2D elements, faces of 3D elements) are defined with
+<strong>consistent counter-clockwise (CCW) winding when viewed from outside the
+element</strong>. This ensures that:</p>
+<ul>
+<li>Each outward-facing normal follows the right-hand rule.</li>
+<li>Shared lower-dimensional entities are traversed in <strong>opposite directions</strong>
+by adjacent higher-dimensional elements.</li>
+</ul>
+<p>The subentity definitions below are the canonical reference for node orderings.</p>
+<h2 id="2d-elements"><a class="header" href="#2d-elements">2D elements</a></h2>
+<h3 id="tri3--tri6--tri7--triangle"><a class="header" href="#tri3--tri6--tri7--triangle">TRI3 / TRI6 / TRI7 — Triangle</a></h3>
+<p>Nodes 0, 1, 2 are the three vertices. Edges follow CCW winding:</p>
+<pre><code>        2
+       / \
+      /   \
+     /     \
+    0-------1
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Edge</th><th>Nodes</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>[0, 1]</td><td>Edge 0→1</td></tr>
+<tr><td>1</td><td>[1, 2]</td><td>Edge 1→2</td></tr>
+<tr><td>2</td><td>[2, 0]</td><td>Edge 2→0</td></tr>
+</tbody>
+</table>
+</div>
+<p>For <strong>TRI6/TRI7</strong>, mid-side nodes are placed as: node 3 on edge 01, node 4 on
+edge 12, node 5 on edge 20. TRI7 additionally has a centroid node (node 6).</p>
+<h3 id="quad4--quad8--quad9--quadrilateral"><a class="header" href="#quad4--quad8--quad9--quadrilateral">QUAD4 / QUAD8 / QUAD9 — Quadrilateral</a></h3>
+<p>Nodes 0–3 are the four vertices, numbered counter-clockwise:</p>
+<pre><code>    3-------2
+    |       |
+    |       |
+    0-------1
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Edge</th><th>Nodes</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>[0, 1]</td><td>Bottom</td></tr>
+<tr><td>1</td><td>[1, 2]</td><td>Right</td></tr>
+<tr><td>2</td><td>[2, 3]</td><td>Top</td></tr>
+<tr><td>3</td><td>[3, 0]</td><td>Left</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="3d-elements"><a class="header" href="#3d-elements">3D elements</a></h2>
+<h3 id="tet4--tetrahedron"><a class="header" href="#tet4--tetrahedron">TET4 — Tetrahedron</a></h3>
+<p>Nodes 0–3 are the four vertices. The tetrahedron is defined by its four
+triangular faces (VTK convention):</p>
+<pre><code>          3
+         /|\
+        / | \
+       /  |  \
+      /   |   \
+     /    |    \
+    1-----+-----2
+     \    |    /
+      \   |   /
+       \  |  /
+        \ | /
+         \|/
+          0
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Face</th><th>Nodes</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>[0, 1, 3]</td><td>Opposite node 2</td></tr>
+<tr><td>1</td><td>[1, 2, 3]</td><td>Opposite node 0</td></tr>
+<tr><td>2</td><td>[2, 0, 3]</td><td>Opposite node 1</td></tr>
+<tr><td>3</td><td>[0, 2, 1]</td><td>Base (opposite node 3)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Each face lists the three nodes that do <strong>not</strong> include the opposite vertex,
+in CCW order when viewed from outside the element.</p>
+<p>For <strong>TET10</strong>, the vertex convention is: nodes 0–3 vertices, mid-side nodes
+4 (edge 01), 5 (edge 12), 6 (edge 02), 7 (edge 03), 8 (edge 13), 9 (edge 23).</p>
+<h3 id="hex8--hexahedron"><a class="header" href="#hex8--hexahedron">HEX8 — Hexahedron</a></h3>
+<p>Nodes 0–7 are the eight vertices of a unit cube, numbered following the
+<strong>VTK</strong> convention:</p>
+<pre><code>        7---------6
+       /|        /|
+      / |       / |
+     /  |      /  |
+    4---------5   |
+    |   3-----|---2
+    |  /      |  /
+    | /       | /
+    |/        |/
+    0---------1
+</code></pre>
+<p>Bottom face: nodes 0, 1, 2, 3 (CCW viewed from below).
+Top face: nodes 4, 5, 6, 7 (CCW viewed from above).
+Node 4 is directly above node 0, node 5 above node 1, etc.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Face</th><th>Nodes</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>[0, 1, 2, 3]</td><td>Bottom (z = 0)</td></tr>
+<tr><td>1</td><td>[4, 5, 6, 7]</td><td>Top (z = 1)</td></tr>
+<tr><td>2</td><td>[0, 1, 5, 4]</td><td>Front (y = 0)</td></tr>
+<tr><td>3</td><td>[1, 2, 6, 5]</td><td>Right (x = 1)</td></tr>
+<tr><td>4</td><td>[2, 3, 7, 6]</td><td>Back (y = 1)</td></tr>
+<tr><td>5</td><td>[3, 0, 4, 7]</td><td>Left (x = 0)</td></tr>
+</tbody>
+</table>
+</div>
+<p>All faces are wound CCW when viewed from outside the element.</p>
+<p><strong>Differences with MEDFile:</strong> MEDFile HEX8 has a different node numbering:
+MED node 0 is top-left-front, while VTK node 0 is bottom-left-front. The
+MED→VTK node permutation is <code>[4,5,6,7,0,1,2,3]</code> (self-inverse). Face ordering
+also differs: MED uses <code>[top, left, front, right, back, bottom]</code> while VTK
+uses <code>[bottom, top, front, right, back, left]</code>. Do not mix VTK and MEDFile
+conventions.</p>
+<p>For <strong>HEX21</strong>, the vertex convention is: nodes 0–7 vertices, mid-side nodes
+8 (edge 01), 9 (edge 12), 10 (edge 23), 11 (edge 30), 12 (edge 45),
+13 (edge 56), 14 (edge 67), 15 (edge 74), 16 (edge 04), 17 (edge 15),
+18 (edge 26), 19 (edge 37).</p>
+<h2 id="phed--polyhedron"><a class="header" href="#phed--polyhedron">PHED — Polyhedron</a></h2>
+<p>A polyhedron is stored as a sequence of polygonal faces, each wound CCW when
+viewed from outside the element. Faces are delimited by <code>usize::MAX</code> sentinels
+in the flat connectivity array.</p>
+<p>The constraints for a valid PHED are:</p>
+<ol>
+<li><strong>Each face is a closed polygon</strong> — its nodes form a simple, non-self-intersecting loop.</li>
+<li><strong>Consistent orientation</strong> — every edge shared by exactly two faces is
+traversed in opposite directions by those two faces. Equivalently, the
+outward normal of every face follows the right-hand rule.</li>
+<li><strong>Closed surface</strong> — the collection of faces forms a topologically closed
+manifold (no dangling edges).</li>
+</ol>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="topological-basic-operations"><a class="header" href="#topological-basic-operations">Topological basic operations</a></h1>
 <h2 id="subgraph-and-neighbours-computation"><a class="header" href="#subgraph-and-neighbours-computation">Subgraph and neighbours computation</a></h2>
