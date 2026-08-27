@@ -19,7 +19,7 @@
 | ----------------------------------- | ---------------------- | -------------- | -------------------------------------------------------------- |
 | Selection by ID                     | ✔️ (`sel.ids` / `nids`)| ✔️             |                                                                |
 | Field-based selection               | ✔️ (`Field > x`)       | ✔️             | Selection DSL (`Selection`/`Comparable`) is ergonomic in both. |
-| Group-based selection               | ✔️ (rust)              | ✔️ (MEDLoader) | `include_group`/`exclude_group`; not exposed in python yet.    |
+| Group-based selection               | ✔️                     | ✔️ (MEDLoader) |                                                                |
 | Selection by position (bbox, plane) | ✔️                     | ✔️             | Centroid-based (`bbox`, `rect`, `sphere`, `circle`) and        |
 |                                     |                        |                | node-based (`nbbox`, `nrect`, `nsphere`, `ncircle`).           |
 | Selection by connectivity patterns  | 🚧                     | ❌             |                                                                |
@@ -102,9 +102,9 @@
 | Serialization        | ✔️ (serde) | ❌          | json / yaml      |
 | I/O from VTK         | ✔️         | ❌/✔️       | read & write     |
 | I/O from VTKHDF      | ✔️         | ❌/✔️       | read & write     |
-| I/O from MED         | ⏳         | ✔️          |                  |
+| I/O from MED         | ✔️         | ✔️          |                  |
 | I/O from MEDCoupling | ✔️ (python)|             | `UMesh.to_mc()`  |
-| I/O from CGNS        | ⏳         | ❌          |                  |
+| I/O from CGNS        | ✔️         | ❌          |                  |
 | I/O from meshio      | ✔️ (python)|             | `UMesh.to_meshio()` |
 
 ---
@@ -128,9 +128,9 @@ Grouped by category; the goal is a coherent, self-consistent public API before
 ### 📖 Documentation accuracy
 
 - [ ] Fix the README **Expression DSL** example so it runs as-is:
-  - call `mesh.measure_update()` before using `V = mf.Field("measure")`,
+  - call `mesh.measure_update()` before using `V = mf.Field("Measure")`,
   - or expose the measure field name in python (`measure_update(name=...)`) and
-    standardize on a single documented name (`measure` lowercase).
+    standardize on a single documented name (`Measure`).
 - [ ] Explain the `sel` DSL in the README: the `n*` variants (`nbbox`, `nrect`,
   `nsphere`, `ncircle`, `nids`) filter on **nodes**, while `bbox`, `rect`,
   `sphere`, `circle`, `ids` filter on **element centroids**; `rect`/`circle`

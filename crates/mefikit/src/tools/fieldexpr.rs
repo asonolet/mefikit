@@ -10,7 +10,7 @@ use std::{
     sync::Arc,
 };
 
-use super::centroids::centroids;
+use super::centroids::{centroids, x_center, y_center, z_center};
 use super::measure::measure;
 use crate::mesh::{Dimension, FieldArcD, FieldCowD, FieldOwnedD, UMesh, UMeshBase, UMeshView};
 
@@ -35,7 +35,7 @@ pub enum FieldExpr {
     /// Element measure (not yet implemented).
     Measure,
     /// Element centroids (not yet implemented).
-    Centroids,
+    Centroid,
     /// X coordinate (not yet implemented).
     X,
     /// Y coordinate (not yet implemented).
@@ -288,16 +288,34 @@ impl Evaluable for FieldExpr {
                     .collect(),
             )
             .into(),
-            FieldExpr::Centroids => FieldOwnedD::new(
+            FieldExpr::Centroid => FieldOwnedD::new(
                 centroids(mesh, None)
                     .into_iter()
                     .map(|(k, v)| (k, v.into_dyn()))
                     .collect(),
             )
             .into(),
-            // FieldExpr::X => mesh.coords().slice(nd::s![.., 0]).to_owned(),
-            // FieldExpr::Y => mesh.coords().slice(nd::s![.., 1]).to_owned(),
-            // FieldExpr::Z => mesh.coords().slice(nd::s![.., 2]).to_owned(),
+            FieldExpr::X => FieldOwnedD::new(
+                x_center(mesh, None)
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into_dyn()))
+                    .collect(),
+            )
+            .into(),
+            FieldExpr::Y => FieldOwnedD::new(
+                y_center(mesh, None)
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into_dyn()))
+                    .collect(),
+            )
+            .into(),
+            FieldExpr::Z => FieldOwnedD::new(
+                z_center(mesh, None)
+                    .into_iter()
+                    .map(|(k, v)| (k, v.into_dyn()))
+                    .collect(),
+            )
+            .into(),
             // FieldExpr::Rcyl => mesh.coords().slice(nd::s![.., 0]).to_owned(),
             // FieldExpr::Rsph => mesh.coords().slice(nd::s![.., 0]).to_owned(),
             // FieldExpr::Theta => mesh.coords().slice(nd::s![.., 1]).to_owned(),

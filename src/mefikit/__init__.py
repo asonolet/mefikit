@@ -2,7 +2,19 @@ import importlib.util
 
 from . import data as data
 from . import io
-from .mefipy import Field, OverlayOperation, UMesh, build_cmesh, sel, transfer
+from .mefipy import (
+    C,
+    Field,
+    M,
+    OverlayOperation,
+    UMesh,
+    X,
+    Y,
+    Z,
+    build_cmesh,
+    sel,
+    transfer,
+)
 
 
 def has(name: str) -> bool:
@@ -14,9 +26,14 @@ if has("meshio") and has("medcoupling") and has("pyvista"):
 del io
 
 __all__ = (
+    "C",
     "Field",
+    "M",
     "OverlayOperation",
     "UMesh",
+    "X",
+    "Y",
+    "Z",
     "build_cmesh",
     "data",
     "sel",

@@ -249,6 +249,7 @@ fn face_plane(points: &[[f64; 3]], face: &[usize]) -> ([f64; 3], f64) {
     (n, d)
 }
 
+#[inline(always)]
 fn triple_product(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
     let cross = [
         b[1] * c[2] - b[2] * c[1],
@@ -260,25 +261,31 @@ fn triple_product(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
 
 /// The six quadrilateral faces of a HEX8 in `subentities(D1)` connectivity order (VTK convention).
 const HEX8_FACES: [[usize; 4]; 6] = [
-    [0, 1, 2, 3],
+    [0, 3, 2, 1],
     [4, 5, 6, 7],
     [0, 1, 5, 4],
-    [1, 2, 6, 5],
     [2, 3, 7, 6],
+    [1, 2, 6, 5],
     [3, 0, 4, 7],
 ];
 
+/// The six quadrilateral faces of a HEX8 in `subentities(D1)` connectivity order (VTK convention).
+const HEX8_TET: [[usize; 4]; 6] = [
+    [0, 5, 1, 7],
+    [0, 4, 5, 7],
+    [1, 6, 2, 7],
+    [1, 5, 6, 7],
+    [0, 2, 3, 7],
+    [0, 1, 2, 7],
+];
+
 /// Computes the volume of a tetrahedron.
-///
-/// Bit-exact with [`Polyhedron::volume`] on a tetrahedron: the four face triple products are
-/// summed in the face layout produced by `as_polyhedron` before taking the magnitude.
 #[inline(always)]
 pub(crate) fn tet_volume(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3], d: &[f64; 3]) -> f64 {
-    let v6 = triple_product(*a, *b, *c)
-        + triple_product(*b, *c, *d)
-        + triple_product(*c, *d, *a)
-        + triple_product(*d, *a, *b);
-    v6.abs() / 6.0
+    let ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    let ad = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
+    triple_product(ab, ac, ad) / 6.0
 }
 
 /// Computes the volume of a hexahedron.
@@ -287,18 +294,15 @@ pub(crate) fn tet_volume(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3], d: &[f64; 3])
 /// ear-clipped into two triangles, as in `ear_clip_triangles`, and the triple products are summed
 /// over the face layout produced by `as_polyhedron`.
 pub(crate) fn hex_volume(p: &[[f64; 3]; 8]) -> f64 {
-    let mut v6 = 0.0;
-    for face in HEX8_FACES {
-        let (tris, n) = ear_clip_quad(face, p);
-        for t in &tris[..n] {
-            v6 += triple_product(p[t[0]], p[t[1]], p[t[2]]);
-        }
+    let mut v = 0.0;
+    for tet in HEX8_TET {
+        v += tet_volume(&p[tet[0]], &p[tet[1]], &p[tet[2]], &p[tet[3]]);
     }
-    v6.abs() / 6.0
+    v
 }
 
 /// The four triangular faces of a TET4 in `subentities(D1)` connectivity order.
-const TET4_FACES: [[usize; 3]; 4] = [[0, 1, 2], [1, 2, 3], [2, 3, 0], [3, 0, 1]];
+const TET4_FACES: [[usize; 3]; 4] = [[0, 1, 3], [1, 2, 3], [2, 0, 3], [0, 2, 1]];
 
 /// Returns `true` if `point` lies inside the tetrahedron with vertices `a, b, c, d`.
 ///
@@ -346,6 +350,7 @@ fn even_odd_contains_phed<const NF: usize, const NV: usize>(
 
 /// Triangulates a quad face with the same deterministic ear-clipping used by
 /// `ear_clip_triangles`, writing at most two triangles into `tris` and returning the count.
+#[allow(unused)]
 fn ear_clip_quad(face: [usize; 4], points: &[[f64; 3]]) -> ([[usize; 3]; 2], usize) {
     let axis = dominant_axis(newell_normal(&[
         points[face[0]],
@@ -582,11 +587,11 @@ mod tests {
                 [0.0, 1.0, 1.0],
             ],
             [
-                vec![0, 1, 2, 3],
+                vec![0, 3, 2, 1],
                 vec![4, 5, 6, 7],
                 vec![0, 1, 5, 4],
-                vec![1, 2, 6, 5],
                 vec![2, 3, 7, 6],
+                vec![1, 2, 6, 5],
                 vec![3, 0, 4, 7],
             ],
         )
@@ -745,18 +750,12 @@ mod tests {
             p.volume(),
             "TET4 fast path must stay bit-exact with Polyhedron::volume"
         );
-        // Reversed orientation: signed volume flips, helper returns the absolute value.
-        assert_eq!(
-            super::tet_volume(&p.points[0], &p.points[2], &p.points[1], &p.points[3]),
-            p.volume(),
-            "TET4 fast path must be orientation-independent like Polyhedron::volume"
-        );
     }
 
     #[test]
     fn hex_volume_helper_matches_polyhedron_volume() {
         let p = unit_cube();
-        assert_eq!(
+        assert_abs_diff_eq!(
             super::hex_volume(&[
                 p.points[0],
                 p.points[1],
@@ -768,7 +767,6 @@ mod tests {
                 p.points[7]
             ]),
             p.volume(),
-            "HEX8 fast path must stay bit-exact with Polyhedron::volume"
         );
     }
 
@@ -787,19 +785,15 @@ mod tests {
         let phed = Polyhedron::convex(
             pts.to_vec(),
             vec![
-                vec![0, 1, 2, 3],
+                vec![0, 3, 2, 1],
                 vec![4, 5, 6, 7],
                 vec![0, 1, 5, 4],
-                vec![1, 2, 6, 5],
                 vec![2, 3, 7, 6],
+                vec![1, 2, 6, 5],
                 vec![3, 0, 4, 7],
             ],
         );
-        assert_eq!(
-            super::hex_volume(&pts),
-            phed.volume(),
-            "HEX8 fast path must stay bit-exact with Polyhedron::volume"
-        );
+        assert_abs_diff_eq!(super::hex_volume(&pts), phed.volume());
     }
 
     #[test]

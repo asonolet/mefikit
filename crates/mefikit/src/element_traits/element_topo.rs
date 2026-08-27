@@ -110,11 +110,11 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
             HEX8 => match codim {
                 Dimension::D1 => {
                     let conn = arr2(&[
-                        [co[0], co[1], co[2], co[3]],
+                        [co[0], co[3], co[2], co[1]],
                         [co[4], co[5], co[6], co[7]],
                         [co[0], co[1], co[5], co[4]],
-                        [co[1], co[2], co[6], co[5]],
                         [co[2], co[3], co[7], co[6]],
+                        [co[1], co[2], co[6], co[5]],
                         [co[3], co[0], co[4], co[7]],
                     ]);
                     res.push((QUAD4, Connectivity::new_regular(conn.to_shared())));

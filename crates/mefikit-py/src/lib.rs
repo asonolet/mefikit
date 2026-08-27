@@ -66,4 +66,18 @@ mod mefipy {
         }
         Ok(builder.build().into())
     }
+
+    #[pymodule_init]
+    fn init(m: &Bound<'_, PyModule>) -> PyResult<()> {
+        m.add("C", PyField::centroid())?;
+        m.add("X", PyField::x())?;
+        m.add("Y", PyField::y())?;
+        m.add("Z", PyField::z())?;
+
+        // m.add("B", PyFieldExpr::barycenter())?;
+        m.add("M", PyField::measure())?;
+        // m.add("Normal", PyFieldExpr::normal())?;
+
+        Ok(())
+    }
 }

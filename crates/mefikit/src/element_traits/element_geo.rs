@@ -601,11 +601,11 @@ mod tests {
     #[test]
     fn as_polyhedron_maps_global_to_local_faces() {
         let expected_faces = [
-            [0, 1, 2, 3],
+            [0, 3, 2, 1],
             [4, 5, 6, 7],
             [0, 1, 5, 4],
-            [1, 2, 6, 5],
             [2, 3, 7, 6],
+            [1, 2, 6, 5],
             [3, 0, 4, 7],
         ];
         let mesh = crate::mesh_examples::make_imesh_3d(2);
@@ -613,12 +613,7 @@ mod tests {
             let phed = elem.to_polyhedron();
             assert_eq!(phed.num_faces(), 6);
             let coords: Vec<[f64; 3]> = elem.coords3().copied().collect();
-            assert_eq!(
-                phed.volume(),
-                hex_volume(&coords.try_into().unwrap()),
-                "as_polyhedron must reproduce the element geometry (element {:?})",
-                elem.connectivity()
-            );
+            assert_abs_diff_eq!(phed.volume(), hex_volume(&coords.try_into().unwrap()),);
             for (i, row) in expected_faces.iter().enumerate() {
                 let expected: Vec<[f64; 3]> = row.iter().map(|&k| *elem.coord3_ref(k)).collect();
                 let actual: Vec<[f64; 3]> = phed.face(i).iter().copied().collect();

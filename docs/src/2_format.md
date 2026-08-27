@@ -8,25 +8,25 @@ element node ordering and face definitions.
 
 ## Element types
 
-| Type   | Dim | Nodes | Regularity | Description            |
-|--------|-----|-------|------------|------------------------|
-| VERTEX | 0D  | 1     | Regular    | Point                  |
-| SEG2   | 1D  | 2     | Regular    | Linear segment         |
-| SEG3   | 1D  | 3     | Regular    | Quadratic segment      |
-| SEG4   | 1D  | 4     | Regular    | Cubic segment          |
-| TRI3   | 2D  | 3     | Regular    | Linear triangle        |
-| TRI6   | 2D  | 6     | Regular    | Quadratic triangle     |
-| TRI7   | 2D  | 7     | Regular    | Quadratic triangle + centroid |
-| QUAD4  | 2D  | 4     | Regular    | Linear quadrilateral   |
+| Type   | Dim | Nodes | Regularity | Description                           |
+| ------ | --- | ----- | ---------- | ------------------------------------- |
+| VERTEX | 0D  | 1     | Regular    | Point                                 |
+| SEG2   | 1D  | 2     | Regular    | Linear segment                        |
+| SEG3   | 1D  | 3     | Regular    | Quadratic segment                     |
+| SEG4   | 1D  | 4     | Regular    | Cubic segment                         |
+| TRI3   | 2D  | 3     | Regular    | Linear triangle                       |
+| TRI6   | 2D  | 6     | Regular    | Quadratic triangle                    |
+| TRI7   | 2D  | 7     | Regular    | Quadratic triangle + centroid         |
+| QUAD4  | 2D  | 4     | Regular    | Linear quadrilateral                  |
 | QUAD8  | 2D  | 8     | Regular    | Quadratic quadrilateral (serendipity) |
-| QUAD9  | 2D  | 9     | Regular    | Biquadratic quadrilateral |
-| TET4   | 3D  | 4     | Regular    | Linear tetrahedron     |
-| TET10  | 3D  | 10    | Regular    | Quadratic tetrahedron  |
-| HEX8   | 3D  | 8     | Regular    | Linear hexahedron      |
-| HEX21  | 3D  | 21    | Regular    | Tricubic hexahedron    |
-| SPLINE | 1D  | var.  | Poly       | Polyline               |
-| PGON   | 2D  | var.  | Poly       | Polygon                |
-| PHED   | 3D  | var.  | Poly       | Polyhedron             |
+| QUAD9  | 2D  | 9     | Regular    | Biquadratic quadrilateral             |
+| TET4   | 3D  | 4     | Regular    | Linear tetrahedron                    |
+| TET10  | 3D  | 10    | Regular    | Quadratic tetrahedron                 |
+| HEX8   | 3D  | 8     | Regular    | Linear hexahedron                     |
+| HEX21  | 3D  | 21    | Regular    | Tricubic hexahedron                   |
+| SPLINE | 1D  | var.  | Poly       | Polyline                              |
+| PGON   | 2D  | var.  | Poly       | Polygon                               |
+| PHED   | 3D  | var.  | Poly       | Polyhedron                            |
 
 ## Poly element representation
 
@@ -70,11 +70,11 @@ Nodes 0, 1, 2 are the three vertices. Edges follow CCW winding:
     0-------1
 ```
 
-| Edge | Nodes        | Description         |
-|------|--------------|---------------------|
-| 0    | [0, 1]       | Edge 0→1            |
-| 1    | [1, 2]       | Edge 1→2            |
-| 2    | [2, 0]       | Edge 2→0            |
+| Edge | Nodes  | Description |
+| ---- | ------ | ----------- |
+| 0    | [0, 1] | Edge 0→1    |
+| 1    | [1, 2] | Edge 1→2    |
+| 2    | [2, 0] | Edge 2→0    |
 
 For **TRI6/TRI7**, mid-side nodes are placed as: node 3 on edge 01, node 4 on
 edge 12, node 5 on edge 20. TRI7 additionally has a centroid node (node 6).
@@ -90,12 +90,12 @@ Nodes 0–3 are the four vertices, numbered counter-clockwise:
     0-------1
 ```
 
-| Edge | Nodes        | Description         |
-|------|--------------|---------------------|
-| 0    | [0, 1]       | Bottom              |
-| 1    | [1, 2]       | Right               |
-| 2    | [2, 3]       | Top                 |
-| 3    | [3, 0]       | Left                |
+| Edge | Nodes  | Description |
+| ---- | ------ | ----------- |
+| 0    | [0, 1] | Bottom      |
+| 1    | [1, 2] | Right       |
+| 2    | [2, 3] | Top         |
+| 3    | [3, 0] | Left        |
 
 ## 3D elements
 
@@ -111,7 +111,7 @@ triangular faces (VTK convention):
        /  |  \
       /   |   \
      /    |    \
-    1-----+-----2
+    2-----+-----1
      \    |    /
       \   |   /
        \  |  /
@@ -120,12 +120,12 @@ triangular faces (VTK convention):
           0
 ```
 
-| Face | Nodes          | Description              |
-|------|----------------|--------------------------|
-| 0    | [0, 1, 3]      | Opposite node 2          |
-| 1    | [1, 2, 3]      | Opposite node 0          |
-| 2    | [2, 0, 3]      | Opposite node 1          |
-| 3    | [0, 2, 1]      | Base (opposite node 3)   |
+| Face | Nodes     | Description            |
+| ---- | --------- | ---------------------- |
+| 0    | [0, 1, 3] | Opposite node 2        |
+| 1    | [1, 2, 3] | Opposite node 0        |
+| 2    | [2, 0, 3] | Opposite node 1        |
+| 3    | [0, 2, 1] | Base (opposite node 3) |
 
 Each face lists the three nodes that do **not** include the opposite vertex,
 in CCW order when viewed from outside the element.
@@ -155,14 +155,14 @@ Bottom face: nodes 0, 1, 2, 3 (CCW viewed from below).
 Top face: nodes 4, 5, 6, 7 (CCW viewed from above).
 Node 4 is directly above node 0, node 5 above node 1, etc.
 
-| Face | Nodes            | Description                  |
-|------|------------------|------------------------------|
-| 0    | [0, 1, 2, 3]     | Bottom (z = 0)           |
-| 1    | [4, 5, 6, 7]     | Top (z = 1)                  |
-| 2    | [0, 1, 5, 4]     | Front (y = 0)               |
-| 3    | [1, 2, 6, 5]     | Right (x = 1)               |
-| 4    | [2, 3, 7, 6]     | Back (y = 1)                |
-| 5    | [3, 0, 4, 7]     | Left (x = 0)                |
+| Face | Nodes        | Description    |
+| ---- | ------------ | -------------- |
+| 0    | [0, 3, 2, 1] | Bottom (z = 0) |
+| 1    | [4, 5, 6, 7] | Top (z = 1)    |
+| 2    | [0, 1, 5, 4] | Front (y = 0)  |
+| 3    | [2, 3, 7, 6] | Back (y = 1)   |
+| 4    | [1, 2, 6, 5] | Right (x = 1)  |
+| 5    | [3, 0, 4, 7] | Left (x = 0)   |
 
 All faces are wound CCW when viewed from outside the element.
 

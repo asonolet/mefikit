@@ -12,7 +12,7 @@ use mefikit::prelude::fieldexpr::FieldExpr;
 
 use crate::select::PySelection;
 
-#[pyclass(str, from_py_object)]
+#[pyclass(str, from_py_object, frozen)]
 #[pyo3(name = "Field")]
 #[derive(Clone)]
 pub struct PyField {
@@ -45,12 +45,12 @@ impl<'py> TryFrom<&Bound<'py, PyAny>> for PyField {
             return Ok(v);
         }
         if let Ok(v) = value.extract::<String>() {
-            if &v == "Measure" {
-                return Ok(mf::fieldexpr::FieldExpr::Measure.into());
-            }
-            if &v == "Centroids" {
-                return Ok(mf::fieldexpr::FieldExpr::Centroids.into());
-            }
+            // if &v == "Measure" {
+            //     return Ok(mf::fieldexpr::FieldExpr::Measure.into());
+            // }
+            // if &v == "Centroids" {
+            //     return Ok(mf::fieldexpr::FieldExpr::Centroids.into());
+            // }
             return Ok(mf::fieldexpr::field(&v).into());
         }
         if let Ok(v) = value.extract::<np::PyReadonlyArray0<f64>>() {
@@ -66,6 +66,34 @@ impl<'py> TryFrom<&Bound<'py, PyAny>> for PyField {
             return Ok(mf::fieldexpr::arr(nd::arr1(&v)).into());
         }
         Err(PyTypeError::new_err("Could not convert to PyField"))
+    }
+}
+
+impl PyField {
+    pub fn centroid() -> Self {
+        Self {
+            inner: FieldExpr::Centroid,
+        }
+    }
+    pub fn x() -> Self {
+        Self {
+            inner: FieldExpr::X,
+        }
+    }
+    pub fn y() -> Self {
+        Self {
+            inner: FieldExpr::Y,
+        }
+    }
+    pub fn z() -> Self {
+        Self {
+            inner: FieldExpr::Z,
+        }
+    }
+    pub fn measure() -> Self {
+        Self {
+            inner: FieldExpr::Measure,
+        }
     }
 }
 

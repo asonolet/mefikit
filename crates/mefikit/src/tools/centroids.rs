@@ -160,7 +160,7 @@ impl Centroidable for UMesh {
 impl CentroidableMut for UMesh {
     fn centroid_update(&mut self, dim: Option<Dimension>) {
         let f = FieldOwned::new(centroids(&self.view(), dim));
-        self.update_field("Centroids", f.into_shared().into_dyn(), dim);
+        self.update_field("Centroids", f.into_shared().into_dyn());
     }
 }
 
