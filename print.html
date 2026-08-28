@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d39a58f9.js";
+            window.path_to_searchindex_js = "searchindex-5cba43aa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-c0f193b5.js"></script>
@@ -404,7 +404,7 @@ triangular faces (VTK convention):</p>
        /  |  \
       /   |   \
      /    |    \
-    1-----+-----2
+    2-----+-----1
      \    |    /
       \   |   /
        \  |  /
@@ -452,11 +452,11 @@ Node 4 is directly above node 0, node 5 above node 1, etc.</p>
 <tr><th>Face</th><th>Nodes</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td>0</td><td>[0, 1, 2, 3]</td><td>Bottom (z = 0)</td></tr>
+<tr><td>0</td><td>[0, 3, 2, 1]</td><td>Bottom (z = 0)</td></tr>
 <tr><td>1</td><td>[4, 5, 6, 7]</td><td>Top (z = 1)</td></tr>
 <tr><td>2</td><td>[0, 1, 5, 4]</td><td>Front (y = 0)</td></tr>
-<tr><td>3</td><td>[1, 2, 6, 5]</td><td>Right (x = 1)</td></tr>
-<tr><td>4</td><td>[2, 3, 7, 6]</td><td>Back (y = 1)</td></tr>
+<tr><td>3</td><td>[2, 3, 7, 6]</td><td>Back (y = 1)</td></tr>
+<tr><td>4</td><td>[1, 2, 6, 5]</td><td>Right (x = 1)</td></tr>
 <tr><td>5</td><td>[3, 0, 4, 7]</td><td>Left (x = 0)</td></tr>
 </tbody>
 </table>
@@ -464,10 +464,8 @@ Node 4 is directly above node 0, node 5 above node 1, etc.</p>
 <p>All faces are wound CCW when viewed from outside the element.</p>
 <p><strong>Differences with MEDFile:</strong> MEDFile HEX8 has a different node numbering:
 MED node 0 is top-left-front, while VTK node 0 is bottom-left-front. The
-MED→VTK node permutation is <code>[4,5,6,7,0,1,2,3]</code> (self-inverse). Face ordering
-also differs: MED uses <code>[top, left, front, right, back, bottom]</code> while VTK
-uses <code>[bottom, top, front, right, back, left]</code>. Do not mix VTK and MEDFile
-conventions.</p>
+MED→VTK node permutation is <code>[4,5,6,7,0,1,2,3]</code> (self-inverse). Do not mix VTK
+and MEDFile conventions.</p>
 <p>For <strong>HEX21</strong>, the vertex convention is: nodes 0–7 vertices, mid-side nodes
 8 (edge 01), 9 (edge 12), 10 (edge 23), 11 (edge 30), 12 (edge 45),
 13 (edge 56), 14 (edge 67), 15 (edge 74), 16 (edge 04), 17 (edge 15),
