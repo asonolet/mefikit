@@ -20,25 +20,25 @@ pub fn hdf5_test_guard() -> std::sync::MutexGuard<'static, ()> {
 }
 
 pub fn read_group_attr(group: &hdf5_metno::Group, name: &str) -> Result<String, MefikitIOError> {
-    let attr = group.attr(name).map_err(MefikitIOError::Hdf)?;
-    let dtype = attr.dtype().map_err(MefikitIOError::Hdf)?;
-    let desc = dtype.to_descriptor().map_err(MefikitIOError::Hdf)?;
+    let attr = group.attr(name)?;
+    let dtype = attr.dtype()?;
+    let desc = dtype.to_descriptor()?;
 
     match desc {
         TypeDescriptor::VarLenUnicode => {
-            let s: VarLenUnicode = attr.read_scalar().map_err(MefikitIOError::Hdf)?;
+            let s: VarLenUnicode = attr.read_scalar()?;
             Ok(s.to_string())
         }
         TypeDescriptor::VarLenAscii => {
-            let s: VarLenAscii = attr.read_scalar().map_err(MefikitIOError::Hdf)?;
+            let s: VarLenAscii = attr.read_scalar()?;
             Ok(s.to_string())
         }
         TypeDescriptor::FixedAscii(_) => {
-            let s: FixedAscii<64> = attr.read_scalar().map_err(MefikitIOError::Hdf)?;
+            let s: FixedAscii<64> = attr.read_scalar()?;
             Ok(s.as_str().trim_end_matches('\0').to_string())
         }
         TypeDescriptor::FixedUnicode(_) => {
-            let s: FixedUnicode<64> = attr.read_scalar().map_err(MefikitIOError::Hdf)?;
+            let s: FixedUnicode<64> = attr.read_scalar()?;
             Ok(s.as_str().trim_end_matches('\0').to_string())
         }
         other => Err(MefikitIOError::MalformedFile(format!(

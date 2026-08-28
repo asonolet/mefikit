@@ -72,7 +72,7 @@ const CGNS_MAPPING: ElementsMapping = ElementsMapping::new(
     ],
 );
 
-pub fn cgns_label(group: &Group) -> Result<String, MefikitIOError> {
+fn cgns_label(group: &Group) -> Result<String, MefikitIOError> {
     let attr = group.attr(" label").or_else(|_| group.attr("label"))?;
     let label: String = attr
         .as_reader()
@@ -384,10 +384,8 @@ fn write_str_attr<const N: usize>(
     group
         .new_attr::<FixedAscii<N>>()
         .shape(())
-        .create(name)
-        .map_err(MefikitIOError::Hdf)?
-        .write_scalar(&ascii)
-        .map_err(MefikitIOError::Hdf)?;
+        .create(name)?
+        .write_scalar(&ascii)?;
     Ok(())
 }
 

@@ -1,53 +1,22 @@
-use super::elements_mapping::ElementsMapping;
 use super::error::MefikitIOError;
 use super::hdf_utils::read_group_attr;
-use crate::mesh::{ElementLike, ElementType, UMesh, UMeshView};
+use super::vtk_io::VTK_MAPPING;
+use crate::mesh::{ElementLike, UMesh, UMeshView};
 use hdf5_metno::{File, Group, types::FixedAscii};
 use ndarray::{Array1, Array2, arr1, s};
 use std::path::Path;
 
-// VTKHDF reuses the standard VTK cell type codes.
-const VTKHDF_MAPPING: ElementsMapping = ElementsMapping::new(
-    "VTKHDF",
-    &[
-        (1, ElementType::VERTEX),
-        (3, ElementType::SEG2),
-        (5, ElementType::TRI3),
-        (7, ElementType::PGON),
-        (9, ElementType::QUAD4),
-        (10, ElementType::TET4),
-        (12, ElementType::HEX8),
-        (42, ElementType::PHED),
-    ],
-);
-
 fn handle_unstructured(block: &Group) -> Result<UMesh, MefikitIOError> {
-    let points: Array2<f64> = block
-        .dataset("Points")
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?
-        .read()
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
-    let offsets: Array1<usize> = block
-        .dataset("Offsets")
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?
-        .read()
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
-    let conn: Array1<i64> = block
-        .dataset("Connectivity")
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?
-        .read()
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
-    let types: Array1<usize> = block
-        .dataset("Types")
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?
-        .read()
-        .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
+    let points: Array2<f64> = block.dataset("Points")?.read()?;
+    let offsets: Array1<usize> = block.dataset("Offsets")?.read()?;
+    let conn: Array1<i64> = block.dataset("Connectivity")?.read()?;
+    let types: Array1<usize> = block.dataset("Types")?.read()?;
 
     let mut mesh = UMesh::new(points.into());
     for i in 0..types.len() {
         let start = offsets[i];
         let end = offsets[i + 1];
-        let el_type = VTKHDF_MAPPING.to_element(types[i] as u32)?;
+        let el_type = VTK_MAPPING.to_element(types[i] as u32)?;
         let cell_conn: Vec<usize> = conn
             .slice(s![start..end])
             .iter()
@@ -59,7 +28,7 @@ fn handle_unstructured(block: &Group) -> Result<UMesh, MefikitIOError> {
 }
 
 pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
-    let file = File::open(path).map_err(|e| MefikitIOError::Parse(e.to_string()))?;
+    let file = File::open(path)?;
     let vtk = file
         .group("VTKHDF")
         .map_err(|_| MefikitIOError::MalformedFile("Not a VTKHDF file".to_string()))?;
@@ -68,13 +37,8 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     match read_group_attr(&vtk, "Type")?.as_str() {
         "UnstructuredGrid" => return handle_unstructured(&vtk),
         "PartitionedDataSetCollection" | "MultiBlockDataSet" => {
-            for name in vtk
-                .member_names()
-                .map_err(|e| MefikitIOError::Parse(e.to_string()))?
-            {
-                let block = vtk
-                    .group(name.as_str())
-                    .map_err(|e| MefikitIOError::Parse(e.to_string()))?;
+            for name in vtk.member_names()? {
+                let block = vtk.group(name.as_str())?;
                 let Ok(_) = block.attr("Type") else { continue };
                 match read_group_attr(&block, "Type")?.as_str() {
                     "UnstructuredGrid" => return handle_unstructured(&block),
@@ -92,27 +56,21 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
 }
 
 pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
-    let file = File::create(path).map_err(|e| MefikitIOError::Encode(e.to_string()))?;
-    let vtk = file
-        .create_group("VTKHDF")
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+    let file = File::create(path)?;
+    let vtk = file.create_group("VTKHDF")?;
 
     vtk.new_attr::<FixedAscii<16>>()
         .shape(())
-        .create("Type")
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
+        .create("Type")?
         .write_scalar(
             &FixedAscii::<16>::from_ascii("UnstructuredGrid")
                 .map_err(|e| MefikitIOError::Encode(e.to_string()))?,
-        )
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+        )?;
 
     vtk.new_attr::<i64>()
         .shape([2])
-        .create("Version")
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
-        .write(&arr1(&[2i64, 0]))
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+        .create("Version")?
+        .write(&arr1(&[2i64, 0]))?;
 
     // VTKHDF requires Points to always have 3 components. Pad lower-dimensional
     // meshes (e.g. 2D) with zeros so the dataset is N x 3.
@@ -131,7 +89,7 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
 
     for el in mesh.elements() {
         let conn = el.connectivity();
-        let code = VTKHDF_MAPPING.to_code(el.element_type()).ok_or_else(|| {
+        let code = VTK_MAPPING.to_code(el.element_type()).ok_or_else(|| {
             MefikitIOError::Encode(format!(
                 "Unsupported ElementType for VTKHDF: {:?}",
                 el.element_type()
@@ -152,36 +110,26 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
     ] {
         vtk.new_dataset::<i64>()
             .shape([1])
-            .create(name)
-            .map_err(|e| MefikitIOError::Encode(e.to_string()))?
-            .write(&arr1(&[value]))
-            .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+            .create(name)?
+            .write(&arr1(&[value]))?;
     }
 
     vtk.new_dataset::<f64>()
         .shape(coords.shape())
-        .create("Points")
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
-        .write(&coords)
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+        .create("Points")?
+        .write(&coords)?;
     vtk.new_dataset::<u8>()
         .shape([types.len()])
-        .create("Types")
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
-        .write(&Array1::from(types))
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+        .create("Types")?
+        .write(&Array1::from(types))?;
     vtk.new_dataset::<i64>()
         .shape([offsets.len()])
-        .create("Offsets")
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
-        .write(&Array1::from(offsets))
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+        .create("Offsets")?
+        .write(&Array1::from(offsets))?;
     vtk.new_dataset::<i64>()
         .shape([connectivity.len()])
-        .create("Connectivity")
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?
-        .write(&Array1::from(connectivity))
-        .map_err(|e| MefikitIOError::Encode(e.to_string()))?;
+        .create("Connectivity")?
+        .write(&Array1::from(connectivity))?;
 
     Ok(())
 }

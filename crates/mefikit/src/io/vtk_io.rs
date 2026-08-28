@@ -9,18 +9,19 @@ use num_traits::FromPrimitive;
 use std::path::Path;
 use vtkio::model::*;
 
-// VTK cell type codes (matching vtkio's `CellType` discriminants).
-const VTK_MAPPING: ElementsMapping = ElementsMapping::new(
+// Keyed by the integer code rather than `CellType` so that VTKHDF and CGNS,
+// which read raw integers straight out of the file, can share this table.
+pub const VTK_MAPPING: ElementsMapping = ElementsMapping::new(
     "VTK",
     &[
-        (1, ElementType::VERTEX),
-        (3, ElementType::SEG2),
-        (5, ElementType::TRI3),
-        (7, ElementType::PGON),
-        (9, ElementType::QUAD4),
-        (10, ElementType::TET4),
-        (12, ElementType::HEX8),
-        (42, ElementType::PHED),
+        (CellType::Vertex as u32, ElementType::VERTEX),
+        (CellType::Line as u32, ElementType::SEG2),
+        (CellType::Triangle as u32, ElementType::TRI3),
+        (CellType::Polygon as u32, ElementType::PGON),
+        (CellType::Quad as u32, ElementType::QUAD4),
+        (CellType::Tetra as u32, ElementType::TET4),
+        (CellType::Hexahedron as u32, ElementType::HEX8),
+        (CellType::Polyhedron as u32, ElementType::PHED),
     ],
 );
 
