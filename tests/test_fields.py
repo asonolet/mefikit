@@ -77,7 +77,7 @@ def test_create_field_from_unknown_name_raises(quad2):
 
 def test_fields_mapping_protocol(quad2):
     assert quad2.fields.keys() == ["T"]
-    assert [name for name, _ in quad2.fields.items()] == ["T"]
+    assert list(quad2.fields.keys()) == ["T"]
     assert list(iter(quad2.fields)) == ["T"]
     assert len(quad2.fields) == 1
     assert "T" in quad2.fields
@@ -349,7 +349,7 @@ def test_normal_times_volume_field_mixed_dim_errors():
     # dimension, so assigning must raise.
     mesh = hex_quad_mesh()
     mesh.fields["vol_val"] = {"HEX8": np.array([3.0])}
-    with pytest.raises(BaseException):
+    with pytest.raises(BaseException, match="cannot infer a single target dimension"):
         mesh.fields["flux"] = mf.Normal * mf.Field("vol_val")
 
 

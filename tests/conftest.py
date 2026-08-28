@@ -1,7 +1,7 @@
+import numpy as np
 import pytest
 
 import mefikit as mf
-import numpy as np
 
 
 @pytest.fixture

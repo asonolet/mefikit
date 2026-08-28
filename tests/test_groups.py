@@ -59,15 +59,15 @@ def test_rename_group(umesh2):
     assert "new" in umesh2.groups
     ids_after = dict(umesh2.groups["new"].ids())
     assert set(ids_after) == set(ids_before)
-    for et in ids_before:
-        assert np.array_equal(ids_after[et], ids_before[et])
+    for et, id in ids_before.items():
+        assert np.array_equal(ids_after[et], id)
 
 
 def test_groups_mapping(umesh2):
     umesh2.groups["g1"] = {"QUAD4": np.array([0])}
     umesh2.groups["g2"] = {"QUAD4": np.array([1, 2])}
     assert set(umesh2.groups.keys()) == {"g1", "g2"}
-    assert [name for name, _ in umesh2.groups.items()] == ["g1", "g2"]
+    assert list(umesh2.groups.keys()) == ["g1", "g2"]
     assert len(umesh2.groups) == 2
 
 

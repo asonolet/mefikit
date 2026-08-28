@@ -75,7 +75,7 @@ def install_conversions():
     from mefikit import UMesh
 
     def to_meshio(self: UMesh) -> meshio.Mesh:
-        blocks = self.blocks()  # type: dict
+        blocks: dict = self.blocks()
 
         cells = {mefikit_to_meshio_type[t]: b for (t, b) in blocks.items()}
 

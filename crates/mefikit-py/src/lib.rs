@@ -55,7 +55,7 @@ mod mefipy {
     use super::pygroups::{PyGroupRef, PyGroupsMapping};
 
     #[pymodule_export]
-    use super::select::PySelectionResult;
+    use super::select::{PySelection, PySelectionResult};
 
     #[pyfunction]
     #[pyo3(signature = (*args))]

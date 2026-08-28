@@ -1,6 +1,7 @@
 """Tests for mesh cell splitting functionality."""
 
 import numpy as np
+
 import mefikit as mf
 
 
