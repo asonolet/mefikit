@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 import mefikit as mf
 
@@ -105,3 +106,42 @@ def test_group_composition(umesh2):
     umesh2.groups["bottom"] = mf.sel.rect([-1.0, -1.0], [4.0, 0.5])
     combined = umesh2.select(mf.sel.group("left") & mf.sel.group("bottom"))
     assert len(combined) == 24
+
+
+def test_group_to_mesh(umesh2):
+    umesh2.groups["zone"] = mf.sel.rect([-1.0, -1.0], [2.0, 1.0])
+    submesh = umesh2.groups["zone"].to_mesh()
+    assert isinstance(submesh, mf.UMesh)
+    assert submesh.num_elements() == 98
+
+
+def test_group_to_mesh_without_fields(umesh2):
+    umesh2.groups["zone"] = mf.sel.rect([-1.0, -1.0], [2.0, 1.0])
+    submesh = umesh2.groups["zone"].to_mesh(with_fields=False)
+    assert submesh.num_elements() == 98
+    assert submesh.fields.keys() == []
+
+
+def test_group_to_mesh_missing_group_raises(umesh2):
+    with pytest.raises(KeyError):
+        umesh2.groups["nope"].to_mesh()
+
+
+def test_select_by_group_name_equals_sel_group(umesh2):
+    umesh2.groups["wall"] = mf.sel.rect([-1.0, -1.0], [1.0, 1.0])
+    by_name = umesh2.select("wall")
+    by_expr = umesh2.select(mf.sel.group("wall"))
+    ids_name = dict(by_name.ids())
+    ids_expr = dict(by_expr.ids())
+    assert set(ids_name) == set(ids_expr) == {"QUAD4"}
+    assert np.array_equal(ids_name["QUAD4"], ids_expr["QUAD4"])
+    assert len(by_name) == 49
+    by_name_mesh = by_name.to_mesh()
+    assert by_name_mesh.num_elements() == 49
+
+
+def test_select_by_group_name_to_mesh(umesh2):
+    umesh2.groups["all"] = mf.sel.rect([-1.0, -1.0], [4.0, 1.0])
+    assert len(umesh2.select("all")) == 196
+    assert umesh2.select("all").to_mesh().num_elements() == 196
+    assert umesh2.groups["all"].to_mesh().num_elements() == 196

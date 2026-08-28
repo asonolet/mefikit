@@ -22,7 +22,7 @@ use super::element::{etype_to_str, str_to_etype};
 use crate::pyfield::PyField;
 use crate::pyfields::PyFieldsMapping;
 use crate::pygroups::PyGroupsMapping;
-use crate::select::{PySelection, PySelectionResult};
+use crate::select::{PySelectionResult, extract_selector, selector_to_selection};
 
 #[pyclass(str)]
 #[pyo3(name = "UMesh")]
@@ -254,13 +254,18 @@ impl PyUMesh {
     }
 
     #[pyo3(signature = (expr, dim=None))]
-    fn select(slf: &Bound<'_, Self>, expr: PySelection, dim: Option<usize>) -> PySelectionResult {
+    fn select(
+        slf: &Bound<'_, Self>,
+        expr: &Bound<'_, PyAny>,
+        dim: Option<usize>,
+    ) -> PyResult<PySelectionResult> {
         let dim = dim.map(|d| d.try_into().expect("invalid dimension"));
-        PySelectionResult {
+        let sel = selector_to_selection(extract_selector(expr)?);
+        Ok(PySelectionResult {
             mesh: slf.clone().unbind(),
-            expr: expr.into(),
+            expr: sel,
             dim,
-        }
+        })
     }
 
     #[pyo3(signature = (expr, dim=None))]

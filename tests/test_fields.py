@@ -389,3 +389,13 @@ def test_select_volume_field_stays_on_hex8():
     ids = dict(result.ids())
     assert "HEX8" in ids and "QUAD4" not in ids
     assert np.allclose(ids["HEX8"].ravel(), [0])
+
+
+def test_group_to_mesh_carries_fields(quad2):
+    quad2.groups["g"] = mf.sel.all()
+    submesh = quad2.groups["g"].to_mesh()
+    assert submesh.fields.keys() == ["T"]
+    assert np.allclose(submesh.fields["T"].values()["QUAD4"].ravel(), [10.0, 20.0])
+    bare = quad2.groups["g"].to_mesh(with_fields=False)
+    assert bare.fields.keys() == []
+    assert bare.num_elements() == 2

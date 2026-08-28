@@ -178,12 +178,22 @@ pub(crate) fn extract_selector(source: &Bound<'_, PyAny>) -> PyResult<Selector> 
     if let Ok(dict) = source.cast::<PyDict>() {
         return Ok(Selector::Ids(PyElementIds::from_dict(dict).into()));
     }
+    if let Ok(name) = source.extract::<String>() {
+        return Ok(Selector::Expr(mf::sel::group(&name)));
+    }
     if is_wildcard(source) {
         return Ok(Selector::Expr(mf::sel::all()));
     }
     Err(PyTypeError::new_err(
-        "expected a Selection expression or a dict of element ids {\"ETYPE\": [indices]}",
+        "expected a Selection expression, a group name, or a dict of element ids {\"ETYPE\": [indices]}",
     ))
+}
+
+pub(crate) fn selector_to_selection(selector: Selector) -> mf::Selection {
+    match selector {
+        Selector::Expr(expr) => expr,
+        Selector::Ids(ids) => mf::sel::ids(ids),
+    }
 }
 
 fn is_wildcard(obj: &Bound<'_, PyAny>) -> bool {

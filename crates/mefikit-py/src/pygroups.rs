@@ -182,6 +182,13 @@ impl PyGroupRef {
         Ok(ids_to_pydict(py, &eids))
     }
 
+    #[pyo3(signature = (with_fields=true))]
+    pub fn to_mesh(&self, with_fields: bool) -> PyResult<PyUMesh> {
+        self.ensure_exists()?;
+        let name = self.name.clone();
+        Ok(self.with_inner(|m| m.extract(&m.group_elements(&name), with_fields).into()))
+    }
+
     pub fn __len__(&self) -> PyResult<usize> {
         self.ensure_exists()?;
         Ok(self.with_inner(|m| m.group_elements(&self.name).len()))
