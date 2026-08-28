@@ -253,11 +253,13 @@ impl PyUMesh {
         new_mesh.into()
     }
 
-    #[pyo3(signature = (expr))]
-    fn select(slf: &Bound<'_, Self>, expr: PySelection) -> PySelectionResult {
+    #[pyo3(signature = (expr, dim=None))]
+    fn select(slf: &Bound<'_, Self>, expr: PySelection, dim: Option<usize>) -> PySelectionResult {
+        let dim = dim.map(|d| d.try_into().expect("invalid dimension"));
         PySelectionResult {
             mesh: slf.clone().unbind(),
             expr: expr.into(),
+            dim,
         }
     }
 

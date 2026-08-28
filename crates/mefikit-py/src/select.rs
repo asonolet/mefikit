@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::fmt::{Display, Formatter};
 
+use mefikit::mesh::Dimension;
 use mefikit::prelude as mf;
 use mefikit::tools::{
     MeshSelect,
@@ -202,7 +203,7 @@ fn is_wildcard(obj: &Bound<'_, PyAny>) -> bool {
 
 pub(crate) fn resolve_selector(mesh: &mf::UMesh, selector: Selector) -> mf::ElementIds {
     match selector {
-        Selector::Expr(expr) => mesh.select_ids(expr),
+        Selector::Expr(expr) => mesh.select_ids(expr, None),
         Selector::Ids(ids) => ids,
     }
 }
@@ -212,6 +213,7 @@ pub(crate) fn resolve_selector(mesh: &mf::UMesh, selector: Selector) -> mf::Elem
 pub struct PySelectionResult {
     pub(crate) mesh: Py<PyUMesh>,
     pub(crate) expr: mf::Selection,
+    pub(crate) dim: Option<Dimension>,
 }
 
 impl PySelectionResult {
@@ -223,7 +225,7 @@ impl PySelectionResult {
         Python::attach(|py| {
             let mesh = self.mesh.bind(py);
             let inner = &mesh.borrow().inner;
-            let eids = inner.select_ids(self.expr.clone());
+            let eids = inner.select_ids(self.expr.clone(), self.dim);
             if eids.is_empty() {
                 return Err(PyValueError::new_err("the selection is empty"));
             }
@@ -257,7 +259,7 @@ impl PySelectionResult {
         Python::attach(|py| {
             let mesh = self.mesh.bind(py);
             let inner = &mesh.borrow().inner;
-            let eids = inner.select_ids(self.expr.clone());
+            let eids = inner.select_ids(self.expr.clone(), self.dim);
             if eids.is_empty() {
                 return Err(PyValueError::new_err("the selection is empty"));
             }
@@ -302,7 +304,7 @@ impl PySelectionResult {
         let eids = Python::attach(|py| {
             let mesh = self.mesh.bind(py);
             let inner = &mesh.borrow().inner;
-            inner.select_ids(self.expr.clone())
+            inner.select_ids(self.expr.clone(), self.dim)
         });
         ids_to_pydict(py, &eids)
     }
@@ -312,7 +314,7 @@ impl PySelectionResult {
         let submesh = Python::attach(|py| {
             let mesh = self.mesh.bind(py);
             let inner = &mesh.borrow().inner;
-            inner.select(self.expr.clone(), with_fields).1
+            inner.select(self.expr.clone(), with_fields, self.dim).1
         });
         submesh.into()
     }
@@ -321,7 +323,7 @@ impl PySelectionResult {
         Python::attach(|py| {
             let mesh = self.mesh.bind(py);
             let inner = &mesh.borrow().inner;
-            inner.select_ids(self.expr.clone()).len()
+            inner.select_ids(self.expr.clone(), self.dim).len()
         })
     }
 

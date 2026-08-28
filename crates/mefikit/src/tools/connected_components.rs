@@ -52,7 +52,7 @@ mod tests {
         let sphere1 = sel::sphere([0.35, 0.5, 0.5], 0.2);
         let sphere2 = sel::sphere([0.65, 0.5, 0.5], 0.2);
         let sphere3 = sel::sphere([0.5, 0.2, 0.2], 0.15);
-        let (_, spheres) = mesh.select(sphere1 | sphere2 | sphere3, false);
+        let (_, spheres) = mesh.select(sphere1 | sphere2 | sphere3, false, None);
         let bounds = spheres.boundaries(None, None);
         let cracked = mf::crack(mesh, &bounds.view());
         let components = compute_connected_components(&cracked, None, None, false);

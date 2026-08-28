@@ -761,9 +761,9 @@ impl PyFieldRef {
         sel: &Bound<'py, PyAny>,
     ) -> PyResult<Bound<'py, PyDict>> {
         let selector = extract_selector(sel)?;
-        self.with_resolved(py, |py, m, _dim, field| {
+        self.with_resolved(py, |py, m, dim, field| {
             let eids = match selector {
-                Selector::Expr(expr) => m.select_ids(expr),
+                Selector::Expr(expr) => m.select_ids(expr, Some(dim)),
                 Selector::Ids(ids) => ids,
             };
             let dict = PyDict::new(py);
@@ -810,7 +810,7 @@ impl PyFieldRef {
             let eids = match selector {
                 Selector::Expr(expr) => {
                     validate_selection_fields(inner, &expr, dim)?;
-                    inner.select_ids(expr)
+                    inner.select_ids(expr, Some(dim))
                 }
                 Selector::Ids(ids) => ids,
             };

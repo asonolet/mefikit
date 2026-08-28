@@ -319,10 +319,10 @@ fn collect_dim_hints(
     }
 }
 
-/// Infers the target evaluation dimension for a field expression evaluated with
-/// `dim = None`.
+/// Infers the target evaluation dimension for one or more field expressions evaluated
+/// with `dim = None`.
 ///
-/// The expression advertises the dimension it should be evaluated on:
+/// The expressions advertise the dimension they should be evaluated on:
 /// - `Normal`/`Nx`/`Ny`/`Nz` are defined on the hypersurface, `space_dimension() - 1`;
 /// - each referenced field is defined on the element types (and hence dimensions) that
 ///   actually store it;
@@ -330,10 +330,12 @@ fn collect_dim_hints(
 ///
 /// If the hints disagree there is no single consistent target, so this panics rather than
 /// silently evaluating parts of the expression on different dimensions.
-fn infer_dim(mesh: &UMeshView, expr: &FieldExpr) -> Dimension {
+pub(crate) fn infer_dim(mesh: &UMeshView, exprs: &[&FieldExpr]) -> Dimension {
     let mut found_normal = false;
     let mut field_dims: BTreeSet<Dimension> = BTreeSet::new();
-    collect_dim_hints(expr, mesh, &mut found_normal, &mut field_dims);
+    for expr in exprs {
+        collect_dim_hints(expr, mesh, &mut found_normal, &mut field_dims);
+    }
 
     let mut candidates: BTreeSet<Dimension> = BTreeSet::new();
     if found_normal {
@@ -352,9 +354,9 @@ fn infer_dim(mesh: &UMeshView, expr: &FieldExpr) -> Dimension {
             .expect("cannot infer a target dimension: the mesh has no elements");
     }
     panic!(
-        "cannot infer a single target dimension for this field expression: found mixed \
-         dimensions {candidates:?} (normals live on the hypersurface and referenced fields \
-         on their storage dimension); pass an explicit dimension"
+        "cannot infer a single target dimension for this expression: found mixed dimensions \
+         {candidates:?} (normals live on the hypersurface and referenced fields on their \
+         storage dimension); pass an explicit dimension"
     );
 }
 
@@ -362,7 +364,7 @@ impl Evaluable for FieldExpr {
     fn evaluate<'a>(&'a self, mesh: &'a UMeshView<'a>, dim: Option<Dimension>) -> FieldCowD<'a> {
         let dim = match dim {
             Some(d) => d,
-            None => infer_dim(mesh, self),
+            None => infer_dim(mesh, &[self]),
         };
         let elems: Vec<_> = mesh
             .element_types()

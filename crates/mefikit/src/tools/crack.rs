@@ -97,7 +97,7 @@ fn compute_node_to_elems(mesh: &UMeshView) -> FxHashMap<usize, ElementIds> {
 pub fn crack(mut mesh: UMesh, cut: &UMeshView) -> UMesh {
     // First extract the vicinity of the cut
     let nodes = cut.used_nodes();
-    let index = mesh.select_ids(sel::nids(nodes.clone(), false));
+    let index = mesh.select_ids(sel::nids(nodes.clone(), false), None);
     let mut near_mesh = mesh.extract(&index, true);
     let (descending_mesh, f2c) = compute_sub_to_elem(&near_mesh, None, None);
     // Throws if some element in cut is not in descending_mesh

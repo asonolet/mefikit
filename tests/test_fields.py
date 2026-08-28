@@ -360,3 +360,32 @@ def test_eval_explicit_dim_is_strict():
     res = mesh.eval(mf.Nz * mf.Field("quad_val"), dim=2)
     assert "QUAD4" in res and "HEX8" not in res
     assert np.allclose(res["QUAD4"].ravel(), [2.0])
+
+
+def test_select_normal_infers_hypersurface_dim():
+    # `mesh.select(mf.Nz > 0.9)` infers the hypersurface dim (space_dim - 1 = 2)
+    # and selects the QUAD4 boundary face only, not the HEX8 volume.
+    mesh = hex_quad_mesh()
+    result = mesh.select(mf.Nz > 0.9)
+    ids = dict(result.ids())
+    assert "QUAD4" in ids and "HEX8" not in ids
+    assert np.allclose(ids["QUAD4"].ravel(), [0])
+
+
+def test_select_normal_explicit_dim_is_strict():
+    # An explicit dim=2 selects strictly on the QUAD4 block.
+    mesh = hex_quad_mesh()
+    result = mesh.select(mf.Nz > 0.9, dim=2)
+    ids = dict(result.ids())
+    assert "QUAD4" in ids and "HEX8" not in ids
+    assert np.allclose(ids["QUAD4"].ravel(), [0])
+
+
+def test_select_volume_field_stays_on_hex8():
+    # A volume-field comparison (no normal) keeps the top-dim element scope.
+    mesh = hex_quad_mesh()
+    mesh.fields["vol_val"] = {"HEX8": np.array([1.0])}
+    result = mesh.select(mf.Field("vol_val") > 0.5)
+    ids = dict(result.ids())
+    assert "HEX8" in ids and "QUAD4" not in ids
+    assert np.allclose(ids["HEX8"].ravel(), [0])
