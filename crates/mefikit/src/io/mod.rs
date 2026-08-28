@@ -1,6 +1,6 @@
 //! Mesh I/O operations for reading and writing mesh files.
 //!
-//! Supports JSON, YAML, and VTK/VTU formats.
+//! Supports JSON, YAML, VTK/VTU, VTKHDF, CGNS (HDF5) and MED formats.
 
 use crate::mesh::{UMesh, UMeshView};
 use std::path::Path;
@@ -19,7 +19,7 @@ pub use error::MefikitIOError;
 /// Reads a mesh from the given file path.
 ///
 /// The file format is determined by the file extension.
-/// Supported formats: JSON, YAML, VTK, VTU.
+/// Supported formats: JSON, YAML, VTK, VTU, VTKHDF, CGNS (HDF5), MED.
 pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     match path
         .extension()
@@ -43,7 +43,7 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
 /// Writes a mesh to the given file path.
 ///
 /// The file format is determined by the file extension.
-/// Supported formats: JSON, YAML, VTK, VTU, VTKHDF, CGNS (HDF5).
+/// Supported formats: JSON, YAML, VTK, VTU, VTKHDF, CGNS (HDF5), MED.
 pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
     match path
         .extension()
@@ -56,8 +56,8 @@ pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
         "yaml" | "yml" => serde_io::write_yaml(path, mesh),
         "vtk" | "vtu" => vtk_io::write(path, mesh),
         "vtkhdf" => hdfvtk_io::write(path, mesh),
-        "med" => med_io::write(path, &mesh),
         "cgns" => cgns_io::write_cgns(path, mesh), // only cgns hdf5 files are supported
+        "med" => med_io::write(path, &mesh),
         _ => Err(MefikitIOError::UnsupportedFileExtension(format!(
             "{path:?}"
         ))),

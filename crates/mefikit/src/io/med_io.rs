@@ -1,3 +1,4 @@
+use super::error::MefikitIOError;
 use crate::mesh::ConnectivityView;
 use crate::mesh::ElementBlock;
 use crate::mesh::ElementBlockView;
@@ -47,10 +48,7 @@ impl ElementType {
     }
 }
 
-pub fn write(
-    path: impl AsRef<std::path::Path>,
-    mesh: &UMeshView,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write(path: impl AsRef<std::path::Path>, mesh: &UMeshView) -> Result<(), MefikitIOError> {
     let file = hdf5_metno::File::create(path)?;
 
     write_general_info(&file)?;
@@ -332,7 +330,7 @@ const MED_NOM_LEN: usize = 16;
 ///         (attrs: NBR=<n_cells>, NGA=1, GAU="")
 ///         CO                                        ← f64, Fortran-order flattened
 /// ```
-fn write_fields(file: &File, mesh: &UMeshView) -> Result<(), Box<dyn std::error::Error>> {
+fn write_fields(file: &File, mesh: &UMeshView) -> Result<(), MefikitIOError> {
     // Collect per-field-name: { ElementType → (ArrayViewD<f64>, n_cells) }.
     // We iterate blocks to discover all field names and their per-type data.
     let mut field_map: BTreeMap<String, BTreeMap<ElementType, (usize, Vec<f64>)>> = BTreeMap::new();
@@ -406,8 +404,7 @@ fn write_fields(file: &File, mesh: &UMeshView) -> Result<(), Box<dyn std::error:
                 data.clone()
             } else {
                 // data is (n_cells, n_components) in C order → transpose for Fortran order.
-                let arr = Array2::from_shape_vec((n_cells, n_components), data.clone())
-                    .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+                let arr = Array2::from_shape_vec((n_cells, n_components), data.clone())?;
                 let t = arr.reversed_axes();
                 t.iter().copied().collect()
             };
@@ -454,12 +451,11 @@ fn write_field_nom_attr(
     name: &str,
     nom_bytes: &[u8],
     _total_len: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), MefikitIOError> {
     // MED convention: NOM is stored as an array of i8 (signed bytes).
     let i8_data: Vec<i8> = nom_bytes.iter().map(|&b| b as i8).collect();
     let n_slots = nom_bytes.len() / MED_NOM_LEN;
-    let arr = Array2::from_shape_vec((n_slots, MED_NOM_LEN), i8_data)
-        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    let arr = Array2::from_shape_vec((n_slots, MED_NOM_LEN), i8_data)?;
     grp.new_dataset_builder().with_data(&arr).create(name)?;
     Ok(())
 }
@@ -645,10 +641,7 @@ fn med_name_to_element_type(name: &str) -> Option<ElementType> {
     }
 }
 
-fn read_scalar_attr_i64(
-    loc: &hdf5_metno::Location,
-    name: &str,
-) -> Result<i64, Box<dyn std::error::Error>> {
+fn read_scalar_attr_i64(loc: &hdf5_metno::Location, name: &str) -> Result<i64, MefikitIOError> {
     let val = loc.attr(name)?.read_scalar::<i64>()?;
     Ok(val)
 }
@@ -657,7 +650,7 @@ type Fas = (BTreeMap<i64, Vec<String>>, BTreeMap<i64, Vec<String>>);
 
 /// Parse FAS/<mesh_name>/NOEUD and FAS/<mesh_name>/ELEME into
 /// { family_id → [group_name, ...] }.
-fn read_fas(fas_root: &Group, mesh_name: &str) -> Result<Fas, Box<dyn std::error::Error>> {
+fn read_fas(fas_root: &Group, mesh_name: &str) -> Result<Fas, MefikitIOError> {
     let mesh_fas = match fas_root.group(mesh_name) {
         Ok(g) => g,
         Err(_) => return Ok((BTreeMap::new(), BTreeMap::new())),
@@ -714,17 +707,13 @@ fn read_fas_subgroup(parent: &Group, name: &str) -> BTreeMap<i64, Vec<String>> {
     result
 }
 
-fn read_nodal_data(
-    timestep: &Group,
-    dim: usize,
-) -> Result<(usize, Array2<f64>), Box<dyn std::error::Error>> {
+fn read_nodal_data(timestep: &Group, dim: usize) -> Result<(usize, Array2<f64>), MefikitIOError> {
     let noe = timestep.group("NOE")?;
     let coo: Array1<f64> = noe.dataset("COO")?.read()?;
     let n_points = coo.len() / dim;
     // MED stores COO column-major: [x0,x1,...,xN, y0,y1,...,yN, ...]
     // Reshape as (dim, n_points) then transpose to get (n_points, dim).
-    let raw = Array2::from_shape_vec((dim, n_points), coo.to_vec())
-        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    let raw = Array2::from_shape_vec((dim, n_points), coo.to_vec())?;
     let coords = raw.reversed_axes().as_standard_layout().to_owned();
     Ok((n_points, coords))
 }
@@ -735,19 +724,18 @@ fn read_regular_block(
     mai: &Group,
     med_type_name: &str,
     et: ElementType,
-) -> Result<RegBlock, Box<dyn std::error::Error>> {
+) -> Result<RegBlock, MefikitIOError> {
     let grp = mai.group(med_type_name)?;
     let nod: Array1<i64> = grp.dataset("NOD")?.read()?;
-    let n_nodes = et
-        .num_nodes()
-        .ok_or("element type has variable node count")?;
+    let n_nodes = et.num_nodes().ok_or_else(|| {
+        MefikitIOError::MalformedFile("element type has variable node count".into())
+    })?;
     let n_cells = nod.len() / n_nodes;
 
     // Column-major reshape, then 1-based → 0-based.
     let flat: Vec<usize> = nod.iter().map(|&x| (x - 1) as usize).collect();
     // MED stores (n_cells, n_nodes) in column-major: reshape as (n_nodes, n_cells) then transpose.
-    let conn = Array2::from_shape_vec((n_nodes, n_cells), flat)
-        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    let conn = Array2::from_shape_vec((n_nodes, n_cells), flat)?;
     let conn = conn.reversed_axes().as_standard_layout().to_owned();
 
     // Apply inverse MED node permutation.
@@ -767,16 +755,13 @@ fn read_regular_block(
     Ok((conn, fam))
 }
 
-fn read_fam_array(grp: &Group) -> Result<Option<Array1<i64>>, Box<dyn std::error::Error>> {
+fn read_fam_array(grp: &Group) -> Result<Option<Array1<i64>>, MefikitIOError> {
     Ok(grp.dataset("FAM").ok().and_then(|ds| ds.read().ok()))
 }
 
 type PolyBlock = (Array1<usize>, Array1<usize>, Option<Array1<i64>>);
 
-fn read_polygon_block(
-    mai: &Group,
-    med_type_name: &str,
-) -> Result<PolyBlock, Box<dyn std::error::Error>> {
+fn read_polygon_block(mai: &Group, med_type_name: &str) -> Result<PolyBlock, MefikitIOError> {
     let grp = mai.group(med_type_name)?;
     let nod: Array1<i64> = grp.dataset("NOD")?.read()?;
     let inn: Array1<i64> = grp.dataset("INN")?.read()?;
@@ -792,7 +777,7 @@ fn read_polygon_block(
     Ok((Array1::from_vec(data), Array1::from_vec(offsets), fam))
 }
 
-fn read_polyhedron_block(mai: &Group) -> Result<PolyBlock, Box<dyn std::error::Error>> {
+fn read_polyhedron_block(mai: &Group) -> Result<PolyBlock, MefikitIOError> {
     let grp = mai.group("POE")?;
     let nod: Array1<i64> = grp.dataset("NOD")?.read()?;
     let inn: Array1<i64> = grp.dataset("INN")?.read()?;
@@ -869,21 +854,22 @@ fn insert_block(
 }
 
 /// Read a MED file into a `UMesh`.
-pub fn read(path: impl AsRef<Path>) -> Result<UMesh, Box<dyn std::error::Error>> {
+pub fn read(path: impl AsRef<Path>) -> Result<UMesh, MefikitIOError> {
     let file = File::open(path)?;
 
     // Navigate to mesh ensemble.
     let ensemble = file.group("ENS_MAA")?;
     let mesh_names = ensemble.member_names()?;
     if mesh_names.is_empty() {
-        return Err("No meshes found in MED file".into());
+        return Err(MefikitIOError::MalformedFile(
+            "No meshes found in MED file".into(),
+        ));
     }
     if mesh_names.len() > 1 {
-        return Err(format!(
+        return Err(MefikitIOError::MalformedFile(format!(
             "MED file contains {} meshes; only single-mesh files are supported",
             mesh_names.len()
-        )
-        .into());
+        )));
     }
     let mesh_name = &mesh_names[0];
     let med_mesh = ensemble.group(mesh_name)?;
@@ -898,10 +884,14 @@ pub fn read(path: impl AsRef<Path>) -> Result<UMesh, Box<dyn std::error::Error>>
     } else {
         let steps = med_mesh.member_names()?;
         if steps.is_empty() {
-            return Err("No time-step groups found in mesh".into());
+            return Err(MefikitIOError::MalformedFile(
+                "No time-step groups found in mesh".into(),
+            ));
         }
         if steps.len() > 1 {
-            return Err("Multiple time-step groups found; only single step is supported".into());
+            return Err(MefikitIOError::MalformedFile(
+                "Multiple time-step groups found; only single step is supported".into(),
+            ));
         }
         med_mesh.group(&steps[0])?
     };
@@ -955,7 +945,7 @@ pub fn read(path: impl AsRef<Path>) -> Result<UMesh, Box<dyn std::error::Error>>
 }
 
 /// Read element-centered fields from the CHA group into the mesh.
-fn read_fields(file: &File, mesh: &mut UMesh) -> Result<(), Box<dyn std::error::Error>> {
+fn read_fields(file: &File, mesh: &mut UMesh) -> Result<(), MefikitIOError> {
     let cha = match file.group("CHA") {
         Ok(g) => g,
         Err(_) => return Ok(()),
@@ -1024,8 +1014,7 @@ fn read_fields(file: &File, mesh: &mut UMesh) -> Result<(), Box<dyn std::error::
             let arr = if n_co == 1 {
                 co.into_dyn()
             } else {
-                let raw = Array2::from_shape_vec((n_co, n_cells), co.to_vec())
-                    .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+                let raw = Array2::from_shape_vec((n_co, n_cells), co.to_vec())?;
                 raw.reversed_axes()
                     .as_standard_layout()
                     .to_owned()

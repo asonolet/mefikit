@@ -169,7 +169,7 @@ All faces are wound CCW when viewed from outside the element.
 **Differences with MEDFile:** MEDFile HEX8 has a different node numbering:
 MED node 0 is top-left-front, while VTK node 0 is bottom-left-front. The
 MED→VTK node permutation is `[4,5,6,7,0,1,2,3]` (self-inverse). Do not mix VTK
-and MEDFile conventions.
+and MEDFile conventions
 
 For **HEX21**, the vertex convention is: nodes 0–7 vertices, mid-side nodes
 8 (edge 01), 9 (edge 12), 10 (edge 23), 11 (edge 30), 12 (edge 45),

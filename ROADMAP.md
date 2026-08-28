@@ -131,6 +131,7 @@ Grouped by category; the goal is a coherent, self-consistent public API before
   - call `mesh.measure_update()` before using `V = mf.Field("Measure")`,
   - or expose the measure field name in python (`measure_update(name=...)`) and
     standardize on a single documented name (`Measure`).
+
 - [ ] Explain the `sel` DSL in the README: the `n*` variants (`nbbox`, `nrect`,
   `nsphere`, `ncircle`, `nids`) filter on **nodes**, while `bbox`, `rect`,
   `sphere`, `circle`, `ids` filter on **element centroids**; `rect`/`circle`

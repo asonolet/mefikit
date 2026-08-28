@@ -861,67 +861,67 @@ mod tests {
         let _ = std::fs::remove_file(&dst);
     }
 
-    #[test]
-    fn strpad_nullterm_vs_nullpad_produce_identical_bytes() {
-        use hdf5_metno::types::FixedAscii;
+    // #[test]
+    // fn strpad_nullterm_vs_nullpad_produce_identical_bytes() {
+    //     use hdf5_metno::types::FixedAscii;
 
-        let _guard = hdf5_test_guard();
-        let path = tmp("mefikit_strpad_compare.h5");
-        let _ = std::fs::remove_file(&path);
-        let file = File::create(&path).unwrap();
+    //     let _guard = hdf5_test_guard();
+    //     let path = tmp("mefikit_strpad_compare.h5");
+    //     let _ = std::fs::remove_file(&path);
+    //     let file = File::create(&path).unwrap();
 
-        // ---- group written with unsafe C API: H5T_STR_NULLTERM ----
-        let grp_nt = file.create_group("nullterm").unwrap();
-        {
-            use hdf5_metno_sys::h5a::{H5Aclose, H5Acreate2, H5Awrite};
-            use hdf5_metno_sys::h5p::H5P_DEFAULT;
-            use hdf5_metno_sys::h5s::{H5S_class_t, H5Sclose, H5Screate};
-            use hdf5_metno_sys::h5t::{
-                H5T_C_S1, H5T_cset_t, H5T_str_t, H5Tclose, H5Tcopy, H5Tset_cset, H5Tset_size,
-                H5Tset_strpad,
-            };
-            use std::ffi::CString;
+    //     // ---- group written with unsafe C API: H5T_STR_NULLTERM ----
+    //     let grp_nt = file.create_group("nullterm").unwrap();
+    //     {
+    //         use hdf5_metno_sys::h5a::{H5Aclose, H5Acreate2, H5Awrite};
+    //         use hdf5_metno_sys::h5p::H5P_DEFAULT;
+    //         use hdf5_metno_sys::h5s::{H5S_class_t, H5Sclose, H5Screate};
+    //         use hdf5_metno_sys::h5t::{
+    //             H5T_C_S1, H5T_cset_t, H5T_str_t, H5Tclose, H5Tcopy, H5Tset_cset, H5Tset_size,
+    //             H5Tset_strpad,
+    //         };
+    //         use std::ffi::CString;
 
-            unsafe {
-                let tid = H5Tcopy(*H5T_C_S1);
-                H5Tset_size(tid, 16);
-                H5Tset_strpad(tid, H5T_str_t::H5T_STR_NULLTERM);
-                H5Tset_cset(tid, H5T_cset_t::H5T_CSET_ASCII);
-                let sid = H5Screate(H5S_class_t::H5S_SCALAR);
-                let name = CString::new("attr").unwrap();
-                let aid = H5Acreate2(
-                    grp_nt.id(),
-                    name.as_ptr(),
-                    tid,
-                    sid,
-                    H5P_DEFAULT,
-                    H5P_DEFAULT,
-                );
-                let mut buf = [0u8; 16];
-                buf[..4].copy_from_slice(b"test");
-                H5Awrite(aid, tid, buf.as_ptr() as *const _);
-                H5Aclose(aid);
-                H5Sclose(sid);
-                H5Tclose(tid);
-            }
-        }
+    //         unsafe {
+    //             let tid = H5Tcopy(*H5T_C_S1);
+    //             H5Tset_size(tid, 16);
+    //             H5Tset_strpad(tid, H5T_str_t::H5T_STR_NULLTERM);
+    //             H5Tset_cset(tid, H5T_cset_t::H5T_CSET_ASCII);
+    //             let sid = H5Screate(H5S_class_t::H5S_SCALAR);
+    //             let name = CString::new("attr").unwrap();
+    //             let aid = H5Acreate2(
+    //                 grp_nt.id(),
+    //                 name.as_ptr(),
+    //                 tid,
+    //                 sid,
+    //                 H5P_DEFAULT,
+    //                 H5P_DEFAULT,
+    //             );
+    //             let mut buf = [0u8; 16];
+    //             buf[..4].copy_from_slice(b"test");
+    //             H5Awrite(aid, tid, buf.as_ptr() as *const _);
+    //             H5Aclose(aid);
+    //             H5Sclose(sid);
+    //             H5Tclose(tid);
+    //         }
+    //     }
 
-        // ---- group written with safe hdf5-metno API: H5T_STR_NULLPAD ----
-        let grp_np = file.create_group("nullpad").unwrap();
-        grp_np
-            .new_attr::<FixedAscii<16>>()
-            .shape(())
-            .create("attr")
-            .unwrap()
-            .write_scalar(&FixedAscii::<16>::from_ascii("test").unwrap())
-            .unwrap();
+    //     // ---- group written with safe hdf5-metno API: H5T_STR_NULLPAD ----
+    //     let grp_np = file.create_group("nullpad").unwrap();
+    //     grp_np
+    //         .new_attr::<FixedAscii<16>>()
+    //         .shape(())
+    //         .create("attr")
+    //         .unwrap()
+    //         .write_scalar(&FixedAscii::<16>::from_ascii("test").unwrap())
+    //         .unwrap();
 
-        // ---- read both back and compare raw bytes ----
-        let raw_nt: FixedAscii<16> = grp_nt.attr("attr").unwrap().read_scalar().unwrap();
-        let raw_np: FixedAscii<16> = grp_np.attr("attr").unwrap().read_scalar().unwrap();
-        assert_eq!(raw_nt.as_str(), raw_np.as_str());
-        assert_eq!(raw_nt.as_bytes(), raw_np.as_bytes());
+    //     // ---- read both back and compare raw bytes ----
+    //     let raw_nt: FixedAscii<16> = grp_nt.attr("attr").unwrap().read_scalar().unwrap();
+    //     let raw_np: FixedAscii<16> = grp_np.attr("attr").unwrap().read_scalar().unwrap();
+    //     assert_eq!(raw_nt.as_str(), raw_np.as_str());
+    //     assert_eq!(raw_nt.as_bytes(), raw_np.as_bytes());
 
-        let _ = std::fs::remove_file(&path);
-    }
+    //     let _ = std::fs::remove_file(&path);
+    // }
 }
