@@ -182,7 +182,7 @@ where
         FieldOwned::new(result)
     }
 
-    /// Applies a binary function element-wise with braodcast to this field and another.
+    /// Applies a binary function element-wise with broadcast to this field and another.
     pub fn map_zip_broadcast<F>(&self, other: &Self, f: F) -> FieldOwned<nd::IxDyn>
     where
         F: Fn(f64, f64) -> f64 + Copy,
@@ -190,11 +190,11 @@ where
         let mut result = BTreeMap::new();
         for (elem_type, left_array) in &self.0 {
             if let Some(right_array) = other.0.get(elem_type) {
-                let res = broadcast_binary_op(left_array, right_array, f);
-                nd::Zip::from(&mut res)
-                    .and_broadcast(left_array)
-                    .and_broadcast(right_array)
-                    .for_each(|a, &b, &c| *a = f(b, c));
+                let res = broadcast_binary_op(
+                    &left_array.view().into_dyn(),
+                    &right_array.view().into_dyn(),
+                    f,
+                );
                 result.insert(*elem_type, res.into_owned());
             }
         }
@@ -366,19 +366,12 @@ where
     S: nd::Data<Elem = f64>,
     D: nd::Dimension,
 {
-    type Output = FieldOwned<D>;
+    type Output = FieldOwned<nd::IxDyn>;
 
-    /// Element-wise addition of two fields.
+    /// Element-wise addition of two fields, with broadcasting.
     fn add(self, rhs: &FieldBase<S, D>) -> Self::Output {
         self.panic_if_incompatible_with(rhs);
-        let mut result = BTreeMap::new();
-        for (elem_type, left_array) in &self.0 {
-            if let Some(right_array) = rhs.0.get(elem_type) {
-                let sum_array = left_array + right_array;
-                result.insert(*elem_type, sum_array.into_owned());
-            }
-        }
-        FieldOwned::new(result)
+        self.map_zip_broadcast(rhs, |a, b| a + b)
     }
 }
 
@@ -387,24 +380,23 @@ where
     S: nd::Data<Elem = f64>,
     D: nd::Dimension,
 {
-    type Output = FieldOwned<D>;
+    type Output = FieldOwned<nd::IxDyn>;
 
-    /// Element-wise subtraction of two fields.
+    /// Element-wise subtraction of two fields, with broadcasting.
     fn sub(self, rhs: &FieldBase<S, D>) -> Self::Output {
         self.panic_if_incompatible_with(rhs);
-        let mut result = BTreeMap::new();
-        for (elem_type, left_array) in &self.0 {
-            if let Some(right_array) = rhs.0.get(elem_type) {
-                let diff_array = left_array - right_array;
-                result.insert(*elem_type, diff_array.into_owned());
-            }
-        }
-        FieldOwned::new(result)
+        self.map_zip_broadcast(rhs, |a, b| a - b)
     }
 }
 
-fn broadcast_binary_op<T, F>(lhs: &nd::ArrayRefD<T>, rhs: &nd::ArrayRefD<T>, op: F) -> nd::ArrayD<T>
+fn broadcast_binary_op<S1, S2, T, F>(
+    lhs: &nd::ArrayBase<S1, nd::IxDyn>,
+    rhs: &nd::ArrayBase<S2, nd::IxDyn>,
+    op: F,
+) -> nd::ArrayD<T>
 where
+    S1: nd::Data<Elem = T>,
+    S2: nd::Data<Elem = T>,
     T: Clone,
     F: Fn(T, T) -> T + Copy,
 {
@@ -439,19 +431,10 @@ where
 {
     type Output = FieldOwned<nd::IxDyn>;
 
-    /// Element-wise multiplication of two fields.
+    /// Element-wise multiplication of two fields, with broadcasting.
     fn mul(self, rhs: &FieldBase<S, nd::IxDyn>) -> Self::Output {
-        let result = self.map_zip(rhs, |a, b| a * b);
-        // self.panic_if_incompatible_with(rhs);
-        // let mut result = BTreeMap::new();
-        // for (elem_type, left_array) in &self.0 {
-        //     if let Some(right_array) = rhs.0.get(elem_type) {
-        //         let prod_array = left_array * right_array;
-        //         result.insert(*elem_type, prod_array.into_owned());
-        //     }
-        // }
-        // FieldOwned::new(result)
-        result
+        self.panic_if_incompatible_with(rhs);
+        self.map_zip_broadcast(rhs, |a, b| a * b)
     }
 }
 
@@ -460,19 +443,12 @@ where
     S: nd::Data<Elem = f64>,
     D: nd::Dimension,
 {
-    type Output = FieldOwned<D>;
+    type Output = FieldOwned<nd::IxDyn>;
 
-    /// Element-wise division of two fields.
+    /// Element-wise division of two fields, with broadcasting.
     fn div(self, rhs: &FieldBase<S, D>) -> Self::Output {
         self.panic_if_incompatible_with(rhs);
-        let mut result = BTreeMap::new();
-        for (elem_type, left_array) in &self.0 {
-            if let Some(right_array) = rhs.0.get(elem_type) {
-                let div_array = left_array / right_array;
-                result.insert(*elem_type, div_array.into_owned());
-            }
-        }
-        FieldOwned::new(result)
+        self.map_zip_broadcast(rhs, |a, b| a / b)
     }
 }
 
@@ -552,5 +528,123 @@ mod tests {
         assert_eq!(result[0], 2.0);
         assert_eq!(result[1], 4.0);
         assert_eq!(result[2], 6.0);
+    }
+
+    fn mul_field(lhs: nd::ArrayD<f64>, rhs: nd::ArrayD<f64>) -> nd::ArrayD<f64> {
+        let mut lm = BTreeMap::new();
+        lm.insert(ElementType::QUAD4, lhs);
+        let lf = FieldBase::new(lm);
+
+        let mut rm = BTreeMap::new();
+        rm.insert(ElementType::QUAD4, rhs);
+        let rf = FieldBase::new(rm);
+
+        (&lf * &rf)
+            .0
+            .remove(&ElementType::QUAD4)
+            .unwrap()
+            .into_dyn()
+    }
+
+    #[test]
+    fn test_mul_broadcast_scalar() {
+        // [n, 3] * [] -> [n, 3]
+        let lhs = nd::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]].into_dyn();
+        let rhs = nd::arr0(2.0).into_dyn();
+        let res = mul_field(lhs, rhs);
+        assert_eq!(
+            res,
+            nd::array![[2.0, 4.0, 6.0], [8.0, 10.0, 12.0]].into_dyn()
+        );
+    }
+
+    #[test]
+    fn test_mul_broadcast_vector() {
+        // [n, 3] * [3] -> [n, 3]
+        let lhs = nd::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]].into_dyn();
+        let rhs = nd::array![10.0, 100.0, 1000.0].into_dyn();
+        let res = mul_field(lhs, rhs);
+        assert_eq!(
+            res,
+            nd::array![[10.0, 200.0, 3000.0], [40.0, 500.0, 6000.0]].into_dyn()
+        );
+    }
+
+    #[test]
+    fn test_mul_broadcast_matrix() {
+        // [n, 3, 3] * [3, 3] -> [n, 3, 3]
+        let lhs = nd::array![[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]].into_dyn();
+        let rhs = nd::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]].into_dyn();
+        let res = mul_field(lhs, rhs);
+        assert_eq!(
+            res,
+            nd::array![[[1.0, 4.0, 9.0], [16.0, 25.0, 36.0], [49.0, 64.0, 81.0]]].into_dyn()
+        );
+    }
+
+    #[test]
+    fn test_mul_same_shape() {
+        // [n, 3] * [n, 3] -> [n, 3] (no broadcast)
+        let lhs = nd::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]].into_dyn();
+        let rhs = nd::array![[2.0, 3.0, 4.0], [5.0, 6.0, 7.0]].into_dyn();
+        let res = mul_field(lhs, rhs);
+        assert_eq!(
+            res,
+            nd::array![[2.0, 6.0, 12.0], [20.0, 30.0, 42.0]].into_dyn()
+        );
+    }
+
+    #[test]
+    fn test_add_broadcast() {
+        // [n, 3] + [3] -> [n, 3]
+        let mut lm = BTreeMap::new();
+        lm.insert(ElementType::QUAD4, nd::array![[1.0, 2.0, 3.0]].into_dyn());
+        let lf = FieldBase::new(lm);
+        let mut rm = BTreeMap::new();
+        rm.insert(ElementType::QUAD4, nd::arr1(&[10.0, 20.0, 30.0]).into_dyn());
+        let rf = FieldBase::new(rm);
+        let res = (&lf + &rf).0.remove(&ElementType::QUAD4).unwrap();
+        assert_eq!(res, nd::array![[11.0, 22.0, 33.0]].into_dyn());
+    }
+
+    #[test]
+    fn test_div_broadcast_scalar() {
+        // [n, 3] / [] -> [n, 3]
+        let mut lm = BTreeMap::new();
+        lm.insert(ElementType::QUAD4, nd::array![[2.0, 4.0, 6.0]].into_dyn());
+        let lf = FieldBase::new(lm);
+        let mut rm = BTreeMap::new();
+        rm.insert(ElementType::QUAD4, nd::arr0(2.0).into_dyn());
+        let rf = FieldBase::new(rm);
+        let res = (&lf / &rf).0.remove(&ElementType::QUAD4).unwrap();
+        assert_eq!(res, nd::array![[1.0, 2.0, 3.0]].into_dyn());
+    }
+
+    #[test]
+    #[should_panic(expected = "incompatible shapes")]
+    fn test_mul_incompatible_shapes_panics() {
+        // [2, 3] * [2, 5] -> panic
+        let lhs = nd::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]].into_dyn();
+        let rhs = nd::array![[1.0, 2.0, 3.0, 4.0, 5.0], [6.0, 7.0, 8.0, 9.0, 10.0]].into_dyn();
+        let _ = mul_field(lhs, rhs);
+    }
+
+    #[test]
+    fn test_map_zip_broadcast_matches_ops() {
+        // map_zip_broadcast with mul should equal * operator
+        let mut lm = BTreeMap::new();
+        lm.insert(ElementType::QUAD4, nd::array![[1.0, 2.0, 3.0]].into_dyn());
+        let lf = FieldBase::new(lm);
+        let mut rm = BTreeMap::new();
+        rm.insert(ElementType::QUAD4, nd::arr1(&[2.0, 3.0, 4.0]).into_dyn());
+        let rf = FieldBase::new(rm);
+
+        let via_method = lf
+            .map_zip_broadcast(&rf, |a, b| a * b)
+            .0
+            .remove(&ElementType::QUAD4)
+            .unwrap();
+        let via_op = (&lf * &rf).0.remove(&ElementType::QUAD4).unwrap();
+        assert_eq!(via_method, via_op);
     }
 }

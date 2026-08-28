@@ -264,7 +264,9 @@ impl Evaluable for FieldExpr {
                     BinaryOp::Sub => (&left_eval - &right_eval).into(),
                     BinaryOp::Mul => (&left_eval * &right_eval).into(),
                     BinaryOp::Div => (&left_eval / &right_eval).into(),
-                    BinaryOp::Pow => left_eval.map_zip(&right_eval, |a, b| a.powf(b)).into(),
+                    BinaryOp::Pow => left_eval
+                        .map_zip_broadcast(&right_eval, |a, b| a.powf(b))
+                        .into(),
                 }
             }
             FieldExpr::UnaryExpr { operator, expr } => {

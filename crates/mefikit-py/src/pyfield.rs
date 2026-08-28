@@ -115,7 +115,7 @@ impl PyField {
         let pyf: PyField = other.try_into()?;
         Ok((self.inner.clone() * pyf.inner).into())
     }
-    pub fn __div__<'py>(&'py self, other: &Bound<'py, PyAny>) -> PyResult<PyField> {
+    pub fn __truediv__<'py>(&'py self, other: &Bound<'py, PyAny>) -> PyResult<PyField> {
         let pyf: PyField = other.try_into()?;
         Ok((self.inner.clone() / pyf.inner).into())
     }
@@ -131,7 +131,7 @@ impl PyField {
         let pyf: PyField = other.try_into()?;
         Ok((pyf.inner * self.inner.clone()).into())
     }
-    pub fn __rdiv__<'py>(&'py self, other: &Bound<'py, PyAny>) -> PyResult<PyField> {
+    pub fn __rtruediv__<'py>(&'py self, other: &Bound<'py, PyAny>) -> PyResult<PyField> {
         let pyf: PyField = other.try_into()?;
         Ok((pyf.inner / self.inner.clone()).into())
     }
