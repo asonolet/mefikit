@@ -261,20 +261,24 @@ impl PyUMesh {
         }
     }
 
+    #[pyo3(signature = (expr, dim=None))]
     fn eval<'py>(
         &self,
         py: Python<'py>,
         expr: PyField,
+        dim: Option<usize>,
     ) -> BTreeMap<String, Bound<'py, np::PyArray<f64, nd::IxDyn>>> {
-        // TODO: manage level
-        let f = self.inner.eval_field(None, expr.into());
+        let dim = dim.map(|d| d.try_into().expect("invalid dimension"));
+        let f = self.inner.eval_field(dim, expr.into());
         f.0.into_iter()
             .map(|(et, v)| (etype_to_str(et), np::PyArray::from_owned_array(py, v)))
             .collect()
     }
 
-    fn eval_update(&mut self, name: &str, expr: PyField) {
-        self.inner.eval_update_field(name, None, expr.into());
+    #[pyo3(signature = (name, expr, dim=None))]
+    fn eval_update(&mut self, name: &str, expr: PyField, dim: Option<usize>) {
+        let dim = dim.map(|d| d.try_into().expect("invalid dimension"));
+        self.inner.eval_update_field(name, dim, expr.into());
     }
 
     fn split(&self) -> Self {

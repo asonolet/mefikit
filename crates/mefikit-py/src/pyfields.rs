@@ -493,9 +493,17 @@ fn assign_per_block(
 fn assign_field(m: &mut mf::UMesh, name: &str, value: FieldValue) -> PyResult<()> {
     match value {
         FieldValue::Expr(expr) => {
-            let dim = target_dim(m, name)?;
-            validate_expr_fields(m, &expr, dim)?;
-            m.eval_update_field(name, Some(dim), *expr);
+            let mut refs = Vec::new();
+            expr_field_references(&expr, &mut refs);
+            for name in refs {
+                let exists = m.blocks().any(|(_, b)| b.fields.contains_key(name));
+                if !exists {
+                    return Err(PyValueError::new_err(format!(
+                        "expression references unknown field '{name}'"
+                    )));
+                }
+            }
+            m.eval_update_field(name, None, *expr);
             Ok(())
         }
         FieldValue::Broadcast(arr) => assign_broadcast(m, name, &arr),

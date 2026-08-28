@@ -76,7 +76,10 @@ mod mefipy {
 
         // m.add("B", PyFieldExpr::barycenter())?;
         m.add("M", PyField::measure())?;
-        // m.add("Normal", PyFieldExpr::normal())?;
+        m.add("Normal", PyField::normal())?;
+        m.add("Nx", PyField::nx())?;
+        m.add("Ny", PyField::ny())?;
+        m.add("Nz", PyField::nz())?;
 
         Ok(())
     }

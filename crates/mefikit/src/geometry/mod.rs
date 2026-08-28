@@ -43,6 +43,7 @@ mod region;
 mod segment;
 
 pub use convexity::Convexity;
+pub(crate) use polygon::newell_normal;
 pub use polygon::{Polygon, in_bezier_polygon, in_quadratic_polygon};
 pub use polyhedron::{Polyhedron, point_in_phed, point_in_phed2};
 pub use region::{in_aa_bbox, in_aa_rectangle, in_circle, in_sphere};

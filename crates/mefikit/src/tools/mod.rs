@@ -29,6 +29,8 @@ pub mod grid;
 pub mod measure;
 /// Neighbor computation for mesh elements.
 pub mod neighbours;
+/// Surface normals for mesh cells.
+pub mod normals;
 /// Boolean-like overlay operations on 2D meshes.
 pub mod overlay;
 /// Convert elements to their poly equivalents (polygon/polyhedron/spline).
@@ -50,6 +52,7 @@ pub use extrude::*;
 pub use grid::*;
 pub use measure::*;
 pub use neighbours::*;
+pub use normals::*;
 pub use overlay::*;
 pub use polyze::*;
 pub use selector::*;

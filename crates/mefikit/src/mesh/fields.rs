@@ -201,6 +201,30 @@ where
         FieldOwned::new(result)
     }
 
+    /// Applies a per-element matrix product (shorthand `@`) between this field
+    /// and another, propagating numpy `matmul` semantics along the first (element)
+    /// axis and broadcasting a second operand that lacks the element axis.
+    ///
+    /// Supported per-element contracts (element axis `n` kept on the first axis):
+    /// - `[k] @ [k] -> [1]` (vector dot, e.g. `[n, 3] @ [3] -> [n, 1]`)
+    /// - `[m, k] @ [k] -> [m]` (e.g. `[n, 3, 3] @ [n, 3] -> [n, 3]`)
+    /// - `[k] @ [k, p] -> [p]`
+    /// - `[m, k] @ [k, p] -> [m, p]` (e.g. `[n, 3, 3] @ [3, 3] -> [n, 3, 3]`)
+    pub fn map_matmul(&self, other: &Self) -> FieldOwned<nd::IxDyn> {
+        self.panic_if_incompatible_with(other);
+        let mut result = BTreeMap::new();
+        for (elem_type, left_array) in &self.0 {
+            if let Some(right_array) = other.0.get(elem_type) {
+                let res = matmul_broadcast_op(
+                    left_array.view().into_dyn(),
+                    right_array.view().into_dyn(),
+                );
+                result.insert(*elem_type, res.into_owned());
+            }
+        }
+        FieldOwned::new(result)
+    }
+
     /// Returns element IDs where a binary predicate holds.
     pub fn map_zip_where<F>(&self, other: &Self, mut f: F) -> ElementIds
     where
@@ -425,6 +449,125 @@ where
     );
 }
 
+/// Per-element matrix product between a field block (with leading element axis) and
+/// another block (same element axis or a plain constant array to broadcast across it).
+///
+/// Mirrors numpy `matmul` semantics propagated along the first axis, except that a
+/// vector·vector product yields a `[n, 1]` column-vector rather than a bare `[n]`.
+fn matmul_broadcast_op(
+    lhs: nd::ArrayViewD<'_, f64>,
+    rhs: nd::ArrayViewD<'_, f64>,
+) -> nd::ArrayD<f64> {
+    let n = lhs.shape()[0];
+    let lhs_shape = lhs.shape().to_vec();
+    let rhs_shape = rhs.shape().to_vec();
+
+    // The right operand carries the element axis only if its leading axis equals `n`
+    // and it has at least two dimensions (so the leading axis is not a lone vector
+    // component of a broadcast constant).
+    let r_has_n = rhs.ndim() >= 2 && rhs.shape()[0] == n;
+
+    // Per-element tensor ranks: 1 = vector, 2 = matrix.
+    let l_rank = lhs.ndim() - 1;
+    let r_rank = if r_has_n { rhs.ndim() - 1 } else { rhs.ndim() };
+    let l_is_vec = l_rank == 1;
+    let r_is_vec = r_rank == 1;
+
+    // Left operand becomes a `[n, lm, lk]` matrix stack, contracted on its last axis.
+    // Returns `(stack, contraction, other)` so here that is `(stack, lk, lm)`.
+    let (l_stack, lk, lm) = operand_to_matrix(
+        lhs, n, l_rank, /*contraction_is_first=*/ false, /*offset=*/ 1,
+    );
+    // Right operand becomes a `[elems, rk, rp]` matrix stack, contracted on its first axis
+    // (the rows); for a shared broadcast constant `elems` is 1.
+    let (r_stack, rk, rp) = operand_to_matrix(
+        rhs,
+        if r_has_n { n } else { 1 },
+        r_rank,
+        /*contraction_is_first=*/ true,
+        /*offset=*/ if r_has_n { 1 } else { 0 },
+    );
+
+    if lk != rk {
+        panic!(
+            "matmul inner dimensions do not match: lhs {:?}, rhs {:?}",
+            lhs_shape, rhs_shape
+        );
+    }
+
+    let mut out = nd::Array3::<f64>::zeros((n, lm, rp));
+    for i in 0..n {
+        let lrow = l_stack.index_axis(nd::Axis(0), i);
+        let rrow = r_stack.index_axis(nd::Axis(0), if r_has_n { i } else { 0 });
+        let product = lrow.dot(&rrow);
+        out.slice_mut(nd::s![i, .., ..]).assign(&product);
+    }
+
+    // Assemble the trailing result dims, keeping the element axis first:
+    // - vec·vec `[k]@[k]`      -> `[1]`
+    // - mat·vec `[m,k]@[k]`    -> `[m]`
+    // - vec·mat `[k]@[k,p]`    -> `[p]`
+    // - mat·mat `[m,k]@[k,p]`  -> `[m,p]`
+    let mut final_shape: Vec<usize> = vec![n];
+    if l_is_vec && r_is_vec {
+        final_shape.push(1);
+    } else {
+        if !l_is_vec {
+            final_shape.push(lm);
+        }
+        if !r_is_vec {
+            final_shape.push(rp);
+        }
+    }
+
+    out.into_shape_with_order(nd::IxDyn(&final_shape))
+        .expect("matmul result shape is always valid")
+}
+
+/// Converts an operand's per-element tensor into a `[elems, rows, cols]` matrix stack.
+///
+/// A vector tensor `[k]` becomes `[1, k]` (a row vector) when used on the left and
+/// `[k, 1]` (a column vector) when used on the right; a matrix tensor `[m, k]` is kept as
+/// `[m, k]` in both cases. `contraction_is_first` selects which operand side we represent,
+/// and `offset` is the index of the first per-element tensor axis (1 for field operands,
+/// which carry the leading element axis, 0 for shared broadcast constants).
+///
+/// Returns `(stack, contraction_dim, other_dim)`.
+fn operand_to_matrix(
+    block: nd::ArrayViewD<'_, f64>,
+    elems: usize,
+    rank: usize,
+    contraction_is_first: bool,
+    offset: usize,
+) -> (nd::Array3<f64>, usize, usize) {
+    let shape = block.shape();
+    let (rows, cols, contraction) = match (rank, contraction_is_first) {
+        // left vector -> [1, k]
+        (1, false) => (1, shape[offset], shape[offset]),
+        // right vector -> [k, 1]
+        (1, true) => (shape[offset], 1, shape[offset]),
+        // matrix -> [m, k]; left contracts on k, right on m
+        (2, _) => (
+            shape[offset],
+            shape[offset + 1],
+            shape[offset + if contraction_is_first { 0 } else { 1 }],
+        ),
+        _ => panic!(
+            "matmul operands must be vector- or matrix-valued per element, got shape {:?}",
+            block.shape()
+        ),
+    };
+    let stack = block
+        .to_owned()
+        .into_shape_with_order((elems, rows, cols))
+        .unwrap();
+    (
+        stack,
+        contraction,
+        if contraction_is_first { cols } else { rows },
+    )
+}
+
 impl<S> Mul<&FieldBase<S, nd::IxDyn>> for &FieldBase<S, nd::IxDyn>
 where
     S: nd::Data<Elem = f64>,
@@ -646,5 +789,76 @@ mod tests {
             .unwrap();
         let via_op = (&lf * &rf).0.remove(&ElementType::QUAD4).unwrap();
         assert_eq!(via_method, via_op);
+    }
+
+    fn matmul_field(lhs: nd::ArrayD<f64>, rhs: nd::ArrayD<f64>) -> nd::ArrayD<f64> {
+        let mut lm = BTreeMap::new();
+        lm.insert(ElementType::QUAD4, lhs);
+        let lf = FieldBase::new(lm);
+
+        let mut rm = BTreeMap::new();
+        rm.insert(ElementType::QUAD4, rhs);
+        let rf = FieldBase::new(rm);
+
+        lf.map_matmul(&rf)
+            .0
+            .remove(&ElementType::QUAD4)
+            .unwrap()
+            .into_dyn()
+    }
+
+    #[test]
+    fn test_matmul_vector_times_const_vector() {
+        // [n, 3] @ [3] -> [n, 1]
+        let lhs = nd::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]].into_dyn();
+        let rhs = nd::array![1.0, 2.0, 3.0].into_dyn();
+        let res = matmul_field(lhs, rhs);
+        assert_eq!(res, nd::array![[14.0], [32.0]].into_dyn());
+    }
+
+    #[test]
+    fn test_matmul_matrix_times_const_matrix() {
+        // [n, 3, 3] @ [3, 3] -> [n, 3, 3]
+        let lhs = nd::array![[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]].into_dyn();
+        let rhs = nd::array![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]].into_dyn();
+        let res = matmul_field(lhs, rhs);
+        assert_eq!(
+            res,
+            nd::array![[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]].into_dyn()
+        );
+    }
+
+    #[test]
+    fn test_matmul_matrix_field_times_vector_field() {
+        // [n, 3, 3] @ [n, 3] -> [n, 3]
+        let lhs = nd::array![
+            [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+        ]
+        .into_dyn();
+        let rhs = nd::array![[1.0, 2.0, 3.0], [1.0, 1.0, 1.0]].into_dyn();
+        let res = matmul_field(lhs, rhs);
+        assert_eq!(
+            res,
+            nd::array![[1.0, 2.0, 3.0], [6.0, 15.0, 24.0]].into_dyn()
+        );
+    }
+
+    #[test]
+    fn test_matmul_vector_times_const_matrix() {
+        // [n, 3] @ [3, 2] -> [n, 2]
+        let lhs = nd::array![[1.0, 2.0, 3.0]].into_dyn();
+        let rhs = nd::array![[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]].into_dyn();
+        let res = matmul_field(lhs, rhs);
+        assert_eq!(res, nd::array![[4.0, 5.0]].into_dyn());
+    }
+
+    #[test]
+    #[should_panic(expected = "inner dimensions do not match")]
+    fn test_matmul_incompatible_inner_dim_panics() {
+        // [n, 3] @ [4] -> panic
+        let lhs = nd::array![[1.0, 2.0, 3.0]].into_dyn();
+        let rhs = nd::array![1.0, 2.0, 3.0, 4.0].into_dyn();
+        let _ = matmul_field(lhs, rhs);
     }
 }

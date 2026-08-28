@@ -89,6 +89,26 @@ impl PyField {
             inner: FieldExpr::Measure,
         }
     }
+    pub fn normal() -> Self {
+        Self {
+            inner: FieldExpr::Normal,
+        }
+    }
+    pub fn nx() -> Self {
+        Self {
+            inner: FieldExpr::Nx,
+        }
+    }
+    pub fn ny() -> Self {
+        Self {
+            inner: FieldExpr::Ny,
+        }
+    }
+    pub fn nz() -> Self {
+        Self {
+            inner: FieldExpr::Nz,
+        }
+    }
 }
 
 #[pymethods]
@@ -128,6 +148,25 @@ impl PyField {
     pub fn __rtruediv__<'py>(&'py self, other: &Bound<'py, PyAny>) -> PyResult<PyField> {
         let pyf: PyField = other.try_into()?;
         Ok((pyf.inner / self.inner.clone()).into())
+    }
+    pub fn __matmul__<'py>(&'py self, other: &Bound<'py, PyAny>) -> PyResult<PyField> {
+        let pyf: PyField = other.try_into()?;
+        Ok(self.inner.clone().matmul(pyf.inner).into())
+    }
+    pub fn dot<'py>(&'py self, other: &Bound<'py, PyAny>) -> PyResult<PyField> {
+        let pyf: PyField = other.try_into()?;
+        Ok(self.inner.clone().matmul(pyf.inner).into())
+    }
+    pub fn __pow__<'py>(
+        &'py self,
+        other: &Bound<'py, PyAny>,
+        _mod: Option<&Bound<'py, PyAny>>,
+    ) -> PyResult<PyField> {
+        let pyf: PyField = other.try_into()?;
+        Ok(self.inner.clone().pow(pyf.inner).into())
+    }
+    pub fn __getitem__(&self, index: usize) -> PyField {
+        self.inner.clone().index(&[index]).into()
     }
     pub fn abs(&self) -> PyField {
         self.inner.clone().abs().into()
