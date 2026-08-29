@@ -14,8 +14,7 @@ class ConstantPiecewise:
     ) -> None: ...
 
 class DistanceWeighting:
-    # `DistanceWeighting.None()` also exists at runtime, but `None` is a Python
-    # keyword and cannot be spelled in a stub file.
+    Constant: Callable[[], DistanceWeighting]
     InverseDistance: Callable[[float], DistanceWeighting]
     Gaussian: Callable[[], DistanceWeighting]
 

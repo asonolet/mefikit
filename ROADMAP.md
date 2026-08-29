@@ -161,9 +161,9 @@ Grouped by category; the goal is a coherent, self-consistent public API before
   renaming/aliasing to `refine()` / `split_cells()`.
 - [ ] Reconsider the cryptic `build_cmesh` name; add a self-documenting alias
   such as `build_grid` / `structured_mesh`.
-- [ ] `DistanceWeighting.None()`: `None` is a python keyword and cannot be
-  spelled in a `.pyi`; rename the variant to `NoWeighting` (keep `None` as an
-  alias if needed).
+- [x] `DistanceWeighting.None()`: `None` is a python keyword and cannot be
+  spelled in a `.pyi`; resolved by renaming the `None` variant to `Constant`
+  on both the Rust and Python sides.
 - [ ] Decide a single convention for exposing rust `*Transfer` classes in
   python (suffix dropped today: `ConstantPiecewiseTransfer` →
   `transfer.ConstantPiecewise`).

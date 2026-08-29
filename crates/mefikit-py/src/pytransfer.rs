@@ -9,15 +9,18 @@ use crate::pyumesh::{PyUMesh, into_mut, into_view};
 #[pyo3(name = "DistanceWeighting")]
 #[derive(Clone)]
 pub enum PyDistanceWeighting {
-    None(),
-    InverseDistance { exponent: f64 },
+    /// No distance weighting; every neighbor is weighted equally.
+    Constant(),
+    InverseDistance {
+        exponent: f64,
+    },
     Gaussian(),
 }
 
 impl From<PyDistanceWeighting> for mf::DistanceWeighting {
     fn from(weighting: PyDistanceWeighting) -> Self {
         match weighting {
-            PyDistanceWeighting::None() => mf::DistanceWeighting::None,
+            PyDistanceWeighting::Constant() => mf::DistanceWeighting::Constant,
             PyDistanceWeighting::InverseDistance { exponent } => {
                 mf::DistanceWeighting::InverseDistance { exponent }
             }
@@ -109,7 +112,7 @@ impl From<PyMovingLeastSquares> for mf::MovingLeastSquaresTransfer {
 #[pymethods]
 impl PyMovingLeastSquares {
     #[new]
-    #[pyo3(signature = (src_mesh, tgt_mesh, k=10, weighting=PyDistanceWeighting::None()))]
+    #[pyo3(signature = (src_mesh, tgt_mesh, k=10, weighting=PyDistanceWeighting::Constant()))]
     fn new(
         src_mesh: &PyUMesh,
         tgt_mesh: &PyUMesh,

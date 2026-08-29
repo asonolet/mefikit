@@ -19,7 +19,7 @@ use crate::tools::{FieldNature, Transfer};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DistanceWeighting {
     /// All selected neighbours get the same weight: a plain linear least-squares fit.
-    None,
+    Constant,
     /// Inverse-distance weight `w = (h / r)^exponent` (`2.0` gives the usual inverse squared
     /// distance).
     InverseDistance { exponent: f64 },
@@ -34,7 +34,7 @@ impl DistanceWeighting {
     /// Evaluates the kernel on the squared scaled distance `s2 = (r / h)^2`.
     fn kernel(self, s2: f64) -> f64 {
         match self {
-            Self::None => 1.0,
+            Self::Constant => 1.0,
             Self::InverseDistance { exponent } => s2.powf(-0.5 * exponent),
             Self::CompactSupport { exponent } => {
                 if s2 >= 1.0 {
@@ -453,7 +453,7 @@ mod tests {
 
     #[test]
     fn kernel_values() {
-        assert_eq!(DistanceWeighting::None.kernel(0.25), 1.0);
+        assert_eq!(DistanceWeighting::Constant.kernel(0.25), 1.0);
         let inv = DistanceWeighting::InverseDistance { exponent: 2.0 };
         assert_relative_eq!(inv.kernel(1.0), 1.0, epsilon = 1e-12);
         assert_relative_eq!(inv.kernel(4.0), 0.25, epsilon = 1e-12);
@@ -480,7 +480,7 @@ mod tests {
         // Compact support is excluded: with `k = d + 1` the neighbour at distance `h` gets a zero
         // weight and drops out of the fit, so the local system is rank-deficient and the transfer
         // degrades to the Shepard fallback instead of reproducing the affine field exactly.
-        for weighting in [DistanceWeighting::None, DistanceWeighting::Gaussian] {
+        for weighting in [DistanceWeighting::Constant, DistanceWeighting::Gaussian] {
             let op = build_op(&src.view(), &tgt.view(), 4, weighting);
             let out = apply(&op, &field.view());
             for (o, e) in out.iter().zip(expected.iter()) {
@@ -499,7 +499,7 @@ mod tests {
         // f = 1 + 2x - 3y
         let field = nd::array![1.0, 3.0, -2.0].into_dyn();
         let expected = nd::array![2.0 / 3.0, 0.2].into_dyn();
-        let op = build_op(&src.view(), &tgt.view(), 3, DistanceWeighting::None);
+        let op = build_op(&src.view(), &tgt.view(), 3, DistanceWeighting::Constant);
         let out = apply(&op, &field.view());
         for (o, e) in out.iter().zip(expected.iter()) {
             assert_relative_eq!(o, e, epsilon = 1e-9);
@@ -512,7 +512,7 @@ mod tests {
         let tgt = nd::array![[0.32, 0.17, 0.71], [0.9, 0.1, 0.9]];
         let field = nd::Array::from_elem(nd::IxDyn(&[125]), 7.0);
         for weighting in [
-            DistanceWeighting::None,
+            DistanceWeighting::Constant,
             DistanceWeighting::InverseDistance { exponent: 2.0 },
             DistanceWeighting::CompactSupport { exponent: 3.0 },
             DistanceWeighting::Gaussian,
@@ -556,7 +556,7 @@ mod tests {
         let tgt = nd::array![[0.4, 0.3, 0.0]];
         let field = nd::Array::from_elem(nd::IxDyn(&[4]), 5.0);
         for weighting in [
-            DistanceWeighting::None,
+            DistanceWeighting::Constant,
             DistanceWeighting::Gaussian,
             DistanceWeighting::InverseDistance { exponent: 2.0 },
             DistanceWeighting::CompactSupport { exponent: 2.0 },
@@ -640,7 +640,7 @@ mod tests {
             [1.0, 1.0, 1.0]
         ];
         let tgt = nd::array![[0.4, 0.3, 0.2]];
-        let plain = build_op(&src.view(), &tgt.view(), 8, DistanceWeighting::None);
+        let plain = build_op(&src.view(), &tgt.view(), 8, DistanceWeighting::Constant);
         let inverse = build_op(
             &src.view(),
             &tgt.view(),

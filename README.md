@@ -115,7 +115,7 @@ close to the data, while remaining concise and expressive.
   - `mf.transfer.MovingLeastSquares` – MLS regression on the k nearest source cells
   - `mf.transfer.InverseDistance` – Inverse-distance weighted average
   - `mf.transfer.ConservativeP0` – Measure-weighted P0 remapping (2D)
-  - `mf.transfer.DistanceWeighting` – Weighting schemes for MLS (`None`,
+  - `mf.transfer.DistanceWeighting` – Weighting schemes for MLS (`Constant`,
     `InverseDistance(exponent)`, `Gaussian`)
 
 The transfers separate the (potentially expensive) geometric precompute
