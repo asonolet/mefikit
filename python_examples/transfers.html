@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a09854eb.js";
+            window.path_to_searchindex_js = "../searchindex-6503f9f8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-c0f193b5.js"></script>
@@ -178,9 +178,10 @@
 <p>This notebook shows how to remap fields between meshes with the
 <code>mf.transfer</code> operators: interpolation, extrapolation and conservative
 remapping, all sharing the same prepare / apply split.</p>
-<pre><code class="language-python">import mefikit as mf
-import numpy as np
+<pre><code class="language-python">import numpy as np
 import pyvista as pv
+
+import mefikit as mf
 
 pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")
