@@ -4,6 +4,8 @@
 //! union, intersection, difference, and membership operations.
 
 use itertools::Itertools;
+#[cfg(feature = "rayon")]
+use rayon::iter::{FromParallelIterator, IntoParallelIterator, ParallelIterator};
 use rustc_hash::FxHashSet;
 use std::collections::BTreeMap;
 
@@ -36,6 +38,28 @@ impl FromIterator<ElementId> for ElementIdsSet {
             entry.insert(element_id.index());
         }
         ids_set
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl FromParallelIterator<ElementId> for ElementIdsSet {
+    fn from_par_iter<T>(par_iter: T) -> Self
+    where
+        T: IntoParallelIterator<Item = ElementId>,
+    {
+        par_iter
+            .into_par_iter()
+            .fold(ElementIdsSet::new, |mut acc, id| {
+                acc.add(id);
+                acc
+            })
+            .reduce(ElementIdsSet::new, |mut acc, other| {
+                for (et, indices_set) in other.0 {
+                    let entry = acc.0.entry(et).or_default();
+                    entry.extend(indices_set);
+                }
+                acc
+            })
     }
 }
 
@@ -127,6 +151,22 @@ impl ElementIdsSet {
         })
     }
 
+    /// Parallel iterator over all element IDs (requires `rayon` feature).
+    #[cfg(feature = "rayon")]
+    pub fn into_par_iter(self) -> impl ParallelIterator<Item = ElementId> {
+        self.0.into_par_iter().flat_map(|(et, indices_set)| {
+            indices_set
+                .into_par_iter()
+                .map(move |index| ElementId::new(et, index))
+        })
+    }
+
+    /// Parallel iterator over all element IDs (fallback without `rayon`).
+    #[cfg(not(feature = "rayon"))]
+    pub fn into_par_iter(self) -> impl Iterator<Item = ElementId> {
+        self.into_iter()
+    }
+
     /// Returns an iterator over all element IDs without consuming the set.
     pub fn iter(&self) -> impl Iterator<Item = ElementId> {
         self.0.iter().flat_map(|(et, indices_set)| {
@@ -183,6 +223,33 @@ impl ElementIdsSet {
     /// Returns `true` if the set contains no element IDs.
     pub fn is_empty(&self) -> bool {
         self.0.values().all(|indices_set| indices_set.is_empty())
+    }
+}
+
+#[cfg(all(test, feature = "rayon"))]
+mod par_tests {
+    use super::*;
+
+    #[test]
+    fn test_par_collect_matches_serial() {
+        let serial: ElementIdsSet = (0..100)
+            .map(|i| ElementId::new(ElementType::TRI3, i % 40))
+            .collect();
+        let par: ElementIdsSet = serial
+            .iter()
+            .collect::<Vec<ElementId>>()
+            .into_par_iter()
+            .collect();
+        assert_eq!(par.0, serial.0);
+    }
+
+    #[test]
+    fn test_into_par_iter_after_from_parallel_iterator() {
+        let par: ElementIdsSet = (0..50)
+            .map(|i| ElementId::new(ElementType::QUAD4, i))
+            .collect();
+        let n = par.into_par_iter().count();
+        assert_eq!(n, 50);
     }
 }
 

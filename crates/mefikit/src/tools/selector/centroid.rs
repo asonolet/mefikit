@@ -1,6 +1,8 @@
 use crate::element_traits::ElementGeo;
 use crate::geometry as geo;
 use crate::mesh::{ElementIdsSet, UMeshView};
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 
 #[derive(Clone, Debug)]
 pub enum CentroidSelection {
@@ -15,7 +17,7 @@ impl CentroidSelection {
     where
         F0: Fn(&[f64; 2]) -> bool + Sync,
     {
-        sel.into_iter()
+        sel.into_par_iter()
             .filter(|&e_id| f(&view.element(e_id).centroid2()))
             .collect()
     }
@@ -23,7 +25,7 @@ impl CentroidSelection {
     where
         F0: Fn(&[f64; 3]) -> bool + Sync,
     {
-        sel.into_iter()
+        sel.into_par_iter()
             .filter(|&e_id| f(&view.element(e_id).centroid3()))
             .collect()
     }
@@ -142,5 +144,35 @@ mod tests {
         });
         let ids = mesh.select_ids(selection, None);
         assert!(!ids.is_empty());
+    }
+}
+
+#[cfg(feature = "rayon")]
+#[cfg(test)]
+mod par_tests {
+    use super::*;
+    use crate::geometry as geo;
+    use crate::mesh::{ElementId, ElementType};
+    use crate::mesh_examples as me;
+
+    #[test]
+    fn test_in_circle_parallel_matches_serial() {
+        let mesh = me::make_imesh_2d(6);
+        let view = mesh.view();
+        let center = [0.5, 0.5];
+        let r = 0.3;
+        let f = |x: &[f64; 2]| geo::in_circle(x, &center, r);
+        let all: ElementIdsSet = (0..36)
+            .map(|i| ElementId::new(ElementType::QUAD4, i))
+            .collect();
+        let ser: ElementIdsSet = all
+            .clone()
+            .into_iter()
+            .filter(|&e| f(&view.element(e).centroid2()))
+            .collect();
+        let par = CentroidSelection::in_2d(f, &view, all);
+        assert_eq!(par.0, ser.0);
+        assert_eq!(par.len(), ser.len());
+        assert!(!par.is_empty());
     }
 }

@@ -646,6 +646,75 @@ impl UMesh {
     /// This method is low level and error prone in the case where `ElementsIds` are not directly
     /// issued from a Selector. Please use Selector API if possible.
     pub fn extract(&self, ids: &ElementIds, with_fields: bool) -> UMesh {
+        self.extract_impl(ids, with_fields)
+    }
+
+    /// Parallel implementation of [`UMesh::extract`]. Indices are gathered in parallel, in
+    /// ordered fashion (each index contributes its rows in order), so the generated blocks keep
+    /// the same shape and ordering as the serial path.
+    #[cfg(feature = "rayon")]
+    fn extract_impl(&self, ids: &ElementIds, with_fields: bool) -> UMesh {
+        let mut extracted = UMesh::new(self.coords.clone());
+        // TODO: conditionnaly extract fields
+        for (t, block) in ids.iter_blocks() {
+            if !self.element_blocks.contains_key(t) {
+                continue;
+            }
+            match &self.element_blocks[t] {
+                ElementBlockBase {
+                    connectivity: ConnectivityBase::Regular(arr),
+                    fields,
+                    ..
+                } => {
+                    let shape = (block.len(), arr.ncols());
+                    let conn: nd::Array2<usize> = nd::Array::from_shape_vec(
+                        shape,
+                        block
+                            .par_iter()
+                            .flat_map_iter(|i| arr.row(*i).iter().cloned().collect::<Vec<usize>>())
+                            .collect::<Vec<usize>>(),
+                    )
+                    .unwrap();
+                    extracted.add_regular_block(
+                        *t,
+                        conn.into_shared(),
+                        match with_fields {
+                            true => Some(
+                                fields
+                                    .iter()
+                                    .map(|(n, f)| {
+                                        let mut fshape: Vec<usize> = f.shape().to_vec();
+                                        fshape[0] = block.len();
+                                        let frows: nd::ArrayD<f64> = nd::Array::from_shape_vec(
+                                            nd::IxDyn(&fshape),
+                                            block
+                                                .par_iter()
+                                                .flat_map_iter(|i| {
+                                                    f.index_axis(nd::Axis(0), *i)
+                                                        .iter()
+                                                        .cloned()
+                                                        .collect::<Vec<f64>>()
+                                                })
+                                                .collect::<Vec<f64>>(),
+                                        )
+                                        .unwrap();
+                                        (n.clone(), frows.into_shared())
+                                    })
+                                    .collect(),
+                            ),
+                            false => None,
+                        },
+                    );
+                }
+                _ => todo!(),
+            };
+        }
+        extracted
+    }
+
+    /// Serial implementation of [`UMesh::extract`].
+    #[cfg(not(feature = "rayon"))]
+    fn extract_impl(&self, ids: &ElementIds, with_fields: bool) -> UMesh {
         let mut extracted = UMesh::new(self.coords.clone());
         // TODO: conditionnaly extract fields
         for (t, block) in ids.iter_blocks() {
@@ -888,5 +957,54 @@ mod tests {
     fn test_umesh_view() {
         let mesh = me::make_imesh_3d(40);
         mesh.view();
+    }
+}
+
+#[cfg(feature = "rayon")]
+#[cfg(test)]
+mod par_tests {
+    use super::*;
+    use crate::mesh::ElementIds;
+    use crate::mesh_examples as me;
+    use crate::tools::Measurable;
+    use crate::tools::MeshSelect;
+    use crate::tools::selector::selection::circle;
+
+    #[test]
+    fn test_extract_parallel_matches_serial_selection() {
+        // The parallel extract leg (gather rows + reconstruct blocks in order) must produce the
+        // exact same connectivity and field blocks as the serial `arr.select(Axis(0), ...)` path.
+        let mut mesh = me::make_imesh_2d(6);
+        mesh.measure_update("M", None);
+        let eids: ElementIds = mesh.select_ids(circle([0.5, 0.5], 0.3), None);
+        let extracted = mesh.extract(&eids, true);
+
+        for (et, indices) in &eids.0 {
+            let src = &mesh.element_blocks[et];
+            let ElementBlockBase {
+                connectivity: ConnectivityBase::Regular(arr),
+                fields,
+                ..
+            } = src
+            else {
+                unreachable!()
+            };
+            let expected_conn = arr.select(nd::Axis(0), indices.as_slice());
+            let ElementBlockBase {
+                connectivity: ConnectivityBase::Regular(out_conn),
+                fields: out_fields,
+                ..
+            } = &extracted.element_blocks[et]
+            else {
+                unreachable!()
+            };
+            assert_eq!(out_conn, &expected_conn);
+            for (name, f) in fields {
+                let expected_field = f.select(nd::Axis(0), indices.as_slice());
+                assert_eq!(out_fields.get(name).unwrap(), &expected_field.to_owned());
+            }
+        }
+        // The extracted mesh keeps all coordinates (extract never removes coordinates).
+        assert_eq!(extracted.coords.shape(), mesh.coords.shape());
     }
 }

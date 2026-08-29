@@ -1,3 +1,5 @@
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 
 use crate::element_traits::ElementGeo;
@@ -39,7 +41,7 @@ impl NodeSelection {
     where
         F0: Fn(&[f64]) -> bool + Sync,
     {
-        sel.into_iter()
+        sel.into_par_iter()
             .filter(|&e_id| view.element(e_id).coords().all(&f))
             .collect()
     }
@@ -48,7 +50,7 @@ impl NodeSelection {
     where
         F0: Fn(&[f64]) -> bool + Sync,
     {
-        sel.into_iter()
+        sel.into_par_iter()
             .filter(|&eid| view.element(eid).coords().any(&f))
             .collect()
     }
@@ -150,7 +152,7 @@ impl NodeSelection {
     }
     fn any_id_in(nodes_ids: &[usize], view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
         if nodes_ids.len() < 50 {
-            sel.into_iter()
+            sel.into_par_iter()
                 .filter(|&e_id| {
                     nodes_ids
                         .iter()
@@ -161,7 +163,7 @@ impl NodeSelection {
             let mut nodes_ids: Vec<usize> = nodes_ids.to_vec();
             nodes_ids.sort_unstable();
 
-            sel.into_iter()
+            sel.into_par_iter()
                 .filter(|&e_id| {
                     view.element(e_id)
                         .connectivity()
@@ -175,7 +177,7 @@ impl NodeSelection {
     fn all_id_in(nodes_ids: &[usize], view: &UMeshView, sel: ElementIdsSet) -> ElementIdsSet {
         let nodes_ids: FxHashSet<usize> = nodes_ids.iter().cloned().collect();
 
-        sel.into_iter()
+        sel.into_par_iter()
             .filter(|&e_id| {
                 view.element(e_id)
                     .connectivity()
@@ -196,5 +198,38 @@ impl NodeSelection {
         } else {
             Self::any_id_in(nodes_ids, view, sel)
         }
+    }
+}
+
+#[cfg(feature = "rayon")]
+#[cfg(test)]
+mod par_tests {
+    use super::*;
+    use crate::geometry as geo;
+    use crate::mesh::{ElementId, ElementType};
+    use crate::mesh_examples as me;
+
+    #[test]
+    fn test_any_in_circle_parallel_matches_serial() {
+        let mesh = me::make_imesh_2d(6);
+        let view = mesh.view();
+        let center = [0.5, 0.5];
+        let r = 0.3;
+        let f = |x: &[f64]| {
+            let x: [f64; 2] = x.try_into().expect("Coords should have N components.");
+            geo::in_circle(&x, &center, r)
+        };
+        let all: ElementIdsSet = (0..6)
+            .flat_map(|i| (0..6).map(move |j| ElementId::new(ElementType::QUAD4, i * 6 + j)))
+            .collect();
+        let ser: ElementIdsSet = all
+            .into_iter()
+            .filter(|&eid| view.element(eid).coords().any(&f))
+            .collect();
+        let all: ElementIdsSet = (0..6)
+            .flat_map(|i| (0..6).map(move |j| ElementId::new(ElementType::QUAD4, i * 6 + j)))
+            .collect();
+        let par = NodeSelection::any_in(f, &view, all);
+        assert_eq!(par.0, ser.0);
     }
 }
