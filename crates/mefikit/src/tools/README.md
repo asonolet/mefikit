@@ -107,10 +107,7 @@ Layout (indices of nodes):
 ## API Design
 
 ```python
-eids, mesh = umesh.select(
-    mf.sel.bbox([0, 0, 0], [1, 1, 1])
-    & mf.sel.types(["QUAD4"])
-)
+eids, mesh = umesh.select(mf.sel.bbox([0, 0, 0], [1, 1, 1]) & mf.sel.types(["QUAD4"]))
 ```
 
 ---

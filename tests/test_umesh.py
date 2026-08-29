@@ -7,4 +7,4 @@ def test_instance(umesh3):
 
 def test_print(umesh3):
     print(umesh3)
-    assert umesh3.__str__().startswith("""UMeshBase {\n    coords:""")
+    assert str(umesh3).startswith("""UMeshBase {\n    coords:""")

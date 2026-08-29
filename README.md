@@ -58,16 +58,16 @@ rhoCp = mf.Field("heat_capacity")
 V = mf.Field("measure")
 
 mesh.fields["energy"] = rhoCp * T * V  # compute & store as a new field
-E = mesh.eval(rhoCp * T * V)           # or materialize as NumPy dicts
+E = mesh.eval(rhoCp * T * V)  # or materialize as NumPy dicts
 
 hot = mesh.select(mf.Field("energy") > 1e6)  # lazy selection view
-hot.mean("energy")                           # reductions over the selection
-submesh = hot.to_mesh()                      # materialize when needed
+hot.mean("energy")  # reductions over the selection
+submesh = hot.to_mesh()  # materialize when needed
 
 domain = mf.sel.bbox(p_min, p_max) | mf.sel.sphere(c, r)
 zone = mesh.select(domain & (mf.Field("energy") > 1e6))  # field & space filtering
-mesh.groups["inlet"] = domain               # named groups via a dict-like mapping
-mesh.groups["inlet"].add(mf.sel.rect(q_min, q_max))      # grow it later
+mesh.groups["inlet"] = domain  # named groups via a dict-like mapping
+mesh.groups["inlet"].add(mf.sel.rect(q_min, q_max))  # grow it later
 ```
 
 - **Symbolic expressions**: build computations without touching raw arrays
