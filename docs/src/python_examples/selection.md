@@ -242,7 +242,7 @@ print(sphere)
                 0.5,
                 0.5,
             ],
-            r2: 0.5,
+            r: 0.5,
         },
     )
 
@@ -264,7 +264,7 @@ print(~(sphere & clip_x))
                                 0.5,
                                 0.5,
                             ],
-                            r2: 0.5,
+                            r: 0.5,
                         },
                     ),
                     right: CentroidSelection(

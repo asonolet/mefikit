@@ -68,8 +68,8 @@ Selection factories live in the `mf.sel` module:
 
 | Factory | Elements matched by |
 |---|---|
-| `bbox(min, max)` / `sphere(center, r2)` | centroid position (3D) |
-| `rect(min, max)` / `circle(center, r2)` | centroid position (2D); bounds are min-inclusive / max-exclusive |
+| `bbox(min, max)` / `sphere(center, r)` | centroid position (3D) |
+| `rect(min, max)` / `circle(center, r)` | centroid position (2D); bounds are min-inclusive / max-exclusive |
 | `nbbox` / `nsphere` / `nrect` / `ncircle(..., all)` | node positions, with all/any semantics |
 | `ids({"ETYPE": [...]})` | explicit element ids |
 | `types(["QUAD4", ...])` | element types |

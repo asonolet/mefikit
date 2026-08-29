@@ -137,13 +137,11 @@ Grouped by category; the goal is a coherent, self-consistent public API before
   `sphere`, `circle`, `ids` filter on **element centroids**; `rect`/`circle`
   are the 2D counterparts of `bbox`/`sphere`; selections combine with
   `&`, `|`, `^`, `-`, `~`.
-- [ ] Document that `sphere`, `circle`, `nsphere` and `ncircle` take the
-  **squared radius** `r2` (rust doc comments, python docstrings, `.pyi`,
-  notebooks).
-  - ⚠️ Verify the implementation actually interprets `r2` as a squared radius:
-    `geometry::region::in_sphere`/`in_circle` currently build the test points at
-    a linear distance `r`, so the public `r2` contract must be enforced (e.g.
-    by squaring in the selector) or explicitly redefined.
+- [x] Document that `sphere`, `circle`, `nsphere` and `ncircle` take a **linear
+  radius** `r` (rust doc comments, python docstrings, `.pyi`, notebooks).
+  - ✅ Resolved: the selector API now uses `r` (linear radius) consistently;
+    the old `r2` squared-radius naming was dropped in favour of the geometry
+    convention used by `geometry::region::in_sphere`/`in_circle`.
 - [ ] Reconcile the families/groups status across README and ROADMAP:
   rust ✔, python binding not exposed yet.
 - [ ] State the exact `*_update` semantics: the result is added to the mesh

@@ -8,8 +8,8 @@ use rayon::prelude::*;
 pub enum CentroidSelection {
     BBox { min: [f64; 3], max: [f64; 3] }, // Axis aligned BBox
     Rect { min: [f64; 2], max: [f64; 2] }, // Axis aligned BBox
-    Sphere { center: [f64; 3], r2: f64 },  // center and rayon
-    Circle { center: [f64; 2], r2: f64 },  // center and rayon
+    Sphere { center: [f64; 3], r: f64 },   // center and radius
+    Circle { center: [f64; 2], r: f64 },   // center and radius
 }
 
 impl CentroidSelection {
@@ -106,7 +106,7 @@ mod tests {
         let mesh = me::make_mesh_2d_quad();
         let selection = CentroidSelection::Circle {
             center: [0.5, 0.5],
-            r2: 0.5,
+            r: 0.5,
         };
         let ids = mesh.select_ids(Selection::CentroidSelection(selection), None);
         // Quad centroid is at (0.5, 0.5) which is within radius 0.5
@@ -118,7 +118,7 @@ mod tests {
         let mesh = me::make_mesh_2d_quad();
         let selection = CentroidSelection::Circle {
             center: [0.5, 0.5],
-            r2: 0.5,
+            r: 0.5,
         };
         let ids = mesh.select_ids(Selection::CentroidSelection(selection), None);
         assert!(!ids.is_empty());

@@ -54,12 +54,12 @@ pub fn nrect(min: [f64; 2], max: [f64; 2], all: bool) -> PySelection {
 }
 /// This method filters upon nodes position.
 #[pyfunction]
-pub fn nsphere(center: [f64; 3], r2: f64, all: bool) -> PySelection {
-    mf::sel::nsphere(center, r2, all).into()
+pub fn nsphere(center: [f64; 3], r: f64, all: bool) -> PySelection {
+    mf::sel::nsphere(center, r, all).into()
 }
 #[pyfunction]
-pub fn ncircle(center: [f64; 2], r2: f64, all: bool) -> PySelection {
-    mf::sel::ncircle(center, r2, all).into()
+pub fn ncircle(center: [f64; 2], r: f64, all: bool) -> PySelection {
+    mf::sel::ncircle(center, r, all).into()
 }
 #[pyfunction]
 pub fn nids(ids: Vec<usize>, all: bool) -> PySelection {
@@ -74,12 +74,12 @@ pub fn rect(min: [f64; 2], max: [f64; 2]) -> PySelection {
     mf::sel::rect(min, max).into()
 }
 #[pyfunction]
-pub fn sphere(center: [f64; 3], r2: f64) -> PySelection {
-    mf::sel::sphere(center, r2).into()
+pub fn sphere(center: [f64; 3], r: f64) -> PySelection {
+    mf::sel::sphere(center, r).into()
 }
 #[pyfunction]
-pub fn circle(center: [f64; 2], r2: f64) -> PySelection {
-    mf::sel::circle(center, r2).into()
+pub fn circle(center: [f64; 2], r: f64) -> PySelection {
+    mf::sel::circle(center, r).into()
 }
 // TODO: Enable ElementType and Dimension exposure to Python
 // #[pyfunction]
@@ -137,11 +137,11 @@ impl PySelection {
         self.inner.clone().nrect(min, max, all).into()
     }
     /// This method filters upon nodes position.
-    pub fn nsphere(&self, center: [f64; 3], r2: f64, all: bool) -> PySelection {
-        self.inner.clone().nsphere(center, r2, all).into()
+    pub fn nsphere(&self, center: [f64; 3], r: f64, all: bool) -> PySelection {
+        self.inner.clone().nsphere(center, r, all).into()
     }
-    pub fn ncircle(&self, center: [f64; 2], r2: f64, all: bool) -> PySelection {
-        self.inner.clone().ncircle(center, r2, all).into()
+    pub fn ncircle(&self, center: [f64; 2], r: f64, all: bool) -> PySelection {
+        self.inner.clone().ncircle(center, r, all).into()
     }
     pub fn nids(&self, ids: Vec<usize>, all: bool) -> PySelection {
         self.inner.clone().nids(ids, all).into()
@@ -152,11 +152,11 @@ impl PySelection {
     pub fn rect(&self, min: [f64; 2], max: [f64; 2]) -> PySelection {
         self.inner.clone().rect(min, max).into()
     }
-    pub fn sphere(&self, center: [f64; 3], r2: f64) -> PySelection {
-        self.inner.clone().sphere(center, r2).into()
+    pub fn sphere(&self, center: [f64; 3], r: f64) -> PySelection {
+        self.inner.clone().sphere(center, r).into()
     }
-    pub fn circle(&self, center: [f64; 2], r2: f64) -> PySelection {
-        self.inner.clone().circle(center, r2).into()
+    pub fn circle(&self, center: [f64; 2], r: f64) -> PySelection {
+        self.inner.clone().circle(center, r).into()
     }
     pub fn group(&self, name: &str) -> PySelection {
         self.inner.clone().group(name).into()

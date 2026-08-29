@@ -116,16 +116,16 @@ impl Selection {
         })
     }
     /// This method filters upon nodes position.
-    pub fn nsphere(self, center: [f64; 3], r2: f64, all: bool) -> Self {
-        let right = Self::NodeSelection(NodeSelection::Sphere { all, center, r: r2 });
+    pub fn nsphere(self, center: [f64; 3], r: f64, all: bool) -> Self {
+        let right = Self::NodeSelection(NodeSelection::Sphere { all, center, r });
         Self::BinarayExpr(BinarayExpr {
             operator: BooleanOp::And,
             left: Arc::new(self),
             right: Arc::new(right),
         })
     }
-    pub fn ncircle(self, center: [f64; 2], r2: f64, all: bool) -> Self {
-        let right = Self::NodeSelection(NodeSelection::Circle { all, center, r: r2 });
+    pub fn ncircle(self, center: [f64; 2], r: f64, all: bool) -> Self {
+        let right = Self::NodeSelection(NodeSelection::Circle { all, center, r });
         Self::BinarayExpr(BinarayExpr {
             operator: BooleanOp::And,
             left: Arc::new(self),
@@ -156,16 +156,16 @@ impl Selection {
             right: Arc::new(right),
         })
     }
-    pub fn sphere(self, center: [f64; 3], r2: f64) -> Self {
-        let right = Self::CentroidSelection(CentroidSelection::Sphere { center, r2 });
+    pub fn sphere(self, center: [f64; 3], r: f64) -> Self {
+        let right = Self::CentroidSelection(CentroidSelection::Sphere { center, r });
         Self::BinarayExpr(BinarayExpr {
             operator: BooleanOp::And,
             left: Arc::new(self),
             right: Arc::new(right),
         })
     }
-    pub fn circle(self, center: [f64; 2], r2: f64) -> Self {
-        let right = Self::CentroidSelection(CentroidSelection::Circle { center, r2 });
+    pub fn circle(self, center: [f64; 2], r: f64) -> Self {
+        let right = Self::CentroidSelection(CentroidSelection::Circle { center, r });
         Self::BinarayExpr(BinarayExpr {
             operator: BooleanOp::And,
             left: Arc::new(self),
@@ -225,13 +225,13 @@ pub fn nrect(min: [f64; 2], max: [f64; 2], all: bool) -> Selection {
 }
 
 /// Creates a selection for nodes inside a 3D sphere.
-pub fn nsphere(center: [f64; 3], r2: f64, all: bool) -> Selection {
-    Selection::NodeSelection(NodeSelection::Sphere { all, center, r: r2 })
+pub fn nsphere(center: [f64; 3], r: f64, all: bool) -> Selection {
+    Selection::NodeSelection(NodeSelection::Sphere { all, center, r })
 }
 
 /// Creates a selection for nodes inside a 2D circle.
-pub fn ncircle(center: [f64; 2], r2: f64, all: bool) -> Selection {
-    Selection::NodeSelection(NodeSelection::Circle { all, center, r: r2 })
+pub fn ncircle(center: [f64; 2], r: f64, all: bool) -> Selection {
+    Selection::NodeSelection(NodeSelection::Circle { all, center, r })
 }
 
 /// Creates a selection for nodes by their indices.
@@ -250,13 +250,13 @@ pub fn rect(min: [f64; 2], max: [f64; 2]) -> Selection {
 }
 
 /// Creates a selection for element centroids inside a 3D sphere.
-pub fn sphere(center: [f64; 3], r2: f64) -> Selection {
-    Selection::CentroidSelection(CentroidSelection::Sphere { center, r2 })
+pub fn sphere(center: [f64; 3], r: f64) -> Selection {
+    Selection::CentroidSelection(CentroidSelection::Sphere { center, r })
 }
 
 /// Creates a selection for element centroids inside a 2D circle.
-pub fn circle(center: [f64; 2], r2: f64) -> Selection {
-    Selection::CentroidSelection(CentroidSelection::Circle { center, r2 })
+pub fn circle(center: [f64; 2], r: f64) -> Selection {
+    Selection::CentroidSelection(CentroidSelection::Circle { center, r })
 }
 
 /// Creates a selection matching every element of the mesh.
@@ -543,8 +543,8 @@ impl Select for CentroidSelection {
         match self {
             Self::BBox { min, max } => Self::in_bbox(min, max, view, eids_in),
             Self::Rect { min, max } => Self::in_rectangle(min, max, view, eids_in),
-            Self::Sphere { center, r2 } => Self::in_sphere(center, *r2, view, eids_in),
-            Self::Circle { center, r2 } => Self::in_circle(center, *r2, view, eids_in),
+            Self::Sphere { center, r } => Self::in_sphere(center, *r, view, eids_in),
+            Self::Circle { center, r } => Self::in_circle(center, *r, view, eids_in),
         }
     }
 }
