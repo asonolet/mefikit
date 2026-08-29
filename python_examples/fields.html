@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6503f9f8.js";
+            window.path_to_searchindex_js = "../searchindex-16e02df8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-c0f193b5.js"></script>
@@ -219,12 +219,10 @@ toto.square()
 toto.sqrt()
 toto.tan()
 toto.log10();</p>
-<pre><code class="language-python">### Vector ops
-</code></pre>
-<pre><code class="language-python"># TODO:
-# toto.dot(tata) and toto @ tata
-# toto[0]
-# toto.cross(tata)
+<h3 id="vector-ops"><a class="header" href="#vector-ops">Vector ops</a></h3>
+<pre><code class="language-python">toto.dot(tata)
+toto @ tata  # same as dot
+toto[0]
 </code></pre>
 <h3 id="primitives"><a class="header" href="#primitives">Primitives</a></h3>
 <pre><code class="language-python">m = mf.M  # measure: length/area/volume
@@ -232,7 +230,6 @@ c = mf.C  # node centroids
 x = mf.X  # x compo of node centroid
 y = mf.Y  # y compo of node centroid
 z = mf.Z  # z compo of node centroid
-# b = mf.B  # volume barycenter
 n = mf.Normal  # normal to n-1 dim elements, ie 2d elems in 3d or 1d elems in 2d
 nx = mf.Nx  # x compo of element normal
 ny = mf.Ny  # y compo of element normal
@@ -422,9 +419,13 @@ mesh2.fields["N"].values()
 </code></pre>
 <pre><code class="language-python">mesh2.groups["top"] = mf.Nz &gt; 0.9
 top = mesh2.select(mf.sel.group("top")).to_mesh()
-top.to_pyvista().plot()
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="fields_files/fields_55_0.png" alt="png"><span class="img-wrapper"><img src="fields_files/fields_55_0.png" alt="png"></span></label></p>
+<pre><code class="language-python">pt = pv.Plotter()
+pt.add_mesh(mesh2.descend(target_dim=1).to_pyvista())
+pt.add_mesh(top.to_pyvista(), show_edges=True)
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="fields_files/fields_56_0.png" alt="png"><span class="img-wrapper"><img src="fields_files/fields_56_0.png" alt="png"></span></label></p>
 
                     </main>
 

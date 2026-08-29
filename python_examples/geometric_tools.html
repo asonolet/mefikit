@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6503f9f8.js";
+            window.path_to_searchindex_js = "../searchindex-16e02df8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-c0f193b5.js"></script>
@@ -196,14 +196,14 @@ mesh2 = mf.build_cmesh(x2, x2)
 <pre><code class="language-python">snaped = mesh.snap(mesh2, eps=x[-1] / len(x))
 </code></pre>
 <pre><code class="language-python">pt = pv.Plotter()
-pt.add_mesh(mesh.descend().to_pyvista())
-pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista())
+pt.add_mesh(mesh.to_pyvista(), show_edges=True)
+pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista(), color="red")
 pt.show(cpos="xy")
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="geometric_tools_files/geometric_tools_6_0.png" alt="png"><span class="img-wrapper"><img src="geometric_tools_files/geometric_tools_6_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">pt = pv.Plotter()
 pt.add_mesh(snaped.to_pyvista(), show_edges=True)
-pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista())
+pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista(), color="red")
 pt.show(cpos="xy")
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="geometric_tools_files/geometric_tools_7_0.png" alt="png"><span class="img-wrapper"><img src="geometric_tools_files/geometric_tools_7_0.png" alt="png"></span></label></p>

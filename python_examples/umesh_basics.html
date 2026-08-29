@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-6503f9f8.js";
+            window.path_to_searchindex_js = "../searchindex-16e02df8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-c0f193b5.js"></script>
@@ -187,9 +187,6 @@ pv.set_jupyter_backend("static")
 <pre><code class="language-python">volumes = mf.build_cmesh(
     range(2), np.linspace(0.0, 1.0, 3), np.logspace(0.0, 1.0, 4) / 10.0
 )
-volumes
-</code></pre>
-<pre><code>&lt;UMesh at 0x7e5a98f97db0&gt;
 </code></pre>
 <pre><code class="language-python">print(volumes)
 </code></pre>
@@ -270,21 +267,6 @@ mesh.add_regular_block("QUAD4", np.array([[3, 4, 9, 8]], dtype=np.uint))
 <pre><code class="language-python">mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="umesh_basics_files/umesh_basics_10_0.png" alt="png"><span class="img-wrapper"><img src="umesh_basics_files/umesh_basics_10_0.png" alt="png"></span></label></p>
-<h2 id="mesh-and-fields"><a class="header" href="#mesh-and-fields">Mesh <em>and</em> Fields</a></h2>
-<pre><code class="language-python">x = np.logspace(-5, 0.0)
-mesh2 = mf.build_cmesh(x, x)
-</code></pre>
-<pre><code class="language-python">mes = mesh2.measure()
-mes
-</code></pre>
-<pre><code>{'QUAD4': array([7.01482859e-12, 8.87274254e-12, 1.12227347e-11, ...,
-        2.74065140e-02, 3.46652722e-02, 4.38465503e-02], shape=(2401,))}
-</code></pre>
-<pre><code class="language-python">mesh2.measure_update()
-</code></pre>
-<pre><code class="language-python">mesh2.to_pyvista().plot()
-</code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="umesh_basics_files/umesh_basics_15_0.png" alt="png"><span class="img-wrapper"><img src="umesh_basics_files/umesh_basics_15_0.png" alt="png"></span></label></p>
 
                     </main>
 
