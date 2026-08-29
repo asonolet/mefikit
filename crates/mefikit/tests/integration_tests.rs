@@ -584,35 +584,38 @@ mod selection {
     fn select_all_elements() {
         let mesh = make_mesh_2d_multi();
         // Create an "all" selection using a wildcard approach - select by existing types
-        let ids = mesh.select_ids(sel::types(vec![
-            ElementType::SEG2,
-            ElementType::QUAD4,
-            ElementType::PGON,
-            ElementType::TRI3,
-            ElementType::TET4,
-            ElementType::HEX8,
-        ]));
+        let ids = mesh.select_ids(
+            sel::types(vec![
+                ElementType::SEG2,
+                ElementType::QUAD4,
+                ElementType::PGON,
+                ElementType::TRI3,
+                ElementType::TET4,
+                ElementType::HEX8,
+            ]),
+            None,
+        );
         assert_eq!(ids.len(), 4);
     }
 
     #[test]
     fn select_by_element_type() {
         let mesh = make_mesh_2d_multi();
-        let ids = mesh.select_ids(sel::types(vec![ElementType::SEG2]));
+        let ids = mesh.select_ids(sel::types(vec![ElementType::SEG2]), None);
         assert_eq!(ids.len(), 2);
     }
 
     #[test]
     fn select_by_dimension() {
         let mesh = make_mesh_2d_multi();
-        let ids = mesh.select_ids(sel::dimensions(vec![Dimension::D2]));
+        let ids = mesh.select_ids(sel::dimensions(vec![Dimension::D2]), None);
         assert_eq!(ids.len(), 2);
     }
 
     #[test]
     fn select_by_node_ids() {
         let mesh = make_mesh_2d_multi();
-        let ids = mesh.select_ids(sel::nids(vec![0, 1], false));
+        let ids = mesh.select_ids(sel::nids(vec![0, 1], false), None);
         assert!(!ids.is_empty());
     }
 }
