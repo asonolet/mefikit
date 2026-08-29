@@ -20,7 +20,7 @@ queried.
 | create / replace | `mesh.fields["T"] = value` | see accepted values below |
 | delete | `del mesh.fields["T"]` | removes every instance |
 | rename | `mesh.fields.rename("T", "T2")` | `KeyError` / `ValueError` on bad names |
-| bulk export | `mesh.fields.to_dict()` | `{name: {etype: array}}` |
+| bulk export | `mesh.fields.to_dict()` | `{name: {etype: array}}`; `mesh.fields.values()` returns the `FieldRef` list |
 | per-etype values | `ref.values()` | `{etype: array}` |
 | single array | `ref.numpy()` | one array when the mesh has one element type |
 | metadata | `ref.shape`, `ref.dimension()`, `len(ref)` | component shape, mesh dimension, element count |
@@ -79,6 +79,14 @@ Selection factories live in the `mf.sel` module:
 Selections compose with `&`, `|`, `^`, `-`, `~`. Field thresholds produce
 selections too: `mf.Field("T") > 1.0`.
 
+Two families of spatial selectors are available (showcased in the
+[selection](./python_examples/selection.md) notebook):
+
+- the `n*` variants (`nbbox`, `nrect`, `nsphere`, `ncircle`, `nids`) match
+  **node** positions and take an `all=` flag (all vs. any node of the element
+  must match);
+- `bbox`, `rect`, `sphere`, `circle`, `ids` match **element centroids**.
+
 ### Lazy results
 
 `mesh.select(expr)` does not build a mesh; it returns a lightweight
@@ -95,3 +103,28 @@ hot = mesh.select(mf.Field("energy") > 1e6)
 print(hot.mean("energy"))
 submesh = hot.to_mesh()
 ```
+
+## Mesh modification
+
+Most topological tools return a new `UMesh`; the `*_update` variants operate
+in-place and return a new mesh only when the result displaced elements
+(otherwise `None`).
+
+| Operation | Call |
+|---|---|
+| build structured grid (SEG2/QUAD4/HEX8) | `mf.build_cmesh(*axes)` |
+| descending/finer connectivity | `mesh.descend(src_dim, target_dim)` / `descend_update(...)` |
+| boundaries of a dimension | `mesh.boundaries(src_dim, target_dim)` / `boundaries_update(...)` |
+| connected parts | `mesh.connected_components(src_dim, link_dim, with_fields)` |
+| crack / snap / merge nodes | `mesh.crack(cut)`, `mesh.snap(ref, eps)`, `mesh.merge_nodes(eps)` |
+| extrude | `mesh.extrude(along)`, `extrude_parallel(...)`, `extrude_curv(...)` |
+| split / polygonize | `mesh.split()`, `mesh.polyze()` / `unpolyze()` |
+| boolean overlay | `mesh.overlay(mesh2, operation=None)` |
+
+Field expressions (notably `mf.M` for the on-the-fly measure) can be evaluated
+without a stored field:
+
+- `mesh.eval(expr, dim=None)` → `{etype: array}`, e.g. `mf.M` or `mf.Field("T") * 2`
+- `mesh.eval_update(name, expr, dim=None)` stores the result in-place
+- `mesh.measure()` → per-type measures; `mesh.measure_update()` materializes a
+  `"Measure"` field (usually unnecessary, prefer `mf.M`)

@@ -55,7 +55,7 @@ regions without manual array handling.
 ```python
 T = mf.Field("temperature")
 rhoCp = mf.Field("heat_capacity")
-V = mf.Field("measure")
+V = mf.M  # symbolic measure, computed on the fly
 
 mesh.fields["energy"] = rhoCp * T * V  # compute & store as a new field
 E = mesh.eval(rhoCp * T * V)  # or materialize as NumPy dicts
