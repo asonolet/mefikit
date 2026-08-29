@@ -17,7 +17,8 @@ pv.set_jupyter_backend("static")
 # Same mesh and selection context as the Fields notebook.
 x = np.logspace(-5, 0.0, 1000)
 mesh2 = mf.build_cmesh(x, x)
-mesh2.measure_update()
+
+mesh2.fields["Measure"] = mf.M
 
 m = mf.Field("Measure")
 m2 = mf.Field("4 * M2")
@@ -189,7 +190,7 @@ apply_times = []
 for T, label in zip(transfers, trasfers_labels):
     m_src = mf.build_cmesh(np.logspace(-2.0, 0.0, 20), np.logspace(-2.0, 0.0, 20))
     m_tgt = mf.build_cmesh(np.linspace(-0.05, 1.1, 40), np.linspace(-0.05, 1.1, 40))
-    m_src.measure_update()
+    m_src.fields["Measure"] = mf.M
     t0 = time.time()
     tr = T(m_src, m_tgt)
     t1 = time.time()

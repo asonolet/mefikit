@@ -51,17 +51,13 @@ toto.sqrt()
 toto.tan()
 toto.log10();
 
-
-```python
 ### Vector ops
-```
 
 
 ```python
-# TODO:
-# toto.dot(tata) and toto @ tata
-# toto[0]
-# toto.cross(tata)
+toto.dot(tata)
+toto @ tata  # same as dot
+toto[0]
 ```
 
 ### Primitives
@@ -73,7 +69,6 @@ c = mf.C  # node centroids
 x = mf.X  # x compo of node centroid
 y = mf.Y  # y compo of node centroid
 z = mf.Z  # z compo of node centroid
-# b = mf.B  # volume barycenter
 n = mf.Normal  # normal to n-1 dim elements, ie 2d elems in 3d or 1d elems in 2d
 nx = mf.Nx  # x compo of element normal
 ny = mf.Ny  # y compo of element normal
@@ -424,9 +419,16 @@ ev = mesh2.eval(mf.Normal @ np.array([0.0, 1.0, 0.0]))["QUAD4"]
 ```python
 mesh2.groups["top"] = mf.Nz > 0.9
 top = mesh2.select(mf.sel.group("top")).to_mesh()
-top.to_pyvista().plot()
+```
+
+
+```python
+pt = pv.Plotter()
+pt.add_mesh(mesh2.descend(target_dim=1).to_pyvista())
+pt.add_mesh(top.to_pyvista(), show_edges=True)
+pt.show()
 ```
 
 
 
-![png](fields_files/fields_55_0.png)
+![png](fields_files/fields_56_0.png)

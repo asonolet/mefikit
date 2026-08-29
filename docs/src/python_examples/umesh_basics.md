@@ -18,15 +18,7 @@ pv.set_jupyter_backend("static")
 volumes = mf.build_cmesh(
     range(2), np.linspace(0.0, 1.0, 3), np.logspace(0.0, 1.0, 4) / 10.0
 )
-volumes
 ```
-
-
-
-
-    <UMesh at 0x7e5a98f97db0>
-
-
 
 
 ```python
@@ -132,41 +124,3 @@ mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 
 
 ![png](umesh_basics_files/umesh_basics_10_0.png)
-
-
-
-## Mesh *and* Fields
-
-
-```python
-x = np.logspace(-5, 0.0)
-mesh2 = mf.build_cmesh(x, x)
-```
-
-
-```python
-mes = mesh2.measure()
-mes
-```
-
-
-
-
-    {'QUAD4': array([7.01482859e-12, 8.87274254e-12, 1.12227347e-11, ...,
-            2.74065140e-02, 3.46652722e-02, 4.38465503e-02], shape=(2401,))}
-
-
-
-
-```python
-mesh2.measure_update()
-```
-
-
-```python
-mesh2.to_pyvista().plot()
-```
-
-
-
-![png](umesh_basics_files/umesh_basics_15_0.png)

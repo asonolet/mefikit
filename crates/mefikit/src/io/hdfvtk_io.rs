@@ -32,7 +32,6 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     let vtk = file
         .group("VTKHDF")
         .map_err(|_| MefikitIOError::MalformedFile("Not a VTKHDF file".to_string()))?;
-    eprintln!("I survived");
 
     match read_group_attr(&vtk, "Type")?.as_str() {
         "UnstructuredGrid" => return handle_unstructured(&vtk),

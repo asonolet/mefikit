@@ -34,8 +34,8 @@ snaped = mesh.snap(mesh2, eps=x[-1] / len(x))
 
 ```python
 pt = pv.Plotter()
-pt.add_mesh(mesh.descend().to_pyvista())
-pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista())
+pt.add_mesh(mesh.to_pyvista(), show_edges=True)
+pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista(), color="red")
 pt.show(cpos="xy")
 ```
 
@@ -49,7 +49,7 @@ pt.show(cpos="xy")
 ```python
 pt = pv.Plotter()
 pt.add_mesh(snaped.to_pyvista(), show_edges=True)
-pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista())
+pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista(), color="red")
 pt.show(cpos="xy")
 ```
 

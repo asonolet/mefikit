@@ -105,7 +105,7 @@ You can directly update the mesh inplace when computing the descending mesh or t
 ```python
 volumes.boundaries_update()
 volumes.boundaries_update(target_dim=1)
-volumes.to_pyvista().shrink(0.8).plot(show_edges=True)
+volumes.to_pyvista(dim="all").shrink(0.8).plot(show_edges=True)
 ```
 
 
@@ -119,7 +119,7 @@ When using the `_update` version, the elements of the same dimension of the gene
 
 ```python
 old_face_mesh = volumes.descend_update()
-volumes.to_pyvista().shrink(0.8).plot(show_edges=True)
+volumes.to_pyvista(dim="all").shrink(0.8).plot(show_edges=True)
 ```
 
 
@@ -305,7 +305,6 @@ mesh_splitted = mesh.split()
 
 
 ```python
-# pv.set_jupyter_backend("trame")
 pt = pv.Plotter()
 pt.add_mesh(
     mesh.to_pyvista().shrink(0.95), show_edges=True, edge_color="yellow", line_width=2
@@ -366,3 +365,27 @@ mesh_polyzed.to_pyvista().plot(show_edges=True)
 
 
 ![png](topological_tools_files/topological_tools_31_0.png)
+
+
+
+
+```python
+unpolyzed = mesh_polyzed.unpolyze()
+print(unpolyzed.blocks())
+unpolyzed.to_pyvista().plot(show_edges=True)
+```
+
+    {'QUAD4': array([[ 0,  1,  5,  4],
+           [ 1,  2,  6,  5],
+           [ 2,  3,  7,  6],
+           [ 4,  5,  9,  8],
+           [ 5,  6, 10,  9],
+           [ 6,  7, 11, 10],
+           [ 8,  9, 13, 12],
+           [ 9, 10, 14, 13],
+           [10, 11, 15, 14]], dtype=uint64)}
+
+
+
+
+![png](topological_tools_files/topological_tools_32_1.png)
