@@ -617,6 +617,7 @@ impl ElementBlock {
     }
 
     /// Replace the families array for this block (crate-internal).
+    #[cfg(feature = "io")]
     pub(crate) fn set_families(
         &mut self,
         families: nd::ArrayBase<nd::OwnedArcRepr<usize>, nd::Ix1>,
