@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d4cc8a69.js";
+            window.path_to_searchindex_js = "searchindex-a09854eb.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-c0f193b5.js"></script>
@@ -195,7 +195,7 @@ queried.</p>
 <tr><td>create / replace</td><td><code>mesh.fields["T"] = value</code></td><td>see accepted values below</td></tr>
 <tr><td>delete</td><td><code>del mesh.fields["T"]</code></td><td>removes every instance</td></tr>
 <tr><td>rename</td><td><code>mesh.fields.rename("T", "T2")</code></td><td><code>KeyError</code> / <code>ValueError</code> on bad names</td></tr>
-<tr><td>bulk export</td><td><code>mesh.fields.to_dict()</code></td><td><code>{name: {etype: array}}</code></td></tr>
+<tr><td>bulk export</td><td><code>mesh.fields.to_dict()</code></td><td><code>{name: {etype: array}}</code>; <code>mesh.fields.values()</code> returns the <code>FieldRef</code> list</td></tr>
 <tr><td>per-etype values</td><td><code>ref.values()</code></td><td><code>{etype: array}</code></td></tr>
 <tr><td>single array</td><td><code>ref.numpy()</code></td><td>one array when the mesh has one element type</td></tr>
 <tr><td>metadata</td><td><code>ref.shape</code>, <code>ref.dimension()</code>, <code>len(ref)</code></td><td>component shape, mesh dimension, element count</td></tr>
@@ -248,8 +248,8 @@ through <code>ref[selector] = value</code> writes them. Selectors are:</p>
 <tr><th>Factory</th><th>Elements matched by</th></tr>
 </thead>
 <tbody>
-<tr><td><code>bbox(min, max)</code> / <code>sphere(center, r2)</code></td><td>centroid position (3D)</td></tr>
-<tr><td><code>rect(min, max)</code> / <code>circle(center, r2)</code></td><td>centroid position (2D); bounds are min-inclusive / max-exclusive</td></tr>
+<tr><td><code>bbox(min, max)</code> / <code>sphere(center, r)</code></td><td>centroid position (3D)</td></tr>
+<tr><td><code>rect(min, max)</code> / <code>circle(center, r)</code></td><td>centroid position (2D); bounds are min-inclusive / max-exclusive</td></tr>
 <tr><td><code>nbbox</code> / <code>nsphere</code> / <code>nrect</code> / <code>ncircle(..., all)</code></td><td>node positions, with all/any semantics</td></tr>
 <tr><td><code>ids({"ETYPE": [...]})</code></td><td>explicit element ids</td></tr>
 <tr><td><code>types(["QUAD4", ...])</code></td><td>element types</td></tr>
@@ -260,6 +260,14 @@ through <code>ref[selector] = value</code> writes them. Selectors are:</p>
 </div>
 <p>Selections compose with <code>&amp;</code>, <code>|</code>, <code>^</code>, <code>-</code>, <code>~</code>. Field thresholds produce
 selections too: <code>mf.Field("T") &gt; 1.0</code>.</p>
+<p>Two families of spatial selectors are available (showcased in the
+<a href="./python_examples/selection.html">selection</a> notebook):</p>
+<ul>
+<li>the <code>n*</code> variants (<code>nbbox</code>, <code>nrect</code>, <code>nsphere</code>, <code>ncircle</code>, <code>nids</code>) match
+<strong>node</strong> positions and take an <code>all=</code> flag (all vs. any node of the element
+must match);</li>
+<li><code>bbox</code>, <code>rect</code>, <code>sphere</code>, <code>circle</code>, <code>ids</code> match <strong>element centroids</strong>.</li>
+</ul>
 <h3 id="lazy-results"><a class="header" href="#lazy-results">Lazy results</a></h3>
 <p><code>mesh.select(expr)</code> does not build a mesh; it returns a lightweight
 <code>SelectionResult</code> that re-evaluates on every call:</p>
@@ -274,6 +282,35 @@ selections too: <code>mf.Field("T") &gt; 1.0</code>.</p>
 print(hot.mean("energy"))
 submesh = hot.to_mesh()
 </code></pre>
+<h2 id="mesh-modification"><a class="header" href="#mesh-modification">Mesh modification</a></h2>
+<p>Most topological tools return a new <code>UMesh</code>; the <code>*_update</code> variants operate
+in-place and return a new mesh only when the result displaced elements
+(otherwise <code>None</code>).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Call</th></tr>
+</thead>
+<tbody>
+<tr><td>build structured grid (SEG2/QUAD4/HEX8)</td><td><code>mf.build_cmesh(*axes)</code></td></tr>
+<tr><td>descending/finer connectivity</td><td><code>mesh.descend(src_dim, target_dim)</code> / <code>descend_update(...)</code></td></tr>
+<tr><td>boundaries of a dimension</td><td><code>mesh.boundaries(src_dim, target_dim)</code> / <code>boundaries_update(...)</code></td></tr>
+<tr><td>connected parts</td><td><code>mesh.connected_components(src_dim, link_dim, with_fields)</code></td></tr>
+<tr><td>crack / snap / merge nodes</td><td><code>mesh.crack(cut)</code>, <code>mesh.snap(ref, eps)</code>, <code>mesh.merge_nodes(eps)</code></td></tr>
+<tr><td>extrude</td><td><code>mesh.extrude(along)</code>, <code>extrude_parallel(...)</code>, <code>extrude_curv(...)</code></td></tr>
+<tr><td>split / polygonize</td><td><code>mesh.split()</code>, <code>mesh.polyze()</code> / <code>unpolyze()</code></td></tr>
+<tr><td>boolean overlay</td><td><code>mesh.overlay(mesh2, operation=None)</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Field expressions (notably <code>mf.M</code> for the on-the-fly measure) can be evaluated
+without a stored field:</p>
+<ul>
+<li><code>mesh.eval(expr, dim=None)</code> → <code>{etype: array}</code>, e.g. <code>mf.M</code> or <code>mf.Field("T") * 2</code></li>
+<li><code>mesh.eval_update(name, expr, dim=None)</code> stores the result in-place</li>
+<li><code>mesh.measure()</code> → per-type measures; <code>mesh.measure_update()</code> materializes a
+<code>"Measure"</code> field (usually unnecessary, prefer <code>mf.M</code>)</li>
+</ul>
 
                     </main>
 
