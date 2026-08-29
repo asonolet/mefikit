@@ -6,9 +6,10 @@ remapping, all sharing the same prepare / apply split.
 
 
 ```python
-import mefikit as mf
 import numpy as np
 import pyvista as pv
+
+import mefikit as mf
 
 pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")

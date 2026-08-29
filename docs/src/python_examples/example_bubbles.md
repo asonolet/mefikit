@@ -2,9 +2,15 @@
 
 
 ```python
-import mefikit as mf
+
+```
+
+
+```python
 import numpy as np
 import pyvista as pv
+
+import mefikit as mf
 
 rng = np.random.default_rng(seed=123)
 pv.set_plot_theme("dark")
@@ -57,7 +63,7 @@ volumes.boundaries().to_pyvista().plot(opacity=0.4)
 
 
 
-![png](example_bubbles_files/example_bubbles_7_0.png)
+![png](example_bubbles_files/example_bubbles_8_0.png)
 
 
 
@@ -91,7 +97,7 @@ cracked.boundaries().to_pyvista().plot(opacity=0.4)
 
 
 
-![png](example_bubbles_files/example_bubbles_12_0.png)
+![png](example_bubbles_files/example_bubbles_13_0.png)
 
 
 
@@ -114,7 +120,7 @@ pv.global_theme.color_cycler = None
 
 
 
-![png](example_bubbles_files/example_bubbles_14_0.png)
+![png](example_bubbles_files/example_bubbles_15_0.png)
 
 
 
@@ -129,4 +135,33 @@ pl.show()
 
 
 
-![png](example_bubbles_files/example_bubbles_15_0.png)
+![png](example_bubbles_files/example_bubbles_16_0.png)
+
+
+
+## Computing statistics
+
+
+```python
+bubble_volumes = volumes.select("bubbles").sum(mf.M)
+print(nb * 4.0 / 3.0 * np.pi * r**3.0)
+bubble_volumes
+```
+
+    0.3086928941417331
+
+
+
+
+
+    0.2793115007084435
+
+
+
+
+```python
+bubbles_mean_pos = volumes.select("bubbles").mean(mf.C)
+print(bubbles_mean_pos)
+```
+
+    [2.49923348 0.4928932  0.5314482 ]

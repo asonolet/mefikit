@@ -2,9 +2,10 @@
 
 
 ```python
-import mefikit as mf
 import numpy as np
 import pyvista as pv
+
+import mefikit as mf
 
 pv.set_plot_theme("dark")
 pv.set_jupyter_backend("static")
@@ -54,13 +55,13 @@ You might want to directly access either the node mesh or the edges mesh. You ca
 
 ```python
 edges = volumes.descend(target_dim=1)
-nodes = volumes.descend(target_dim=0)
+vertex = volumes.descend(target_dim=0)
 
 plotter = pv.Plotter(shape=(1, 2))
 plotter.subplot(0, 0)
 plotter.add_mesh(edges.to_pyvista().shrink(0.8))
 plotter.subplot(0, 1)
-plotter.add_mesh(nodes.to_pyvista())
+plotter.add_mesh(vertex.to_pyvista())
 plotter.show()
 ```
 
@@ -294,24 +295,74 @@ Using it it gives you 2^n times the number of elements where n is the dimension 
 x = np.linspace(0.0, 3.0, 2, endpoint=True)
 y = np.logspace(0.0, 1.0, 2, endpoint=True)
 z = range(2)
-surf = mf.build_cmesh(x, y, z)
+mesh = mf.build_cmesh(x, y, z)
 ```
 
 
 ```python
-surf_splitted = surf.split()
+mesh_splitted = mesh.split()
 ```
 
 
 ```python
 # pv.set_jupyter_backend("trame")
 pt = pv.Plotter()
-pt.add_mesh(surf_splitted.to_pyvista().shrink(0.9), show_edges=True, edge_color="red")
-# pt.add_mesh(surf.to_pyvista().shrink(0.9), show_edges=True)
-pt.camera_position
+pt.add_mesh(
+    mesh.to_pyvista().shrink(0.95), show_edges=True, edge_color="yellow", line_width=2
+)
+pt.add_mesh(mesh_splitted.to_pyvista(), style="wireframe", color="red", line_width=2)
 pt.show()
 ```
 
 
 
 ![png](topological_tools_files/topological_tools_26_0.png)
+
+
+
+## Polyze
+
+This functionnality is useful to generate a poly mesh from a regular one. A poly mesh is a mesh of `PGON` 2d elements and `PHED` 3d elements.
+
+
+```python
+x = np.linspace(0.0, 3.0, 4, endpoint=True)
+y = np.logspace(0.0, 1.0, 4, endpoint=True)
+mesh = mf.build_cmesh(x, y)
+print(mesh.blocks())
+```
+
+    {'QUAD4': array([[ 0,  1,  5,  4],
+           [ 1,  2,  6,  5],
+           [ 2,  3,  7,  6],
+           [ 4,  5,  9,  8],
+           [ 5,  6, 10,  9],
+           [ 6,  7, 11, 10],
+           [ 8,  9, 13, 12],
+           [ 9, 10, 14, 13],
+           [10, 11, 15, 14]], dtype=uint64)}
+
+
+
+```python
+mesh_polyzed = mesh.polyze()
+```
+
+
+```python
+print(mesh_polyzed.blocks())
+```
+
+    {'PGON': (array([ 0,  1,  5,  4,  1,  2,  6,  5,  2,  3,  7,  6,  4,  5,  9,  8,  5,
+            6, 10,  9,  6,  7, 11, 10,  8,  9, 13, 12,  9, 10, 14, 13, 10, 11,
+           15, 14], dtype=uint64), array([ 4,  8, 12, 16, 20, 24, 28, 32, 36], dtype=uint64))}
+
+
+
+```python
+mesh_polyzed.to_pyvista().plot(show_edges=True)
+```
+
+
+
+![png](topological_tools_files/topological_tools_31_0.png)
