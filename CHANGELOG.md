@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## Unreleased
+## v0.2.0
 
 ### Add
 
@@ -22,30 +22,6 @@
   `mesh.select(sel).mean("T")`); unknown names raise a Python error.
 - Core: `mf::sel::all()` factory and field view/arc types exported through the
   prelude.
-
-### Change
-
-- Removed the `UMesh`-level group methods (`select_to_group`,
-  `add_to_group`, `remove_from_group`, `delete_group`, `rename_group`,
-  `set_groups`, `group_names`, `has_group`); use the `mesh.groups` mapping.
-- Removed the tuple-key form `mesh.fields["name", sel] = value`; use
-  `mesh.fields["name"][sel] = value`.
-- `FieldRef.to_dict()` renamed to `values()`.
-- `UMesh.select()` now returns a lazy `SelectionResult` instead of a
-  materialized `UMesh`; use `.to_mesh()` where the sub-mesh is needed.
-
-### Fix
-
-- Referencing an unknown field name in a selection reduction or field
-  assignment now raises a Python error instead of aborting the process.
-- Row ordering when writing field values through element selections: rows are
-  written directly in selection order instead of being re-indexed by local
-  element ids.
-
-## v0.1.5
-
-### Add
-
 - 2D boolean mesh overlay: `UMesh::overlay` / `OverlayOperation` (IMPRINT,
   UNION, INTERSECTION, DIFFERENCE, SYMMETRIC_DIFFERENCE), exposed in Python as
   `UMesh.overlay` / `OverlayOperation`.
@@ -70,6 +46,14 @@
 
 ### Change
 
+- Removed the `UMesh`-level group methods (`select_to_group`,
+  `add_to_group`, `remove_from_group`, `delete_group`, `rename_group`,
+  `set_groups`, `group_names`, `has_group`); use the `mesh.groups` mapping.
+- Removed the tuple-key form `mesh.fields["name", sel] = value`; use
+  `mesh.fields["name"][sel] = value`.
+- `FieldRef.to_dict()` renamed to `values()`.
+- `UMesh.select()` now returns a lazy `SelectionResult` instead of a
+  materialized `UMesh`; use `.to_mesh()` where the sub-mesh is needed.
 - `intersect_2d2d` is now private; use `mesh1.overlay(mesh2,
   OverlayOperation::Imprint)` instead.
 - New HEX8 node ordering (connectivity convention), breaking for meshes using
@@ -78,6 +62,11 @@
 
 ### Fix
 
+- Referencing an unknown field name in a selection reduction or field
+  assignment now raises a Python error instead of aborting the process.
+- Row ordering when writing field values through element selections: rows are
+  written directly in selection order instead of being re-indexed by local
+  element ids.
 - out-of-bounds index in `in_polygon_stable` when the closest vertex is the
   first one
 - performance issue due to allocations when computing measure/selection

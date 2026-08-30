@@ -30,10 +30,10 @@ For scientific developers, it offers:
   instead of indices
 - 🧪 **Fast experimentation** — combine topology, geometry, and fields in a
   unified API
-- 🔗 **Python ↔ Rust continuity** — prototype and scale with the same concepts
+- 🔗 **Python ↔ Rust API** — choice between high level python lib or idiomatic
+  Rust
 - 🚧 **Early-stage flexibility** — shape core design choices while the project evolves
-- ⚡ **Performance-oriented core** — efficient execution without hiding the
-  data model
+- ⚡ **Performance-oriented core** — efficient execution with high level DSL
 
 ## ✨ Key Features
 
@@ -84,8 +84,9 @@ close to the data, while remaining concise and expressive.
   file extension in `mf.UMesh.read` / `mf.UMesh.write`:
   - `json` and `yaml` with `serde`
   - `vtk` / `vtu`
-  - `vtkhdf` / `h5` / `hdf5` (HDF5-based VTK)
-  - `CGNS` (planned)
+  - `vtkhdf`
+  - `CGNS`
+  - `med`
 - Python in memory conversions (`UMesh` methods, available when the optional `io`
   dependencies are installed):
   - `to_pyvista()` — `PyVista`
@@ -104,6 +105,7 @@ close to the data, while remaining concise and expressive.
   - `boundaries` / `boundaries_update` – Build the boundaries mesh
   - `crack` – Introduce topological cracks along internal faces.
   - `connected_components` – Split the mesh in connected meshes
+  - `polyze` / `unpolyze` – Change the elements topology
 - 📐 Geometric operations
   - `snap` - To snap nodes of one mesh on another mesh nodes
   - `merge_nodes` - Merges duplicated nodes
@@ -118,14 +120,14 @@ close to the data, while remaining concise and expressive.
   - `mf.transfer.DistanceWeighting` – Weighting schemes for MLS (`Constant`,
     `InverseDistance(exponent)`, `Gaussian`)
 
-The transfers separate the (potentially expensive) geometric precompute
-performed when the operator is constructed from the `apply_update` call that
-transfers a field:
+  The transfers separate the (potentially expensive) geometric precompute
+  performed when the operator is constructed from the `apply_update` call that
+  transfers a field:
 
-```python
-op = mf.transfer.MovingLeastSquares(m_src, m_tgt, k=10)
-op.apply_update(m_src, "temperature", m_tgt)
-```
+  ```python
+  op = mf.transfer.MovingLeastSquares(m_src, m_tgt, k=10)
+  op.apply_update(m_src, "temperature", m_tgt)
+  ```
 
 ### 🧠 Element traits & geometry (rust only)
 
@@ -134,13 +136,12 @@ use them to build mesh new operations. It is split between the `element_traits`
 module (generic operations on mesh elements - zero copy views) and the
 `geometry` module (owned geometric primitives).
 
-- Descending elements (`ElementTopo::subentities`, `to_simplexes` WIP)
-- Equivalence classes of elements (`symmetry`, WIP)
-- Simplexization (WIP)
 - Bounding box trees (`spatial_index`, `SpatiallyIndexable`)
 - Element intersections and cutting (`cut`, `segment`, `polygon`, `polyhedron`)
 - Measures, centroids and point-in tests (`ElementGeo`)
 - Convexity computation (`geometry::convexity`)
+- Descending elements (`ElementTopo::subentities`, `to_simplexes` WIP)
+- Equivalence classes of elements (`symmetry`, WIP)
 
 ## 🧪 Developer Notes
 

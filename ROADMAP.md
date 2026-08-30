@@ -119,40 +119,7 @@
 
 ---
 
-## 🛠️ API Coherence & Ergonomics Plan (targeting 0.1.x → 1.0)
-
-Feedback from a design review of the README against the implementation.
-Grouped by category; the goal is a coherent, self-consistent public API before
-1.0.
-
-### 📖 Documentation accuracy
-
-- [ ] Fix the README **Expression DSL** example so it runs as-is:
-  - call `mesh.measure_update()` before using `V = mf.Field("Measure")`,
-  - or expose the measure field name in python (`measure_update(name=...)`) and
-    standardize on a single documented name (`Measure`).
-
-- [ ] Explain the `sel` DSL in the README: the `n*` variants (`nbbox`, `nrect`,
-  `nsphere`, `ncircle`, `nids`) filter on **nodes**, while `bbox`, `rect`,
-  `sphere`, `circle`, `ids` filter on **element centroids**; `rect`/`circle`
-  are the 2D counterparts of `bbox`/`sphere`; selections combine with
-  `&`, `|`, `^`, `-`, `~`.
-- [x] Document that `sphere`, `circle`, `nsphere` and `ncircle` take a **linear
-  radius** `r` (rust doc comments, python docstrings, `.pyi`, notebooks).
-  - ✅ Resolved: the selector API now uses `r` (linear radius) consistently;
-    the old `r2` squared-radius naming was dropped in favour of the geometry
-    convention used by `geometry::region::in_sphere`/`in_circle`.
-- [ ] Reconcile the families/groups status across README and ROADMAP:
-  rust ✔, python binding not exposed yet.
-- [ ] State the exact `*_update` semantics: the result is added to the mesh
-  in-place, and a new mesh is returned only when elements of the target
-  dimension were displaced (`descend_update` / `boundaries_update` return
-  `Option<UMesh>`).
-- [ ] Honest framing in "Why Mefikit?": mesh construction is explicit and
-  low-level (numpy connectivity via `UMesh(coords)` + `add_regular_block`),
-  while the high-level tools operate on top of it.
-
-### 🏷️ Naming coherence (rust ↔ python)
+## 🛠️ API Coherence & Ergonomics Plan
 
 - [ ] Align `update_field` (rust) / `set_field` (python) — same operation, two
   names; pick one and expose it under the same name on both sides.
@@ -161,19 +128,6 @@ Grouped by category; the goal is a coherent, self-consistent public API before
   renaming/aliasing to `refine()` / `split_cells()`.
 - [ ] Reconsider the cryptic `build_cmesh` name; add a self-documenting alias
   such as `build_grid` / `structured_mesh`.
-- [x] `DistanceWeighting.None()`: `None` is a python keyword and cannot be
-  spelled in a `.pyi`; resolved by renaming the `None` variant to `Constant`
-  on both the Rust and Python sides.
 - [ ] Decide a single convention for exposing rust `*Transfer` classes in
   python (suffix dropped today: `ConstantPiecewiseTransfer` →
   `transfer.ConstantPiecewise`).
-
-### 🧩 Ergonomics
-
-- [ ] Field DSL is scalar-only today while the docs claim "scalar & vector
-  fields"; either scope the claim or plan vector support (indexing `u[i]`,
-  `norm(u)`, per-component math).
-- [ ] `mesh.eval(...)` returns a per-element-type `dict[str, ndarray]`; add a
-  flatten-if-uniform convenience for single-type meshes.
-- [ ] `measure()` / `measure_update()` rely on the magic field name
-  `"Measure"`; expose the field name in python instead of hardcoding it.
