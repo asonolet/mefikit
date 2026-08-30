@@ -49,7 +49,7 @@ print(volumes.to_mc())
 print(volumes.to_pyvista())
 ```
 
-    UnstructuredGrid (0x781a0a87d600)
+    UnstructuredGrid (0x7cf1a2281cc0)
       N Cells:    16
       N Points:   50
       X Bounds:   0.000e+00, 1.000e+00
@@ -112,5 +112,3 @@ for ext in ("vtk", "yaml", "json", "vtkhdf", "med"):
         volumes != volumes_from_disk
     )  # this is a new instance, with a different memory adress
 ```
-
-    I survived
