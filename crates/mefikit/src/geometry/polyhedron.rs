@@ -233,6 +233,257 @@ impl Polyhedron {
         }
         inside
     }
+
+    /// Computes the volume of the intersection of two convex polyhedra without constructing the
+    /// intersection polyhedron.
+    ///
+    /// Every face of `self` is clipped against the half-spaces of `other` and vice versa, and the
+    /// signed volume contribution of each resulting boundary polygon is accumulated directly via a
+    /// triangle fan (divergence theorem).
+    ///
+    /// Both inputs are assumed convex; the convexity is not checked. Empty or non-overlapping
+    /// inputs yield `0.0`.
+    ///
+    /// Faces lying in the same plane with the same interior side appear on the boundary of both
+    /// polyhedra and would be counted twice; only the first is accumulated (the two clipped
+    /// patches coincide exactly).
+    pub fn convex_intersection_volume(&self, other: &Self) -> f64 {
+        let [s_min, s_max] = self.bounds();
+        let [o_min, o_max] = other.bounds();
+        for k in 0..3 {
+            if s_max[k] < o_min[k] || o_max[k] < s_min[k] {
+                return 0.0;
+            }
+        }
+        self.convex_intersection_volume_impl(other)
+    }
+
+    /// Core of [`Self::convex_intersection_volume`] without the axis-aligned bounding-box reject.
+    ///
+    /// The AABB reject is the only difference from [`Self::convex_intersection_volume`]: it spends
+    /// roughly the cost of two `bounds()` folds on every call, so callers that already cull pairs
+    /// by AABB (e.g. a BVH-driven boundary-element search) should call this to avoid the redundant
+    /// work. The inputs are still assumed convex and the clip itself is unchanged.
+    pub(crate) fn convex_intersection_volume_impl(&self, other: &Self) -> f64 {
+        let eps = 1e-12;
+
+        let other_planes = other.planes();
+        let self_planes = self.planes();
+        let reference = self.centroid();
+
+        let mut volume = 0.0;
+        for fi in 0..self.faces.len() {
+            let poly = self.face_polygon(fi);
+            if let Some(clipped) = clip_face_by_polyhedron(&poly, &other_planes, eps) {
+                volume += polygon_volume_contribution(&clipped, reference);
+            }
+        }
+        for (fi, plane) in other_planes.iter().enumerate() {
+            if self_planes.iter().any(|p| plane_same_side(*p, *plane)) {
+                continue;
+            }
+            let poly = other.face_polygon(fi);
+            if let Some(clipped) = clip_face_by_polyhedron(&poly, &self_planes, eps) {
+                volume += polygon_volume_contribution(&clipped, reference);
+            }
+        }
+        volume.abs()
+    }
+
+    /// Plane equation of each face: the outward unit normal `n` and offset `d` such that the
+    /// interior of the polyhedron satisfies `n · x <= d`.
+    ///
+    /// The outward direction is inherited from the face winding (the faces are expected to be
+    /// consistently outward-oriented, matching the divergence-theorem volume convention).
+    fn planes(&self) -> Vec<Plane> {
+        (0..self.faces.len())
+            .map(|i| plane_of_face(&self.points, &self.faces[i]))
+            .collect()
+    }
+
+    /// Gathers the vertex coordinates of face `i` into a fresh polygon.
+    fn face_polygon(&self, i: usize) -> Vec<[f64; 3]> {
+        self.faces[i].iter().map(|&j| self.points[j]).collect()
+    }
+}
+
+/// A plane with outward unit normal `n` and offset `d`; the interior half-space is `n · x <= d`.
+#[derive(Clone, Copy)]
+struct Plane {
+    n: [f64; 3],
+    d: f64,
+}
+
+/// Computes the outward plane equation of a face by Newell's method.
+///
+/// This is the same normal as [`face_plane`] but expressed as `n · x <= d` (interior) instead of
+/// `n · x + d = 0`.
+fn plane_of_face(points: &[[f64; 3]], face: &[usize]) -> Plane {
+    let (n, d) = face_plane(points, face);
+    let inv = 1.0 / (n[0].hypot(n[1]).hypot(n[2]));
+    Plane {
+        n: [n[0] * inv, n[1] * inv, n[2] * inv],
+        d: -d * inv,
+    }
+}
+
+/// Returns `true` if the two planes coincide with the interior on the same side, i.e. the outward
+/// normals point the same way and the offsets agree.
+///
+/// Used to skip the second half of coincident coplanar face contributions: when a face of `P` and
+/// a face of `Q` are `same_side` coplanar, their clipped patches in the intersection boundary are
+/// identical (`F ∩ Q = G ∩ P = (P ∩ Q) ∩ H`), so accumulating both would double the volume.
+fn plane_same_side(a: Plane, b: Plane) -> bool {
+    let ndot = a.n[0] * b.n[0] + a.n[1] * b.n[1] + a.n[2] * b.n[2];
+    if ndot <= 1.0 - 1e-10 {
+        return false;
+    }
+    let scale = (a.d.abs()).max(b.d.abs()).max(1.0);
+    (a.d - b.d).abs() <= 1e-9 * scale
+}
+
+/// Clips the convex polygon `poly` against each half-space of `planes`, keeping the part where
+/// `n · x <= d` for every plane.
+///
+/// Returns `None` if the polygon is entirely clipped away (fewer than 3 vertices remain).
+fn clip_face_by_polyhedron(poly: &[[f64; 3]], planes: &[Plane], eps: f64) -> Option<Vec<[f64; 3]>> {
+    let mut current = poly.to_vec();
+    for plane in planes {
+        if current.len() < 3 {
+            return None;
+        }
+        let n = plane.n;
+        let d = plane.d;
+        let mut all_inside = true;
+        let mut all_outside = true;
+        for v in &current {
+            let dist = n[0] * v[0] + n[1] * v[1] + n[2] * v[2] - d;
+            if dist > eps {
+                all_inside = false;
+            } else {
+                all_outside = false;
+            }
+        }
+        if all_inside {
+            continue;
+        }
+        if all_outside {
+            return None;
+        }
+        current = clip_polygon_by_plane(&current, plane, eps);
+        if current.len() < 3 {
+            return None;
+        }
+    }
+    Some(current)
+}
+
+/// Sutherland–Hodgman clipping of a polygon against the single half-space `n · x <= d`.
+fn clip_polygon_by_plane(poly: &[[f64; 3]], plane: &Plane, eps: f64) -> Vec<[f64; 3]> {
+    let n = plane.n;
+    let d = plane.d;
+    let mut result = Vec::with_capacity(poly.len() + 2);
+
+    let m = poly.len();
+    let (mut prev, mut prev_dist) = {
+        let (pi, pr) = (m - 1, poly[m - 1]);
+        (pi, n[0] * pr[0] + n[1] * pr[1] + n[2] * pr[2] - d)
+    };
+    let mut prev_inside = prev_dist <= eps;
+
+    for ci in 0..m {
+        let cur = poly[ci];
+        let cur_dist = n[0] * cur[0] + n[1] * cur[1] + n[2] * cur[2] - d;
+        let cur_inside = cur_dist <= eps;
+
+        if prev_inside && cur_inside {
+            result.push(cur);
+        } else if prev_inside && !cur_inside {
+            result.push(segment_plane_intersection(
+                poly[prev], cur, prev_dist, cur_dist,
+            ));
+        } else if !prev_inside && cur_inside {
+            result.push(segment_plane_intersection(
+                poly[prev], cur, prev_dist, cur_dist,
+            ));
+            result.push(cur);
+        }
+
+        prev = ci;
+        prev_dist = cur_dist;
+        prev_inside = cur_inside;
+    }
+    remove_consecutive_duplicates(&mut result);
+    result
+}
+
+/// Intersection of the segment `a -> b` with the plane, given the signed distances `da = n·a - d`
+/// and `db = n·b - d`.
+#[inline(always)]
+fn segment_plane_intersection(a: [f64; 3], b: [f64; 3], da: f64, db: f64) -> [f64; 3] {
+    let t = da / (da - db);
+    [
+        a[0] + t * (b[0] - a[0]),
+        a[1] + t * (b[1] - a[1]),
+        a[2] + t * (b[2] - a[2]),
+    ]
+}
+
+/// Removes consecutive duplicate vertices produced by clipping, and the cyclic first/last pair.
+fn remove_consecutive_duplicates(vertices: &mut Vec<[f64; 3]>) {
+    if vertices.len() < 2 {
+        return;
+    }
+    let eps = 1e-14;
+    let mut out = 0;
+    for i in 0..vertices.len() {
+        let v = vertices[i];
+        if out == 0 || dist3(v, vertices[out - 1]) > eps {
+            vertices[out] = v;
+            out += 1;
+        }
+    }
+    if out > 1 && dist3(vertices[0], vertices[out - 1]) <= eps {
+        out -= 1;
+    }
+    vertices.truncate(out);
+}
+
+#[inline(always)]
+fn dist3(a: [f64; 3], b: [f64; 3]) -> f64 {
+    ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+}
+
+/// Signed volume contribution of an outward-oriented boundary polygon to the intersection volume,
+/// via a triangle fan about `reference` (divergence theorem).
+fn polygon_volume_contribution(poly: &[[f64; 3]], reference: [f64; 3]) -> f64 {
+    let n = poly.len();
+    if n < 3 {
+        return 0.0;
+    }
+    let p0 = poly[0];
+    let mut sum = 0.0;
+    for i in 1..n - 1 {
+        let p1 = poly[i];
+        let p2 = poly[i + 1];
+        let a = [
+            p0[0] - reference[0],
+            p0[1] - reference[1],
+            p0[2] - reference[2],
+        ];
+        let b = [
+            p1[0] - reference[0],
+            p1[1] - reference[1],
+            p1[2] - reference[2],
+        ];
+        let c = [
+            p2[0] - reference[0],
+            p2[1] - reference[1],
+            p2[2] - reference[2],
+        ];
+        sum += triple_product(a, b, c);
+    }
+    sum / 6.0
 }
 
 fn face_plane(points: &[[f64; 3]], face: &[usize]) -> ([f64; 3], f64) {
@@ -956,5 +1207,208 @@ mod tests {
         assert!(point_in_phed2(&inside, &coords, &flat));
         assert!(!point_in_phed(&outside, &coords, &flat));
         assert!(!point_in_phed2(&outside, &coords, &flat));
+    }
+
+    fn translated(p: &Polyhedron, t: [f64; 3]) -> Polyhedron {
+        Polyhedron::unknown(
+            p.iter().map(|v| [v[0] + t[0], v[1] + t[1], v[2] + t[2]]),
+            (0..p.num_faces()).map(|i| p.faces[i].to_vec()),
+        )
+    }
+
+    /// Unit cube centered at the origin: `[-0.5, 0.5]^3`.
+    fn centered_cube() -> Polyhedron {
+        let c = unit_cube();
+        translated(&c, [-0.5, -0.5, -0.5])
+    }
+
+    #[test]
+    fn intersection_disjoint_cubes() {
+        let a = unit_cube();
+        let b = translated(&a, [2.0, 0.0, 0.0]);
+        assert_eq!(a.convex_intersection_volume(&b), 0.0);
+        assert_eq!(b.convex_intersection_volume(&a), 0.0);
+    }
+
+    #[test]
+    fn intersection_identical_cubes() {
+        let a = unit_cube();
+        assert_abs_diff_eq!(a.convex_intersection_volume(&a), 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn intersection_half_offset_along_x() {
+        let a = unit_cube();
+        let b = translated(&a, [0.5, 0.0, 0.0]);
+        assert_abs_diff_eq!(a.convex_intersection_volume(&b), 0.5, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn intersection_cube_fully_inside_larger() {
+        let a = centered_cube();
+        let big = Polyhedron::convex(
+            [
+                [-1.0, -1.0, -1.0],
+                [1.0, -1.0, -1.0],
+                [1.0, 1.0, -1.0],
+                [-1.0, 1.0, -1.0],
+                [-1.0, -1.0, 1.0],
+                [1.0, -1.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [-1.0, 1.0, 1.0],
+            ],
+            [
+                vec![0, 3, 2, 1],
+                vec![4, 5, 6, 7],
+                vec![0, 1, 5, 4],
+                vec![2, 3, 7, 6],
+                vec![1, 2, 6, 5],
+                vec![3, 0, 4, 7],
+            ],
+        );
+        assert_abs_diff_eq!(a.convex_intersection_volume(&big), 1.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(big.convex_intersection_volume(&a), 1.0, epsilon = 1e-12);
+    }
+
+    /// Two identical unit cubes, one rotated 45° about the z axis around their shared center
+    /// (0.5, 0.5, 0.5). The intersection is an octagon-base column extruded in z with volume
+    /// `2 * (sqrt(2) - 1)` (the octagon is the intersection of two centered unit squares at 45°).
+    #[test]
+    fn intersection_rotated_cube_known_value() {
+        let a = unit_cube();
+        let b = rotated_about(
+            &a,
+            [0.5, 0.5, 0.5],
+            [0.0, 0.0, 1.0],
+            std::f64::consts::FRAC_PI_4,
+        );
+        let expected = 2.0 * (2.0f64.sqrt() - 1.0);
+        assert_abs_diff_eq!(a.convex_intersection_volume(&b), expected, epsilon = 1e-9);
+    }
+
+    fn rotated_about(p: &Polyhedron, center: [f64; 3], axis: [f64; 3], angle: f64) -> Polyhedron {
+        let (c, s) = (angle.cos(), angle.sin());
+        let [ax, ay, az] = axis;
+        let rot = |v: [f64; 3]| -> [f64; 3] {
+            let w = [v[0] - center[0], v[1] - center[1], v[2] - center[2]];
+            // Rodrigues' rotation formula.
+            let dot = ax * w[0] + ay * w[1] + az * w[2];
+            let cross = [
+                ay * w[2] - az * w[1],
+                az * w[0] - ax * w[2],
+                ax * w[1] - ay * w[0],
+            ];
+            let r = [
+                w[0] * c + cross[0] * s + ax * dot * (1.0 - c),
+                w[1] * c + cross[1] * s + ay * dot * (1.0 - c),
+                w[2] * c + cross[2] * s + az * dot * (1.0 - c),
+            ];
+            [r[0] + center[0], r[1] + center[1], r[2] + center[2]]
+        };
+        Polyhedron::unknown(
+            p.iter().map(|&v| rot(v)),
+            (0..p.num_faces()).map(|i| p.faces[i].to_vec()),
+        )
+    }
+
+    #[test]
+    fn intersection_symmetry() {
+        let a = unit_cube();
+        let b = rotated_about(
+            &a,
+            [0.5, 0.5, 0.5],
+            [0.0, 0.0, 1.0],
+            std::f64::consts::FRAC_PI_4,
+        );
+        let v_ab = a.convex_intersection_volume(&b);
+        let v_ba = b.convex_intersection_volume(&a);
+        assert_abs_diff_eq!(v_ab, v_ba, epsilon = 1e-12);
+    }
+
+    /// Cross-validates the analytic volume against a Monte-Carlo sampling over the bounding box of
+    /// an oblique (rotated) overlap where a closed-form value is derived independently.
+    #[test]
+    fn intersection_matches_monte_carlo() {
+        let a = unit_cube();
+        let b = rotated_about(
+            &a,
+            [0.5, 0.5, 0.5],
+            [0.0, 0.0, 1.0],
+            std::f64::consts::FRAC_PI_4,
+        );
+        let exact = a.convex_intersection_volume(&b);
+        let expected = 2.0 * (2.0f64.sqrt() - 1.0);
+        assert_abs_diff_eq!(exact, expected, epsilon = 1e-9);
+
+        // Deterministic pseudo-random sampler over the unit cube [0,1]^3, which contains the whole
+        // intersection (it is a subset of `a`). Count points inside both polyhedra.
+        let mut state: u64 = 0x9E3779B97F4A7C15;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state as f64) / (u64::MAX as f64)
+        };
+        let na = 4_000_000usize;
+        let mut hits = 0usize;
+        for _ in 0..na {
+            let pt = [next(), next(), next()];
+            if a.contains(&pt)
+                && (0..b.num_faces()).all(|fi| {
+                    let (n, d) = super::face_plane(&b.points, &b.faces[fi]);
+                    n[0] * pt[0] + n[1] * pt[1] + n[2] * pt[2] + d <= 0.0
+                })
+            {
+                hits += 1;
+            }
+        }
+        let estimate = (hits as f64) / (na as f64);
+        assert!(
+            (estimate - exact).abs() < 0.02,
+            "Monte-Carlo estimate {estimate} should be within 0.02 of exact {exact}"
+        );
+    }
+
+    /// Cross-validates the intersector on real hexa-mesh elements (`make_imesh_3d` + `to_polyhedron`
+    /// is the `polyze`-style pipeline that turns each HEX8 cell into a convex polyhedron).
+    ///
+    /// Two axis-aligned hexa meshes overlap; the cell-pair intersections partition the mesh
+    /// intersection, so the sum over all pairs equals the overlap of the two cube boxes, and every
+    /// pair is itself an axis-aligned box with a closed-form volume.
+    #[test]
+    fn intersection_hexa_mesh_cell_pairs() {
+        use crate::element_traits::ElementGeo;
+        use crate::mesh_examples::make_imesh_3d;
+
+        let mesh_a = make_imesh_3d(2); // [0,1]^3, 8 cells of side 0.5
+        let mesh_b: crate::mesh::UMesh = crate::tools::grid::RegularUMeshBuilder::new()
+            .add_axis(vec![0.25, 0.75, 1.25]) // x shifted +0.25
+            .add_axis(vec![0.0, 0.5, 1.0])
+            .add_axis(vec![0.0, 0.5, 1.0])
+            .build();
+
+        let cells_a: Vec<Polyhedron> = mesh_a.elements().map(|e| e.to_polyhedron()).collect();
+        let cells_b: Vec<Polyhedron> = mesh_b.elements().map(|e| e.to_polyhedron()).collect();
+
+        let mut total = 0.0;
+        for pa in &cells_a {
+            for pb in &cells_b {
+                let [a_lo, a_hi] = pa.bounds();
+                let [b_lo, b_hi] = pb.bounds();
+                let mut vol = 1.0;
+                for k in 0..3 {
+                    let lo = a_lo[k].max(b_lo[k]);
+                    let hi = a_hi[k].min(b_hi[k]);
+                    vol *= (hi - lo).max(0.0);
+                }
+                let got = pa.convex_intersection_volume(pb);
+                assert_abs_diff_eq!(got, vol, epsilon = 1e-10);
+                total += got;
+                // Symmetry must hold per pair.
+                assert_abs_diff_eq!(pb.convex_intersection_volume(pa), got, epsilon = 1e-12);
+            }
+        }
+        // The union over cell pairs is the overlap of [0,1]^3 with [0.25,1.25]x[0,1]x[0,1].
+        assert_abs_diff_eq!(total, 0.75, epsilon = 1e-10);
     }
 }

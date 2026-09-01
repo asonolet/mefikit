@@ -99,6 +99,14 @@ harness = false
 name = "merge_nodes"
 harness = false
 
+[[bench]]
+name = "intersection"
+harness = false
+
+[[bench]]
+name = "transfer"
+harness = false
+
 [dev-dependencies]
 approx = "0.5.1"
 criterion = "0.8.2"
