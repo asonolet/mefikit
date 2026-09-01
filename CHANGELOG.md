@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v0.2.1
+
+### Fix
+
+- Export med with "PFL" attribute on polyhedron element types.
+- Used nodes do not return `usize::MAX` (especially not in polyhedron case),
+  fixes polyhedron merge_nodes / snap
+
 ## v0.2.0
 
 ### Add
