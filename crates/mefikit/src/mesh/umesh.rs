@@ -278,6 +278,7 @@ where
                 }
             }
         }
+        used_nodes.remove(&usize::MAX);
         let mut used_nodes: Vec<usize> = used_nodes.into_iter().collect();
         used_nodes.sort_unstable();
         used_nodes

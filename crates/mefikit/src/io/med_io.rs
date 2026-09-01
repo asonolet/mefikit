@@ -540,6 +540,7 @@ fn write_polyhedron(mai: &Group, block: &ElementBlockView) -> hdf5_metno::Result
 
     write_scalar_attr(&group, "CGT", 1i64)?;
     write_scalar_attr(&group, "CGS", 1i64)?;
+    write_fixed_bytes_attr::<23>(&group, "PFL", b"MED_NO_PROFILE_INTERNAL")?;
 
     // Mefikit data layout (per element):
     //   [face0_n0, face0_n1, ..., usize::MAX, face1_n0, ..., usize::MAX, ...]
