@@ -22,6 +22,7 @@ medcoupling nature enum used for the remapping:
 
 from __future__ import annotations
 
+import functools
 import time
 
 import medcoupling as mc
@@ -280,8 +281,8 @@ def bench_descend():
     axes = [np.linspace(0.0, 1.0, n + 1)] * 3
     mesh = mf.build_cmesh(*axes)
     mm = mc_mesh(mesh, 3)
-    t_mf = median_time(lambda: mesh.descend())
-    t_mc = median_time(lambda: mm.buildDescendingConnectivity())
+    t_mf = median_time(functools.partial(mesh.descend))
+    t_mc = median_time(functools.partial(mm.buildDescendingConnectivity))
     f_mf = int(mesh.descend().blocks()["QUAD4"].shape[0])
     f_mc = int(mm.buildDescendingConnectivity()[0].getNumberOfCells())
     expected = 3 * n * n * (n + 1)  # faces of a structured n^3 hexa grid

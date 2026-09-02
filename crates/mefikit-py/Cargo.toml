@@ -10,7 +10,7 @@ bench = false
 
 [dependencies]
 ndarray = { workspace = true }
-numpy = { workspace = true, public = true }
+numpy = { workspace = true }
 pyo3 = { workspace = true, features = [
   "experimental-inspect",
   "extension-module",

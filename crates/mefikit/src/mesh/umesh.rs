@@ -561,6 +561,16 @@ impl UMesh {
         self.element_blocks.entry(key).or_insert(wrapped);
     }
 
+    /// Inserts a fully-built element block into the mesh (crate-internal).
+    ///
+    /// Unlike [`Self::add_regular_block`] and [`Self::add_poly_block`], this keeps the block's
+    /// families, fields and groups intact, which is required by out-of-place tools that
+    /// preserve the element order (e.g. `reorient`).
+    pub(crate) fn insert_block(&mut self, block: ElementBlock) {
+        let (key, wrapped) = block.into_entry();
+        self.element_blocks.entry(key).or_insert(wrapped);
+    }
+
     /// Returns this mesh as an owned mesh (identity operation for `UMesh`).
     pub fn into_owned(self) -> UMesh {
         self

@@ -279,6 +279,11 @@ where
 }
 
 impl ElementBlock {
+    /// Returns a clone of the families array (`Arc`-cheap for owned blocks).
+    pub(crate) fn families_owned(&self) -> nd::ArcArray1<usize> {
+        self.families.clone()
+    }
+
     /// Create a new regular element block.
     ///
     /// # Arguments
@@ -336,6 +341,27 @@ impl ElementBlock {
             fields,
             families: nd::ArcArray1::from(vec![0; n_elements]),
             groups: ArcGroups::new(),
+        }
+    }
+
+    /// Builds a block while preserving the element metadata (families, fields, groups).
+    ///
+    /// Used by out-of-place mesh tools that rebuild the connectivity but keep the element
+    /// order unchanged (e.g. `reorient`), in which case the metadata arrays can be carried
+    /// over with a cheap `Arc` clone.
+    pub(crate) fn new_with_metadata(
+        cell_type: ElementType,
+        connectivity: Connectivity,
+        families: nd::ArcArray1<usize>,
+        fields: BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>>,
+        groups: ArcGroups,
+    ) -> Self {
+        Self {
+            cell_type,
+            connectivity,
+            fields,
+            families,
+            groups,
         }
     }
 

@@ -7,7 +7,8 @@
 use super::element_topo::ElementTopo;
 use crate::geometry::{
     Polygon, Polyhedron, Segment, area_polygon3, area_quad2, area_tri2, bounds_iter,
-    convex_polygon_contains2, hex_contains, hex_volume, tet_contains, tet_volume, vertex_centroid,
+    convex_polygon_contains2, hex_contains, hex_volume, signed_area2, tet_contains, tet_volume,
+    vertex_centroid,
 };
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
@@ -195,6 +196,66 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
             ]),
             PHED => self.to_polyhedron().volume(),
             other => unimplemented!("measure3 is not implemented for element type {other:?}"),
+        }
+    }
+
+    /// Returns the element's connectivity reordered to the canonical positive-volume
+    /// (VTK) convention expected by [`Self::measure`], `tet_volume` and `hex_volume`:
+    /// 2D cells wound counter-clockwise and 3D cells with a right-handed base face.
+    ///
+    /// The decision is made from the coordinates, so this *repairs* ill-formed windings
+    /// (e.g. the left-handed HEX8 a purely topological `from_poly` produces from an
+    /// outward-wound PHED) and leaves well-formed elements unchanged. The topology-only
+    /// hot paths (`unpolyze`, `to_poly`, `subentities`) never pay for this.
+    fn oriented_positive_connectivity(&self) -> (ElementType, Vec<usize>) {
+        use ElementType::*;
+        let et = self.element_type();
+        let co = self.connectivity();
+        match et {
+            TRI3 | QUAD4 | PGON => {
+                let pts: Vec<[f64; 2]> = self.coords2().copied().collect();
+                if signed_area2(&pts) < 0.0 {
+                    (et, co.iter().rev().copied().collect())
+                } else {
+                    (et, co.to_vec())
+                }
+            }
+            TET4 => {
+                let v = tet_volume(
+                    self.coord3_ref(0),
+                    self.coord3_ref(1),
+                    self.coord3_ref(2),
+                    self.coord3_ref(3),
+                );
+                if v < 0.0 {
+                    (et, vec![co[0], co[1], co[3], co[2]])
+                } else {
+                    (et, co.to_vec())
+                }
+            }
+            HEX8 => {
+                let v = hex_volume(&[
+                    *self.coord3_ref(0),
+                    *self.coord3_ref(1),
+                    *self.coord3_ref(2),
+                    *self.coord3_ref(3),
+                    *self.coord3_ref(4),
+                    *self.coord3_ref(5),
+                    *self.coord3_ref(6),
+                    *self.coord3_ref(7),
+                ]);
+                if v < 0.0 {
+                    // Swap the two bottom corners and the matching top corners to undo
+                    // the left-handed inversion (involution on the index order).
+                    (
+                        et,
+                        vec![co[0], co[3], co[2], co[1], co[4], co[7], co[6], co[5]],
+                    )
+                } else {
+                    (et, co.to_vec())
+                }
+            }
+            _ => (et, co.to_vec()),
         }
     }
 
@@ -601,5 +662,128 @@ mod tests {
         assert!(elem.is_point_inside(&[0.5, 0.5, 0.5]));
         assert!(!elem.is_point_inside(&[1.5, 0.5, 0.5]));
         assert!(!elem.is_point_inside(&[0.5, 1.5, 0.5]));
+    }
+
+    #[test]
+    fn test_oriented_positive_connectivity_2d() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        let family = 0;
+        let groups = crate::mesh::ArcGroups::new();
+        // A clockwise quad must be repaired to a counter-clockwise one; the exact cyclic
+        // rotation is free, only the winding (positive signed area) is guaranteed.
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &[0, 3, 2, 1],
+            ElementType::QUAD4,
+            &groups,
+        );
+        let (et, conn) = elem.oriented_positive_connectivity();
+        assert_eq!(et, ElementType::QUAD4);
+        let mut sorted = conn.clone();
+        sorted.sort();
+        assert_eq!(sorted, vec![0, 1, 2, 3]);
+        // Reconstructed from the returned connectivity, the quad has positive area.
+        let order: Vec<[f64; 2]> = conn
+            .iter()
+            .map(|&i| {
+                let c = coords.row(i);
+                [c[0], c[1]]
+            })
+            .collect();
+        assert!(signed_area2(&order) > 0.0);
+        // The counter-clockwise ordering is left untouched.
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &[0, 1, 2, 3],
+            ElementType::QUAD4,
+            &groups,
+        );
+        assert_eq!(
+            elem.oriented_positive_connectivity(),
+            (ElementType::QUAD4, vec![0, 1, 2, 3])
+        );
+    }
+
+    #[test]
+    fn test_oriented_positive_connectivity_tet4() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ];
+        let family = 0;
+        let groups = crate::mesh::ArcGroups::new();
+        // Left-handed [0, 1, 3, 2] is repaired to the right-handed [0, 1, 2, 3].
+        for (conn, expected) in [
+            (&[0usize, 1, 2, 3][..], vec![0, 1, 2, 3]),
+            (&[0, 1, 3, 2][..], vec![0, 1, 2, 3]),
+        ] {
+            let elem = Element::new(
+                0,
+                coords.view(),
+                None,
+                &family,
+                conn,
+                ElementType::TET4,
+                &groups,
+            );
+            assert_eq!(
+                elem.oriented_positive_connectivity(),
+                (ElementType::TET4, expected)
+            );
+        }
+    }
+
+    #[test]
+    fn test_oriented_positive_connectivity_hex8() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0]
+        ];
+        let family = 0;
+        let groups = crate::mesh::ArcGroups::new();
+        let canonical = vec![0usize, 1, 2, 3, 4, 5, 6, 7];
+        // A well-formed hexa is returned unchanged...
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &[0usize, 1, 2, 3, 4, 5, 6, 7],
+            ElementType::HEX8,
+            &groups,
+        );
+        assert_eq!(
+            elem.oriented_positive_connectivity(),
+            (ElementType::HEX8, canonical.clone())
+        );
+        // ...and the left-handed inversion produced by the topological from_poly of an
+        // outward-wound PHED is repaired to the canonical VTK ordering.
+        let elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &family,
+            &[0usize, 3, 2, 1, 4, 7, 6, 5],
+            ElementType::HEX8,
+            &groups,
+        );
+        assert_eq!(
+            elem.oriented_positive_connectivity(),
+            (ElementType::HEX8, canonical)
+        );
     }
 }

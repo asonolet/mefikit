@@ -35,6 +35,8 @@ pub mod normals;
 pub mod overlay;
 /// Convert elements to their poly equivalents (polygon/polyhedron/spline).
 pub mod polyze;
+/// Reorientation of element winding to the canonical convention.
+pub mod reorient;
 /// Element and node selection utilities.
 pub mod selector;
 /// Node snapping to merge nearby nodes.
@@ -55,6 +57,7 @@ pub use neighbours::*;
 pub use normals::*;
 pub use overlay::*;
 pub use polyze::*;
+pub use reorient::*;
 pub use selector::*;
 pub use snap::*;
 pub use split_cells::*;
