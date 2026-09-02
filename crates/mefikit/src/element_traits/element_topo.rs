@@ -238,7 +238,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 (
                     PHED,
                     vec![
-                        co[0], co[1], co[2], co[3], m, co[4], co[5], co[6], co[7], m, co[0], co[1],
+                        co[0], co[3], co[2], co[1], m, co[4], co[5], co[6], co[7], m, co[0], co[1],
                         co[5], co[4], m, co[1], co[2], co[6], co[5], m, co[2], co[3], co[7], co[6],
                         m, co[3], co[0], co[4], co[7],
                     ],
@@ -251,8 +251,8 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 (
                     PHED,
                     vec![
-                        // bottom [0,1,2,3]
-                        co[0], co[1], co[2], co[3], co[8], co[9], co[10], co[11], m,
+                        // bottom [0,3,2,1]
+                        co[0], co[3], co[2], co[1], co[8], co[9], co[10], co[11], m,
                         // top [4,5,6,7]
                         co[4], co[5], co[6], co[7], co[12], co[13], co[14], co[15], m,
                         // front [0,1,5,4]

@@ -116,7 +116,10 @@ def install_conversions():
             new_connectivity = np.insert(
                 conn.flatten(), np.arange(n_elem) * num_nodes, mf_types_mc_id[et]
             )
-            offsets = np.arange(n_elem, dtype=int) * (num_nodes + 1)
+            # MEDCoupling nodal-connectivity index has one entry per cell plus a
+            # trailing end offset, i.e. n_elem + 1 elements. Omitting the last
+            # entry silently drops the final cell.
+            offsets = np.arange(n_elem + 1, dtype=int) * (num_nodes + 1)
             return new_connectivity, offsets
 
         blocks = self.blocks()
