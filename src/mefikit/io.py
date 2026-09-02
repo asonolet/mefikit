@@ -142,10 +142,10 @@ def install_conversions():
                 offset += mc_offset[-1]
                 offset = offset[1:]
             mc_offset = np.r_[mc_offset, offset]
-        res = mc.MEDCouplingUMesh()
+        et = next(iter(blocks.keys()))
+        res = mc.MEDCouplingUMesh("mf_UMesh", mf_types_dim[et])
         res.setCoords(mc.DataArrayDouble(coords))
         res.setConnectivity(mc.DataArrayInt(mc_conn), mc.DataArrayInt(mc_offset))
-        res.setName("mf_UMesh")
         return res
 
     def to_pyvista(
