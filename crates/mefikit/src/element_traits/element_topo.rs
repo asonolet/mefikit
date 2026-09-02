@@ -720,8 +720,8 @@ mod tests {
         assert_eq!(et, ElementType::PHED);
         // 6 faces x 4 nodes + 5 separators = 29 entries
         assert_eq!(poly_conn.len(), 29);
-        // Check first face
-        assert_eq!(&poly_conn[0..4], &[0, 1, 2, 3]);
+        // First face is the bottom, wound outward (reversed VTK order)
+        assert_eq!(&poly_conn[0..4], &[0, 3, 2, 1]);
         // Check last face (left = VTK face 5)
         assert_eq!(&poly_conn[25..29], &[3, 0, 4, 7]);
     }
