@@ -503,6 +503,12 @@ fn from_phed_hex8(
         .try_into()
         .unwrap();
 
+    // Purely topological reconstruction: the node ordering follows the winding of the
+    // first face in the PHED, which `to_poly` stores outward (one face each from a
+    // right-hand-wound cell appears reversed). The result is a valid HEX8 but may be
+    // left-handed; callers that need the canonical positive-volume VTK ordering should
+    // use the coordinate-aware orientation fixer. This function stays topology-only
+    // (it never touches coordinates) so `unpolyze` is fast and never "repairs" meshes.
     Ok((
         HEX8,
         vec![
@@ -1028,7 +1034,14 @@ mod tests {
         );
         let (et2, conn2) = poly_elem.from_poly().unwrap();
         assert_eq!(et2, ElementType::HEX8);
-        assert_eq!(conn2, vec![0, 1, 2, 3, 4, 5, 6, 7]);
+        // `from_poly` is purely topological: `to_poly` stores every face outward, so the
+        // reconstructed node ordering follows the (reversed) bottom face and is a
+        // left-handed permutation of the original. Use the coordinate-aware orientation
+        // fixer if the canonical positive-volume VTK ordering is required.
+        assert_eq!(conn2.len(), 8);
+        let mut sorted = conn2.clone();
+        sorted.sort();
+        assert_eq!(sorted, vec![0, 1, 2, 3, 4, 5, 6, 7]);
     }
 
     #[test]
@@ -1095,5 +1108,73 @@ mod tests {
         let mut sorted = conn.clone();
         sorted.sort();
         assert_eq!(sorted, vec![0, 1, 2, 3, 4, 5, 6, 7]);
+    }
+
+    #[test]
+    fn test_from_poly_foreign_face_order() {
+        // `from_poly` must rely on faces being CCW only, never on the face order or on
+        // the poly having been built by `to_poly`/`polyze`. This PHED stands in for a
+        // polyhedron produced by another tool: the six VTK CCW hexa faces in an
+        // arbitrary permutation, each cyclically rotated inside itself.
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0]
+        ];
+        let m = usize::MAX;
+        // Bottom [3,2,1,0] is cyclically reversed; sides and top are plain rotations.
+        let phed_conn = vec![
+            1, 2, 6, 5, m, //
+            6, 7, 4, 5, m, //
+            3, 2, 1, 0, m, //
+            7, 3, 0, 4, m, //
+            0, 1, 5, 4, m, //
+            7, 6, 2, 3,
+        ];
+        let groups = crate::mesh::ArcGroups::new();
+        let poly_elem = Element::new(
+            0,
+            coords.view(),
+            None,
+            &0,
+            &phed_conn,
+            ElementType::PHED,
+            &groups,
+        );
+        let (et, conn) = poly_elem.from_poly().unwrap();
+        assert_eq!(et, ElementType::HEX8);
+        assert_eq!(conn.len(), 8);
+        let mut sorted = conn.clone();
+        sorted.sort();
+        assert_eq!(sorted, vec![0, 1, 2, 3, 4, 5, 6, 7]);
+
+        // Same guarantee for the 4-triangle TET4 case: faces rotated and reordered.
+        let tcoords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ];
+        let t_conn = vec![0, 3, 2, m, 1, 3, 0, m, 2, 1, 0, m, 2, 3, 1];
+        let tet_elem = Element::new(
+            0,
+            tcoords.view(),
+            None,
+            &0,
+            &t_conn,
+            ElementType::PHED,
+            &groups,
+        );
+        let (et, conn) = tet_elem.from_poly().unwrap();
+        assert_eq!(et, ElementType::TET4);
+        assert_eq!(conn.len(), 4);
+        let mut sorted = conn.clone();
+        sorted.sort();
+        assert_eq!(sorted, vec![0, 1, 2, 3]);
     }
 }

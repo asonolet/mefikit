@@ -45,6 +45,7 @@ mod segment;
 pub use convexity::Convexity;
 pub(crate) use polygon::newell_normal;
 pub use polygon::{Polygon, in_bezier_polygon, in_quadratic_polygon};
+pub(crate) use polyhedron::face_plane;
 pub use polyhedron::{Polyhedron, point_in_phed, point_in_phed2};
 pub use region::{in_aa_bbox, in_aa_rectangle, in_circle, in_sphere};
 pub use segment::{Intersection, Intersections, PointId, Segment, intersect_seg_seg};

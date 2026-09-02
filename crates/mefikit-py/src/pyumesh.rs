@@ -8,7 +8,7 @@ use mefikit::{
     mesh::{ElementType, FieldArcD},
     prelude as mf,
     tools::{
-        Descendable, Measurable, NodeDuplicates, Overlayable,
+        Descendable, Measurable, NodeDuplicates, Overlayable, Reorientable,
         fieldexpr::{MeshEvalUpdatable, MeshEvaluable},
     },
 };
@@ -302,6 +302,14 @@ impl PyUMesh {
         let new_mesh =
             mf::unpolyze(&self.inner.view()).map_err(pyo3::exceptions::PyValueError::new_err)?;
         Ok(new_mesh.into())
+    }
+
+    fn reorient(&self) -> Self {
+        // Use the owned trait path so that coords, families, fields and groups are carried
+        // over by `Arc` sharing instead of being deep-copied through the view-based free
+        // function (`&UMeshView` has no access to the shared storage, so it must copy).
+        let new_mesh = Reorientable::reorient(&self.inner);
+        new_mesh.into()
     }
 
     fn num_elements(&self) -> usize {

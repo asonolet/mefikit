@@ -196,6 +196,36 @@ impl Polyhedron {
         vertex_centroid(&self.points)
     }
 
+    /// Reorients every face in place so that each face normal (right-hand rule over the
+    /// face winding) points outward: faces are wound CCW viewed from outside the
+    /// polyhedron.
+    ///
+    /// Uses the vertex centroid as the interior reference point, which is correct for
+    /// convex polyhedra (the case the face-shell machinery targets). After this call
+    /// [`Self::volume`] and [`Self::geometric_centroid`] are exact for any input winding,
+    /// and the `face_plane` normals/offsets are all outward.
+    ///
+    /// This is an explicit, coordinate-aware repair step; topology-only paths that build
+    /// well-formed shells (e.g. `to_poly`/`subentities`) do not pay for it.
+    pub fn into_ccw(&mut self) {
+        let refp = self.centroid();
+        for face in &mut self.faces {
+            let (n, _d) = face_plane(&self.points, face);
+            let p0 = self.points[face[0]];
+            // n·x + d = 0 is the face plane. With `refp` strictly inside, the winding is
+            // outward when the normal points away from `refp`, i.e. n·(p0 - refp) > 0.
+            let dot =
+                n[0] * (p0[0] - refp[0]) + n[1] * (p0[1] - refp[1]) + n[2] * (p0[2] - refp[2]);
+            debug_assert!(
+                dot.abs() > 1e-14,
+                "face plane contains the centroid reference point"
+            );
+            if dot < 0.0 {
+                face.reverse();
+            }
+        }
+    }
+
     /// Computes the geometric centroid of the polyhedron as the volume-weighted average of the
     /// signed tetrahedra formed by the origin and each face triangle.
     ///
@@ -486,7 +516,7 @@ fn polygon_volume_contribution(poly: &[[f64; 3]], reference: [f64; 3]) -> f64 {
     sum / 6.0
 }
 
-fn face_plane(points: &[[f64; 3]], face: &[usize]) -> ([f64; 3], f64) {
+pub(crate) fn face_plane(points: &[[f64; 3]], face: &[usize]) -> ([f64; 3], f64) {
     let mut n = [0.0; 3];
     let len = face.len();
     for i in 0..len {
@@ -909,6 +939,47 @@ mod tests {
     #[test]
     fn tet_volume() {
         assert_abs_diff_eq!(unit_tet().volume(), 1.0 / 6.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn into_ccw_repairs_inverted_face() {
+        // Unit cube translated away from the origin, whose bottom face is wound inward
+        // (the pre-fix `to_poly` layout). Because the divergent-theorem sum is sensitive
+        // to the face orientation, the signed volume is position-dependent garbage.
+        let mut p = Polyhedron::unknown(
+            [
+                [1.0, 1.0, 1.0],
+                [2.0, 1.0, 1.0],
+                [2.0, 2.0, 1.0],
+                [1.0, 2.0, 1.0],
+                [1.0, 1.0, 2.0],
+                [2.0, 1.0, 2.0],
+                [2.0, 2.0, 2.0],
+                [1.0, 2.0, 2.0],
+            ],
+            [
+                vec![0, 1, 2, 3], // inward (old to_poly winding)
+                vec![4, 5, 6, 7],
+                vec![0, 1, 5, 4],
+                vec![2, 3, 7, 6],
+                vec![1, 2, 6, 5],
+                vec![3, 0, 4, 7],
+            ],
+        );
+        assert!(p.volume() != 1.0);
+        p.into_ccw();
+        assert_abs_diff_eq!(p.volume(), 1.0, epsilon = 1e-12);
+        // All face normals now point outward (away from the centroid).
+        let c = p.centroid();
+        for fi in 0..p.num_faces() {
+            let (n, _d) = face_plane(&p.points, &p.faces[fi]);
+            let scale = n[0].abs().max(n[1].abs()).max(n[2].abs());
+            let p0 = p.points[p.faces[fi][0]];
+            assert!(
+                (n[0] * (p0[0] - c[0]) + n[1] * (p0[1] - c[1]) + n[2] * (p0[2] - c[2]))
+                    > scale * 1e-12
+            );
+        }
     }
 
     #[test]
