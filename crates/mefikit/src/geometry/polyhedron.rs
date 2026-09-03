@@ -350,7 +350,8 @@ struct Plane {
 /// `n · x + d = 0`.
 fn plane_of_face(points: &[[f64; 3]], face: &[usize]) -> Plane {
     let (n, d) = face_plane(points, face);
-    let inv = 1.0 / (n[0].hypot(n[1]).hypot(n[2]));
+    let norm = n[0].hypot(n[1]).hypot(n[2]);
+    let inv = 1.0 / norm;
     Plane {
         n: [n[0] * inv, n[1] * inv, n[2] * inv],
         d: -d * inv,
@@ -415,9 +416,10 @@ fn clip_polygon_by_plane(poly: &[[f64; 3]], plane: &Plane, eps: f64) -> Vec<[f64
     let mut result = Vec::with_capacity(poly.len() + 2);
 
     let m = poly.len();
-    let (mut prev, mut prev_dist) = {
-        let (pi, pr) = (m - 1, poly[m - 1]);
-        (pi, n[0] * pr[0] + n[1] * pr[1] + n[2] * pr[2] - d)
+    let mut prev = m - 1;
+    let mut prev_dist = {
+        let pr = poly[m - 1];
+        n[0] * pr[0] + n[1] * pr[1] + n[2] * pr[2] - d
     };
     let mut prev_inside = prev_dist <= eps;
 
@@ -464,7 +466,7 @@ fn remove_consecutive_duplicates(vertices: &mut Vec<[f64; 3]>) {
     if vertices.len() < 2 {
         return;
     }
-    let eps = 1e-14;
+    let eps = 1e-20;
     let mut out = 0;
     for i in 0..vertices.len() {
         let v = vertices[i];
