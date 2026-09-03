@@ -252,7 +252,7 @@ pub mod tools;
 pub mod prelude {
     pub use crate::element_traits::{ElementGeo, ElementGroups, ElementTopo};
     #[cfg(feature = "io")]
-    pub use crate::io::{read, write};
+    pub use crate::io::{read, write, MefikitIOError};
     pub use crate::mesh::{
         Connectivity, Dimension, Element, ElementId, ElementIds, ElementLike, ElementMut,
         ElementType, FieldArc, FieldArcD, FieldCow, FieldCowD, FieldOwned, FieldOwnedD, FieldView,

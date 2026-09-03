@@ -222,7 +222,7 @@ impl ConservativeP0Transfer {
                     .iter()
                     .chain(max.iter())
                     .fold(1.0_f64, |acc, &c| acc.max(c.abs()));
-                let eps = 1e-6 * scale;
+                let eps = 1e-12 * scale;
                 let candidates = index.in_bounds(
                     [min[0] - eps, min[1] - eps, min[2] - eps],
                     [max[0] + eps, max[1] + eps, max[2] + eps],
@@ -246,7 +246,7 @@ impl ConservativeP0Transfer {
                         // The candidates already come from a BVH AABB query, so skip the redundant
                         // AABB reject inside the intersection and clip directly.
                         let vol = tgt_poly.convex_intersection_volume_impl(src_poly);
-                        if vol > 1e-15 {
+                        if vol > 1e-16 {
                             src_idx.push(offset + i);
                             overlap.push(vol);
                         }
