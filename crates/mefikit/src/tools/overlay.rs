@@ -270,15 +270,10 @@ fn cut_cells_all(
         // If the cell was cut, I add new polys from the cut
         if let Some(polys) = reconstructed {
             for new_cell in polys {
-                out.add_element(ElementType::PGON, &new_cell, Some(*cell.family), None);
+                out.add_element(ElementType::PGON, &new_cell, Some(*cell.family));
             }
         } else {
-            out.add_element(
-                cell.element_type(),
-                cell.connectivity(),
-                Some(*cell.family),
-                cell.fields.clone(),
-            );
+            out.add_element(cell.element_type(), cell.connectivity(), Some(*cell.family));
         }
     }
 }
@@ -310,16 +305,11 @@ fn cut_cells(
             for new_cell in polys {
                 let inside = pgon_inside(&new_cell, &out.coords(), cutter, &cutter_bvh);
                 if keep(inside) {
-                    out.add_element(ElementType::PGON, &new_cell, Some(*cell.family), None);
+                    out.add_element(ElementType::PGON, &new_cell, Some(*cell.family));
                 }
             }
         } else if keep(cell_inside(&cell, cutter, &cutter_bvh)) {
-            out.add_element(
-                cell.element_type(),
-                cell.connectivity(),
-                Some(*cell.family),
-                cell.fields.clone(),
-            );
+            out.add_element(cell.element_type(), cell.connectivity(), Some(*cell.family));
         }
     }
 }

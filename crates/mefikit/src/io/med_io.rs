@@ -924,12 +924,14 @@ pub fn read(path: impl AsRef<Path>) -> Result<UMesh, MefikitIOError> {
         match et {
             ElementType::PGON => {
                 let (data, offsets, fam) = read_polygon_block(&mai, &med_type_name)?;
-                let block = ElementBlock::new_poly(et, data.into_shared(), offsets.into_shared());
+                let block =
+                    ElementBlock::new_poly(et, data.into_shared(), offsets.into_shared(), None);
                 insert_block(&mut mesh, block, &fam, &elem_fam_map);
             }
             ElementType::PHED => {
                 let (data, offsets, fam) = read_polyhedron_block(&mai)?;
-                let block = ElementBlock::new_poly(et, data.into_shared(), offsets.into_shared());
+                let block =
+                    ElementBlock::new_poly(et, data.into_shared(), offsets.into_shared(), None);
                 insert_block(&mut mesh, block, &fam, &elem_fam_map);
             }
             _ => {
@@ -1182,7 +1184,7 @@ mod tests {
             2,
             usize::MAX,
         ];
-        mesh.add_element(ElementType::PHED, &conn, None, None);
+        mesh.add_element(ElementType::PHED, &conn, None);
 
         write(&path, &mesh.view()).unwrap();
         let mesh2 = read(&path).unwrap();

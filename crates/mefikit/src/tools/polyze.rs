@@ -26,7 +26,7 @@ pub fn polyze(mesh: &UMeshView) -> UMesh {
 
     for elem in mesh.elements() {
         let (poly_et, poly_conn) = elem.to_poly();
-        new_mesh.add_element(poly_et, &poly_conn, None, None);
+        new_mesh.add_element(poly_et, &poly_conn, None);
     }
 
     new_mesh
@@ -45,7 +45,7 @@ pub fn unpolyze(mesh: &UMeshView) -> Result<UMesh, String> {
 
     for elem in mesh.elements() {
         let (et, conn) = elem.from_poly()?;
-        new_mesh.add_element(et, &conn, None, None);
+        new_mesh.add_element(et, &conn, None);
     }
 
     Ok(new_mesh)
@@ -61,9 +61,9 @@ pub fn polyze_dim(mesh: &UMeshView, dim: Dimension) -> UMesh {
     for elem in mesh.elements() {
         if elem.element_type.dimension() == dim {
             let (poly_et, poly_conn) = elem.to_poly();
-            new_mesh.add_element(poly_et, &poly_conn, None, None);
+            new_mesh.add_element(poly_et, &poly_conn, None);
         } else {
-            new_mesh.add_element(elem.element_type, elem.connectivity, None, None);
+            new_mesh.add_element(elem.element_type, elem.connectivity, None);
         }
     }
 
@@ -192,7 +192,7 @@ mod tests {
             nd::arr2(&[[0, 1, 3, 2]]).to_shared(),
             None,
         );
-        mesh.add_element(ElementType::PGON, &[0, 1, 4, 3, 2], None, None);
+        mesh.add_element(ElementType::PGON, &[0, 1, 4, 3, 2], None);
 
         let poly_mesh = polyze(&mesh.view());
         assert_eq!(poly_mesh.num_elements(), 4);
@@ -374,7 +374,7 @@ mod tests {
             nd::arr2(&[[0, 1, 3, 2]]).to_shared(),
             None,
         );
-        mesh.add_element(ElementType::PGON, &[0, 1, 4, 3, 2], None, None);
+        mesh.add_element(ElementType::PGON, &[0, 1, 4, 3, 2], None);
 
         let poly_mesh = polyze(&mesh.view());
         let result = unpolyze(&poly_mesh.view());

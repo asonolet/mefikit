@@ -22,7 +22,7 @@ fn handle_unstructured(block: &Group) -> Result<UMesh, MefikitIOError> {
             .iter()
             .map(|&x| x as usize)
             .collect();
-        mesh.add_element(el_type, &cell_conn, None, None);
+        mesh.add_element(el_type, &cell_conn, None);
     }
     Ok(mesh)
 }
