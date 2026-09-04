@@ -868,6 +868,7 @@ fn point_in_triangle_strict(
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;
+    use proptest::prelude::*;
 
     fn unit_cube() -> Polyhedron {
         Polyhedron::unknown(
@@ -1301,6 +1302,14 @@ mod tests {
         )
     }
 
+    /// Applies an independent axis-aligned scale to each of the three coordinates.
+    fn dilated(p: &Polyhedron, s: [f64; 3]) -> Polyhedron {
+        Polyhedron::unknown(
+            p.iter().map(|v| [v[0] * s[0], v[1] * s[1], v[2] * s[2]]),
+            (0..p.num_faces()).map(|i| p.faces[i].to_vec()),
+        )
+    }
+
     /// Unit cube centered at the origin: `[-0.5, 0.5]^3`.
     fn centered_cube() -> Polyhedron {
         let c = unit_cube();
@@ -1321,25 +1330,42 @@ mod tests {
         assert_abs_diff_eq!(a.convex_intersection_volume(&a), 1.0, epsilon = 1e-12);
     }
 
-    #[test]
-    fn intersection_self_translated_cube() {
-        let a = translated(&unit_cube(), [1000.0, 2000.0, 3000.0]);
-        let vol = a.volume();
-        assert_abs_diff_eq!(a.convex_intersection_volume(&a), vol, epsilon = 1e-9);
-    }
+    proptest! {
+        /// Self-intersection (a polyhedron intersected with itself) must return its own volume,
+        /// whatever rigid or affine transform is applied. This exercises the epsilon handling in
+        /// `convex_intersection_volume`, which must be scale-aware to survive large coordinates
+        /// (floating-point error in the plane signed distances scales with the coordinate
+        /// magnitude) and anisotropic dilation (which skews the box into a general parallelepiped).
+        ///
+        /// The ground truth is the analytic volume `sx * sy * sz`: starting from the unit cube
+        /// (volume 1), rotation and translation preserve volume while a dilation by `[sx, sy, sz]`
+        /// multiplies it by `sx * sy * sz`. This is used rather than `volume()` because at large
+        /// coordinates the divergence-theorem sum over absolute coordinates cancels catastrophically
+        /// (mixing ~M^3 terms to give a ~L^3 result), whereas the intersector centres on the
+        /// centroid first and stays accurate.
+        #[test]
+        fn intersection_self_volume_preserved(
+            tx in -1e6f64..1e6,
+            ty in -1e6f64..1e6,
+            tz in -1e6f64..1e6,
+            angle in -4.0f64..4.0,
+            sx in 0.1f64..10.0,
+            sy in 0.1f64..10.0,
+            sz in 0.1f64..10.0,
+        ) {
+            let a = centered_cube();
+            let a = rotated_about(&a, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0], angle);
+            let a = dilated(&a, [sx, sy, sz]);
+            let a = translated(&a, [tx, ty, tz]);
 
-    #[test]
-    fn intersection_self_rotated_and_translated() {
-        let base = unit_cube();
-        let a = translated(&base, [500.0, -300.0, 1000.0]);
-        let a = rotated_about(
-            &a,
-            a.centroid(),
-            [0.0, 0.0, 1.0],
-            std::f64::consts::FRAC_PI_3,
-        );
-        let vol = a.volume();
-        assert_abs_diff_eq!(a.convex_intersection_volume(&a), vol, epsilon = 1e-9);
+            let expected = sx * sy * sz;
+            let got = a.convex_intersection_volume(&a);
+            let tol = 1e-9 * (expected.abs().max(1.0));
+            prop_assert!(
+                (got - expected).abs() <= tol,
+                "self-intersection {got} != volume {expected} (tol {tol})"
+            );
+        }
     }
 
     #[test]
@@ -1394,7 +1420,10 @@ mod tests {
 
     fn rotated_about(p: &Polyhedron, center: [f64; 3], axis: [f64; 3], angle: f64) -> Polyhedron {
         let (c, s) = (angle.cos(), angle.sin());
-        let [ax, ay, az] = axis;
+        // Normalize the axis: Rodrigues' formula requires a unit vector, otherwise the transform
+        // is not a pure rotation and does not preserve volume.
+        let norm = axis[0].hypot(axis[1]).hypot(axis[2]);
+        let (ax, ay, az) = (axis[0] / norm, axis[1] / norm, axis[2] / norm);
         let rot = |v: [f64; 3]| -> [f64; 3] {
             let w = [v[0] - center[0], v[1] - center[1], v[2] - center[2]];
             // Rodrigues' rotation formula.
