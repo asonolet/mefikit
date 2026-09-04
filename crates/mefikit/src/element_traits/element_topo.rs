@@ -992,15 +992,7 @@ mod tests {
             7, 6, 2, 3,
         ];
         let groups = crate::mesh::ArcGroups::new();
-        let poly_elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &0,
-            &phed_conn,
-            ElementType::PHED,
-            &groups,
-        );
+        let poly_elem = Element::new(0, coords.view(), &0, &phed_conn, ElementType::PHED, &groups);
         let (et, conn) = poly_elem.from_poly().unwrap();
         assert_eq!(et, ElementType::HEX8);
         assert_eq!(conn.len(), 8);
@@ -1016,15 +1008,7 @@ mod tests {
             [0.0, 0.0, 1.0]
         ];
         let t_conn = vec![0, 3, 2, m, 1, 3, 0, m, 2, 1, 0, m, 2, 3, 1];
-        let tet_elem = Element::new(
-            0,
-            tcoords.view(),
-            None,
-            &0,
-            &t_conn,
-            ElementType::PHED,
-            &groups,
-        );
+        let tet_elem = Element::new(0, tcoords.view(), &0, &t_conn, ElementType::PHED, &groups);
         let (et, conn) = tet_elem.from_poly().unwrap();
         assert_eq!(et, ElementType::TET4);
         assert_eq!(conn.len(), 4);

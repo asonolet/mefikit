@@ -351,7 +351,7 @@ mod tests {
             None,
         );
         mesh.add_regular_block(ElementType::TRI3, nd::arr2(&[[1, 4, 2]]).to_shared(), None);
-        mesh.add_element(ElementType::PGON, &[0, 3, 2, 1], None, None);
+        mesh.add_element(ElementType::PGON, &[0, 3, 2, 1], None);
 
         let fixed = Reorientable::reorient(&mesh);
         let mut node_sets: Vec<(ElementType, Vec<usize>)> = Vec::new();
@@ -429,7 +429,6 @@ mod tests {
                 4,
                 7,
             ],
-            None,
             None,
         );
 

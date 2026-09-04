@@ -674,7 +674,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &family,
             &[0, 3, 2, 1],
             ElementType::QUAD4,
@@ -698,7 +697,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &family,
             &[0, 1, 2, 3],
             ElementType::QUAD4,
@@ -725,15 +723,7 @@ mod tests {
             (&[0usize, 1, 2, 3][..], vec![0, 1, 2, 3]),
             (&[0, 1, 3, 2][..], vec![0, 1, 2, 3]),
         ] {
-            let elem = Element::new(
-                0,
-                coords.view(),
-                None,
-                &family,
-                conn,
-                ElementType::TET4,
-                &groups,
-            );
+            let elem = Element::new(0, coords.view(), &family, conn, ElementType::TET4, &groups);
             assert_eq!(
                 elem.oriented_positive_connectivity(),
                 (ElementType::TET4, expected)
@@ -760,7 +750,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &family,
             &[0usize, 1, 2, 3, 4, 5, 6, 7],
             ElementType::HEX8,
@@ -775,7 +764,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &family,
             &[0usize, 3, 2, 1, 4, 7, 6, 5],
             ElementType::HEX8,
