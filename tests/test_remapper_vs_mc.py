@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import functools
 import os
 import time
 
@@ -10,7 +9,12 @@ import numpy as np
 import mefikit as mf
 
 
-def mc_field(mmesh: mc.MEDCouplingUMesh, vals: np.ndarray, nature: int = mc.IntensiveConservation, name="Measure"):
+def mc_field(
+    mmesh: mc.MEDCouplingUMesh,
+    vals: np.ndarray,
+    nature: int = mc.IntensiveConservation,
+    name="Measure",
+):
     f = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
     a = mc.DataArrayDouble(np.ascontiguousarray(vals.ravel()))
     a.setName(name)
@@ -18,6 +22,7 @@ def mc_field(mmesh: mc.MEDCouplingUMesh, vals: np.ndarray, nature: int = mc.Inte
     f.setMesh(mmesh)
     f.setNature(nature)
     return f
+
 
 def mc_remap(mc_src, mc_tgt, field_npy) -> tuple[float, float, np.ndarray]:
     mcf = mc_field(mc_src, field_npy)
@@ -45,7 +50,7 @@ def mf_remap(mf_src, mf_tgt) -> tuple[float, float, np.ndarray]:
 # --- remap timing + validation ---------------------------------------------
 def test_remap():
     """Test medcoupling remapper vs mefikit transfer and bench."""
-    mesh_files = os.listdir("tmp/")
+    mesh_files = os.listdir("tests/data")
     mc_preps = []
     mc_applies = []
     mf_preps = []
@@ -55,14 +60,14 @@ def test_remap():
         for mfn_tgt in mesh_files[i:]:
             print("Testing", mfn_src, mfn_tgt)
 
-            mf_src = mf.UMesh.read("tmp/" + mfn_src)
-            mf_tgt = mf.UMesh.read("tmp/" + mfn_tgt)
+            mf_src = mf.UMesh.read("tests/data/" + mfn_src)
+            mf_tgt = mf.UMesh.read("tests/data/" + mfn_tgt)
 
             mf_src = mf_src.reorient()
             mf_tgt = mf_tgt.reorient()
 
-            mc_src = mc.ReadMeshFromFile("tmp/" + mfn_src, 0)
-            mc_tgt = mc.ReadMeshFromFile("tmp/" + mfn_tgt, 0)
+            mc_src = mc.ReadMeshFromFile("tests/data/" + mfn_src, 0)
+            mc_tgt = mc.ReadMeshFromFile("tests/data/" + mfn_tgt, 0)
 
             mf_src.fields["Measure"] = mf.M
             mes_npy = mf_src.fields["Measure"].numpy()
@@ -84,22 +89,21 @@ def test_remap():
                 mf_tgt.fields["diff"] = mf.Field("Measure") - mf.Field("mc_remapped")
                 diff_cells = np.abs(mcf_remapped - mff_remapped) > 1e-9
                 print(np.where(diff_cells))
-                print(mcf_remapped[diff_cells])
-                print(mff_remapped[diff_cells])
-                print(mes_npy[diff_cells])
+                print("mc : ", mcf_remapped[diff_cells])
+                print("mf : ", mff_remapped[diff_cells])
+                print("mes: ", mes_npy[diff_cells])
                 mc_tgt.write(f"diff_{mfn_src[:-4]}_{mfn_tgt[:-4]}.med")
+                cell = mc_tgt.buildPartOfMySelf([80])
+                cell.zipCoords()
+                cell.write(f"cell80_{mfn_tgt[:-4]}.med")
                 # mc.WriteMesh(f"diff_{mfn_src[:-4]}_{mfn_tgt[:-4]}.med", mc_tgt, True)
                 # mc.WriteField(f"diff_{mfn_src[:-4]}_{mfn_tgt[:-4]}.med", )
                 break
-            break
+        break
     print("MEDCoupling prepare: ", np.mean(mc_preps))
     print("MEDCoupling apply  : ", np.mean(mc_applies))
     print("Mefikit prepare    : ", np.mean(mf_preps))
     print("Mefikit apply      : ", np.mean(mf_applies))
-
-
-
-
 
 
 if __name__ == "__main__":
