@@ -295,7 +295,14 @@ impl Polyhedron {
     /// by AABB (e.g. a BVH-driven boundary-element search) should call this to avoid the redundant
     /// work. The inputs are still assumed convex and the clip itself is unchanged.
     pub(crate) fn convex_intersection_volume_impl(&self, other: &Self) -> f64 {
-        let eps = 1e-12;
+        let scale = self
+            .points
+            .iter()
+            .chain(other.points.iter())
+            .map(|p| p[0].abs().max(p[1].abs()).max(p[2].abs()))
+            .fold(0.0_f64, f64::max)
+            .max(1.0);
+        let eps = 64.0 * f64::EPSILON * scale;
 
         let other_planes = other.planes();
         let self_planes = self.planes();
@@ -466,7 +473,12 @@ fn remove_consecutive_duplicates(vertices: &mut Vec<[f64; 3]>) {
     if vertices.len() < 2 {
         return;
     }
-    let eps = 1e-20;
+    let scale = vertices
+        .iter()
+        .map(|v| v[0].abs().max(v[1].abs()).max(v[2].abs()))
+        .fold(0.0_f64, f64::max)
+        .max(1.0);
+    let eps = 64.0 * f64::EPSILON * scale;
     let mut out = 0;
     for i in 0..vertices.len() {
         let v = vertices[i];
@@ -1307,6 +1319,27 @@ mod tests {
     fn intersection_identical_cubes() {
         let a = unit_cube();
         assert_abs_diff_eq!(a.convex_intersection_volume(&a), 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn intersection_self_translated_cube() {
+        let a = translated(&unit_cube(), [1000.0, 2000.0, 3000.0]);
+        let vol = a.volume();
+        assert_abs_diff_eq!(a.convex_intersection_volume(&a), vol, epsilon = 1e-9);
+    }
+
+    #[test]
+    fn intersection_self_rotated_and_translated() {
+        let base = unit_cube();
+        let a = translated(&base, [500.0, -300.0, 1000.0]);
+        let a = rotated_about(
+            &a,
+            a.centroid(),
+            [0.0, 0.0, 1.0],
+            std::f64::consts::FRAC_PI_3,
+        );
+        let vol = a.volume();
+        assert_abs_diff_eq!(a.convex_intersection_volume(&a), vol, epsilon = 1e-9);
     }
 
     #[test]

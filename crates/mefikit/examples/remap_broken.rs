@@ -2,7 +2,7 @@ use mefikit::prelude as mf;
 use std::path::Path;
 
 #[cfg(feature = "io")]
-fn main() -> Result<(), mf::MefikitIOError>{
+fn main() -> Result<(), mf::MefikitIOError> {
     use mefikit::tools::{Measurable, Transfer};
 
     let mesh_file = Path::new("/home/catA/as259691/Codes/mefikit/tmp/mesh_27.med");
