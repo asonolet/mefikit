@@ -181,13 +181,34 @@ impl Polyhedron {
     }
 
     fn signed_volume6(&self) -> f64 {
+        // Sum the triple products about the vertex centroid rather than the origin. By the
+        // divergence theorem the signed volume is independent of the reference point, but summing
+        // over *absolute* coordinates is numerically unstable for a polyhedron translated far from
+        // the origin: it mixes ~M^3 terms to recover a ~L^3 result (M the coordinate magnitude,
+        // L the shape size), silently losing most significant digits. Recentring on the centroid
+        // makes the operands ~L in magnitude and translation exact, recovering full precision.
+        let c = self.centroid();
         let mut v6 = 0.0;
         for [i, j, k] in self.face_triangles() {
-            v6 += triple_product(self.points[i], self.points[j], self.points[k]);
+            let a = [
+                self.points[i][0] - c[0],
+                self.points[i][1] - c[1],
+                self.points[i][2] - c[2],
+            ];
+            let b = [
+                self.points[j][0] - c[0],
+                self.points[j][1] - c[1],
+                self.points[j][2] - c[2],
+            ];
+            let dpt = [
+                self.points[k][0] - c[0],
+                self.points[k][1] - c[1],
+                self.points[k][2] - c[2],
+            ];
+            v6 += triple_product(a, b, dpt);
         }
         v6
     }
-
     /// Computes the vertex centroid of the polyhedron: the arithmetic mean of its vertices.
     ///
     /// This is the average of the node coordinates, not the volume-weighted centroid (see
@@ -232,12 +253,28 @@ impl Polyhedron {
     /// This is the centroid of the volume enclosed by the polyhedron, not the average of its
     /// vertices (see [`Self::centroid`]).
     pub fn geometric_centroid(&self) -> [f64; 3] {
+        // Reduce to the recentred frame (the vertex centroid at the origin) before accumulating,
+        // so the ~M^4 cancellations of the absolute-coordinate sum are avoided for shapes translated
+        // far from the origin. See `signed_volume6` for the same rationale.
+        let refp = self.centroid();
         let mut v6 = 0.0;
         let mut c = [0.0; 3];
         for [i, j, k] in self.face_triangles() {
-            let a = self.points[i];
-            let b = self.points[j];
-            let cpt = self.points[k];
+            let a = [
+                self.points[i][0] - refp[0],
+                self.points[i][1] - refp[1],
+                self.points[i][2] - refp[2],
+            ];
+            let b = [
+                self.points[j][0] - refp[0],
+                self.points[j][1] - refp[1],
+                self.points[j][2] - refp[2],
+            ];
+            let cpt = [
+                self.points[k][0] - refp[0],
+                self.points[k][1] - refp[1],
+                self.points[k][2] - refp[2],
+            ];
             let det = triple_product(a, b, cpt);
             v6 += det;
             for kk in 0..3 {
@@ -247,7 +284,8 @@ impl Polyhedron {
         if v6.abs() < 1e-30 {
             return self.points[0];
         }
-        [c[0] / (4.0 * v6), c[1] / (4.0 * v6), c[2] / (4.0 * v6)]
+        let g = [c[0] / (4.0 * v6), c[1] / (4.0 * v6), c[2] / (4.0 * v6)];
+        [g[0] + refp[0], g[1] + refp[1], g[2] + refp[2]]
     }
 
     /// Returns `true` if `point` lies inside the polyhedron using half-open ray casting.
@@ -1316,6 +1354,29 @@ mod tests {
         translated(&c, [-0.5, -0.5, -0.5])
     }
 
+    /// Perturbs every vertex of every face slightly out of the face plane, as real meshes' faces
+    /// are never perfectly coplanar. Each face's vertices are displaced by `delta` along that
+    /// face's Newell normal, breaking planarity while keeping the vertex topology intact. A `delta`
+    /// of zero leaves the polyhedron unchanged.
+    fn warped_faces(p: &Polyhedron, delta: f64) -> Polyhedron {
+        let mut pts = p.iter().copied().collect::<Vec<_>>();
+        for fi in 0..p.num_faces() {
+            let face: Vec<usize> = p.faces[fi].to_vec();
+            let (n, _d) = face_plane(&pts, &face);
+            let norm = n[0].hypot(n[1]).hypot(n[2]);
+            if norm == 0.0 {
+                continue;
+            }
+            let u = [n[0] / norm, n[1] / norm, n[2] / norm];
+            for &vi in &face {
+                pts[vi][0] += delta * u[0];
+                pts[vi][1] += delta * u[1];
+                pts[vi][2] += delta * u[2];
+            }
+        }
+        Polyhedron::unknown(pts, (0..p.num_faces()).map(|i| p.faces[i].to_vec()))
+    }
+
     #[test]
     fn intersection_disjoint_cubes() {
         let a = unit_cube();
@@ -1339,10 +1400,9 @@ mod tests {
         ///
         /// The ground truth is the analytic volume `sx * sy * sz`: starting from the unit cube
         /// (volume 1), rotation and translation preserve volume while a dilation by `[sx, sy, sz]`
-        /// multiplies it by `sx * sy * sz`. This is used rather than `volume()` because at large
-        /// coordinates the divergence-theorem sum over absolute coordinates cancels catastrophically
-        /// (mixing ~M^3 terms to give a ~L^3 result), whereas the intersector centres on the
-        /// centroid first and stays accurate.
+        /// multiplies it by `sx * sy * sz`. This cross-check against an exact value is independent
+        /// of the divergence-theorem sum in `volume()`, so it would catch a regression in either
+        /// the clip-based intersector or the measure.
         #[test]
         fn intersection_self_volume_preserved(
             tx in -1e6f64..1e6,
@@ -1364,6 +1424,119 @@ mod tests {
             prop_assert!(
                 (got - expected).abs() <= tol,
                 "self-intersection {got} != volume {expected} (tol {tol})"
+            );
+        }
+    }
+
+    proptest! {
+        /// The measure (`Polyhedron::volume`) of a dilated, rotated, translated cube must equal the
+        /// analytic volume `sx * sy * sz` (rotation and translation are volume-preserving, an
+        /// anisotropic dilation multiplies the unit-cube volume by the product of the three factors).
+        ///
+        /// `volume()` recentres its divergence-theorem sum on the vertex centroid before summing
+        /// (see `signed_volume6`), so it is translation-exact; this test verifies that recentring
+        /// actually keeps the measure precise even for a small shape at large coordinates.
+        #[test]
+        fn measure_volume_preserved(
+            tx in -1e6f64..1e6,
+            ty in -1e6f64..1e6,
+            tz in -1e6f64..1e6,
+            angle in -4.0f64..4.0,
+            sx in 0.1f64..10.0,
+            sy in 0.1f64..10.0,
+            sz in 0.1f64..10.0,
+        ) {
+            let a = centered_cube();
+            let a = rotated_about(&a, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0], angle);
+            let a = dilated(&a, [sx, sy, sz]);
+            let a = translated(&a, [tx, ty, tz]);
+
+            let expected = sx * sy * sz;
+            let got = a.volume();
+            let tol = 1e-9 * (expected.abs().max(1.0));
+            prop_assert!(
+                (got - expected).abs() <= tol,
+                "volume {got} != expected {expected} (tol {tol})"
+            );
+        }
+    }
+
+    proptest! {
+        /// Cross-validates the two measure/intersection computations on the same transformed cube:
+        /// `volume()` and `convex_intersection_volume(poly, poly)` must agree. This exercises both
+        /// the divergence-theorem sum and the clip-based boundary integration on identical input.
+        #[test]
+        fn measure_matches_self_intersection(
+            tx in -1e6f64..1e6,
+            ty in -1e6f64..1e6,
+            tz in -1e6f64..1e6,
+            angle in -4.0f64..4.0,
+            sx in 0.1f64..5.0,
+            sy in 0.1f64..5.0,
+            sz in 0.1f64..5.0,
+        ) {
+            let a = centered_cube();
+            let a = rotated_about(&a, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0], angle);
+            let a = dilated(&a, [sx, sy, sz]);
+            let a = translated(&a, [tx, ty, tz]);
+
+            let vol = a.volume();
+            let inter = a.convex_intersection_volume(&a);
+            let tol = 1e-6 * (vol.abs().max(1.0));
+            prop_assert!(
+                (vol - inter).abs() <= tol,
+                "volume {vol} != self-intersection {inter} (tol {tol})"
+            );
+        }
+    }
+
+    proptest! {
+        /// Real meshes' faces are never perfectly planar; every vertex is usually a hair off its
+        /// face's best-fit plane. This checks that a mildly warped (non-planar-faced) convex cube
+        /// still satisfies the two invariants that matter for the transfer:
+        ///   - `volume()` equals `convex_intersection_volume(poly, poly)` (both triangulate the
+        ///     same warped faces with the divergence theorem),
+        ///   - both are invariant under translation, despite the faces being non-planar.
+        ///
+        /// `delta` is a fraction of the cube's size: an absolute warp between 1e-12 and 1e-2 times
+        /// the side length.
+        #[test]
+        fn non_planar_face_robust(
+            delta_rel in 1e-12f64..1e-2,
+            tx in -1e4f64..1e4,
+            ty in -1e4f64..1e4,
+            tz in -1e4f64..1e4,
+            angle in -4.0f64..4.0,
+            sx in 1.0f64..5.0,
+            sy in 1.0f64..5.0,
+            sz in 1.0f64..5.0,
+        ) {
+            let base = centered_cube();
+            let base = rotated_about(&base, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0], angle);
+            let base = dilated(&base, [sx, sy, sz]);
+            let delta = delta_rel;
+            let a = warped_faces(&base, delta);
+            let vol = a.volume();
+            let inter = a.convex_intersection_volume(&a);
+            let tol = 1e-6 * (vol.abs().max(1.0));
+
+            // The two computations agree on the same warped shape.
+            prop_assert!(
+                (vol - inter).abs() <= tol,
+                "with warp {delta}: volume {vol} != self-intersection {inter}"
+            );
+
+            // Both are translation-invariant: translating the warped shape must not change them.
+            let at = translated(&a, [tx, ty, tz]);
+            let vol_t = at.volume();
+            prop_assert!(
+                (vol_t - vol).abs() <= tol,
+                "volume {vol} changed to {vol_t} under translation (warp {delta})"
+            );
+            let inter_t = at.convex_intersection_volume(&at);
+            prop_assert!(
+                (inter_t - inter).abs() <= tol,
+                "self-intersection {inter} changed to {inter_t} under translation (warp {delta})"
             );
         }
     }
