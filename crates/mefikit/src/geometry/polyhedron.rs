@@ -347,9 +347,17 @@ impl Polyhedron {
         let reference = self.centroid();
 
         let mut volume = 0.0;
-        for fi in 0..self.faces.len() {
+        for (fi, self_plane) in self_planes.iter().copied().enumerate() {
             let poly = self.face_polygon(fi);
-            if let Some(clipped) = clip_face_by_polyhedron(&poly, &other_planes, eps) {
+            // Do not clip a boundary face against a plane that coincides with its own plane: a
+            // (possibly slightly non-planar) face's vertices may straddle its best-fit plane, and
+            // clipping it against that same plane — its own boundary — wrongly rejects the face.
+            let planes: Vec<Plane> = other_planes
+                .iter()
+                .filter(|plane| !plane_same_side(self_plane, **plane))
+                .copied()
+                .collect();
+            if let Some(clipped) = clip_face_by_polyhedron(&poly, &planes, eps) {
                 volume += polygon_volume_contribution(&clipped, reference);
             }
         }
