@@ -396,11 +396,12 @@ impl Polyhedron {
             // clipping it against that same plane — its own boundary — wrongly rejects the face.
             let planes: Vec<Plane> = other_planes
                 .iter()
-                .filter(|plane| !plane_same_side(self_plane, **plane))
+                .filter(|plane| !plane_same_side(self_plane, **plane, coplanar_tol))
                 .copied()
                 .collect();
             if let Some(clipped) = clip_face_by_polyhedron(&poly, &planes, eps) {
-                volume += polygon_volume_contribution(&clipped, reference);
+                let v = polygon_volume_contribution(&clipped, reference);
+                volume += v;
             }
         }
         for (fi, plane) in other_planes.iter().enumerate() {
@@ -412,12 +413,16 @@ impl Polyhedron {
             {
                 continue;
             }
-            if self_planes.iter().any(|p| plane_same_side(*p, *plane)) {
+            if self_planes
+                .iter()
+                .any(|p| plane_same_side(*p, *plane, coplanar_tol))
+            {
                 continue;
             }
             let poly = other.face_polygon(fi);
             if let Some(clipped) = clip_face_by_polyhedron(&poly, &self_planes, eps) {
-                volume += polygon_volume_contribution(&clipped, reference);
+                let v = polygon_volume_contribution(&clipped, reference);
+                volume += v;
             }
         }
         volume.abs()
@@ -467,13 +472,18 @@ fn plane_of_face(points: &[[f64; 3]], face: &[usize]) -> Plane {
 /// Used to skip the second half of coincident coplanar face contributions: when a face of `P` and
 /// a face of `Q` are `same_side` coplanar, their clipped patches in the intersection boundary are
 /// identical (`F ∩ Q = G ∩ P = (P ∩ Q) ∩ H`), so accumulating both would double the volume.
-fn plane_same_side(a: Plane, b: Plane) -> bool {
+///
+/// `tol` is the same warp-aware, translation-invariant tolerance as [`plane_coplanar_opposite`]:
+/// two cells sharing a (possibly slightly warped) boundary face fit their planes independently, so
+/// their offsets can agree only to within the face's non-planarity. Without absorbing that warp the
+/// coincident faces would not be recognized, and their (identical) patches would be counted twice,
+/// overstating the intersection volume.
+fn plane_same_side(a: Plane, b: Plane, tol: f64) -> bool {
     let ndot = a.n[0] * b.n[0] + a.n[1] * b.n[1] + a.n[2] * b.n[2];
     if ndot <= 1.0 - 1e-10 {
         return false;
     }
-    let scale = (a.d.abs()).max(b.d.abs()).max(1.0);
-    (a.d - b.d).abs() <= 1e-9 * scale
+    (a.d - b.d).abs() <= tol
 }
 
 /// Returns `true` if the two planes are (approximately) coincident with the interior on opposite
@@ -1565,6 +1575,48 @@ mod tests {
     fn intersection_identical_cubes() {
         let a = unit_cube();
         assert_abs_diff_eq!(a.convex_intersection_volume(&a), 1.0, epsilon = 1e-12);
+    }
+
+    /// Regression for the (tgt1399, src879) over-count. Two cells whose shared capacity face is
+    /// fitted independently by each cell can disagree by a small warp: cell 1399's y=0 plane fitted
+    /// to d = +2.877e-6 while its neighbor's identical face sat at d = 0 (both outward [0,-1,0]).
+    /// The old hard `1e-9 * scale` offset tolerance failed to recognise these as the same coincident
+    /// same-side face, so the identical clipped patch on the shared face was accumulated twice,
+    /// over-stating the intersection volume by ~2.8e-5 (the +7.6% over-count). The warp-aware
+    /// tolerance used by `plane_same_side` must absorb such small shared-face warps — while still
+    /// rejecting faces that are genuinely tilted apart or offset beyond the warp scale.
+    #[test]
+    fn plane_same_side_absorbs_shared_face_warp() {
+        let tol = 1e-4; // coplanar_tol with unit-scale geometry (radial >= 1)
+        let a = Plane {
+            n: [0.0, -1.0, 0.0],
+            d: 2.877e-6,
+        };
+        let b = Plane {
+            n: [0.0, -1.0, 0.0],
+            d: 0.0,
+        };
+        // Coincident same-orientation faces offset only by the shared-face warp are the same plane.
+        assert!(plane_same_side(a, b, tol));
+        assert!(plane_same_side(b, a, tol));
+        // A genuinely different orientation is not coincident.
+        assert!(!plane_same_side(
+            a,
+            Plane {
+                n: [1.0, 0.0, 0.0],
+                d: 0.0
+            },
+            tol
+        ));
+        // A real offset (larger than the warp scale) is not coincident.
+        assert!(!plane_same_side(
+            a,
+            Plane {
+                n: [0.0, -1.0, 0.0],
+                d: 1e-2
+            },
+            tol
+        ));
     }
 
     proptest! {
