@@ -342,12 +342,54 @@ impl Polyhedron {
             .max(1.0);
         let eps = 64.0 * f64::EPSILON * scale;
 
+        // Translation-invariant length scale: the maximum distance of any vertex from the centroid
+        // of both polyhedra. Used for the coplanarity tolerance so that `plane_coplanar_opposite`
+        // does not depend on where the geometry is placed in space.
+        let centroid = {
+            let mut c = [0.0; 3];
+            let mut n = 0.0;
+            for p in self.points.iter().chain(other.points.iter()) {
+                for (ci, xi) in c.iter_mut().zip(p.iter()) {
+                    *ci += xi;
+                }
+                n += 1.0;
+            }
+            for xi in c.iter_mut() {
+                *xi /= n;
+            }
+            c
+        };
+        let radial = self
+            .points
+            .iter()
+            .chain(other.points.iter())
+            .map(|p| {
+                ((p[0] - centroid[0]).powi(2)
+                    + (p[1] - centroid[1]).powi(2)
+                    + (p[2] - centroid[2]).powi(2))
+                .sqrt()
+            })
+            .fold(0.0_f64, f64::max)
+            .max(1.0);
+        let coplanar_tol = 1e-4 * radial;
+
         let other_planes = other.planes();
         let self_planes = self.planes();
         let reference = self.centroid();
 
         let mut volume = 0.0;
         for (fi, self_plane) in self_planes.iter().copied().enumerate() {
+            // A face of `self` that is coplanar with a face of `other` lies on `other`'s boundary
+            // (a shared separating face), so it contributes no 3D overlap regardless of its
+            // orientation: the two cells only touch along a 2D face. Callers in remapping expect
+            // adjacent cells to yield a zero intersection. Skipping it here (instead of clipping) is
+            // also what makes the result independent of tiny warp/tilt of the shared face.
+            if other_planes
+                .iter()
+                .any(|other_plane| plane_coplanar_opposite(self_plane, *other_plane, coplanar_tol))
+            {
+                continue;
+            }
             let poly = self.face_polygon(fi);
             // Do not clip a boundary face against a plane that coincides with its own plane: a
             // (possibly slightly non-planar) face's vertices may straddle its best-fit plane, and
@@ -362,6 +404,14 @@ impl Polyhedron {
             }
         }
         for (fi, plane) in other_planes.iter().enumerate() {
+            // Symmetric skip: a face of `other` coplanar-opposite with a face of `self` is the
+            // shared separating face and contributes no overlap.
+            if self_planes
+                .iter()
+                .any(|p| plane_coplanar_opposite(*p, *plane, coplanar_tol))
+            {
+                continue;
+            }
             if self_planes.iter().any(|p| plane_same_side(*p, *plane)) {
                 continue;
             }
@@ -424,6 +474,24 @@ fn plane_same_side(a: Plane, b: Plane) -> bool {
     }
     let scale = (a.d.abs()).max(b.d.abs()).max(1.0);
     (a.d - b.d).abs() <= 1e-9 * scale
+}
+
+/// Returns `true` if the two planes are (approximately) coincident with the interior on opposite
+/// sides, i.e. the outward normals point in opposite directions and the offsets agree. This is the
+/// signature of two adjacent cells sharing a separating face: `self`'s face is coplanar with a face
+/// of `other`, so it lies on `other`'s boundary and contributes no 3D overlap.
+///
+/// `tol` is a translation-invariant length scale (the radial size of the geometry) times a relative
+/// factor. The offset agreement tolerance is expressed relative to it so that the non-planarity
+/// (warp) of a shared face — which shifts the individually fitted planes by an amount proportional
+/// to the geometry size — is absorbed: two faces built from the same points but in opposite winding
+/// can disagree by a small relative amount even though they are geometrically the same plane.
+fn plane_coplanar_opposite(a: Plane, b: Plane, tol: f64) -> bool {
+    let ndot = a.n[0] * b.n[0] + a.n[1] * b.n[1] + a.n[2] * b.n[2];
+    if ndot >= -1.0 + 1e-10 {
+        return false;
+    }
+    (a.d + b.d).abs() <= tol
 }
 
 /// Clips the convex polygon `poly` against each half-space of `planes`, keeping the part where
@@ -1391,6 +1459,106 @@ mod tests {
         let b = translated(&a, [2.0, 0.0, 0.0]);
         assert_eq!(a.convex_intersection_volume(&b), 0.0);
         assert_eq!(b.convex_intersection_volume(&a), 0.0);
+    }
+
+    /// Two warped cubes whose interiors genuinely overlap in a 3D region (offset along x by half a
+    /// side) must still yield the full overlap volume — the coplanar-opposite skip must NOT eat a
+    /// real intersection just because faces are warped. Warping both cubes the same way does not
+    /// create antiparallel-coplanar shared faces, so the overlap must be preserved. (The warp is
+    /// kept small enough to stay in the intersector's reliable range; larger warp degrades the
+    /// intersection integration independently of the shared-face skip.)
+    #[test]
+    fn overlapping_warped_cubes_keep_volume() {
+        for delta in [0.0, 1e-12, 1e-10, 1e-8, 1e-7] {
+            let a = warped_faces(&unit_cube(), delta);
+            let b = warped_faces(&translated(&unit_cube(), [0.5, 0.0, 0.0]), delta);
+            let expected = 0.5;
+            let got = a.convex_intersection_volume(&b);
+            assert!(
+                (got - expected).abs() <= 1e-5,
+                "overlap {got} != {expected} with warp {delta}"
+            );
+            let got_ba = b.convex_intersection_volume(&a);
+            assert!(
+                (got_ba - expected).abs() <= 1e-5,
+                "overlap (sym) {got_ba} != {expected} with warp {delta}"
+            );
+        }
+    }
+
+    /// Adjacent cubes (`[0,1]^3` and `[1,2]^3`) share the face `x == 1` and thus have zero overlap
+    /// in 3D. In a real Voronoi/PHED mesh the two neighboring cells not only share that face but
+    /// reference the *same* (possibly non-planar) polygon for it: cell 80's face 4 and its neighbor
+    /// cell 468's face 1 are the identical 5 vertices in opposite winding. This is the regression
+    /// guard for that bug — a genuinely shared, warped face must not leak a spurious pyramid.
+    #[test]
+    fn adjacent_cells_share_warped_face_no_overlap() {
+        // Shared (warped) quad in the plane x = 1, made non-planar by pushing corners out of it.
+        let mut shared = [
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [1.0, 1.0, 1.0],
+            [1.0, 0.0, 1.0],
+        ];
+        // Perturb a pair of opposite corners out of the plane to break planarity by `delta`.
+        for delta in [0.0, 1e-9, 1e-7, 1e-5, 1e-4, 1e-3] {
+            shared[0][1] += delta;
+            shared[0][2] += delta;
+            shared[2][1] -= delta;
+            shared[2][2] -= delta;
+            // Cell A = cube [0,1]^3 with the warped shared face at x = 1.
+            let a = Polyhedron::unknown(
+                [
+                    [0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 1.0, 1.0],
+                    [0.0, 0.0, 1.0],
+                    shared[0],
+                    shared[1],
+                    shared[2],
+                    shared[3],
+                ],
+                vec![
+                    vec![0, 3, 2, 1], // x = 0 (outward -x)
+                    vec![4, 5, 6, 7], // x = 1, shared warped face (outward +x)
+                    vec![0, 1, 5, 4], // y = 0
+                    vec![2, 3, 7, 6], // y = 1
+                    vec![1, 2, 6, 5], // z = 1
+                    vec![3, 0, 4, 7], // z = 0
+                ],
+            );
+            // Cell B = cube [1,2]^3 using the SAME warped shared face at x = 1 (opposite winding).
+            let b = Polyhedron::unknown(
+                [
+                    [2.0, 0.0, 0.0],
+                    [2.0, 1.0, 0.0],
+                    [2.0, 1.0, 1.0],
+                    [2.0, 0.0, 1.0],
+                    shared[0],
+                    shared[1],
+                    shared[2],
+                    shared[3],
+                ],
+                vec![
+                    vec![4, 7, 6, 5], // x = 1, shared warped face (outward -x)
+                    vec![0, 1, 2, 3], // x = 2
+                    vec![0, 1, 5, 4], // y = 0
+                    vec![2, 3, 7, 6], // y = 1
+                    vec![1, 2, 6, 5], // z = 1
+                    vec![3, 0, 4, 7], // z = 0
+                ],
+            );
+            let got = a.convex_intersection_volume(&b);
+            assert!(
+                got.abs() < 1e-12,
+                "shared warped face overlap {got} with warp {delta}"
+            );
+            let got_ba = b.convex_intersection_volume(&a);
+            assert!(
+                got_ba.abs() < 1e-12,
+                "shared warped face overlap (sym) {got_ba} with warp {delta}"
+            );
+        }
     }
 
     #[test]
