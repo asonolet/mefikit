@@ -524,15 +524,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::QUAD4,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::QUAD4, &groups);
         let subentities = elem.subentities(Some(crate::mesh::Dimension::D1));
         assert_eq!(subentities.len(), 1); // One Connectivity containing all 4 edges
         let (et, connectivity) = &subentities[0];
@@ -548,15 +540,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::QUAD4,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::QUAD4, &groups);
         let subentities = elem.subentities(Some(crate::mesh::Dimension::D2));
         assert_eq!(subentities.len(), 1); // One Connectivity containing all 4 vertices
         let (et, connectivity) = &subentities[0];
@@ -571,15 +555,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let subentities = elem.subentities(Some(crate::mesh::Dimension::D1));
         assert_eq!(subentities.len(), 1); // One Connectivity containing all 3 edges
         let (et, connectivity) = &subentities[0];
@@ -594,15 +570,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let subentities = elem.subentities(Some(crate::mesh::Dimension::D2));
         assert_eq!(subentities.len(), 1); // One Connectivity containing all 3 vertices
         let (et, connectivity) = &subentities[0];
@@ -617,15 +585,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::SEG2,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::SEG2, &groups);
         let subentities = elem.subentities(None); // defaults to D1
         assert_eq!(subentities.len(), 1); // One Connectivity containing both vertices
         let (et, connectivity) = &subentities[0];
@@ -640,15 +600,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::QUAD4,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::QUAD4, &groups);
         let simplexes = elem.to_simplexes();
         assert_eq!(simplexes.len(), 2); // QUAD4 -> 2 TRI3
         for (et, _) in &simplexes {
@@ -663,15 +615,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let simplexes = elem.to_simplexes();
         assert_eq!(simplexes.len(), 1); // TRI3 -> 1 TRI3
         assert_eq!(simplexes[0].0, ElementType::TRI3);
@@ -686,7 +630,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &family,
             conn,
             ElementType::VERTEX,
@@ -703,15 +646,7 @@ mod tests {
         let conn = &[0, 1];
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::SEG2,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::SEG2, &groups);
         let (et, poly_conn) = elem.to_poly();
         assert_eq!(et, ElementType::SPLINE);
         assert_eq!(poly_conn, vec![0, 1]);
@@ -723,15 +658,7 @@ mod tests {
         let conn = &[0, 1, 2];
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let (et, poly_conn) = elem.to_poly();
         assert_eq!(et, ElementType::PGON);
         assert_eq!(poly_conn, vec![0, 1, 2]);
@@ -743,15 +670,7 @@ mod tests {
         let conn = &[0, 1, 2, 3];
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::QUAD4,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::QUAD4, &groups);
         let (et, poly_conn) = elem.to_poly();
         assert_eq!(et, ElementType::PGON);
         assert_eq!(poly_conn, vec![0, 1, 2, 3]);
@@ -768,15 +687,7 @@ mod tests {
         let conn = &[0, 1, 2, 3];
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TET4,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TET4, &groups);
         let (et, poly_conn) = elem.to_poly();
         assert_eq!(et, ElementType::PHED);
         // 4 faces x 3 nodes + 3 separators = 15 entries
@@ -804,15 +715,7 @@ mod tests {
         let conn = &[0, 1, 2, 3, 4, 5, 6, 7];
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::HEX8,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::HEX8, &groups);
         let (et, poly_conn) = elem.to_poly();
         assert_eq!(et, ElementType::PHED);
         // 6 faces x 4 nodes + 5 separators = 29 entries
@@ -829,15 +732,7 @@ mod tests {
         let conn = &[0, 1, 2];
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::PGON,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::PGON, &groups);
         let (et, poly_conn) = elem.to_poly();
         assert_eq!(et, ElementType::PGON);
         assert_eq!(poly_conn, vec![0, 1, 2]);
@@ -852,7 +747,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &family,
             conn,
             ElementType::SPLINE,
@@ -869,15 +763,7 @@ mod tests {
     fn test_from_poly_regular_unchanged() {
         let coords = nd::array![[0.0, 0.0], [1.0, 0.0]];
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &0,
-            &[0, 1],
-            ElementType::SEG2,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &0, &[0, 1], ElementType::SEG2, &groups);
         let (et, conn) = elem.from_poly().unwrap();
         assert_eq!(et, ElementType::SEG2);
         assert_eq!(conn, vec![0, 1]);
@@ -890,7 +776,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &0,
             &[0, 1, 2],
             ElementType::SPLINE,
@@ -903,15 +788,7 @@ mod tests {
     fn test_from_poly_pgon3_to_tri3() {
         let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]];
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &0,
-            &[0, 1, 2],
-            ElementType::PGON,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &0, &[0, 1, 2], ElementType::PGON, &groups);
         let (et, conn) = elem.from_poly().unwrap();
         assert_eq!(et, ElementType::TRI3);
         assert_eq!(conn, vec![0, 1, 2]);
@@ -924,7 +801,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &0,
             &[0, 1, 2, 3],
             ElementType::PGON,
@@ -942,7 +818,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &0,
             &[0, 1, 2, 3, 4],
             ElementType::PGON,
@@ -963,7 +838,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &0,
             &[0, 1, 2, 3],
             ElementType::TET4,
@@ -976,7 +850,6 @@ mod tests {
         let poly_elem = Element::new(
             0,
             coords.view(),
-            None,
             &0,
             &poly_conn,
             ElementType::PHED,
@@ -1007,7 +880,6 @@ mod tests {
         let elem = Element::new(
             0,
             coords.view(),
-            None,
             &0,
             &[0, 1, 2, 3, 4, 5, 6, 7],
             ElementType::HEX8,
@@ -1020,7 +892,6 @@ mod tests {
         let poly_elem = Element::new(
             0,
             coords.view(),
-            None,
             &0,
             &poly_conn,
             ElementType::PHED,
@@ -1045,15 +916,7 @@ mod tests {
         let m = usize::MAX;
         let phed_conn = vec![2, 0, 3, m, 0, 1, 3, m, 0, 2, 1, m, 1, 2, 3];
         let groups = crate::mesh::ArcGroups::new();
-        let poly_elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &0,
-            &phed_conn,
-            ElementType::PHED,
-            &groups,
-        );
+        let poly_elem = Element::new(0, coords.view(), &0, &phed_conn, ElementType::PHED, &groups);
         let (et, conn) = poly_elem.from_poly().unwrap();
         assert_eq!(et, ElementType::TET4);
         assert_eq!(conn.len(), 4);
@@ -1080,15 +943,7 @@ mod tests {
             4, 5, 6, 7, m, 3, 0, 4, 7, m, 0, 1, 2, 3, m, 2, 3, 7, 6, m, 1, 2, 6, 5, m, 0, 1, 5, 4,
         ];
         let groups = crate::mesh::ArcGroups::new();
-        let poly_elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &0,
-            &phed_conn,
-            ElementType::PHED,
-            &groups,
-        );
+        let poly_elem = Element::new(0, coords.view(), &0, &phed_conn, ElementType::PHED, &groups);
         let (et, conn) = poly_elem.from_poly().unwrap();
         assert_eq!(et, ElementType::HEX8);
         assert_eq!(conn.len(), 8);

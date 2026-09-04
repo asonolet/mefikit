@@ -76,7 +76,7 @@ pub fn par_compute_neighbours(
         })
         .into_iter()
         .for_each(|(_key, (ids, conn, et))| {
-            neighbors.add_element(et, conn.as_slice(), None, None);
+            neighbors.add_element(et, conn.as_slice(), None);
             let subentity_id = neighbors.block(et).unwrap().len() - 1;
             let new_id = ElementId::new(et, subentity_id);
             ids.iter().array_combinations().for_each(|[eid_a, eid_b]| {
@@ -123,7 +123,7 @@ pub fn compute_neighbours(
                         };
                         let new_id = ElementId::new(et, subentity_id);
                         subentities_hashmap.insert(key, (new_id, smallvec![elem.id()]));
-                        neighbors.add_element(et, co, None, None);
+                        neighbors.add_element(et, co, None);
                     }
                     Some((_, eids)) => {
                         // The subentity already exists
@@ -239,7 +239,7 @@ pub fn compute_descending(
                 if !subentities_hash.contains(&key) {
                     // The subentity is new
                     subentities_hash.insert(key);
-                    neighbors.add_element(et, co, None, None);
+                    neighbors.add_element(et, co, None);
                 }
             }
         }
@@ -272,7 +272,7 @@ pub fn compute_sub_to_elem(
                     elems.push(elem.id());
                 } else {
                     // The subentity is new
-                    let subid = neighbors.add_element(et, co, None, None);
+                    let subid = neighbors.add_element(et, co, None);
                     hash_to_subid.insert(key, subid);
                     sub_to_elem.insert(subid, vec![elem.id()]);
                 }
@@ -305,7 +305,7 @@ pub fn compute_hashsub_to_elem(
                     eids.push(elem.id());
                 } else {
                     // The subentity is new
-                    let _subid = neighbors.add_element(et, co, None, None);
+                    let _subid = neighbors.add_element(et, co, None);
                     sub_to_elem.insert(key.clone(), vec![elem.id()]);
                     // subid_hash.push((subid, key));
                 }
@@ -361,7 +361,7 @@ pub fn compute_submesh_with_n_neighbours(
         for (et, conn) in mesh.element(eid).subentities(Some(codim)) {
             for co in conn.iter() {
                 if SortedVecKey::new(co.into()) == subhash {
-                    neighbours.add_element(et, co, None, None);
+                    neighbours.add_element(et, co, None);
                 }
             }
         }

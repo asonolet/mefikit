@@ -265,7 +265,7 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
                     // (indexes directly into `coords`), so subtract 1.
                     let nodes: Vec<usize> =
                         conn[start..end].iter().map(|&v| (v as usize) - 1).collect();
-                    mesh.add_element(ElementType::PGON, &nodes, None, None);
+                    mesh.add_element(ElementType::PGON, &nodes, None);
                 }
                 pgon_offsets = Some(offsets);
                 pgon_conn = Some(conn);
@@ -292,7 +292,7 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
                     // connectivity by subtracting 1.
                     let cell: Vec<usize> =
                         conn[start..end].iter().map(|&v| (v as usize) - 1).collect();
-                    mesh.add_element(other, &cell, None, None);
+                    mesh.add_element(other, &cell, None);
                 }
             }
         }
@@ -331,7 +331,7 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
                 cell_nodes.push(usize::MAX); // PHED separator
             }
 
-            mesh.add_element(ElementType::PHED, &cell_nodes, None, None);
+            mesh.add_element(ElementType::PHED, &cell_nodes, None);
         }
     }
 
@@ -840,7 +840,7 @@ mod tests {
         ])
         .into_shared();
         let mut mesh = UMesh::new(coords);
-        mesh.add_element(ElementType::HEX8, &[0, 1, 2, 3, 4, 5, 6, 7], None, None);
+        mesh.add_element(ElementType::HEX8, &[0, 1, 2, 3, 4, 5, 6, 7], None);
 
         let dst = tmp("mefikit_cgns_regular_hex.cgns");
         let _ = std::fs::remove_file(&dst);

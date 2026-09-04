@@ -337,15 +337,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let p0 = elem.coord2(0);
         assert_eq!(p0, na::Point2::new(0.0, 0.0));
         let p1 = elem.coord2(1);
@@ -359,15 +351,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let c0: &[f64; 2] = elem.coord2_ref(0);
         assert_eq!(c0, &[0.0, 0.0]);
     }
@@ -379,15 +363,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let coords: Vec<_> = elem.coords2().collect();
         assert_eq!(coords.len(), 3);
     }
@@ -399,15 +375,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let p0 = elem.coord3(0);
         assert_eq!(p0, na::Point3::new(0.0, 0.0, 0.0));
     }
@@ -419,15 +387,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let coords: Vec<_> = elem.coords3().collect();
         assert_eq!(coords.len(), 3);
     }
@@ -439,15 +399,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let coords: Vec<_> = elem.coords().collect();
         assert_eq!(coords.len(), 3);
     }
@@ -459,15 +411,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::QUAD4,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::QUAD4, &groups);
         assert_abs_diff_eq!(elem.measure2(), 1.0, epsilon = 1e-10);
     }
 
@@ -478,15 +422,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::SEG2,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::SEG2, &groups);
         assert_abs_diff_eq!(elem.measure2(), 1.0, epsilon = 1e-10);
     }
 
@@ -497,15 +433,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let centroid = elem.centroid2();
         assert_abs_diff_eq!(centroid[0], 1.0 / 3.0, epsilon = 1e-10);
         assert_abs_diff_eq!(centroid[1], 1.0 / 3.0, epsilon = 1e-10);
@@ -523,15 +451,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TET4,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TET4, &groups);
         let centroid = elem.centroid3();
         assert_abs_diff_eq!(centroid[0], 0.25, epsilon = 1e-10);
         assert_abs_diff_eq!(centroid[1], 0.25, epsilon = 1e-10);
@@ -550,15 +470,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TET4,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TET4, &groups);
         let phed = elem.to_polyhedron();
         for p in [
             [0.25, 0.25, 0.25],
@@ -681,15 +593,7 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::PHED,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::PHED, &groups);
         let phed = elem.to_polyhedron();
         assert_eq!(phed.num_faces(), 6);
         assert_abs_diff_eq!(phed.volume(), 1.0, epsilon = 1e-12);

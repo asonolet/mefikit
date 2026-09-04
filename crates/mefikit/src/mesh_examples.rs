@@ -50,7 +50,7 @@ pub fn make_mesh_2d_multi_simple() -> mf::UMesh {
         nd::arr2(&[[0, 1, 3, 2]]).to_shared(),
         None,
     );
-    mesh.add_element(mf::ElementType::PGON, &[1, 4, 3], None, None);
+    mesh.add_element(mf::ElementType::PGON, &[1, 4, 3], None);
     mesh
 }
 
@@ -75,7 +75,7 @@ pub fn make_mesh_2d_multi() -> mf::UMesh {
         nd::arr2(&[[0, 1, 3, 2]]).to_shared(),
         None,
     );
-    mesh.add_element(mf::ElementType::PGON, &[0, 1, 4, 3, 2], None, None);
+    mesh.add_element(mf::ElementType::PGON, &[0, 1, 4, 3, 2], None);
     mesh
 }
 

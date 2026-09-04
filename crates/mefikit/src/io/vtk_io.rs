@@ -148,7 +148,6 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
             to_element_type(cell_type[i])?,
             cell_connectivity.as_slice(),
             None,
-            None,
         );
     }
 
