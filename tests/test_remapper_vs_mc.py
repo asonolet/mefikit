@@ -56,6 +56,8 @@ def test_remap():
     mf_preps = []
     mf_applies = []
 
+    error = False
+
     for i, mfn_src in enumerate(mesh_files):
         for mfn_tgt in mesh_files[i:]:
             print("Testing", mfn_src, mfn_tgt)
@@ -98,8 +100,10 @@ def test_remap():
                 cell.write(f"cell80_{mfn_tgt[:-4]}.med")
                 # mc.WriteMesh(f"diff_{mfn_src[:-4]}_{mfn_tgt[:-4]}.med", mc_tgt, True)
                 # mc.WriteField(f"diff_{mfn_src[:-4]}_{mfn_tgt[:-4]}.med", )
+                error = True
                 break
-        break
+        if error:
+            break
     print("MEDCoupling prepare: ", np.mean(mc_preps))
     print("MEDCoupling apply  : ", np.mean(mc_applies))
     print("Mefikit prepare    : ", np.mean(mf_preps))
