@@ -1172,4 +1172,58 @@ mod tests {
         target.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
         let _ = ConservativeP0Transfer::new(&source.view(), &target.view());
     }
+
+    /// Remapping a PHED Voronoi cell against itself must reproduce its value exactly: the overlap
+    /// volume of a cell with itself equals its own measure. This is a regression test for a
+    /// non-planar-face bug in the 3D intersection: a faces slightly warped out of its best-fit
+    /// plane was clipped against its own plane and wrongly rejected, so the self-overlap came out
+    /// below the cell measure and the intensive remap was not the identity.
+    #[test]
+    #[cfg(feature = "io")]
+    fn transfer_phed_self_remap_is_identity() {
+        let path = std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../tests/data/cell80_mesh_27.med"
+        ));
+        if !path.exists() {
+            eprintln!("skipping: data file not present: {}", path.display());
+            return;
+        }
+        let mut m = crate::prelude::read(path).expect("read cell80_mesh_27.med");
+        assert_eq!(m.topological_dimension(), Some(Dimension::D3));
+        // Only PHED cells in this file.
+        let (et, block) = m.blocks().next().unwrap();
+        assert!(block.element_type() == ElementType::PHED);
+        let _ = et;
+
+        let op = ConservativeP0Transfer::new(&m.view(), &m.view());
+
+        // The measure self-remap must equal the cell measure itself: a cell remapped against
+        // itself must be a fixed point (overlap / measure == 1).
+        crate::tools::measure::Measurable::measure_update(&mut m, "Measure", None);
+        let fm = m.field("Measure", Some(Dimension::D3)).unwrap();
+        let ref_vol = fm.0[&ElementType::PHED][0];
+        let outm = op.apply(&fm, FieldNature::Intensive, 0.0);
+        let remapped = outm.0[&ElementType::PHED][0];
+        assert!(
+            (remapped - ref_vol).abs() < 1e-6 * ref_vol,
+            "cell remapped against itself should keep its volume {ref_vol}, got {remapped}"
+        );
+
+        // A constant intensive field (value 1.0 per source cell) must also be reproduced exactly.
+        let field = FieldOwnedD::new(BTreeMap::from([(
+            ElementType::PHED,
+            nd::array![1.0].into_dyn(),
+        )]));
+        m.update_field("constant", field.into_shared());
+        let fv = m.field("constant", Some(Dimension::D3)).unwrap();
+        let out = op.apply(&fv, FieldNature::Intensive, 0.0);
+        let arr = &out.0[&ElementType::PHED];
+        assert_eq!(arr.shape(), &[1]);
+        assert!(
+            (arr[0] - 1.0).abs() < 1e-6,
+            "intensive self-remap of a constant field should be 1.0, got {}",
+            arr[0]
+        );
+    }
 }
