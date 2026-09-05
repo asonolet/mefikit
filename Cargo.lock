@@ -905,7 +905,7 @@ dependencies = [
 
 [[package]]
 name = "mefikit"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "approx",
  "arrayvec",
@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "mefipy"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "mefikit",
  "ndarray",

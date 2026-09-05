@@ -73,10 +73,12 @@
 | 2D Mesh-Mesh Overlay                   | ✔️         | ✔️          | `overlay` + `OverlayOperation` (IMPRINT, UNION,          |
 |                                        |            |             | INTERSECTION, DIFFERENCE, SYMMETRIC_DIFFERENCE)          |
 | 3D Cell Slicing with Plane             | ⏳         | ✔️          | Module stub only                                         |
-| Cell-to-Cell Intersection Measure      | 🚧         | ✔️          | Partial: overlay & ConservativeP0 transfer rely on it    |
+| Cell-to-Cell Intersection Measure      | 🚧         | ✔️          | Partial: 3D `Polyhedron::convex_intersection_volume` +   |
+|                                        |            |             | 2D `overlay`; ConservativeP0 transfer relies on it      |
 | Distance to Point / Nearest Cell       | 🚧         | ✔️          | Partial: BVH spatial index / kNN used internally         |
 | Cell Normals (2D/3D)                   | ⏳         | ✔️          | Important for post-processing and boundary conditions    |
-| Intersections with Line, Plane, Volume | 🚧         | ✔️          | Partial: segment/polygon/polyhedron point-in tests       |
+| Intersections with Line, Plane, Volume | 🚧         | ✔️          | Partial: segment/polygon/polyhedron point-in tests +     |
+|                                        |            |             | 3D polyhedron intersection                                |
 | Parallel Geometry Computation          | ⏳         | ❌          | `rayon` feature + `par_elements()` iterator available    |
 
 ---
@@ -88,7 +90,7 @@
 | Scalar & vector fields    | ✔️    | ✔️          |                                               |
 | Field interpolation       | ✔️    | ✔️          | `transfer`: ConstantPiecewise,                |
 |                           |       |             | MovingLeastSquares, InverseDistance,          |
-|                           |       |             | ConservativeP0 (2D).                          |
+|                           |       |             | ConservativeP0 (2D/3D).                       |
 | Field reduction / stats   | ⏳    | ❌          |                                               |
 | Norms, extrema, threshold | 🚧    | ❌          | Partial: `fieldexpr` math functions +         |
 |                           |       |             | comparisons for field-based selections        |

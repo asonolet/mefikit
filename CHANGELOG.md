@@ -1,5 +1,33 @@
 # CHANGELOG
 
+## v0.3.0
+
+### Add
+
+- 3D cell intersection: `Polyhedron::convex_intersection_volume` computes the
+  intersection volume of two convex polyhedra, robust to translation, scale and
+  warped/nearly-colinear faces.
+- ConservativeP0 field transfer now supports 3D source/target meshes via the
+  intersection volume (2D intersection area remains supported).
+- Mesh reorientation tool (`tools::reorient`, `Reorientable` trait, `mf::reorient`
+  free function) exposed in Python as `UMesh.reorient()`: rewinds 2D cells
+  counter-clockwise, TET4/HEX8 to positive volume and PHED faces outward, while
+  preserving blocks, fields and groups (`Arc`-cheap on an owned `UMesh`).
+- MED writer handles polygonal/polyhedral cells (PGON / "POG", PHED / "POE"),
+  writes the MED geometry ("GEO") attribute on cell groups and round-trips
+  fields.
+
+### Fix
+
+- Polyhedron volume computation is translation invariant and scale-aware;
+  warped and nearly-colinear faces are managed, and faces are no longer clipped
+  by their own plane.
+- HEX8 → poly connectivity winding and the last cell of `to_mc`.
+
+### Performance
+
+- Element API refactor removes unused fields (3–20% gains).
+
 ## v0.2.1
 
 ### Fix
