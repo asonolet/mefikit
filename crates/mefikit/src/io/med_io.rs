@@ -43,6 +43,7 @@ impl ElementType {
             // ElementType::Wedge6     => "PE6",
             // ElementType::Wedge15    => "P15",
             ElementType::PGON => "POG",
+            ElementType::PHED => "POE",
             _ => todo!(),
         }
     }
@@ -211,6 +212,32 @@ fn write_fam_dataset(
     Ok(())
 }
 
+impl ElementType {
+    /// Numeric MED geometry-type code written as the "GEO" attribute on every
+    /// cell group. Some MED tools reject a cell group without it. Codes follow
+    /// MED's convention: dim*100 + n_nodes (point = 1); polygons/polyhedra use
+    /// 400/500. Same values as the reference meshio `med_geo_code` map.
+    fn med_geo_code(self) -> i64 {
+        match self {
+            ElementType::VERTEX => 1,
+            ElementType::SEG2 => 102,
+            ElementType::SEG3 => 103,
+            ElementType::TRI3 => 203,
+            ElementType::TRI6 => 206,
+            ElementType::TRI7 => 207,
+            ElementType::QUAD4 => 204,
+            ElementType::QUAD8 => 208,
+            ElementType::QUAD9 => 209,
+            ElementType::TET4 => 304,
+            ElementType::TET10 => 310,
+            ElementType::HEX8 => 308,
+            ElementType::PGON => 400,
+            ElementType::PHED => 500,
+            _ => todo!(),
+        }
+    }
+}
+
 fn write_regular(
     mai: &Group,
     element_type: ElementType,
@@ -226,6 +253,7 @@ fn write_regular(
 
     write_scalar_attr(&group, "CGT", 1i64)?;
     write_scalar_attr(&group, "CGS", 1i64)?;
+    write_scalar_attr(&group, "GEO", element_type.med_geo_code())?;
     write_fixed_bytes_attr::<23>(&group, "PFL", b"MED_NO_PROFILE_INTERNAL")?;
     let med_conn = reorder_connectivity(conn, element_type.med_permutation());
 
@@ -372,9 +400,7 @@ fn write_fields(file: &File, mesh: &UMeshView) -> Result<(), MefikitIOError> {
         // Component names: V1, V2, ... or use the single name for scalars.
         let nom_bytes = build_field_nom(field_name, n_components);
         let nom_len = nom_bytes.len();
-        // Write NOM as a fixed-length byte attribute. We use a large-enough size.
-        // For single-component fields the NOM is just the field name (16 chars).
-        // For multi-component it's n_components * 16 chars.
+        // NOM is an attribute on the field group (16 chars per component).
         write_field_nom_attr(&field_grp, "NOM", &nom_bytes, nom_len)?;
 
         // Time-step group.
@@ -443,20 +469,24 @@ fn build_field_nom(field_name: &str, n_components: usize) -> Vec<u8> {
     }
 }
 
-/// Write NOM as a fixed-length byte attribute. The hdf5-metno API requires a
-/// concrete `FixedAscii<N>` size at compile time, so we fall back to writing
-/// an i8 array dataset when the size isn't known at compile time.
+/// Write the field component-name attribute. MED stores it on the field group
+/// (as `attrs["NOM"]`, a fixed-size char array of `16 * n_components`) — not as
+/// a dataset. The hdf5-metno API requires a concrete `FixedAscii<N>` size at
+/// compile time, but `n_components` is runtime, so we write a variable-length
+/// ASCII string attribute instead, which MED readers accept.
 fn write_field_nom_attr(
     grp: &Group,
     name: &str,
     nom_bytes: &[u8],
     _total_len: usize,
 ) -> Result<(), MefikitIOError> {
-    // MED convention: NOM is stored as an array of i8 (signed bytes).
-    let i8_data: Vec<i8> = nom_bytes.iter().map(|&b| b as i8).collect();
-    let n_slots = nom_bytes.len() / MED_NOM_LEN;
-    let arr = Array2::from_shape_vec((n_slots, MED_NOM_LEN), i8_data)?;
-    grp.new_dataset_builder().with_data(&arr).create(name)?;
+    let value = VarLenAscii::from_ascii(nom_bytes)
+        .map_err(|e| hdf5_metno::Error::Internal(e.to_string()))?;
+
+    grp.new_attr::<VarLenAscii>()
+        .create(name)?
+        .write_scalar(&value)?;
+
     Ok(())
 }
 
@@ -496,6 +526,7 @@ fn write_polygon(mai: &Group, poly: &ElementBlockView) -> hdf5_metno::Result<()>
 
     write_scalar_attr(&group, "CGT", 1i64)?;
     write_scalar_attr(&group, "CGS", 1i64)?;
+    write_scalar_attr(&group, "GEO", 400i64)?;
 
     // MED NOD is 1-based.
     let nod: Vec<u64> = poly_conn.data.iter().map(|&x| x as u64 + 1).collect();
@@ -540,6 +571,7 @@ fn write_polyhedron(mai: &Group, block: &ElementBlockView) -> hdf5_metno::Result
 
     write_scalar_attr(&group, "CGT", 1i64)?;
     write_scalar_attr(&group, "CGS", 1i64)?;
+    write_scalar_attr(&group, "GEO", 500i64)?;
     write_fixed_bytes_attr::<23>(&group, "PFL", b"MED_NO_PROFILE_INTERNAL")?;
 
     // Mefikit data layout (per element):
@@ -1340,5 +1372,517 @@ mod tests {
             let v2 = f2.0.get(et).unwrap();
             assert_eq!(v1, v2, "velocity differs for {et:?}");
         }
+    }
+
+    #[test]
+    fn test_med_export_structure() {
+        // Structural check that the written MED file is consumable by external
+        // tools: every mesh cell group must carry a numeric GEO attribute, and
+        // every CHA field must expose NOM as an *attribute* (not a dataset).
+        // tools: every mesh cell group must carry a numeric GEO attribute, and
+        // every CHA field must expose NOM as an *attribute* (not a dataset).
+        let path = PathBuf::from("test_med_export_structure.med");
+        let mut mesh = me::make_mesh_2d_multi(); // SEG2 + QUAD4 + PGON
+        let n_quad = mesh.block(ElementType::QUAD4).unwrap().len();
+        let n_pgon = mesh.block(ElementType::PGON).unwrap().len();
+        // update_field requires the field on every element type of the field's
+        // dimension (here D2: QUAD4 + PGON).
+        mesh.update_field(
+            "pressure",
+            crate::mesh::FieldArcD::new(BTreeMap::from([
+                (
+                    ElementType::QUAD4,
+                    Array1::from_vec((0..n_quad).map(|i| i as f64 * 2.0).collect())
+                        .into_dyn()
+                        .into_shared(),
+                ),
+                (
+                    ElementType::PGON,
+                    Array1::from_vec((0..n_pgon).map(|i| i as f64 * 2.0).collect())
+                        .into_dyn()
+                        .into_shared(),
+                ),
+            ])),
+        );
+
+        write(&path, &mesh.view()).unwrap();
+
+        let file = File::open(&path).unwrap();
+        let ensemble = file.group("ENS_MAA").unwrap();
+        let med_mesh = ensemble
+            .group(&ensemble.member_names().unwrap()[0])
+            .unwrap();
+        let mai = med_mesh
+            .group("-0000000000000000001-0000000000000000001")
+            .unwrap()
+            .group("MAI")
+            .unwrap();
+
+        // Every cell group must carry a numeric MED geometry-type code (GEO).
+        let mut types: Vec<String> = mai
+            .member_names()
+            .unwrap()
+            .into_iter()
+            .filter(|n| mai.group(n).is_ok())
+            .collect();
+        types.sort();
+        assert_eq!(types, vec!["POG", "QU4", "SE2"]);
+        for med_type in ["SE2", "QU4", "POG"] {
+            let grp = mai.group(med_type).unwrap();
+            let geo: i64 = grp.attr("GEO").unwrap().read_scalar().unwrap();
+            assert!(geo > 0, "GEO missing/invalid for {med_type}");
+        }
+
+        // The CHA field must have NOM as an attribute, not a dataset.
+        let cha = file.group("CHA").unwrap();
+        let field = cha.group("pressure").unwrap();
+        assert!(field.attr("NOM").is_ok(), "field NOM must be an attribute");
+        assert!(
+            field.dataset("NOM").is_err(),
+            "field NOM must not be a dataset"
+        );
+
+        // Round-trip sanity, then cleanup.
+        let mesh2 = read(&path).unwrap();
+        let f2 = mesh2.field("pressure", None).unwrap();
+        let mut keys: Vec<_> = f2.0.keys().cloned().collect();
+        keys.sort_by_key(|k| format!("{k:?}"));
+        assert_eq!(
+            keys,
+            vec![ElementType::PGON, ElementType::QUAD4],
+            "field must round-trip on both D2 blocks"
+        );
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    /// Build a cube mesh [0,1]^3 (8 corner nodes) with a HEX8 block plus,
+    /// sharing those nodes, TET4 / QUAD4 / TRI3 / SEG2 / VERTEX blocks.
+    fn make_mixed_3d_mesh() -> UMesh {
+        let coords = Array2::from_shape_vec(
+            (8, 3),
+            vec![
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+                0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+            ],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords.into());
+        mesh.add_regular_block(
+            ElementType::HEX8,
+            arr2(&[[0, 1, 3, 2, 4, 5, 7, 6]]).to_shared(),
+            None,
+        );
+        mesh.add_regular_block(ElementType::TET4, arr2(&[[0, 1, 2, 4]]).to_shared(), None);
+        mesh.add_regular_block(ElementType::QUAD4, arr2(&[[0, 1, 5, 4]]).to_shared(), None);
+        mesh.add_regular_block(ElementType::TRI3, arr2(&[[0, 1, 5]]).to_shared(), None);
+        mesh.add_regular_block(ElementType::SEG2, arr2(&[[0, 1]]).to_shared(), None);
+        mesh.add_regular_block(ElementType::VERTEX, arr2(&[[7]]).to_shared(), None);
+        mesh
+    }
+
+    fn make_mixed_2d_mesh() -> UMesh {
+        // Unit square + one hanging vertex, meshed with QUAD4 + TRI3 + SEG2 + VERTEX.
+        let coords = Array2::from_shape_vec(
+            (5, 2),
+            vec![0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.5, 0.5],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords.into());
+        mesh.add_regular_block(ElementType::QUAD4, arr2(&[[0, 1, 2, 3]]).to_shared(), None);
+        mesh.add_regular_block(ElementType::TRI3, arr2(&[[0, 1, 4]]).to_shared(), None);
+        mesh.add_regular_block(ElementType::SEG2, arr2(&[[0, 1]]).to_shared(), None);
+        mesh.add_regular_block(ElementType::VERTEX, arr2(&[[4]]).to_shared(), None);
+        mesh
+    }
+
+    #[test]
+    fn test_roundtrip_mixed_3d() {
+        let path = PathBuf::from("test_roundtrip_mixed_3d.med");
+        let mesh = make_mixed_3d_mesh();
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_roundtrip_mixed_2d() {
+        let path = PathBuf::from("test_roundtrip_mixed_2d.med");
+        let mesh = make_mixed_2d_mesh();
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_roundtrip_pgon_2d_mixed() {
+        let path = PathBuf::from("test_roundtrip_pgon_2d_mixed.med");
+        // PGON (pentagon) + TRI3 + SEG2 + VERTEX in a 2D space.
+        let coords = Array2::from_shape_vec(
+            (6, 2),
+            vec![0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.5, 0.5, 0.5, 1.5],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords.into());
+        mesh.add_regular_block(ElementType::TRI3, arr2(&[[0, 1, 4]]).to_shared(), None);
+        mesh.add_regular_block(ElementType::SEG2, arr2(&[[0, 1]]).to_shared(), None);
+        mesh.add_regular_block(ElementType::VERTEX, arr2(&[[5]]).to_shared(), None);
+        mesh.add_poly_block(
+            ElementType::PGON,
+            arr1(&[0, 1, 2, 3, 4]).to_shared(),
+            arr1(&[5]).to_shared(),
+            None,
+        );
+
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_roundtrip_seg2_1d() {
+        let path = PathBuf::from("test_roundtrip_seg2_1d.med");
+        let mesh = me::make_mesh_3d_seg2();
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_roundtrip_vertex_only() {
+        let path = PathBuf::from("test_roundtrip_vertex_only.med");
+        let coords = Array2::from_shape_vec(
+            (4, 3),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords.into());
+        mesh.add_regular_block(
+            ElementType::VERTEX,
+            arr2(&[[0], [1], [2], [3]]).to_shared(),
+            None,
+        );
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_roundtrip_fields_all_types() {
+        // A scalar field covering every regular block type (each dimension) and
+        // a vector field on D2 must round-trip.
+        let path = PathBuf::from("test_roundtrip_fields_all_types.med");
+        let mut mesh = make_mixed_3d_mesh();
+
+        let mut scalar_map = BTreeMap::new();
+        for et in [ElementType::HEX8, ElementType::TET4] {
+            let n = mesh.block(et).unwrap().len();
+            scalar_map.insert(
+                et,
+                Array1::from_vec((0..n).map(|i| i as f64 + 0.5).collect())
+                    .into_dyn()
+                    .into_shared(),
+            );
+        }
+        mesh.update_field("pressure", crate::mesh::FieldArcD::new(scalar_map));
+
+        let mut vec_map = BTreeMap::new();
+        for et in [ElementType::QUAD4, ElementType::TRI3] {
+            let n = mesh.block(et).unwrap().len();
+            let mut data = Array2::zeros((n, 2));
+            for i in 0..n {
+                data[[i, 0]] = i as f64;
+                data[[i, 1]] = i as f64 * 2.0;
+            }
+            vec_map.insert(et, data.into_dyn().into_shared());
+        }
+        mesh.update_field("velocity", crate::mesh::FieldArcD::new(vec_map));
+
+        // D1 field on SEG2 and D0 field on VERTEX (PO1) blocks.
+        let n_seg = mesh.block(ElementType::SEG2).unwrap().len();
+        mesh.update_field(
+            "seg_stress",
+            crate::mesh::FieldArcD::new(BTreeMap::from([(
+                ElementType::SEG2,
+                Array1::from_vec((0..n_seg).map(|i| i as f64 + 7.0).collect())
+                    .into_dyn()
+                    .into_shared(),
+            )])),
+        );
+        let n_vert = mesh.block(ElementType::VERTEX).unwrap().len();
+        mesh.update_field(
+            "vertex_temp",
+            crate::mesh::FieldArcD::new(BTreeMap::from([(
+                ElementType::VERTEX,
+                Array1::from_vec((0..n_vert).map(|i| i as f64 + 1.0).collect())
+                    .into_dyn()
+                    .into_shared(),
+            )])),
+        );
+
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        for (name, dim) in [
+            ("pressure", 3usize),
+            ("velocity", 2),
+            ("seg_stress", 1),
+            ("vertex_temp", 0),
+        ] {
+            let f1 = mesh.field(name, Some(mf_dim(dim))).unwrap();
+            let f2 = mesh2.field(name, Some(mf_dim(dim))).unwrap();
+            assert_eq!(
+                f1.0.keys().collect::<Vec<_>>(),
+                f2.0.keys().collect::<Vec<_>>(),
+                "field {name}"
+            );
+            for (et, v1) in &f1.0 {
+                let v2 = f2.0.get(et).unwrap();
+                assert_eq!(v1, v2, "field {name} differs for {et:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_field_on_vertex_block() {
+        // A vector field carried by a VERTEX (PO1) element block must round-trip:
+        // written as MAI.PO1 and read back onto the VERTEX block, preserving the
+        // (n, n_components) column-major ordering.
+        let path = PathBuf::from("test_roundtrip_field_vertex.med");
+        let coords = Array2::from_shape_vec(
+            (4, 3),
+            vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords.into());
+        mesh.add_regular_block(
+            ElementType::VERTEX,
+            arr2(&[[0], [1], [2], [3]]).to_shared(),
+            None,
+        );
+
+        let n = mesh.block(ElementType::VERTEX).unwrap().len();
+        let mut data = Array2::zeros((n, 2));
+        for i in 0..n {
+            data[[i, 0]] = i as f64 * 3.0;
+            data[[i, 1]] = i as f64 * 5.0;
+        }
+        mesh.update_field(
+            "my_vertex_field",
+            crate::mesh::FieldArcD::new(BTreeMap::from([(
+                ElementType::VERTEX,
+                data.into_dyn().into_shared(),
+            )])),
+        );
+
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        let v1 = mesh
+            .block(ElementType::VERTEX)
+            .unwrap()
+            .fields
+            .get("my_vertex_field")
+            .unwrap();
+        let v2 = mesh2
+            .block(ElementType::VERTEX)
+            .unwrap()
+            .fields
+            .get("my_vertex_field")
+            .unwrap();
+        assert_eq!(v1, v2, "vertex-block field round-trip");
+    }
+
+    fn mf_dim(d: usize) -> crate::mesh::Dimension {
+        match d {
+            0 => crate::mesh::Dimension::D0,
+            1 => crate::mesh::Dimension::D1,
+            2 => crate::mesh::Dimension::D2,
+            _ => crate::mesh::Dimension::D3,
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_field_on_phed_block() {
+        let path = PathBuf::from("test_roundtrip_field_phed.med");
+        let coords = Array2::from_shape_vec(
+            (8, 3),
+            vec![
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+                0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0,
+            ],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords.into());
+        let conn: Vec<usize> = vec![
+            0,
+            1,
+            2,
+            3,
+            usize::MAX,
+            4,
+            7,
+            6,
+            5,
+            usize::MAX,
+            0,
+            4,
+            5,
+            1,
+            usize::MAX,
+            2,
+            6,
+            7,
+            3,
+            usize::MAX,
+            0,
+            3,
+            7,
+            4,
+            usize::MAX,
+            1,
+            5,
+            6,
+            2,
+            usize::MAX,
+        ];
+        mesh.add_element(ElementType::PHED, &conn, None);
+        mesh.update_field(
+            "pressure",
+            crate::mesh::FieldArcD::new(BTreeMap::from([(
+                ElementType::PHED,
+                Array1::from_vec(vec![1.5]).into_dyn().into_shared(),
+            )])),
+        );
+
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+
+        let v1 = mesh
+            .block(ElementType::PHED)
+            .unwrap()
+            .fields
+            .get("pressure")
+            .unwrap();
+        let v2 = mesh2
+            .block(ElementType::PHED)
+            .unwrap()
+            .fields
+            .get("pressure")
+            .unwrap();
+        assert_eq!(v1, v2, "PHED-block field round-trip");
+    }
+
+    #[test]
+    fn test_roundtrip_pgon_in_3d_space() {
+        // A 2D polygon used as the top-level element of a mesh embedded in a 3D
+        // space (all coordinates live in the z=0 plane).
+        let path = PathBuf::from("test_roundtrip_pgon_3d.med");
+        let coords = Array2::from_shape_vec(
+            (5, 3),
+            vec![
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.5, 0.5, 0.0,
+            ],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords.into());
+        mesh.add_poly_block(
+            ElementType::PGON,
+            arr1(&[0, 1, 2, 3, 4]).to_shared(),
+            arr1(&[5]).to_shared(),
+            None,
+        );
+
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_roundtrip_pgon_and_phed() {
+        // A volume of PHED with a 2D PGON surface in the same 3D space.
+        let path = PathBuf::from("test_roundtrip_pgon_phed.med");
+        let coords = Array2::from_shape_vec(
+            (8, 3),
+            vec![
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+                0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0,
+            ],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords.into());
+
+        // Hexahedron as a polyhedron block.
+        let phed_conn: Vec<usize> = vec![
+            0,
+            1,
+            2,
+            3,
+            usize::MAX,
+            4,
+            7,
+            6,
+            5,
+            usize::MAX,
+            0,
+            4,
+            5,
+            1,
+            usize::MAX,
+            2,
+            6,
+            7,
+            3,
+            usize::MAX,
+            0,
+            3,
+            7,
+            4,
+            usize::MAX,
+            1,
+            5,
+            6,
+            2,
+            usize::MAX,
+        ];
+        mesh.add_element(ElementType::PHED, &phed_conn, None);
+
+        // Bottom face as a polygon.
+        mesh.add_element(ElementType::PGON, &[0, 1, 2, 3], None);
+
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_roundtrip_real_phed_data() {
+        // Round-trip through the real (Salome/medcoupling) polyhedron file:
+        // read the external file, write it back with mefikit, read again. The
+        // two mefikit reads must be identical.
+        let src = PathBuf::from("../../tests/data/mesh_27.med");
+        if !src.exists() {
+            return;
+        }
+        let path = PathBuf::from("test_roundtrip_real_phed_data.med");
+        let mesh = read(&src).unwrap();
+        let ph = mesh
+            .block(ElementType::PHED)
+            .expect("mesh_27 must contain a PHED block");
+        assert!(ph.len() > 0);
+
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_mesh_eq(&mesh, &mesh2);
     }
 }
