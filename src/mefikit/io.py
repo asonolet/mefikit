@@ -116,7 +116,10 @@ def install_conversions():
             new_connectivity = np.insert(
                 conn.flatten(), np.arange(n_elem) * num_nodes, mf_types_mc_id[et]
             )
-            offsets = np.arange(n_elem, dtype=int) * (num_nodes + 1)
+            # MEDCoupling nodal-connectivity index has one entry per cell plus a
+            # trailing end offset, i.e. n_elem + 1 elements. Omitting the last
+            # entry silently drops the final cell.
+            offsets = np.arange(n_elem + 1, dtype=int) * (num_nodes + 1)
             return new_connectivity, offsets
 
         blocks = self.blocks()
@@ -139,10 +142,10 @@ def install_conversions():
                 offset += mc_offset[-1]
                 offset = offset[1:]
             mc_offset = np.r_[mc_offset, offset]
-        res = mc.MEDCouplingUMesh()
+        et = next(iter(blocks.keys()))
+        res = mc.MEDCouplingUMesh("mf_UMesh", mf_types_dim[et])
         res.setCoords(mc.DataArrayDouble(coords))
         res.setConnectivity(mc.DataArrayInt(mc_conn), mc.DataArrayInt(mc_offset))
-        res.setName("mf_UMesh")
         return res
 
     def to_pyvista(

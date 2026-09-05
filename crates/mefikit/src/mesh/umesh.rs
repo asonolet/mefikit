@@ -3,6 +3,7 @@ use crate::mesh::{ElementLike, FieldBase, FieldView};
 use super::dimension::Dimension;
 use super::element::{Element, ElementId, ElementMut, ElementType, Regularity};
 use super::element_ids::ElementIds;
+use super::indirect_index::IndirectIndexOwned;
 
 use derive_where::derive_where;
 use ndarray::{self as nd};
@@ -483,7 +484,7 @@ impl<'a> UMeshView<'a> {
                 // TODO: pass fields and families
                 ConnectivityBase::Regular(r) => umesh.add_regular_block(et, r.to_shared(), None),
                 ConnectivityBase::Poly(conn) => {
-                    umesh.add_poly_block(et, conn.data.to_shared(), conn.offsets.to_shared())
+                    umesh.add_poly_block(et, conn.data.to_shared(), conn.offsets.to_shared(), None)
                 }
             }
         }
@@ -553,8 +554,19 @@ impl UMesh {
         et: ElementType,
         conn: nd::ArcArray1<usize>,
         offsets: nd::ArcArray1<usize>,
+        fields: Option<BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>>>,
     ) {
-        let block = ElementBlock::new_poly(et, conn, offsets);
+        let block = ElementBlock::new_poly(et, conn, offsets, fields);
+        let (key, wrapped) = block.into_entry();
+        self.element_blocks.entry(key).or_insert(wrapped);
+    }
+
+    /// Inserts a fully-built element block into the mesh (crate-internal).
+    ///
+    /// Unlike [`Self::add_regular_block`] and [`Self::add_poly_block`], this keeps the block's
+    /// families, fields and groups intact, which is required by out-of-place tools that
+    /// preserve the element order (e.g. `reorient`).
+    pub(crate) fn insert_block(&mut self, block: ElementBlock) {
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -572,7 +584,6 @@ impl UMesh {
         element_type: ElementType,
         connectivity: &[usize],
         family: Option<usize>,
-        fields: Option<BTreeMap<&str, nd::ArrayViewD<f64>>>,
     ) -> ElementId {
         match element_type.regularity() {
             Regularity::Regular => {
@@ -596,6 +607,7 @@ impl UMesh {
                         element_type,
                         nd::arr1(&[]).into_shared(),
                         nd::arr1(&[]).into_shared(),
+                        None,
                     )
                 });
             }
@@ -604,7 +616,7 @@ impl UMesh {
         self.element_blocks
             .get_mut(&element_type)
             .unwrap()
-            .add_element(nd::ArrayView1::from(connectivity), family, fields);
+            .add_element(nd::ArrayView1::from(connectivity), family);
         ElementId::new(element_type, new_element_id)
     }
 
@@ -661,10 +673,37 @@ impl UMesh {
             if !self.element_blocks.contains_key(t) {
                 continue;
             }
+            let fields = &self.element_blocks[t].fields;
+
+            let fields = match with_fields {
+                true => Some(
+                    fields
+                        .iter()
+                        .map(|(n, f)| {
+                            let mut fshape: Vec<usize> = f.shape().to_vec();
+                            fshape[0] = block.len();
+                            let frows: nd::ArrayD<f64> = nd::Array::from_shape_vec(
+                                nd::IxDyn(&fshape),
+                                block
+                                    .par_iter()
+                                    .flat_map_iter(|i| {
+                                        f.index_axis(nd::Axis(0), *i)
+                                            .iter()
+                                            .cloned()
+                                            .collect::<Vec<f64>>()
+                                    })
+                                    .collect::<Vec<f64>>(),
+                            )
+                            .unwrap();
+                            (n.clone(), frows.into_shared())
+                        })
+                        .collect(),
+                ),
+                false => None,
+            };
             match &self.element_blocks[t] {
                 ElementBlockBase {
                     connectivity: ConnectivityBase::Regular(arr),
-                    fields,
                     ..
                 } => {
                     let shape = (block.len(), arr.ncols());
@@ -676,38 +715,23 @@ impl UMesh {
                             .collect::<Vec<usize>>(),
                     )
                     .unwrap();
-                    extracted.add_regular_block(
+                    extracted.add_regular_block(*t, conn.into_shared(), fields);
+                }
+                ElementBlockBase {
+                    connectivity: ConnectivityBase::Poly(conn),
+                    ..
+                } => {
+                    let mut new_conn = IndirectIndexOwned::default();
+                    for i in block {
+                        new_conn.push(&conn[*i]);
+                    }
+                    extracted.add_poly_block(
                         *t,
-                        conn.into_shared(),
-                        match with_fields {
-                            true => Some(
-                                fields
-                                    .iter()
-                                    .map(|(n, f)| {
-                                        let mut fshape: Vec<usize> = f.shape().to_vec();
-                                        fshape[0] = block.len();
-                                        let frows: nd::ArrayD<f64> = nd::Array::from_shape_vec(
-                                            nd::IxDyn(&fshape),
-                                            block
-                                                .par_iter()
-                                                .flat_map_iter(|i| {
-                                                    f.index_axis(nd::Axis(0), *i)
-                                                        .iter()
-                                                        .cloned()
-                                                        .collect::<Vec<f64>>()
-                                                })
-                                                .collect::<Vec<f64>>(),
-                                        )
-                                        .unwrap();
-                                        (n.clone(), frows.into_shared())
-                                    })
-                                    .collect(),
-                            ),
-                            false => None,
-                        },
+                        new_conn.data.into_shared(),
+                        new_conn.offsets.into_shared(),
+                        fields,
                     );
                 }
-                _ => todo!(),
             };
         }
         extracted
@@ -717,35 +741,50 @@ impl UMesh {
     #[cfg(not(feature = "rayon"))]
     fn extract_impl(&self, ids: &ElementIds, with_fields: bool) -> UMesh {
         let mut extracted = UMesh::new(self.coords.clone());
-        // TODO: conditionnaly extract fields
+
         for (t, block) in ids.iter_blocks() {
             if !self.element_blocks.contains_key(t) {
                 continue;
             }
+            let fields = &self.element_blocks[t].fields;
+            let fields = match with_fields {
+                true => Some(
+                    fields
+                        .iter()
+                        .map(|(n, f)| {
+                            (
+                                n.clone(),
+                                f.select(nd::Axis(0), block.as_slice()).into_shared(),
+                            )
+                        })
+                        .collect(),
+                ),
+                false => None,
+            };
             match &self.element_blocks[t] {
                 ElementBlockBase {
                     connectivity: ConnectivityBase::Regular(arr),
-                    fields,
                     ..
                 } => extracted.add_regular_block(
                     *t,
                     arr.select(nd::Axis(0), block.as_slice()).into_shared(),
-                    match with_fields {
-                        true => Some(
-                            fields
-                                .iter()
-                                .map(|(n, f)| {
-                                    (
-                                        n.clone(),
-                                        f.select(nd::Axis(0), block.as_slice()).into_shared(),
-                                    )
-                                })
-                                .collect(),
-                        ),
-                        false => None,
-                    },
+                    fields,
                 ),
-                _ => todo!(),
+                ElementBlockBase {
+                    connectivity: ConnectivityBase::Poly(conn),
+                    ..
+                } => {
+                    let mut new_conn = IndirectIndexOwned::default();
+                    for i in block {
+                        new_conn.push(&conn[*i]);
+                    }
+                    extracted.add_poly_block(
+                        *t,
+                        new_conn.data.into_shared(),
+                        new_conn.offsets.into_shared(),
+                        fields,
+                    )
+                }
             };
         }
         extracted

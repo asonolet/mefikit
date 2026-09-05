@@ -40,7 +40,7 @@ fn make_mesh_2d_multi() -> UMesh {
         nd::arr2(&[[0, 1, 3, 2]]).to_shared(),
         None,
     );
-    mesh.add_element(ElementType::PGON, &[0, 1, 4, 3, 2], None, None);
+    mesh.add_element(ElementType::PGON, &[0, 1, 4, 3, 2], None);
     mesh
 }
 
@@ -123,7 +123,7 @@ mod mesh_creation {
         )
         .unwrap();
         let mut mesh = UMesh::new(coords);
-        mesh.add_element(ElementType::PGON, &[0, 1, 2, 3], None, None);
+        mesh.add_element(ElementType::PGON, &[0, 1, 2, 3], None);
         assert_eq!(mesh.num_elements(), 1);
         let elements: Vec<_> = mesh.elements().collect();
         assert_eq!(elements[0].connectivity, &[0, 1, 2, 3]);
@@ -371,24 +371,8 @@ mod element_operations {
         let conn = &[0, 1, 2];
         let family = 0;
         let groups = mefikit::mesh::ArcGroups::new();
-        let elem1 = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
-        let elem2 = Element::new(
-            1,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem1 = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
+        let elem2 = Element::new(1, coords.view(), &family, conn, ElementType::TRI3, &groups);
         assert!(elem1.connectivity_equals(&elem2));
     }
 
@@ -399,24 +383,8 @@ mod element_operations {
         let conn2 = &[2, 1, 0];
         let family = 0;
         let groups = mefikit::mesh::ArcGroups::new();
-        let elem1 = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn1,
-            ElementType::TRI3,
-            &groups,
-        );
-        let elem2 = Element::new(
-            1,
-            coords.view(),
-            None,
-            &family,
-            conn2,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem1 = Element::new(0, coords.view(), &family, conn1, ElementType::TRI3, &groups);
+        let elem2 = Element::new(1, coords.view(), &family, conn2, ElementType::TRI3, &groups);
         assert!(!elem1.connectivity_equals(&elem2));
     }
 
@@ -426,15 +394,7 @@ mod element_operations {
         let conn = &[0, 1, 2];
         let family = 0;
         let groups = mefikit::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            None,
-            &family,
-            conn,
-            ElementType::TRI3,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         assert!(elem.groups().next().is_none());
         assert!(!elem.in_group("test"));
     }
@@ -446,7 +406,7 @@ mod mesh_modification {
     #[test]
     fn add_element_to_existing_block() {
         let mut mesh = make_mesh_2d_quad();
-        let new_id = mesh.add_element(ElementType::QUAD4, &[0, 1, 3, 2], None, None);
+        let new_id = mesh.add_element(ElementType::QUAD4, &[0, 1, 3, 2], None);
         assert_eq!(mesh.num_elements(), 2);
         assert_eq!(new_id.element_type(), ElementType::QUAD4);
         assert_eq!(new_id.index(), 1);
@@ -455,7 +415,7 @@ mod mesh_modification {
     #[test]
     fn add_element_creates_new_block() {
         let mut mesh = make_mesh_2d_quad();
-        let new_id = mesh.add_element(ElementType::TRI3, &[0, 1, 2], None, None);
+        let new_id = mesh.add_element(ElementType::TRI3, &[0, 1, 2], None);
         assert_eq!(mesh.num_elements(), 2);
         assert_eq!(new_id.element_type(), ElementType::TRI3);
         assert_eq!(mesh.element_types().count(), 2);
@@ -465,7 +425,7 @@ mod mesh_modification {
     #[should_panic(expected = "Connectivity length does not match")]
     fn add_element_wrong_connectivity_length() {
         let mut mesh = make_mesh_2d_quad();
-        mesh.add_element(ElementType::TRI3, &[0, 1], None, None);
+        mesh.add_element(ElementType::TRI3, &[0, 1], None);
     }
 
     #[test]
@@ -635,7 +595,7 @@ mod geometric_operations {
     fn measure_multiple_quads() {
         // Create a mesh with only regular elements (QUAD4) for measure
         let mut mesh = make_mesh_2d_quad();
-        mesh.add_element(ElementType::QUAD4, &[0, 1, 3, 2], None, None);
+        mesh.add_element(ElementType::QUAD4, &[0, 1, 3, 2], None);
         let measures = measure(&mesh.view(), None);
         let quad_measures = measures.get(&ElementType::QUAD4).unwrap();
         let total: f64 = quad_measures.iter().sum();
@@ -729,7 +689,7 @@ mod edge_cases {
         )
         .unwrap();
         let mut mesh = UMesh::new(coords);
-        mesh.add_element(ElementType::PGON, &[0, 1, 4, 3, 2], None, None);
+        mesh.add_element(ElementType::PGON, &[0, 1, 4, 3, 2], None);
         let used = mesh.used_nodes();
         assert_eq!(used.len(), 5);
     }

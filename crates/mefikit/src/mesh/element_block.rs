@@ -126,7 +126,6 @@ where
         Element::new(
             index,
             coords,
-            None,
             &self.families[index],
             &self.connectivity[index],
             self.cell_type,
@@ -146,7 +145,6 @@ where
                 Element::new(
                     i,
                     coords,
-                    None,
                     &self.families[i],
                     connectivity,
                     self.cell_type,
@@ -182,7 +180,6 @@ where
                 Element::new(
                     i,
                     coords,
-                    None,
                     &self.families[i],
                     &self.connectivity[i],
                     self.cell_type,
@@ -282,6 +279,11 @@ where
 }
 
 impl ElementBlock {
+    /// Returns a clone of the families array (`Arc`-cheap for owned blocks).
+    pub(crate) fn families_owned(&self) -> nd::ArcArray1<usize> {
+        self.families.clone()
+    }
+
     /// Create a new regular element block.
     ///
     /// # Arguments
@@ -329,14 +331,37 @@ impl ElementBlock {
         cell_type: ElementType,
         connectivity: nd::ArcArray1<usize>,
         offsets: nd::ArcArray1<usize>,
+        fields: Option<BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>>>,
     ) -> Self {
         let n_elements = offsets.len();
+        let fields = fields.unwrap_or_default();
         Self {
             cell_type,
             connectivity: Connectivity::new_poly(connectivity, offsets),
-            fields: BTreeMap::new(),
+            fields,
             families: nd::ArcArray1::from(vec![0; n_elements]),
             groups: ArcGroups::new(),
+        }
+    }
+
+    /// Builds a block while preserving the element metadata (families, fields, groups).
+    ///
+    /// Used by out-of-place mesh tools that rebuild the connectivity but keep the element
+    /// order unchanged (e.g. `reorient`), in which case the metadata arrays can be carried
+    /// over with a cheap `Arc` clone.
+    pub(crate) fn new_with_metadata(
+        cell_type: ElementType,
+        connectivity: Connectivity,
+        families: nd::ArcArray1<usize>,
+        fields: BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>>,
+        groups: ArcGroups,
+    ) -> Self {
+        Self {
+            cell_type,
+            connectivity,
+            fields,
+            families,
+            groups,
         }
     }
 
@@ -344,12 +369,7 @@ impl ElementBlock {
     ///
     /// The connectivity is appended to the block's connectivity array, and a
     /// new family entry is created. Field support is not yet implemented.
-    pub fn add_element(
-        &mut self,
-        connectivity: nd::ArrayView1<usize>,
-        family: Option<usize>,
-        fields: Option<BTreeMap<&str, nd::ArrayViewD<f64>>>,
-    ) {
+    pub fn add_element(&mut self, connectivity: nd::ArrayView1<usize>, family: Option<usize>) {
         self.connectivity.push(connectivity);
         let family = family.unwrap_or_default();
         let mut new_families = std::mem::take(&mut self.families).into_owned();
@@ -357,10 +377,6 @@ impl ElementBlock {
             .append(nd::Axis(0), nd::array![family].view())
             .unwrap();
         self.families = new_families.into_shared();
-
-        if let Some(_fields) = fields {
-            todo!();
-        }
     }
 
     /// Returns a mutable view of the element at `index`.
@@ -372,7 +388,6 @@ impl ElementBlock {
         ElementMut::new(
             index,
             coords,
-            None,
             self.families.get_mut(index).unwrap(),
             &mut self.connectivity[index],
             self.cell_type,

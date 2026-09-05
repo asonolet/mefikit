@@ -48,6 +48,8 @@ pub fn try_str_to_etype(et: &str) -> Result<mf::ElementType, String> {
         "TET10" => TET10,
         "HEX8" => HEX8,
         "HEX21" => HEX21,
+        "PGON" => PGON,
+        "PHED" => PHED,
         _ => return Err(format!("Unsupported element type: {}", et)),
     })
 }

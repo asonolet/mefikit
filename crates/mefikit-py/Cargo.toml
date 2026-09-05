@@ -1,6 +1,6 @@
 [package]
 name = "mefipy"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 
 [lib]
@@ -10,7 +10,7 @@ bench = false
 
 [dependencies]
 ndarray = { workspace = true }
-numpy = { workspace = true, public = true }
+numpy = { workspace = true }
 pyo3 = { workspace = true, features = [
   "experimental-inspect",
   "extension-module",

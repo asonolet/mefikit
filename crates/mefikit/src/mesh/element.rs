@@ -1,6 +1,5 @@
 use ndarray::prelude as nd;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 use super::Dimension;
 use crate::geometry::Convexity;
@@ -225,7 +224,6 @@ use crate::element_traits::element_groups::ElementGroups;
 pub struct Element<'a> {
     pub index: usize,
     coords: nd::ArrayView2<'a, f64>,
-    pub fields: Option<BTreeMap<&'a str, nd::ArrayViewD<'a, f64>>>,
     pub family: &'a usize,
     pub connectivity: &'a [usize],
     pub element_type: ElementType,
@@ -276,21 +274,12 @@ pub trait ElementLike<'a> {
 
     /// Returns the space dimension of the element
     fn space_dimension(&self) -> usize;
-
-    // TODO: fields queries
-    // fn fields(&self) -> BTreeMap<String, ArrayViewD<'a, f64>>;
-    // fn field(&self, field: &str) -> ArrayViewD<'a, f64>;
-    // fn fields_mut(&mut self) -> BTreeMap<String, ArrayViewMutD<'a, f64>>;
-    // fn field_mut(&mut self, field: &str) -> ArrayViewMutD<'a, f64>;
-    // fn field_names(&self) -> Vec<String>;
-    // fn has_field(&self, field: &str) -> bool;
 }
 
 impl<'a> Element<'a> {
     pub fn new(
         index: usize,
         coords: nd::ArrayView2<'a, f64>,
-        fields: Option<BTreeMap<&'a str, nd::ArrayViewD<'a, f64>>>,
         family: &'a usize,
         connectivity: &'a [usize],
         element_type: ElementType,
@@ -299,7 +288,6 @@ impl<'a> Element<'a> {
         Element {
             index,
             coords,
-            fields,
             family,
             connectivity,
             element_type,
@@ -365,7 +353,6 @@ impl<'a> ElementGroups<'a> for Element<'a> {
 pub struct ElementMut<'a> {
     pub index: usize,
     coords: nd::ArrayView2<'a, f64>,
-    pub fields: Option<BTreeMap<&'a str, nd::ArrayViewMutD<'a, f64>>>,
     pub family: &'a mut usize,
     pub connectivity: &'a mut [usize],
     pub element_type: ElementType,
@@ -422,7 +409,6 @@ impl<'a> ElementMut<'a> {
     pub fn new(
         index: usize,
         coords: nd::ArrayView2<'a, f64>,
-        fields: Option<BTreeMap<&'a str, nd::ArrayViewMutD<'a, f64>>>,
         family: &'a mut usize,
         connectivity: &'a mut [usize],
         element_type: ElementType,
@@ -431,7 +417,6 @@ impl<'a> ElementMut<'a> {
         ElementMut {
             index,
             coords,
-            fields,
             family,
             connectivity,
             element_type,
@@ -455,7 +440,6 @@ mod tests {
         let element = Element::new(
             0,
             coords.view(),
-            None,
             &family,
             conn.as_slice().unwrap(),
             ElementType::TRI3,
@@ -469,7 +453,6 @@ mod tests {
         assert_eq!(element.num_nodes(), 3);
         assert_eq!(element.regularity(), Regularity::Regular);
         assert_eq!(element.id(), ElementId::new(ElementType::TRI3, 0));
-        // assert_abs_diff_eq!(element.measure2(), 0.5);
     }
 
     #[test]
@@ -487,7 +470,6 @@ mod tests {
         let element = Element::new(
             0,
             coords.view(),
-            None,
             &family,
             conn.as_slice().unwrap(),
             ElementType::TRI3,
@@ -501,7 +483,6 @@ mod tests {
         assert_eq!(element.num_nodes(), 3);
         assert_eq!(element.regularity(), Regularity::Regular);
         assert_eq!(element.id(), ElementId::new(ElementType::TRI3, 0));
-        // assert_abs_diff_eq!(element.measure3(), 0.5);
     }
 
     #[test]
@@ -514,7 +495,6 @@ mod tests {
         let element = Element::new(
             0,
             coords.view(),
-            None,
             &family,
             conn.as_slice().unwrap(),
             ElementType::QUAD4,
@@ -528,6 +508,5 @@ mod tests {
         assert_eq!(element.num_nodes(), 4);
         assert_eq!(element.regularity(), Regularity::Regular);
         assert_eq!(element.id(), ElementId::new(ElementType::QUAD4, 0));
-        // assert_abs_diff_eq!(element.measure2(), 1.0);
     }
 }
