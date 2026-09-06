@@ -14,14 +14,22 @@ commit_parsers = [
   { message = "^.*", group = "Other" },
 ]
 
+[workspace]
+git_tag_enable = false
+git_release_enable = false
+
 [[package]]
 name = "mefikit"
-changelog_include = ["mefipy"]
-changelog_path = "CHANGELOG.md"
 version_group = "mefikit"
+changelog_path = "CHANGELOG.md"
+changelog_include = ["mefipy"]
+git_tag_enable = true
+git_release_enable = true
+git_tag_name = "v{{ version }}"
+git_release_name = "v{{ version }}"
 
 [[package]]
 name = "mefipy"
+version_group = "mefikit"
 changelog_update = false
 publish = false
-version_group = "mefikit"
