@@ -1,5 +1,61 @@
 # CHANGELOG
 
+## [0.3.1](https://github.com/asonolet/mefikit/compare/v0.3.0...v0.3.1) - 2026-09-06
+
+### Add
+
+- reorient
+- update README/CHANGELOG and bump version
+- add group["toto"].to_mesh and .select("group") = .select(mf.sel.group("group"))
+- add dim filtering for fields / selection
+- Normal, Nx, Ny, Nz, matmul op, vec/tensor ops
+- fieldexpr centroids
+- unpolyze PGON, PHED-TET4 and PHED-HEX8
+- polyze UMesh
+- *(py)* fields, groups and selection new API
+- add python groups api
+- conservativeP0 2D
+- adding inverse distance fast interpolation
+- python bindings to transfer tool
+- split meshes ([#13](https://github.com/asonolet/mefikit/pull/13))
+- take &UMeshView instead of UMeshView by value
+
+### Documentation
+
+- demo of different Transfers
+- add intersect2d2d example
+
+### Fix
+
+- rm faulty publish = false on mefipy (not published anyway)
+- python type-stubs
+- broadcasting and document fields ops
+- io is optional, no default feature
+- remove useless dim passed into "update_field"
+- HEX8 new cell order
+
+### Other
+
+- set up release process
+- fix release process to have one tag
+- upgrade mefikit version to 0.3.0
+- HEX/TET node ordering, rebase issues
+- lstsq transfer
+- upgrade crate deps
+- change intersect_2d2d to overlay API
+- bump version to 0.1.4
+- bump to 0.1.2 to publish new wheels
+- bump mefikit-py version
+- prepare for release
+
+### Refactor
+
+- remove unused fields from element API
+- rename DistanceWeighting None variant to Constant
+- replace squared radius r2 with linear radius r in selection API
+- remove dead code
+- use a main-python tree structure
+
 ## v0.3.0
 
 ### Add
