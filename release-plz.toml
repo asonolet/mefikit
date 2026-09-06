@@ -1,0 +1,27 @@
+[changelog]
+header = """# CHANGELOG
+
+All notable changes to this project will be documented in this file.
+
+"""
+commit_parsers = [
+  { message = "^feat", group = "Add" },
+  { message = "^fix", group = "Fix" },
+  { message = "^perf", group = "Performance" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^refactor", group = "Refactor" },
+  { message = "^test", group = "Test" },
+  { message = "^.*", group = "Other" },
+]
+
+[[package]]
+name = "mefikit"
+changelog_include = ["mefipy"]
+changelog_path = "CHANGELOG.md"
+version_group = "mefikit"
+
+[[package]]
+name = "mefipy"
+changelog_update = false
+publish = false
+version_group = "mefikit"

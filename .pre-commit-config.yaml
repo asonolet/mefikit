@@ -14,6 +14,12 @@ repos:
       - id: check-case-conflict
       - id: check-merge-conflict
       - id: check-toml
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.1.0
+    hooks:
+      - id: conventional-pre-commit
+        args: [build, ci, docs, feat, fix, perf, refactor, revert, style, test, chore, wip, tests, breaking]
+        stages: [commit-msg]
   - repo: https://github.com/doublify/pre-commit-rust
     rev: v1.0
     hooks:

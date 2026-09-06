@@ -260,6 +260,44 @@ git commit -a # pre-commit runs on your committed files
 
 This will check the coding style and report any issues.
 
+Please use [Conventional Commits](https://www.conventionalcommits.org/) for your
+commit messages (`feat:`, `fix:`, `docs:`, `perf:`, `refactor:`, `test:`, ...).
+The `conventional-pre-commit` hook enforces it, and the automated release
+pipeline uses the commit types to compute the next version and generate the
+changelog.
+
+### Releasing
+
+Releases are automated with [release-plz](https://release-plz.dev) using the
+standard release-plz workflow on GitHub:
+
+1. Merge your work into `master` (e.g. a pull request from `dev`, or a direct
+   push). `master` is the only branch release-plz looks at.
+2. The `release-plz` workflow opens a **release PR** that bumps the crate
+   versions in `crates/*/Cargo.toml`, updates `Cargo.lock` and appends the
+   generated changes to `CHANGELOG.md`. Review it (you can polish the
+   changelog or the version) and merge it.
+3. `release-plz` then releases that version: `cargo publish` to crates.io, a
+   `vX.Y.Z` git tag and a GitHub Release with the changelog.
+4. The tag triggers the `Maturin-CI` workflow, which builds wheels for all
+   platforms and publishes them to PyPI.
+
+The version bump follows the commit types: `fix:` bumps the patch version,
+`feat:` bumps the minor version (patch before 1.0) and breaking changes bump
+the major version (minor before 1.0).
+
+One-time setup:
+
+- In the repository settings, allow GitHub Actions to create and approve pull
+  requests (required for the automatic release PR).
+- Add the `CARGO_REGISTRY_TOKEN` secret: a crates.io token scoped to
+  `publish-new` and `publish-update` (or set up [trusted
+  publishing](https://crates.io/docs/trusted-publishing)).
+- Add the `RELEASE_PLZ_TOKEN` secret: a fine-grained [GitHub personal access
+  token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+  with read/write access to *Contents* and *Pull requests*. It lets the tags
+  pushed by release-plz trigger the `Maturin-CI` workflow.
+
 ### Benchmarks
 
 The `crates/mefikit/benches/` directory contains `Mefikit` benchmarks. They use
