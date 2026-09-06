@@ -2,7 +2,6 @@
 name = "mefipy"
 version = "0.3.0"
 edition = "2024"
-publish = false
 
 [lib]
 name = "mefipy"
