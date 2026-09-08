@@ -668,6 +668,7 @@ fn build_projected_mesh(
             ElementType::PGON,
             nd::ArcArray1::from_vec(poly_conn),
             nd::ArcArray1::from_vec(poly_offsets),
+            None,
         );
     }
 
@@ -930,12 +931,10 @@ fn emit_pieces(
     for &(face_id, ref plist) in pieces {
         let cell = skin.element(face_id);
         let family = *cell.family;
-        let fields = cell.fields.clone();
         let mut ids = Vec::with_capacity(plist.len());
         for piece in plist {
             // Mirroring the 2D overlay: only untouched faces carry the parent fields.
-            let fields = if piece.verbatim { fields.clone() } else { None };
-            let id = refined.add_element(piece.et, &piece.ring, Some(family), fields);
+            let id = refined.add_element(piece.et, &piece.ring, Some(family));
             ids.push(id);
         }
         parents.insert(face_id, ids);
@@ -953,12 +952,7 @@ fn copy_verbatim(
 ) {
     let cell = skin.element(face_id);
     let ring: Vec<usize> = cell.connectivity().iter().map(|g| g + offset).collect();
-    let id = refined.add_element(
-        cell.element_type(),
-        &ring,
-        Some(*cell.family),
-        cell.fields.clone(),
-    );
+    let id = refined.add_element(cell.element_type(), &ring, Some(*cell.family));
     parents.insert(face_id, vec![id]);
 }
 
@@ -1209,7 +1203,7 @@ mod tests {
         )
         .unwrap();
         let mut skin1 = UMesh::new(coords);
-        skin1.add_element(ElementType::PGON, &[0, 1, 2, 3, 4, 5], None, None);
+        skin1.add_element(ElementType::PGON, &[0, 1, 2, 3, 4, 5], None);
 
         // Same footprint tiled by two rectangles meeting at a T-junction (they share only
         // part of an edge, hence a single node): node based clustering keeps them in one
@@ -1228,8 +1222,8 @@ mod tests {
         )
         .unwrap();
         let mut skin2 = UMesh::new(coords2);
-        skin2.add_element(ElementType::QUAD4, &[0, 1, 5, 6], None, None);
-        skin2.add_element(ElementType::QUAD4, &[1, 2, 3, 4], None, None);
+        skin2.add_element(ElementType::QUAD4, &[0, 1, 5, 6], None);
+        skin2.add_element(ElementType::QUAD4, &[1, 2, 3, 4], None);
 
         let out = overlay_surfaces(&skin1.view(), &skin2.view(), TOL).expect("L shape");
         // The interface between the two rectangles (x = 1, y in [0, 1]) crosses the L
@@ -1249,7 +1243,7 @@ mod tests {
         )
         .unwrap();
         let mut skin2 = UMesh::new(coords2);
-        skin2.add_element(ElementType::QUAD4, &[0, 1, 2, 3], None, None);
+        skin2.add_element(ElementType::QUAD4, &[0, 1, 2, 3], None);
 
         let err = overlay_surfaces(&skin1.view(), &skin2.view(), TOL).unwrap_err();
         assert!(matches!(
@@ -1278,8 +1272,8 @@ mod tests {
         )
         .unwrap();
         let mut skin2 = UMesh::new(coords2);
-        let matched_id = skin2.add_element(ElementType::QUAD4, &[0, 1, 2, 3], None, None);
-        let far_id = skin2.add_element(ElementType::QUAD4, &[4, 5, 6, 7], None, None);
+        let matched_id = skin2.add_element(ElementType::QUAD4, &[0, 1, 2, 3], None);
+        let far_id = skin2.add_element(ElementType::QUAD4, &[4, 5, 6, 7], None);
 
         let out = overlay_surfaces(&skin1.view(), &skin2.view(), TOL).expect("disjoint faces");
         let ids = &out.parents2[&far_id];
@@ -1307,13 +1301,13 @@ mod tests {
         )
         .unwrap();
         let mut skin1 = UMesh::new(coords1);
-        skin1.add_element(ElementType::QUAD4, &[0, 1, 2, 3], Some(5), None);
+        skin1.add_element(ElementType::QUAD4, &[0, 1, 2, 3], Some(5));
 
         // Same footprint, different tessellation: the quad is cut into pieces which must
         // all carry its family.
         let mut skin2 = UMesh::new(grid_coords(1, z_plane()));
-        skin2.add_element(ElementType::TRI3, &[0, 1, 3], Some(7), None);
-        skin2.add_element(ElementType::TRI3, &[0, 3, 2], Some(7), None);
+        skin2.add_element(ElementType::TRI3, &[0, 1, 3], Some(7));
+        skin2.add_element(ElementType::TRI3, &[0, 3, 2], Some(7));
 
         let out = overlay_surfaces(&skin1.view(), &skin2.view(), TOL).expect("families");
         assert!(!out.parents1[&ElementId::new(ElementType::QUAD4, 0)].is_empty());
@@ -1337,7 +1331,7 @@ mod tests {
         )
         .unwrap();
         let mut skin = UMesh::new(coords);
-        skin.add_element(ElementType::PGON, &[0, 1, 2, 3], None, None);
+        skin.add_element(ElementType::PGON, &[0, 1, 2, 3], None);
         let empty = UMesh::new(nd::ArcArray2::zeros((0, 3)));
 
         let err = overlay_surfaces(&skin.view(), &empty.view(), TOL).unwrap_err();
