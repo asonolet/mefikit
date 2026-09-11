@@ -527,6 +527,7 @@ fn write_polygon(mai: &Group, poly: &ElementBlockView) -> hdf5_metno::Result<()>
     write_scalar_attr(&group, "CGT", 1i64)?;
     write_scalar_attr(&group, "CGS", 1i64)?;
     write_scalar_attr(&group, "GEO", 400i64)?;
+    write_fixed_bytes_attr::<23>(&group, "PFL", b"MED_NO_PROFILE_INTERNAL")?;
 
     // MED NOD is 1-based.
     let nod: Vec<u64> = poly_conn.data.iter().map(|&x| x as u64 + 1).collect();
