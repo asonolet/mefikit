@@ -14,7 +14,46 @@ use std::{
 use super::centroids::{centroids, x_center, y_center, z_center};
 use super::measure::measure;
 use super::normals::{normals, nx as normal_x, ny as normal_y, nz as normal_z};
-use crate::mesh::{Dimension, FieldArcD, FieldCowD, FieldOwnedD, UMesh, UMeshBase, UMeshView};
+use crate::mesh::{
+    Dimension, FieldArcD, FieldCowD, FieldOwnedD, FieldViewD, UMesh, UMeshBase, UMeshView,
+};
+use crate::tools::transfer::{
+    ConservativeP0Transfer, ConstantPiecewiseTransfer, FieldNature, InverseDistanceTransfer,
+    MovingLeastSquaresTransfer, Transfer,
+};
+
+/// A concrete transfer operator used inside field expression trees.
+#[derive(Clone, Debug)]
+pub enum TransferOp {
+    /// Conservative P0 (measure-weighted overlap) transfer.
+    ConservativeP0(ConservativeP0Transfer),
+    /// Constant piecewise (nearest-cell copy) transfer.
+    ConstantPiecewise(ConstantPiecewiseTransfer),
+    /// Inverse-distance (k-NN Shepard) transfer.
+    InverseDistance(InverseDistanceTransfer),
+    /// Moving least squares transfer.
+    MovingLeastSquares(MovingLeastSquaresTransfer),
+}
+
+impl Transfer for TransferOp {
+    fn apply(&self, field: &FieldViewD, field_nature: FieldNature, default: f64) -> FieldOwnedD {
+        match self {
+            TransferOp::ConservativeP0(t) => t.apply(field, field_nature, default),
+            TransferOp::ConstantPiecewise(t) => t.apply(field, field_nature, default),
+            TransferOp::InverseDistance(t) => t.apply(field, field_nature, default),
+            TransferOp::MovingLeastSquares(t) => t.apply(field, field_nature, default),
+        }
+    }
+
+    fn tgt_dim(&self) -> Dimension {
+        match self {
+            TransferOp::ConservativeP0(t) => t.tgt_dim(),
+            TransferOp::ConstantPiecewise(t) => t.tgt_dim(),
+            TransferOp::InverseDistance(t) => t.tgt_dim(),
+            TransferOp::MovingLeastSquares(t) => t.tgt_dim(),
+        }
+    }
+}
 
 /// An expression tree for field computations.
 #[derive(Clone, Debug)]
@@ -54,6 +93,18 @@ pub enum FieldExpr {
     Ny,
     /// Z component of the surface normal.
     Nz,
+    /// A pre-evaluated field transfer: source values have been materialised on the source mesh
+    /// and the transfer operator will re-map them onto the target mesh at evaluation time.
+    Transfer {
+        /// Source field values, pre-evaluated on the source mesh.
+        source_values: FieldOwnedD,
+        /// The transfer operator.
+        op: Arc<TransferOp>,
+        /// Topological dimension of the target cells.
+        tgt_dim: Dimension,
+        /// Default value for uncovered target cells.
+        default: f64,
+    },
 }
 
 /// Binary operations available in field expressions.
@@ -316,6 +367,9 @@ fn collect_dim_hints(
         | FieldExpr::X
         | FieldExpr::Y
         | FieldExpr::Z => {}
+        FieldExpr::Transfer { tgt_dim, .. } => {
+            field_dims.insert(*tgt_dim);
+        }
     }
 }
 
@@ -487,6 +541,14 @@ impl Evaluable for FieldExpr {
                     .collect(),
             )
             .into(),
+            FieldExpr::Transfer {
+                source_values,
+                op,
+                tgt_dim: _,
+                default,
+            } => op
+                .apply(&source_values.view(), FieldNature::Intensive, *default)
+                .into(),
         }
     }
 }

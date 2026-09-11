@@ -1,19 +1,76 @@
+use numpy as np;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
-use mefikit::{prelude as mf, tools::Transfer};
+use mefikit::prelude as mf;
+use mefikit::prelude::fieldexpr::{Evaluable, FieldExpr, TransferOp};
+use mefikit::tools::Transfer;
 
+use crate::element::etype_to_str;
+use crate::pyfield::PyField;
 use crate::pyumesh::{PyUMesh, into_mut, into_view};
+
+/// Evaluates `expr` on the source mesh, materialising it as an owned field.
+fn eval_source<'py>(
+    py: Python<'py>,
+    src_mesh: &Py<PyUMesh>,
+    expr: &Bound<'py, PyAny>,
+) -> PyResult<mf::FieldOwnedD> {
+    let pyf: PyField = expr.try_into()?;
+    let src_mesh = src_mesh.bind(py);
+    let guard = src_mesh.borrow();
+    let src_view = into_view(&guard);
+    Ok(pyf.inner.evaluate(&src_view, None).to_owned())
+}
+
+/// Materialises `expr` on the source mesh as a lazy transfer expression onto the target cells.
+fn transfer_expr<'py>(
+    py: Python<'py>,
+    src_mesh: &Py<PyUMesh>,
+    op: &Arc<TransferOp>,
+    def_val: f64,
+    expr: &Bound<'py, PyAny>,
+) -> PyResult<PyField> {
+    let source = eval_source(py, src_mesh, expr)?;
+    Ok(FieldExpr::Transfer {
+        source_values: source,
+        op: op.clone(),
+        tgt_dim: op.tgt_dim(),
+        default: def_val,
+    }
+    .into())
+}
+
+/// Materialises `expr` on the source mesh and transfers it onto the target cells eagerly.
+fn transfer_eval<'py>(
+    py: Python<'py>,
+    src_mesh: &Py<PyUMesh>,
+    op: &Arc<TransferOp>,
+    def_val: f64,
+    expr: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let source = eval_source(py, src_mesh, expr)?;
+    let src_view = source.view();
+    let field = op.apply(&src_view, mf::FieldNature::Intensive, def_val);
+    let dict = PyDict::new(py);
+    for (et, arr) in field.0.iter() {
+        dict.set_item(etype_to_str(*et), np::PyArray::from_array(py, arr))?;
+    }
+    Ok(dict)
+}
+
+// ---------------------------------------------------------------------------
+// DistanceWeighting
+// ---------------------------------------------------------------------------
 
 #[pyclass(from_py_object)]
 #[pyo3(name = "DistanceWeighting")]
 #[derive(Clone)]
 pub enum PyDistanceWeighting {
-    /// No distance weighting; every neighbor is weighted equally.
     Constant(),
-    InverseDistance {
-        exponent: f64,
-    },
+    InverseDistance { exponent: f64 },
     Gaussian(),
 }
 
@@ -29,41 +86,39 @@ impl From<PyDistanceWeighting> for mf::DistanceWeighting {
     }
 }
 
-#[pyclass(str, from_py_object)]
+// ---------------------------------------------------------------------------
+// ConstantPiecewise
+// ---------------------------------------------------------------------------
+
+#[pyclass(str)]
 #[pyo3(name = "ConstantPiecewise")]
-#[derive(Clone)]
 pub struct PyConstantPiecewise {
-    inner: mf::ConstantPiecewiseTransfer,
+    op: Arc<TransferOp>,
+    src_mesh: Py<PyUMesh>,
+    def_val: f64,
 }
 
 impl Display for PyConstantPiecewise {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self.inner)
-    }
-}
-
-impl From<mf::ConstantPiecewiseTransfer> for PyConstantPiecewise {
-    fn from(transfer: mf::ConstantPiecewiseTransfer) -> Self {
-        PyConstantPiecewise { inner: transfer }
-    }
-}
-
-impl From<PyConstantPiecewise> for mf::ConstantPiecewiseTransfer {
-    fn from(pytransfer: PyConstantPiecewise) -> Self {
-        pytransfer.inner
+        write!(f, "{:#?}", self.op)
     }
 }
 
 #[pymethods]
 impl PyConstantPiecewise {
     #[new]
-    fn new(src_mesh: &PyUMesh, tgt_mesh: &PyUMesh) -> Self {
-        mf::ConstantPiecewiseTransfer::new(
-            &into_view(src_mesh),
-            &into_view(tgt_mesh),
+    #[pyo3(signature = (src_mesh, tgt_mesh, def_val=0.0))]
+    fn new(src_mesh: &Bound<'_, PyUMesh>, tgt_mesh: &Bound<'_, PyUMesh>, def_val: f64) -> Self {
+        let transfer = mf::ConstantPiecewiseTransfer::new(
+            &into_view(&src_mesh.borrow()),
+            &into_view(&tgt_mesh.borrow()),
             mf::PointLocation::Centroid,
-        )
-        .into()
+        );
+        PyConstantPiecewise {
+            op: Arc::new(TransferOp::ConstantPiecewise(transfer)),
+            src_mesh: src_mesh.clone().unbind(),
+            def_val,
+        }
     }
 
     #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0))]
@@ -79,53 +134,59 @@ impl PyConstantPiecewise {
         let src_view = into_view(src_mesh);
         let field = src_view.field(field_name, None).unwrap();
         let field_nature = mf::FieldNature::Intensive;
-        self.inner
+        self.op
             .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+    }
+
+    fn __call__<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<PyField> {
+        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, expr)
+    }
+
+    fn eval<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyDict>> {
+        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, expr)
     }
 }
 
-#[pyclass(str, from_py_object)]
+// ---------------------------------------------------------------------------
+// MovingLeastSquares
+// ---------------------------------------------------------------------------
+
+#[pyclass(str)]
 #[pyo3(name = "MovingLeastSquares")]
-#[derive(Clone)]
 pub struct PyMovingLeastSquares {
-    inner: mf::MovingLeastSquaresTransfer,
+    op: Arc<TransferOp>,
+    src_mesh: Py<PyUMesh>,
+    def_val: f64,
 }
 
 impl Display for PyMovingLeastSquares {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self.inner)
-    }
-}
-
-impl From<mf::MovingLeastSquaresTransfer> for PyMovingLeastSquares {
-    fn from(transfer: mf::MovingLeastSquaresTransfer) -> Self {
-        PyMovingLeastSquares { inner: transfer }
-    }
-}
-
-impl From<PyMovingLeastSquares> for mf::MovingLeastSquaresTransfer {
-    fn from(pytransfer: PyMovingLeastSquares) -> Self {
-        pytransfer.inner
+        write!(f, "{:#?}", self.op)
     }
 }
 
 #[pymethods]
 impl PyMovingLeastSquares {
     #[new]
-    #[pyo3(signature = (src_mesh, tgt_mesh, k=10, weighting=PyDistanceWeighting::Constant()))]
+    #[pyo3(signature = (src_mesh, tgt_mesh, k=10, weighting=PyDistanceWeighting::Constant(), def_val=0.0))]
     fn new(
-        src_mesh: &PyUMesh,
-        tgt_mesh: &PyUMesh,
+        src_mesh: &Bound<'_, PyUMesh>,
+        tgt_mesh: &Bound<'_, PyUMesh>,
         k: usize,
         weighting: PyDistanceWeighting,
+        def_val: f64,
     ) -> Self {
-        mf::MovingLeastSquaresTransfer::new(
-            &into_view(src_mesh),
-            &into_view(tgt_mesh),
+        let transfer = mf::MovingLeastSquaresTransfer::new(
+            &into_view(&src_mesh.borrow()),
+            &into_view(&tgt_mesh.borrow()),
             k,
             weighting.into(),
-        )
-        .into()
+        );
+        PyMovingLeastSquares {
+            op: Arc::new(TransferOp::MovingLeastSquares(transfer)),
+            src_mesh: src_mesh.clone().unbind(),
+            def_val,
+        }
     }
 
     #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0))]
@@ -141,41 +202,51 @@ impl PyMovingLeastSquares {
         let src_view = into_view(src_mesh);
         let field = src_view.field(field_name, None).unwrap();
         let field_nature = mf::FieldNature::Intensive;
-        self.inner
+        self.op
             .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+    }
+
+    fn __call__<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<PyField> {
+        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, expr)
+    }
+
+    fn eval<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyDict>> {
+        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, expr)
     }
 }
 
-#[pyclass(str, from_py_object)]
+// ---------------------------------------------------------------------------
+// ConservativeP0
+// ---------------------------------------------------------------------------
+
+#[pyclass(str)]
 #[pyo3(name = "ConservativeP0")]
-#[derive(Clone)]
 pub struct PyConservativeP0 {
-    inner: mf::ConservativeP0Transfer,
+    op: Arc<TransferOp>,
+    src_mesh: Py<PyUMesh>,
+    def_val: f64,
 }
 
 impl Display for PyConservativeP0 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self.inner)
-    }
-}
-
-impl From<mf::ConservativeP0Transfer> for PyConservativeP0 {
-    fn from(transfer: mf::ConservativeP0Transfer) -> Self {
-        PyConservativeP0 { inner: transfer }
-    }
-}
-
-impl From<PyConservativeP0> for mf::ConservativeP0Transfer {
-    fn from(pytransfer: PyConservativeP0) -> Self {
-        pytransfer.inner
+        write!(f, "{:#?}", self.op)
     }
 }
 
 #[pymethods]
 impl PyConservativeP0 {
     #[new]
-    fn new(src_mesh: &PyUMesh, tgt_mesh: &PyUMesh) -> Self {
-        mf::ConservativeP0Transfer::new(&into_view(src_mesh), &into_view(tgt_mesh)).into()
+    #[pyo3(signature = (src_mesh, tgt_mesh, def_val=0.0))]
+    fn new(src_mesh: &Bound<'_, PyUMesh>, tgt_mesh: &Bound<'_, PyUMesh>, def_val: f64) -> Self {
+        let transfer = mf::ConservativeP0Transfer::new(
+            &into_view(&src_mesh.borrow()),
+            &into_view(&tgt_mesh.borrow()),
+        );
+        PyConservativeP0 {
+            op: Arc::new(TransferOp::ConservativeP0(transfer)),
+            src_mesh: src_mesh.clone().unbind(),
+            def_val,
+        }
     }
 
     /// Transfers a field defined on 2D source cells to the 2D target cells, weighted by the cell
@@ -199,43 +270,59 @@ impl PyConservativeP0 {
         } else {
             mf::FieldNature::Intensive
         };
-        self.inner
+        self.op
             .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+    }
+
+    fn __call__<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<PyField> {
+        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, expr)
+    }
+
+    fn eval<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyDict>> {
+        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, expr)
     }
 }
 
-#[pyclass(str, from_py_object)]
+// ---------------------------------------------------------------------------
+// InverseDistance
+// ---------------------------------------------------------------------------
+
+#[pyclass(str)]
 #[pyo3(name = "InverseDistance")]
-#[derive(Clone)]
 pub struct PyInverseDistance {
-    inner: mf::InverseDistanceTransfer,
+    op: Arc<TransferOp>,
+    src_mesh: Py<PyUMesh>,
+    def_val: f64,
 }
 
 impl Display for PyInverseDistance {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:#?}", self.inner)
-    }
-}
-
-impl From<mf::InverseDistanceTransfer> for PyInverseDistance {
-    fn from(transfer: mf::InverseDistanceTransfer) -> Self {
-        PyInverseDistance { inner: transfer }
-    }
-}
-
-impl From<PyInverseDistance> for mf::InverseDistanceTransfer {
-    fn from(pytransfer: PyInverseDistance) -> Self {
-        pytransfer.inner
+        write!(f, "{:#?}", self.op)
     }
 }
 
 #[pymethods]
 impl PyInverseDistance {
     #[new]
-    #[pyo3(signature = (src_mesh, tgt_mesh, k=4, exponent=2.0))]
-    fn new(src_mesh: &PyUMesh, tgt_mesh: &PyUMesh, k: usize, exponent: f64) -> Self {
-        mf::InverseDistanceTransfer::new(&into_view(src_mesh), &into_view(tgt_mesh), k, exponent)
-            .into()
+    #[pyo3(signature = (src_mesh, tgt_mesh, k=4, exponent=2.0, def_val=0.0))]
+    fn new(
+        src_mesh: &Bound<'_, PyUMesh>,
+        tgt_mesh: &Bound<'_, PyUMesh>,
+        k: usize,
+        exponent: f64,
+        def_val: f64,
+    ) -> Self {
+        let transfer = mf::InverseDistanceTransfer::new(
+            &into_view(&src_mesh.borrow()),
+            &into_view(&tgt_mesh.borrow()),
+            k,
+            exponent,
+        );
+        PyInverseDistance {
+            op: Arc::new(TransferOp::InverseDistance(transfer)),
+            src_mesh: src_mesh.clone().unbind(),
+            def_val,
+        }
     }
 
     #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0))]
@@ -251,7 +338,15 @@ impl PyInverseDistance {
         let src_view = into_view(src_mesh);
         let field = src_view.field(field_name, None).unwrap();
         let field_nature = mf::FieldNature::Intensive;
-        self.inner
+        self.op
             .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+    }
+
+    fn __call__<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<PyField> {
+        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, expr)
+    }
+
+    fn eval<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyDict>> {
+        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, expr)
     }
 }

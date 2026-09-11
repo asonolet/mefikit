@@ -302,6 +302,7 @@ fn expr_field_references<'a>(expr: &'a FieldExpr, out: &mut Vec<&'a str>) {
         }
         FieldExpr::UnaryExpr { expr, .. } => expr_field_references(expr, out),
         FieldExpr::Index(inner, _) => expr_field_references(inner, out),
+        FieldExpr::Transfer { .. } => {}
         _ => {}
     }
 }

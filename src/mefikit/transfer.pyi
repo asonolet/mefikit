@@ -1,9 +1,16 @@
 from typing import Callable
 
-from . import UMesh
+from . import Field, UMesh
 
 class ConstantPiecewise:
-    def __init__(self, src_mesh: UMesh, tgt_mesh: UMesh) -> None: ...
+    def __init__(
+        self,
+        src_mesh: UMesh,
+        tgt_mesh: UMesh,
+        def_val: float = ...,
+    ) -> None: ...
+    def __call__(self, expr: Field) -> Field: ...
+    def eval(self, expr: Field) -> dict[str, object]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
@@ -25,7 +32,10 @@ class MovingLeastSquares:
         tgt_mesh: UMesh,
         k: int = ...,
         weighting: DistanceWeighting = ...,
+        def_val: float = ...,
     ) -> None: ...
+    def __call__(self, expr: Field) -> Field: ...
+    def eval(self, expr: Field) -> dict[str, object]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
@@ -37,8 +47,15 @@ class MovingLeastSquares:
 
 class InverseDistance:
     def __init__(
-        self, src_mesh: UMesh, tgt_mesh: UMesh, k: int = ..., exponent: float = ...
+        self,
+        src_mesh: UMesh,
+        tgt_mesh: UMesh,
+        k: int = ...,
+        exponent: float = ...,
+        def_val: float = ...,
     ) -> None: ...
+    def __call__(self, expr: Field) -> Field: ...
+    def eval(self, expr: Field) -> dict[str, object]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
@@ -49,7 +66,14 @@ class InverseDistance:
     ) -> None: ...
 
 class ConservativeP0:
-    def __init__(self, src_mesh: UMesh, tgt_mesh: UMesh) -> None: ...
+    def __init__(
+        self,
+        src_mesh: UMesh,
+        tgt_mesh: UMesh,
+        def_val: float = ...,
+    ) -> None: ...
+    def __call__(self, expr: Field) -> Field: ...
+    def eval(self, expr: Field) -> dict[str, object]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
