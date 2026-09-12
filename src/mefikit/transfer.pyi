@@ -9,8 +9,16 @@ class ConstantPiecewise:
         tgt_mesh: UMesh,
         def_val: float = ...,
     ) -> None: ...
-    def __call__(self, expr: Field) -> Field: ...
-    def eval(self, expr: Field) -> dict[str, object]: ...
+    def __call__(
+        self,
+        expr: Field,
+        extensive: bool = False,
+    ) -> Field: ...
+    def eval(
+        self,
+        expr: Field,
+        extensive: bool = False,
+    ) -> dict[str, object]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
@@ -34,8 +42,16 @@ class MovingLeastSquares:
         weighting: DistanceWeighting = ...,
         def_val: float = ...,
     ) -> None: ...
-    def __call__(self, expr: Field) -> Field: ...
-    def eval(self, expr: Field) -> dict[str, object]: ...
+    def __call__(
+        self,
+        expr: Field,
+        extensive: bool = False,
+    ) -> Field: ...
+    def eval(
+        self,
+        expr: Field,
+        extensive: bool = False,
+    ) -> dict[str, object]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
@@ -54,8 +70,16 @@ class InverseDistance:
         exponent: float = ...,
         def_val: float = ...,
     ) -> None: ...
-    def __call__(self, expr: Field) -> Field: ...
-    def eval(self, expr: Field) -> dict[str, object]: ...
+    def __call__(
+        self,
+        expr: Field,
+        extensive: bool = False,
+    ) -> Field: ...
+    def eval(
+        self,
+        expr: Field,
+        extensive: bool = False,
+    ) -> dict[str, object]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
@@ -72,8 +96,16 @@ class ConservativeP0:
         tgt_mesh: UMesh,
         def_val: float = ...,
     ) -> None: ...
-    def __call__(self, expr: Field) -> Field: ...
-    def eval(self, expr: Field) -> dict[str, object]: ...
+    def __call__(
+        self,
+        expr: Field,
+        extensive: bool = False,
+    ) -> Field: ...
+    def eval(
+        self,
+        expr: Field,
+        extensive: bool = False,
+    ) -> dict[str, object]: ...
     def apply_update(
         self,
         src_mesh: UMesh,

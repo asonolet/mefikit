@@ -5,55 +5,49 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 use mefikit::prelude as mf;
-use mefikit::prelude::fieldexpr::{Evaluable, FieldExpr, TransferOp};
+use mefikit::prelude::fieldexpr::TransferOp;
 use mefikit::tools::Transfer;
 
 use crate::element::etype_to_str;
 use crate::pyfield::PyField;
 use crate::pyumesh::{PyUMesh, into_mut, into_view};
 
-/// Evaluates `expr` on the source mesh, materialising it as an owned field.
-fn eval_source<'py>(
-    py: Python<'py>,
-    src_mesh: &Py<PyUMesh>,
-    expr: &Bound<'py, PyAny>,
-) -> PyResult<mf::FieldOwnedD> {
-    let pyf: PyField = expr.try_into()?;
-    let src_mesh = src_mesh.bind(py);
-    let guard = src_mesh.borrow();
-    let src_view = into_view(&guard);
-    Ok(pyf.inner.evaluate(&src_view, None).to_owned())
+fn field_nature(extensive: bool) -> mf::FieldNature {
+    if extensive {
+        mf::FieldNature::Extensive
+    } else {
+        mf::FieldNature::Intensive
+    }
 }
 
-/// Materialises `expr` on the source mesh as a lazy transfer expression onto the target cells.
+/// Builds a transfer expression for `expr`, to be evaluated later on the target mesh.
 fn transfer_expr<'py>(
     py: Python<'py>,
     src_mesh: &Py<PyUMesh>,
     op: &Arc<TransferOp>,
     def_val: f64,
+    extensive: bool,
     expr: &Bound<'py, PyAny>,
 ) -> PyResult<PyField> {
-    let source = eval_source(py, src_mesh, expr)?;
-    Ok(FieldExpr::Transfer {
-        source_values: source,
-        op: op.clone(),
-        tgt_dim: op.tgt_dim(),
-        default: def_val,
-    }
-    .into())
+    let pyf: PyField = expr.try_into()?;
+    let guard = src_mesh.bind(py).borrow();
+    Ok(Arc::clone(op)
+        .expr(&guard.inner, pyf.inner, field_nature(extensive), def_val)
+        .into())
 }
 
-/// Materialises `expr` on the source mesh and transfers it onto the target cells eagerly.
+/// Evaluates `expr` on the source mesh and transfers it onto the target cells eagerly.
 fn transfer_eval<'py>(
     py: Python<'py>,
     src_mesh: &Py<PyUMesh>,
     op: &Arc<TransferOp>,
     def_val: f64,
+    extensive: bool,
     expr: &Bound<'py, PyAny>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let source = eval_source(py, src_mesh, expr)?;
-    let src_view = source.view();
-    let field = op.apply(&src_view, mf::FieldNature::Intensive, def_val);
+    let pyf: PyField = expr.try_into()?;
+    let guard = src_mesh.bind(py).borrow();
+    let field = op.eval(&guard.inner, pyf.inner, field_nature(extensive), def_val);
     let dict = PyDict::new(py);
     for (et, arr) in field.0.iter() {
         dict.set_item(etype_to_str(*et), np::PyArray::from_array(py, arr))?;
@@ -133,17 +127,29 @@ impl PyConstantPiecewise {
         let name = tgt_field_name.unwrap_or(field_name);
         let src_view = into_view(src_mesh);
         let field = src_view.field(field_name, None).unwrap();
-        let field_nature = mf::FieldNature::Intensive;
+        let nature = mf::FieldNature::Intensive;
         self.op
-            .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+            .apply_update(into_mut(tgt_mesh), name, &field, nature, def_val);
     }
 
-    fn __call__<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<PyField> {
-        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, expr)
+    #[pyo3(signature = (expr, extensive=false))]
+    fn __call__<'py>(
+        &self,
+        py: Python<'py>,
+        expr: &Bound<'py, PyAny>,
+        extensive: bool,
+    ) -> PyResult<PyField> {
+        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, extensive, expr)
     }
 
-    fn eval<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyDict>> {
-        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, expr)
+    #[pyo3(signature = (expr, extensive=false))]
+    fn eval<'py>(
+        &self,
+        py: Python<'py>,
+        expr: &Bound<'py, PyAny>,
+        extensive: bool,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, extensive, expr)
     }
 }
 
@@ -201,17 +207,29 @@ impl PyMovingLeastSquares {
         let name = tgt_field_name.unwrap_or(field_name);
         let src_view = into_view(src_mesh);
         let field = src_view.field(field_name, None).unwrap();
-        let field_nature = mf::FieldNature::Intensive;
+        let nature = mf::FieldNature::Intensive;
         self.op
-            .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+            .apply_update(into_mut(tgt_mesh), name, &field, nature, def_val);
     }
 
-    fn __call__<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<PyField> {
-        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, expr)
+    #[pyo3(signature = (expr, extensive=false))]
+    fn __call__<'py>(
+        &self,
+        py: Python<'py>,
+        expr: &Bound<'py, PyAny>,
+        extensive: bool,
+    ) -> PyResult<PyField> {
+        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, extensive, expr)
     }
 
-    fn eval<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyDict>> {
-        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, expr)
+    #[pyo3(signature = (expr, extensive=false))]
+    fn eval<'py>(
+        &self,
+        py: Python<'py>,
+        expr: &Bound<'py, PyAny>,
+        extensive: bool,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, extensive, expr)
     }
 }
 
@@ -265,21 +283,29 @@ impl PyConservativeP0 {
         let name = tgt_field_name.unwrap_or(field_name);
         let src_view = into_view(src_mesh);
         let field = src_view.field(field_name, None).unwrap();
-        let field_nature = if extensive {
-            mf::FieldNature::Extensive
-        } else {
-            mf::FieldNature::Intensive
-        };
+        let nature = field_nature(extensive);
         self.op
-            .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+            .apply_update(into_mut(tgt_mesh), name, &field, nature, def_val);
     }
 
-    fn __call__<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<PyField> {
-        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, expr)
+    #[pyo3(signature = (expr, extensive=false))]
+    fn __call__<'py>(
+        &self,
+        py: Python<'py>,
+        expr: &Bound<'py, PyAny>,
+        extensive: bool,
+    ) -> PyResult<PyField> {
+        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, extensive, expr)
     }
 
-    fn eval<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyDict>> {
-        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, expr)
+    #[pyo3(signature = (expr, extensive=false))]
+    fn eval<'py>(
+        &self,
+        py: Python<'py>,
+        expr: &Bound<'py, PyAny>,
+        extensive: bool,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, extensive, expr)
     }
 }
 
@@ -337,16 +363,28 @@ impl PyInverseDistance {
         let name = tgt_field_name.unwrap_or(field_name);
         let src_view = into_view(src_mesh);
         let field = src_view.field(field_name, None).unwrap();
-        let field_nature = mf::FieldNature::Intensive;
+        let nature = mf::FieldNature::Intensive;
         self.op
-            .apply_update(into_mut(tgt_mesh), name, &field, field_nature, def_val);
+            .apply_update(into_mut(tgt_mesh), name, &field, nature, def_val);
     }
 
-    fn __call__<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<PyField> {
-        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, expr)
+    #[pyo3(signature = (expr, extensive=false))]
+    fn __call__<'py>(
+        &self,
+        py: Python<'py>,
+        expr: &Bound<'py, PyAny>,
+        extensive: bool,
+    ) -> PyResult<PyField> {
+        transfer_expr(py, &self.src_mesh, &self.op, self.def_val, extensive, expr)
     }
 
-    fn eval<'py>(&self, py: Python<'py>, expr: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyDict>> {
-        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, expr)
+    #[pyo3(signature = (expr, extensive=false))]
+    fn eval<'py>(
+        &self,
+        py: Python<'py>,
+        expr: &Bound<'py, PyAny>,
+        extensive: bool,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        transfer_eval(py, &self.src_mesh, &self.op, self.def_val, extensive, expr)
     }
 }
