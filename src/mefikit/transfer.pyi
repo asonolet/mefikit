@@ -26,6 +26,7 @@ class ConstantPiecewise:
         tgt_mesh: UMesh,
         tgt_field_name: str | None = ...,
         def_val: float = ...,
+        extensive: bool = ...,
     ) -> None: ...
 
 class DistanceWeighting:
@@ -59,6 +60,7 @@ class MovingLeastSquares:
         tgt_mesh: UMesh,
         tgt_field_name: str | None = ...,
         def_val: float = ...,
+        extensive: bool = ...,
     ) -> None: ...
 
 class InverseDistance:
@@ -87,6 +89,7 @@ class InverseDistance:
         tgt_mesh: UMesh,
         tgt_field_name: str | None = ...,
         def_val: float = ...,
+        extensive: bool = ...,
     ) -> None: ...
 
 class ConservativeP0:

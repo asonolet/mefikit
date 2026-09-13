@@ -55,6 +55,7 @@ impl DistanceWeighting {
 #[derive(Clone, Debug)]
 pub struct MovingLeastSquaresTransfer {
     tgt_dim: Dimension,
+    src_dim: Dimension,
     /// Number of source points the operator was built from.
     n_src: usize,
     /// Indices of the `k` source points used for each target point. Shape `(n_tgt × k)`.
@@ -137,9 +138,25 @@ impl MovingLeastSquaresTransfer {
         k: usize,
         weighting: DistanceWeighting,
     ) -> Self {
-        let src_coords = centroids(mesh_src, None);
+        let src_space = mesh_src.space_dimension();
+        let tgt_space = mesh_tgt.space_dimension();
+        assert_eq!(
+            src_space, tgt_space,
+            "Source and target meshes should share the same space dimension, got source = {src_space}D and target = {tgt_space}D"
+        );
+        assert!(
+            (2..=3).contains(&src_space),
+            "Moving least-squares transfer is only supported in 2D and 3D space, got {src_space}D"
+        );
+        assert!(k > 0, "k should be at least 1");
+
+        let src_dim = mesh_src
+            .topological_dimension()
+            .expect("Source mesh should not be empty");
+        let src_coords = centroids(mesh_src, Some(src_dim));
         let src_view: Vec<_> = src_coords.values().map(|a| a.view()).collect();
         let src_coords = concatenate(Axis(0), src_view.as_slice()).unwrap();
+        let n_src = src_coords.nrows();
         let tgt_dim = mesh_tgt
             .topological_dimension()
             .expect("Target mesh should not be empty");
@@ -147,7 +164,7 @@ impl MovingLeastSquaresTransfer {
         let mut indices = Vec::new();
         let mut weights = Vec::new();
         for et in mesh_tgt.element_types() {
-            let tgt_coords = match mesh_tgt.space_dimension() {
+            let tgt_coords = match src_space {
                 2 => {
                     let v: Vec<f64> = mesh_tgt
                         .elements_of_type(*et)
@@ -155,7 +172,14 @@ impl MovingLeastSquaresTransfer {
                         .collect();
                     Array2::from_shape_vec((mesh_tgt.block(*et).unwrap().len(), 2), v).unwrap()
                 }
-                _ => todo!(),
+                3 => {
+                    let v: Vec<f64> = mesh_tgt
+                        .elements_of_type(*et)
+                        .flat_map(|e| e.centroid3().into_iter())
+                        .collect();
+                    Array2::from_shape_vec((mesh_tgt.block(*et).unwrap().len(), 3), v).unwrap()
+                }
+                _ => unreachable!(),
             };
             let (ind, wei) =
                 Self::from_coords(&src_coords.view(), &tgt_coords.view(), k, weighting);
@@ -164,7 +188,8 @@ impl MovingLeastSquaresTransfer {
         }
         Self {
             tgt_dim,
-            n_src: mesh_src.num_elements(),
+            src_dim,
+            n_src,
             indices,
             weights,
         }
@@ -394,9 +419,29 @@ fn as_points<'a, const D: usize>(coords: &ArrayView2<'a, f64>) -> &'a [[f64; D]]
 
 impl Transfer for MovingLeastSquaresTransfer {
     fn apply(&self, field: &FieldViewD, _field_nature: FieldNature, _default: f64) -> FieldOwnedD {
+        assert_eq!(
+            field.dimension(),
+            Some(self.src_dim),
+            "The field should be defined on {:?} source cells, got {:?}",
+            self.src_dim,
+            field.dimension()
+        );
+        // Concatenate the per-element-type source arrays in the same order used to build the
+        // operator (BTreeMap order), so the neighbour indices are valid whatever the source
+        // element types are.
+        let src_views: Vec<ArrayViewD<f64>> = field.0.values().map(|a| a.view()).collect();
+        let src = concatenate(Axis(0), src_views.as_slice()).unwrap();
+        assert_eq!(
+            src.shape()[0],
+            self.n_src,
+            "The field should have one entry per source point, got {} for {}",
+            src.shape()[0],
+            self.n_src
+        );
+
         let mut res = BTreeMap::new();
-        for (et, a) in &field.0 {
-            res.insert(*et, self.apply_on_array(*et, a));
+        for (et, _) in &self.indices {
+            res.insert(*et, self.apply_on_array(*et, &src.view()));
         }
         FieldOwnedD::new(res)
     }
@@ -411,6 +456,9 @@ mod tests {
     use super::*;
     use approx::assert_relative_eq;
     use ndarray as nd;
+
+    use crate::mesh::{ElementType, UMesh};
+    use crate::mesh_examples as me;
 
     fn src_grid_3d() -> nd::Array2<f64> {
         let mut pts = Vec::new();
@@ -440,6 +488,7 @@ mod tests {
         };
         MovingLeastSquaresTransfer {
             tgt_dim,
+            src_dim: tgt_dim,
             n_src: src.nrows(),
             indices: vec![(ElementType::QUAD4, indices)],
             weights: vec![(ElementType::QUAD4, weights)],
@@ -654,5 +703,105 @@ mod tests {
             (a[0] - b[0]).abs() > 1e-6,
             "weighted and unweighted interpolation should differ, got {a:?} vs {b:?}"
         );
+    }
+
+    /// A source whose topological cells span several element types is handled by flattening the
+    /// per-element-type arrays in the same order used to build the operator (regression: the
+    /// operator used to feed each block separately and compare it to the whole-source point
+    /// count, which panicked).
+    #[test]
+    fn mixed_element_type_source() {
+        let coords = nd::Array2::from_shape_vec(
+            (6, 2),
+            vec![0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 2.0, 1.0, 2.0],
+        )
+        .unwrap();
+        let mut source = UMesh::new(coords.into());
+        source.add_regular_block(
+            ElementType::QUAD4,
+            nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
+            None,
+        );
+        source.add_regular_block(
+            ElementType::TRI3,
+            nd::arr2(&[[2, 3, 4], [4, 5, 2]]).to_shared(),
+            None,
+        );
+        let field = FieldOwnedD::new(BTreeMap::from([
+            (ElementType::QUAD4, nd::array![1.0].into_dyn()),
+            (ElementType::TRI3, nd::array![2.0, 3.0].into_dyn()),
+        ]));
+        source.update_field("f", field.into_shared());
+
+        let target = me::make_imesh_2d(3);
+        let op = MovingLeastSquaresTransfer::new(
+            &source.view(),
+            &target.view(),
+            4,
+            DistanceWeighting::Constant,
+        );
+        let out = op.apply(
+            &source.field("f", Some(Dimension::D2)).unwrap(),
+            FieldNature::Intensive,
+            0.0,
+        );
+        assert_eq!(out.0[&ElementType::QUAD4].len(), target.num_elements());
+        assert!(
+            out.0[&ElementType::QUAD4].iter().all(|&v| v > 0.0),
+            "every target point should sample the mixed source"
+        );
+    }
+
+    /// A 3D target mesh is supported, as is the downcast from volume source cells onto a surface
+    /// target (regression: only 2D targets were implemented, the 3D arm was a `todo!()`).
+    #[test]
+    fn supports_3d_target_and_downcast() {
+        let mut source = me::make_imesh_3d(1);
+        let field = FieldOwnedD::new(BTreeMap::from([(
+            ElementType::HEX8,
+            nd::array![5.0].into_dyn(),
+        )]));
+        source.update_field("f", field.into_shared());
+
+        // 3D -> 3D
+        let target = me::make_imesh_3d(2);
+        let op = MovingLeastSquaresTransfer::new(
+            &source.view(),
+            &target.view(),
+            4,
+            DistanceWeighting::Constant,
+        );
+        let out = op.apply(
+            &source.field("f", Some(Dimension::D3)).unwrap(),
+            FieldNature::Intensive,
+            0.0,
+        );
+        assert_eq!(out.0[&ElementType::HEX8].len(), target.num_elements());
+        assert!(out.0[&ElementType::HEX8].iter().all(|&v| v == 5.0));
+
+        // 3D -> 2D downcast (a single QUAD4 surface at z = 0)
+        let tcoords = nd::ArcArray2::from_shape_vec(
+            (4, 3),
+            vec![0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.5, 0.0],
+        )
+        .unwrap();
+        let mut surface = UMesh::new(tcoords);
+        surface.add_regular_block(
+            ElementType::QUAD4,
+            nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
+            None,
+        );
+        let op = MovingLeastSquaresTransfer::new(
+            &source.view(),
+            &surface.view(),
+            4,
+            DistanceWeighting::Constant,
+        );
+        let out = op.apply(
+            &source.field("f", Some(Dimension::D3)).unwrap(),
+            FieldNature::Intensive,
+            0.0,
+        );
+        assert_eq!(out.0[&ElementType::QUAD4][0], 5.0);
     }
 }

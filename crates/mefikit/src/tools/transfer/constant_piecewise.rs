@@ -203,11 +203,14 @@ fn contains_point(elem: &Element, sample: [f64; 3], space_dim: usize) -> bool {
         // TODO: this does not work for polyhedra as coords size does not match connectivity size.
         3 => {
             let coords: Vec<[f64; 3]> = elem.coords3().copied().collect();
+            // `coords3()` skips the `usize::MAX` face separators, so the local index is the
+            // position among the non-separator connectivity entries -- NOT the raw flat index.
             let local: BTreeMap<usize, usize> = elem
                 .connectivity()
                 .iter()
+                .filter(|&&n| n != usize::MAX)
                 .enumerate()
-                .map(|(i, &node)| (node, i))
+                .map(|(i, &n)| (n, i))
                 .collect();
             let mut faces: Vec<usize> = Vec::new();
             for (_, face_conn) in elem.subentities(Some(Dimension::D1)) {
@@ -414,5 +417,49 @@ mod tests {
         let target = me::make_imesh_3d(1);
         let _ =
             ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
+    }
+
+    /// A PHED source whose connectivity repeats vertices across faces is sampled correctly.
+    /// (Regression: the face-local index table used the raw flat-connectivity position, which
+    /// exceeds the compressed vertex list for late repeats and index-panics.)
+    #[test]
+    fn transfer_phed_hex_seed_source() {
+        let coords = nd::ArcArray2::from_shape_vec(
+            (8, 3),
+            vec![
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0,
+                0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0,
+            ],
+        )
+        .unwrap();
+        let mut source = UMesh::new(coords);
+        // Face connectivity of the unit cube [0,1]^3, polyhedron convention (MED faces):
+        let m = usize::MAX;
+        source.add_element(
+            ElementType::PHED,
+            &[
+                0, 3, 2, 1, m, 4, 5, 6, 7, m, 0, 1, 5, 4, m, 1, 2, 6, 5, m, 2, 3, 7, 6, m, 3, 0, 4,
+                7,
+            ],
+            None,
+        );
+        let field = FieldOwnedD::new(BTreeMap::from([(
+            ElementType::PHED,
+            nd::array![5.0].into_dyn(),
+        )]));
+        source.update_field("f", field.into_shared());
+
+        // Target: the unit cube split into 8 HEX8 cells.
+        let target = me::make_imesh_3d(2);
+        let op =
+            ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
+        let field = op.apply(
+            &source.field("f", Some(Dimension::D3)).unwrap(),
+            FieldNature::Intensive,
+            0.0,
+        );
+        let arr = &field.0[&ElementType::HEX8];
+        assert_eq!(arr.len(), target.num_elements());
+        assert!(arr.iter().all(|&v| v == 5.0));
     }
 }

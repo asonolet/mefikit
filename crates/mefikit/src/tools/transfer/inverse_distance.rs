@@ -354,6 +354,46 @@ mod tests {
         let _ = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
     }
 
+    /// A source whose topological cells span several element types (regression: the transfer
+    /// used to compare each flattened block to the whole-source point count and panic).
+    #[test]
+    fn transfer_mixed_element_type_source() {
+        let coords = nd::Array2::from_shape_vec(
+            (6, 2),
+            vec![0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0, 2.0, 1.0, 2.0],
+        )
+        .unwrap();
+        let mut source = UMesh::new(coords.into());
+        source.add_regular_block(
+            ElementType::QUAD4,
+            nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
+            None,
+        );
+        source.add_regular_block(
+            ElementType::TRI3,
+            nd::arr2(&[[2, 3, 4], [4, 5, 2]]).to_shared(),
+            None,
+        );
+        let field = FieldOwnedD::new(BTreeMap::from([
+            (ElementType::QUAD4, nd::array![1.0].into_dyn()),
+            (ElementType::TRI3, nd::array![2.0, 3.0].into_dyn()),
+        ]));
+        source.update_field("f", field.into_shared());
+
+        let target = me::make_imesh_2d(3);
+        let op = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
+        let out = op.apply(
+            &source.field("f", Some(Dimension::D2)).unwrap(),
+            FieldNature::Intensive,
+            0.0,
+        );
+        assert_eq!(out.0[&ElementType::QUAD4].len(), target.num_elements());
+        assert!(
+            out.0[&ElementType::QUAD4].iter().all(|&v| v > 0.0),
+            "every target point should sample the mixed source"
+        );
+    }
+
     /// A field on a 3D volume mesh is transferred onto a 2D manifold in 3D space.
     #[test]
     fn transfer_3d_downcast() {

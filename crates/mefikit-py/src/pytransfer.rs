@@ -115,7 +115,7 @@ impl PyConstantPiecewise {
         }
     }
 
-    #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0))]
+    #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0, extensive=false))]
     fn apply_update(
         &self,
         src_mesh: &PyUMesh,
@@ -123,11 +123,12 @@ impl PyConstantPiecewise {
         tgt_mesh: &mut PyUMesh,
         tgt_field_name: Option<&str>,
         def_val: f64,
+        extensive: bool,
     ) {
         let name = tgt_field_name.unwrap_or(field_name);
         let src_view = into_view(src_mesh);
         let field = src_view.field(field_name, None).unwrap();
-        let nature = mf::FieldNature::Intensive;
+        let nature = field_nature(extensive);
         self.op
             .apply_update(into_mut(tgt_mesh), name, &field, nature, def_val);
     }
@@ -195,7 +196,7 @@ impl PyMovingLeastSquares {
         }
     }
 
-    #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0))]
+    #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0, extensive=false))]
     fn apply_update(
         &self,
         src_mesh: &PyUMesh,
@@ -203,11 +204,12 @@ impl PyMovingLeastSquares {
         tgt_mesh: &mut PyUMesh,
         tgt_field_name: Option<&str>,
         def_val: f64,
+        extensive: bool,
     ) {
         let name = tgt_field_name.unwrap_or(field_name);
         let src_view = into_view(src_mesh);
         let field = src_view.field(field_name, None).unwrap();
-        let nature = mf::FieldNature::Intensive;
+        let nature = field_nature(extensive);
         self.op
             .apply_update(into_mut(tgt_mesh), name, &field, nature, def_val);
     }
@@ -351,7 +353,7 @@ impl PyInverseDistance {
         }
     }
 
-    #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0))]
+    #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0, extensive=false))]
     fn apply_update(
         &self,
         src_mesh: &PyUMesh,
@@ -359,11 +361,12 @@ impl PyInverseDistance {
         tgt_mesh: &mut PyUMesh,
         tgt_field_name: Option<&str>,
         def_val: f64,
+        extensive: bool,
     ) {
         let name = tgt_field_name.unwrap_or(field_name);
         let src_view = into_view(src_mesh);
         let field = src_view.field(field_name, None).unwrap();
-        let nature = mf::FieldNature::Intensive;
+        let nature = field_nature(extensive);
         self.op
             .apply_update(into_mut(tgt_mesh), name, &field, nature, def_val);
     }
@@ -388,3 +391,7 @@ impl PyInverseDistance {
         transfer_eval(py, &self.src_mesh, &self.op, self.def_val, extensive, expr)
     }
 }
+
+// ---------------------------------------------------------------------------
+// InverseDistance
+// ---------------------------------------------------------------------------
