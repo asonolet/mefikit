@@ -1,7 +1,16 @@
+//! Piecewise-constant transfer: each target cell copies the value of the source cell containing
+//! its sampling point.
+//!
+//! This is a pure sample of the containing source cell: `FieldNature` does not affect the
+//! transferred value (extensive conservation requires a measure-weighted scheme). The cell location
+//! precompute lives in this module ([`prepare`] and its helpers) and the apply-time sparse product
+//! is handled by the shared [`super::operator::TransferOperator`].
+
 use std::collections::BTreeMap;
 
 use ndarray as nd;
 
+use super::operator::{RowSparse, TransferMethod, TransferOperator, validated_dims};
 use super::transfer_trait::{FieldNature, PointLocation, Transfer};
 use crate::element_traits::{ElementGeo, ElementTopo};
 use crate::geometry::{Polygon, point_in_phed};
@@ -11,17 +20,93 @@ use crate::mesh::{
 };
 use crate::tools::spatial_index::{SpIdx2, SpIdx3, SpatiallyIndexable};
 
-/// Piecewise-constant transfer: each target cell copies the value of the source cell containing
-/// its sampling point.
+/// Builds the piecewise-constant operator: each target cell is located in the source mesh
+/// (of the source's topological dimension) through its sampling point, chosen with `point`.
 ///
-/// This is a pure sample of the containing source cell: `FieldNature` does not affect the
-/// transferred value (extensive conservation requires a measure-weighted scheme).
-#[derive(Debug, Clone)]
-pub struct ConstantPiecewiseTransfer {
-    src_dim: Dimension,
-    tgt_dim: Dimension,
-    mapping: BTreeMap<ElementType, Vec<Option<ElementId>>>,
+/// # Panics
+///
+/// - If `source` and `target` do not live in the same space dimension.
+/// - If `source` is not full-dimensional (its topological dimension must match its space
+///   dimension so that its cells define regions).
+/// - If the space dimension is neither 2 nor 3.
+pub(crate) fn prepare(
+    source: &UMeshView,
+    target: &UMeshView,
+    point: &PointLocation,
+) -> TransferOperator {
+    let (src_dim, tgt_dim, src_space) = validated_dims(source, target, "Constant piecewise");
+    let src_dim_usize = u8::from(src_dim) as usize;
+    assert_eq!(
+        src_dim_usize, src_space,
+        "Source mesh should be full-dimensional (topological dimension = space dimension), got topological {src_dim:?} in a {src_space}D space"
+    );
+
+    let index = match src_space {
+        2 => SpIndex::D2(source.bvh2()),
+        3 => SpIndex::D3(source.bvh3()),
+        _ => unreachable!(),
+    };
+
+    let mut located: BTreeMap<ElementType, Vec<Option<ElementId>>> = BTreeMap::new();
+    for elem in target.elements_of_dim(tgt_dim) {
+        let sample = sampling_point(&elem, *point, src_space);
+        located
+            .entry(elem.element_type())
+            .or_default()
+            .push(locate(source, &index, src_dim, src_space, sample));
+    }
+
+    // Flatten the source cells in BTreeMap element-type order, so the global index stored in
+    // the rows matches the concatenation of the field arrays done at apply time.
+    let mut src_offsets: BTreeMap<ElementType, usize> = BTreeMap::new();
+    let mut n_src = 0;
+    for (et, block) in source.blocks() {
+        if u8::from(et.dimension()) as usize == src_space {
+            src_offsets.insert(*et, n_src);
+            n_src += block.len();
+        }
+    }
+
+    let mut data = Vec::new();
+    for (tgt_et, ids) in located {
+        let n = ids.len();
+        let mut row_ptr = vec![0];
+        let mut src_idx = Vec::new();
+        let mut weights = Vec::new();
+        for id in &ids {
+            if let Some(id) = id {
+                src_idx.push(src_offsets[&id.element_type()] + id.index());
+                weights.push(1.0);
+            }
+            row_ptr.push(src_idx.len());
+        }
+        data.push((
+            tgt_et,
+            RowSparse {
+                target_measure: nd::Array1::ones(n),
+                row_ptr,
+                src_idx,
+                weights,
+            },
+        ));
+    }
+
+    TransferOperator::build(
+        TransferMethod::ConstantPiecewise,
+        src_dim,
+        tgt_dim,
+        n_src,
+        data,
+    )
 }
+
+/// Piecewise-constant transfer operator.
+///
+/// The operator precomputes, for every target cell, the source cell containing its sampling point
+/// (chosen with [`PointLocation`]); at apply time each located target cell copies the source cell
+/// value, and the others keep the `default` value.
+#[derive(Debug, Clone)]
+pub struct ConstantPiecewiseTransfer(pub(crate) TransferOperator);
 
 impl ConstantPiecewiseTransfer {
     /// Precomputes the piecewise-constant transfer operator from `source` to `target`.
@@ -36,91 +121,17 @@ impl ConstantPiecewiseTransfer {
     ///   dimension so that its cells define regions).
     /// - If the space dimension is neither 2 nor 3.
     pub fn new(source: &UMeshView, target: &UMeshView, point: PointLocation) -> Self {
-        let src_space = source.space_dimension();
-        let tgt_space = target.space_dimension();
-        assert_eq!(
-            src_space, tgt_space,
-            "Source and target meshes should share the same space dimension, got source = {src_space}D and target = {tgt_space}D"
-        );
-        assert!(
-            (2..=3).contains(&src_space),
-            "Transfer is only supported in 2D and 3D space, got {src_space}D"
-        );
-        let src_dim = source
-            .topological_dimension()
-            .expect("Source mesh should not be empty");
-        let tgt_dim = target
-            .topological_dimension()
-            .expect("Target mesh should not be empty");
-        let src_dim_usize = u8::from(src_dim) as usize;
-        assert_eq!(
-            src_dim_usize, src_space,
-            "Source mesh should be full-dimensional (topological dimension = space dimension), got topological {src_dim:?} in a {src_space}D space"
-        );
-
-        let index = match src_space {
-            2 => SpIndex::D2(source.bvh2()),
-            3 => SpIndex::D3(source.bvh3()),
-            _ => unreachable!(),
-        };
-
-        let mut mapping: BTreeMap<ElementType, Vec<Option<ElementId>>> = BTreeMap::new();
-        for elem in target.elements_of_dim(tgt_dim) {
-            let sample = sampling_point(&elem, point, src_space);
-            let located = locate(source, &index, src_dim, src_space, sample);
-            mapping
-                .entry(elem.element_type())
-                .or_default()
-                .push(located);
-        }
-        Self {
-            src_dim,
-            tgt_dim,
-            mapping,
-        }
+        Self(prepare(source, target, &point))
     }
 }
 
 impl Transfer for ConstantPiecewiseTransfer {
-    fn apply(&self, field: &FieldViewD, _field_nature: FieldNature, default: f64) -> FieldOwnedD {
-        assert_eq!(
-            field.dimension(),
-            Some(self.src_dim),
-            "The field should be defined on the source topological dimension {src_dim:?}, got {got:?}",
-            src_dim = self.src_dim,
-            got = field.dimension()
-        );
-        let trailing: Vec<usize> = field
-            .0
-            .values()
-            .next()
-            .expect("The field should not be empty")
-            .shape()[1..]
-            .to_vec();
-        let mut result: BTreeMap<ElementType, nd::Array<f64, nd::IxDyn>> = BTreeMap::new();
-        for (&tgt_et, located) in &self.mapping {
-            let n = located.len();
-            let shape: Vec<usize> = std::iter::once(n).chain(trailing.iter().copied()).collect();
-            let mut arr = nd::Array::from_elem(nd::IxDyn(&shape), default);
-            for (i, located) in located.iter().enumerate() {
-                if let Some(id) = located {
-                    let src_arr = field.0.get(&id.element_type()).unwrap_or_else(|| {
-                        panic!(
-                            "The field is missing the source element type {:?} required by the transfer",
-                            id.element_type()
-                        )
-                    });
-                    let src_row = src_arr.index_axis(nd::Axis(0), id.index());
-                    arr.index_axis_mut(nd::Axis(0), i).assign(&src_row);
-                }
-            }
-            result.insert(tgt_et, arr);
-        }
-        FieldOwnedD::new(result)
+    fn apply(&self, field: &FieldViewD, field_nature: FieldNature, default: f64) -> FieldOwnedD {
+        self.0.apply(field, field_nature, default)
     }
 
     fn tgt_dim(&self) -> Dimension {
-        self.tgt_dim
+        self.0.tgt_dim()
     }
 }
 
@@ -228,9 +239,13 @@ fn contains_point(elem: &Element, sample: [f64; 3], space_dim: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::{ElementType, FieldOwnedD, UMesh};
-    use crate::mesh_examples as me;
+    use std::collections::BTreeMap;
+
     use ndarray as nd;
+
+    use crate::element_traits::ElementGeo;
+    use crate::mesh::{ElementType, UMesh};
+    use crate::mesh_examples as me;
 
     fn source_with_field(values: nd::Array<f64, nd::IxDyn>) -> UMesh {
         let mut source = me::make_imesh_2d(1);

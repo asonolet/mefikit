@@ -5,19 +5,70 @@
 //! target field over the covered target cells equals the integral of the source field over the
 //! source cells, and for an extensive field the per-cell values sum to the source total.
 //!
-//! The overlap measures are precomputed once at construction time and stored as a sparse matrix,
-//! so [`Transfer::apply`] is a sparse matrix-vector product that can be reused for any field as
-//! long as the meshes do not change.
+//! The overlap precompute lives in this module ([`prepare`] and its helpers) and the apply-time
+//! sparse product is handled by the shared [`super::operator::TransferOperator`].
 
 use std::collections::BTreeMap;
 
 use ndarray as nd;
 
+use super::operator::{RowSparse, TransferMethod, TransferOperator, validated_dims};
 use super::transfer_trait::{FieldNature, Transfer};
 use crate::element_traits::ElementGeo;
 use crate::geometry::{Polyhedron, cross2, into_ccw2, signed_area2};
 use crate::mesh::{Dimension, ElementId, ElementType, FieldOwnedD, FieldViewD, UMeshView};
 use crate::tools::spatial_index::SpatiallyIndexable;
+
+/// Builds the conservative P0 operator by intersecting every source/target cell pair.
+///
+/// Both meshes must be full-dimensional (their topological dimension must match the space
+/// dimension `D`, which must be 2 or 3): the transfer computes the intersection area (in 2D)
+/// or intersection volume (in 3D) of the source and target cells, so every cell must be a full
+/// `D`-dimensional region (the intersection of a full-dimensional cell with a lower-dimensional
+/// cell has zero measure). The cells must be convex: this is always the case for `TRI3`,
+/// `QUAD4`, `TET4` and `HEX8` elements, while `PGON` and `PHED` cells are assumed convex.
+///
+/// # Panics
+///
+/// - If `mesh_src` and `mesh_tgt` do not share the same space dimension, or if it is not 2 or 3.
+/// - If either mesh is empty or not full-dimensional.
+pub(crate) fn prepare(mesh_src: &UMeshView, mesh_tgt: &UMeshView) -> TransferOperator {
+    let (src_dim, tgt_dim, src_space) = validated_dims(mesh_src, mesh_tgt, "Conservative P0");
+    let src_dim_usize = u8::from(src_dim) as usize;
+    assert_eq!(
+        src_dim_usize, src_space,
+        "Source mesh should be full-dimensional (topological dimension = space dimension), got topological {src_dim:?} in a {src_space}D space"
+    );
+    let tgt_dim_usize = u8::from(tgt_dim) as usize;
+    assert_eq!(
+        tgt_dim_usize, src_space,
+        "Target mesh should be full-dimensional (topological dimension = space dimension), got topological {tgt_dim:?} in a {src_space}D space"
+    );
+
+    // Flatten the source cells in BTreeMap element-type order, so the global index stored in
+    // the overlap matrix matches the concatenation of the field arrays done at apply time.
+    let mut src_offsets: BTreeMap<ElementType, usize> = BTreeMap::new();
+    let mut n_src = 0;
+    for (et, block) in mesh_src.blocks() {
+        if u8::from(et.dimension()) as usize == src_space {
+            src_offsets.insert(*et, n_src);
+            n_src += block.len();
+        }
+    }
+
+    let data = match src_space {
+        2 => build_overlap_2d(mesh_src, mesh_tgt, &src_offsets),
+        3 => build_overlap_3d(mesh_src, mesh_tgt, &src_offsets),
+        _ => unreachable!(),
+    };
+    TransferOperator::build(
+        TransferMethod::ConservativeP0,
+        src_dim,
+        tgt_dim,
+        n_src,
+        data,
+    )
+}
 
 /// Conservative P0 transfer operator.
 ///
@@ -27,30 +78,11 @@ use crate::tools::spatial_index::SpatiallyIndexable;
 /// sum for [`FieldNature::Extensive`] fields and the sum normalized by the target cell measure for
 /// [`FieldNature::Intensive`] fields. A target cell not covered by the source mesh keeps the
 /// `default` value.
+///
+/// The overlap precompute and the apply-time sparse product are handled by the shared
+/// transfer operator machinery.
 #[derive(Debug, Clone)]
-pub struct ConservativeP0Transfer {
-    /// Topological dimension of the full-dimensional source cells.
-    src_dim: Dimension,
-    tgt_dim: Dimension,
-    /// Number of source cells the operator was built from, flattened over element types in
-    /// BTreeMap order.
-    n_src: usize,
-    /// Sparse overlap data, grouped by target element type.
-    data: Vec<(ElementType, OverlapMatrix)>,
-}
-
-/// Sparse (CSR) overlap matrix between source and target cells for a single target element type.
-#[derive(Debug, Clone)]
-struct OverlapMatrix {
-    /// Measure (area or volume) of each target cell.
-    target_measure: nd::Array1<f64>,
-    /// Row pointer: the overlaps of target cell `j` live in `src_idx[row_ptr[j]..row_ptr[j + 1]]`.
-    row_ptr: Vec<usize>,
-    /// Global index (in the flattened source array) of each overlapping source cell.
-    src_idx: Vec<usize>,
-    /// Overlap measure `|s_i ∩ t_j|` of each pair.
-    overlap: Vec<f64>,
-}
+pub struct ConservativeP0Transfer(pub(crate) TransferOperator);
 
 impl ConservativeP0Transfer {
     /// Builds a conservative P0 transfer operator from source cells to target cells.
@@ -67,283 +99,167 @@ impl ConservativeP0Transfer {
     /// - If `mesh_src` and `mesh_tgt` do not share the same space dimension, or if it is not 2 or 3.
     /// - If either mesh is empty or not full-dimensional.
     pub fn new(mesh_src: &UMeshView, mesh_tgt: &UMeshView) -> Self {
-        let src_space = mesh_src.space_dimension();
-        let tgt_space = mesh_tgt.space_dimension();
-        assert_eq!(
-            src_space, tgt_space,
-            "Source and target meshes should share the same space dimension, got source = {src_space}D and target = {tgt_space}D"
-        );
-        assert!(
-            (2..=3).contains(&src_space),
-            "Conservative P0 transfer is only supported in 2D and 3D space, got {src_space}D"
-        );
-        let src_dim = mesh_src
-            .topological_dimension()
-            .expect("Source mesh should not be empty");
-        let tgt_dim = mesh_tgt
-            .topological_dimension()
-            .expect("Target mesh should not be empty");
-        let src_dim_usize = u8::from(src_dim) as usize;
-        assert_eq!(
-            src_dim_usize, src_space,
-            "Source mesh should be full-dimensional (topological dimension = space dimension), got topological {src_dim:?} in a {src_space}D space"
-        );
-        let tgt_dim_usize = u8::from(tgt_dim) as usize;
-        assert_eq!(
-            tgt_dim_usize, src_space,
-            "Target mesh should be full-dimensional (topological dimension = space dimension), got topological {tgt_dim:?} in a {src_space}D space"
-        );
-
-        // Flatten the source cells in BTreeMap element-type order, so the global index stored in
-        // the overlap matrix matches the concatenation of the field arrays done at apply time.
-        let mut src_offsets: BTreeMap<ElementType, usize> = BTreeMap::new();
-        let mut n_src = 0;
-        for (et, block) in mesh_src.blocks() {
-            if u8::from(et.dimension()) as usize == src_space {
-                src_offsets.insert(*et, n_src);
-                n_src += block.len();
-            }
-        }
-
-        let data = match src_space {
-            2 => Self::build_overlap_2d(mesh_src, mesh_tgt, &src_offsets),
-            3 => Self::build_overlap_3d(mesh_src, mesh_tgt, &src_offsets),
-            _ => unreachable!(),
-        };
-        Self {
-            src_dim,
-            tgt_dim,
-            n_src,
-            data,
-        }
-    }
-
-    /// Builds the source-pair overlap areas for all target cells of a 2D mesh.
-    fn build_overlap_2d(
-        mesh_src: &UMeshView,
-        mesh_tgt: &UMeshView,
-        src_offsets: &BTreeMap<ElementType, usize>,
-    ) -> Vec<(ElementType, OverlapMatrix)> {
-        let index = mesh_src.bvh2();
-        let mut data = Vec::new();
-        for (_, block) in mesh_tgt.blocks() {
-            let tgt_et = block.element_type();
-            if tgt_et.dimension() != Dimension::D2 {
-                continue;
-            }
-            let n = block.len();
-            let mut target_measure = nd::Array1::zeros(n);
-            let mut row_ptr = Vec::with_capacity(n + 1);
-            row_ptr.push(0);
-            let mut src_idx = Vec::new();
-            let mut overlap = Vec::new();
-            for (j, elem) in block.iter(mesh_tgt.coords()).enumerate() {
-                let mut pgon: Vec<[f64; 2]> = elem.coords2().copied().collect();
-                into_ccw2(&mut pgon);
-                target_measure[j] = signed_area2(&pgon).abs();
-
-                let [min, max] = elem.bounds2();
-                // The BVH stores f32 boxes: inflate the query by a small epsilon so a source cell
-                // sharing a boundary with the target cell is never missed by the broad phase. The
-                // narrow phase below is exact in f64 and discards any spurious candidate.
-                let scale = min
-                    .iter()
-                    .chain(max.iter())
-                    .fold(1.0_f64, |acc, &c| acc.max(c.abs()));
-                let eps = 1e-6 * scale;
-                let candidates =
-                    index.in_bounds([min[0] - eps, min[1] - eps], [max[0] + eps, max[1] + eps]);
-
-                for (src_et, indices) in candidates.0 {
-                    if src_et.dimension() != Dimension::D2 {
-                        continue;
-                    }
-                    let offset = src_offsets[&src_et];
-                    for &i in &indices {
-                        let src_elem = mesh_src.element(ElementId::new(src_et, i));
-                        let mut src_pgon: Vec<[f64; 2]> = src_elem.coords2().copied().collect();
-                        into_ccw2(&mut src_pgon);
-                        let area = convex_intersection_area(&src_pgon, &pgon);
-                        if area > 1e-15 {
-                            src_idx.push(offset + i);
-                            overlap.push(area);
-                        }
-                    }
-                }
-                row_ptr.push(src_idx.len());
-            }
-            data.push((
-                tgt_et,
-                OverlapMatrix {
-                    target_measure,
-                    row_ptr,
-                    src_idx,
-                    overlap,
-                },
-            ));
-        }
-        data
-    }
-
-    /// Builds the source-pair overlap volumes for all target cells of a 3D mesh.
-    fn build_overlap_3d(
-        mesh_src: &UMeshView,
-        mesh_tgt: &UMeshView,
-        src_offsets: &BTreeMap<ElementType, usize>,
-    ) -> Vec<(ElementType, OverlapMatrix)> {
-        // Number of source cells per element type, used to size the lazy polyhedron cache.
-        let src_block_len: BTreeMap<ElementType, usize> = mesh_src
-            .blocks()
-            .map(|(et, block)| (*et, block.len()))
-            .collect();
-
-        let index = mesh_src.bvh3();
-        // Each source cell may overlap several target cells; cache its polyhedron so it is only
-        // built once instead of once per overlapping target cell.
-        let mut poly_cache: BTreeMap<ElementType, Vec<Option<Polyhedron>>> = BTreeMap::new();
-        let mut data = Vec::new();
-        for (_, block) in mesh_tgt.blocks() {
-            let tgt_et = block.element_type();
-            if tgt_et.dimension() != Dimension::D3 {
-                continue;
-            }
-            let n = block.len();
-            let mut target_measure = nd::Array1::zeros(n);
-            let mut row_ptr = Vec::with_capacity(n + 1);
-            row_ptr.push(0);
-            let mut src_idx = Vec::new();
-            let mut overlap = Vec::new();
-            for (j, elem) in block.iter(mesh_tgt.coords()).enumerate() {
-                let tgt_poly = elem.to_polyhedron();
-                target_measure[j] = tgt_poly.volume();
-
-                let [min, max] = tgt_poly.bounds();
-                let scale = min
-                    .iter()
-                    .chain(max.iter())
-                    .fold(1.0_f64, |acc, &c| acc.max(c.abs()));
-                let eps = 1e-12 * scale;
-                let candidates = index.in_bounds(
-                    [min[0] - eps, min[1] - eps, min[2] - eps],
-                    [max[0] + eps, max[1] + eps, max[2] + eps],
-                );
-
-                for (src_et, indices) in candidates.0 {
-                    if src_et.dimension() != Dimension::D3 {
-                        continue;
-                    }
-                    let offset = src_offsets[&src_et];
-                    let n_src_et = src_block_len[&src_et];
-                    let slots = poly_cache
-                        .entry(src_et)
-                        .or_insert_with(|| vec![None; n_src_et]);
-                    for &i in &indices {
-                        if slots[i].is_none() {
-                            slots[i] =
-                                Some(mesh_src.element(ElementId::new(src_et, i)).to_polyhedron());
-                        }
-                        let src_poly = slots[i].as_ref().unwrap();
-                        // The candidates already come from a BVH AABB query, so skip the redundant
-                        // AABB reject inside the intersection and clip directly.
-                        let vol = tgt_poly.convex_intersection_volume_impl(src_poly);
-                        if vol > 1e-16 {
-                            src_idx.push(offset + i);
-                            overlap.push(vol);
-                        }
-                    }
-                }
-                row_ptr.push(src_idx.len());
-            }
-            data.push((
-                tgt_et,
-                OverlapMatrix {
-                    target_measure,
-                    row_ptr,
-                    src_idx,
-                    overlap,
-                },
-            ));
-        }
-        data
-    }
-
-    /// Evaluates the operator on a flat source array `src` of shape `(n_src, ...)` for the target
-    /// element type `et`, producing a `(n_tgt, ...)` array.
-    fn apply_on_array(
-        &self,
-        et: ElementType,
-        src: &nd::ArrayViewD<f64>,
-        field_nature: FieldNature,
-        default: f64,
-    ) -> nd::ArrayD<f64> {
-        let n_src = src.shape()[0];
-        assert_eq!(
-            n_src, self.n_src,
-            "The field should have one entry per source cell, got {n_src} for {}",
-            self.n_src
-        );
-        let n_compo = src.len() / n_src;
-        let (_, matrix) = self.data.iter().find(|(e, _)| *e == et).unwrap();
-        let n_tgt = matrix.target_measure.len();
-
-        let mut out_shape = src.raw_dim();
-        out_shape[0] = n_tgt;
-        let src = src.view().into_shape_with_order((n_src, n_compo)).unwrap();
-
-        let mut tgt = nd::Array::zeros((n_tgt, n_compo));
-        for j in 0..n_tgt {
-            let (lo, hi) = (matrix.row_ptr[j], matrix.row_ptr[j + 1]);
-            if lo == hi {
-                tgt.row_mut(j).fill(default);
-                continue;
-            }
-            let mut row = tgt.row_mut(j);
-            for p in lo..hi {
-                let w = matrix.overlap[p];
-                nd::Zip::from(&mut row)
-                    .and(src.row(matrix.src_idx[p]))
-                    .for_each(|d, &s| {
-                        *d += w * s;
-                    });
-            }
-            if field_nature == FieldNature::Intensive {
-                let inv = 1.0 / matrix.target_measure[j];
-                row *= inv;
-            }
-        }
-
-        tgt.into_shape_with_order(out_shape).unwrap()
+        Self(prepare(mesh_src, mesh_tgt))
     }
 }
 
 impl Transfer for ConservativeP0Transfer {
     fn apply(&self, field: &FieldViewD, field_nature: FieldNature, default: f64) -> FieldOwnedD {
-        assert_eq!(
-            field.dimension(),
-            Some(self.src_dim),
-            "The field should be defined on {:?} source cells, got {:?}",
-            self.src_dim,
-            field.dimension()
-        );
-        // Concatenate the per-element-type source arrays in the same order used to build the
-        // operator (BTreeMap order), so the source indices stored in the overlap matrix are valid
-        // whatever the source element types are.
-        let src_views: Vec<nd::ArrayViewD<f64>> = field.0.values().map(|a| a.view()).collect();
-        let src = nd::concatenate(nd::Axis(0), src_views.as_slice()).unwrap();
-
-        let mut res = BTreeMap::new();
-        for (et, _) in &self.data {
-            res.insert(
-                *et,
-                self.apply_on_array(*et, &src.view(), field_nature, default),
-            );
-        }
-        FieldOwnedD::new(res)
+        self.0.apply(field, field_nature, default)
     }
 
     fn tgt_dim(&self) -> Dimension {
-        self.tgt_dim
+        self.0.tgt_dim()
     }
+}
+
+/// Builds the source-pair overlap areas for all target cells of a 2D mesh.
+fn build_overlap_2d(
+    mesh_src: &UMeshView,
+    mesh_tgt: &UMeshView,
+    src_offsets: &BTreeMap<ElementType, usize>,
+) -> Vec<(ElementType, RowSparse)> {
+    let index = mesh_src.bvh2();
+    let mut data = Vec::new();
+    for (_, block) in mesh_tgt.blocks() {
+        let tgt_et = block.element_type();
+        if tgt_et.dimension() != Dimension::D2 {
+            continue;
+        }
+        let n = block.len();
+        let mut target_measure = nd::Array1::zeros(n);
+        let mut row_ptr = Vec::with_capacity(n + 1);
+        row_ptr.push(0);
+        let mut src_idx = Vec::new();
+        let mut weights = Vec::new();
+        for (j, elem) in block.iter(mesh_tgt.coords()).enumerate() {
+            let mut pgon: Vec<[f64; 2]> = elem.coords2().copied().collect();
+            into_ccw2(&mut pgon);
+            target_measure[j] = signed_area2(&pgon).abs();
+
+            let [min, max] = elem.bounds2();
+            // The BVH stores f32 boxes: inflate the query by a small epsilon so a source cell
+            // sharing a boundary with the target cell is never missed by the broad phase. The
+            // narrow phase below is exact in f64 and discards any spurious candidate.
+            let scale = min
+                .iter()
+                .chain(max.iter())
+                .fold(1.0_f64, |acc, &c| acc.max(c.abs()));
+            let eps = 1e-6 * scale;
+            let candidates =
+                index.in_bounds([min[0] - eps, min[1] - eps], [max[0] + eps, max[1] + eps]);
+
+            for (src_et, indices) in candidates.0 {
+                if src_et.dimension() != Dimension::D2 {
+                    continue;
+                }
+                let offset = src_offsets[&src_et];
+                for &i in &indices {
+                    let src_elem = mesh_src.element(ElementId::new(src_et, i));
+                    let mut src_pgon: Vec<[f64; 2]> = src_elem.coords2().copied().collect();
+                    into_ccw2(&mut src_pgon);
+                    let area = convex_intersection_area(&src_pgon, &pgon);
+                    if area > 1e-15 {
+                        src_idx.push(offset + i);
+                        weights.push(area);
+                    }
+                }
+            }
+            row_ptr.push(src_idx.len());
+        }
+        data.push((
+            tgt_et,
+            RowSparse {
+                target_measure,
+                row_ptr,
+                src_idx,
+                weights,
+            },
+        ));
+    }
+    data
+}
+
+/// Builds the source-pair overlap volumes for all target cells of a 3D mesh.
+fn build_overlap_3d(
+    mesh_src: &UMeshView,
+    mesh_tgt: &UMeshView,
+    src_offsets: &BTreeMap<ElementType, usize>,
+) -> Vec<(ElementType, RowSparse)> {
+    // Number of source cells per element type, used to size the lazy polyhedron cache.
+    let src_block_len: BTreeMap<ElementType, usize> = mesh_src
+        .blocks()
+        .map(|(et, block)| (*et, block.len()))
+        .collect();
+
+    let index = mesh_src.bvh3();
+    // Each source cell may overlap several target cells; cache its polyhedron so it is only
+    // built once instead of once per overlapping target cell.
+    let mut poly_cache: BTreeMap<ElementType, Vec<Option<Polyhedron>>> = BTreeMap::new();
+    let mut data = Vec::new();
+    for (_, block) in mesh_tgt.blocks() {
+        let tgt_et = block.element_type();
+        if tgt_et.dimension() != Dimension::D3 {
+            continue;
+        }
+        let n = block.len();
+        let mut target_measure = nd::Array1::zeros(n);
+        let mut row_ptr = Vec::with_capacity(n + 1);
+        row_ptr.push(0);
+        let mut src_idx = Vec::new();
+        let mut weights = Vec::new();
+        for (j, elem) in block.iter(mesh_tgt.coords()).enumerate() {
+            let tgt_poly = elem.to_polyhedron();
+            target_measure[j] = tgt_poly.volume();
+
+            let [min, max] = tgt_poly.bounds();
+            let scale = min
+                .iter()
+                .chain(max.iter())
+                .fold(1.0_f64, |acc, &c| acc.max(c.abs()));
+            let eps = 1e-12 * scale;
+            let candidates = index.in_bounds(
+                [min[0] - eps, min[1] - eps, min[2] - eps],
+                [max[0] + eps, max[1] + eps, max[2] + eps],
+            );
+
+            for (src_et, indices) in candidates.0 {
+                if src_et.dimension() != Dimension::D3 {
+                    continue;
+                }
+                let offset = src_offsets[&src_et];
+                let n_src_et = src_block_len[&src_et];
+                let slots = poly_cache
+                    .entry(src_et)
+                    .or_insert_with(|| vec![None; n_src_et]);
+                for &i in &indices {
+                    if slots[i].is_none() {
+                        slots[i] =
+                            Some(mesh_src.element(ElementId::new(src_et, i)).to_polyhedron());
+                    }
+                    let src_poly = slots[i].as_ref().unwrap();
+                    // The candidates already come from a BVH AABB query, so skip the redundant
+                    // AABB reject inside the intersection and clip directly.
+                    let vol = tgt_poly.convex_intersection_volume_impl(src_poly);
+                    if vol > 1e-16 {
+                        src_idx.push(offset + i);
+                        weights.push(vol);
+                    }
+                }
+            }
+            row_ptr.push(src_idx.len());
+        }
+        data.push((
+            tgt_et,
+            RowSparse {
+                target_measure,
+                row_ptr,
+                src_idx,
+                weights,
+            },
+        ));
+    }
+    data
 }
 
 /// Area of the intersection of two convex polygons.
@@ -399,7 +315,12 @@ fn segment_intersection(a: [f64; 2], b: [f64; 2], p: [f64; 2], q: [f64; 2]) -> [
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::{FieldOwnedD, UMesh};
+    use std::collections::BTreeMap;
+
+    use ndarray as nd;
+
+    use crate::geometry::{into_ccw2, signed_area2};
+    use crate::mesh::{ElementType, UMesh};
     use crate::mesh_examples as me;
     use crate::tools::grid::RegularUMeshBuilder;
 
