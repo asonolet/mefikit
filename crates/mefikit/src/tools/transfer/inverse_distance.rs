@@ -11,8 +11,7 @@
 
 use super::operator::{TransferMethod, TransferOperator, point_interpolation, validated_dims};
 use super::solver::{NeighbourScheme, solve_neighbours, source_centroids};
-use super::transfer_trait::{FieldNature, Transfer};
-use crate::mesh::{Dimension, FieldOwnedD, FieldViewD, UMeshView};
+use crate::mesh::UMeshView;
 
 /// Builds the inverse-distance operator over the `k` nearest source points of every target point.
 ///
@@ -21,6 +20,12 @@ use crate::mesh::{Dimension, FieldOwnedD, FieldViewD, UMeshView};
 /// each row sums to one, which makes the interpolation a convex combination of the source
 /// values (no overshoot or undershoot). A target point coinciding with a source point
 /// interpolates it exactly.
+///
+/// No local polynomial is fitted (unlike the [`TransferMethod::MovingLeastSquares`] transfer),
+/// which makes evaluation a plain weighted sum: the whole interpolation is precomputed at
+/// construction time, so [`Transfer::apply`] costs a fixed `k` fused multiply-adds per target
+/// component. The operator is built from the coordinates only, so it can be reused to evaluate
+/// many fields (e.g. across time steps) as long as the point sets do not change.
 ///
 /// # Panics
 ///
@@ -46,7 +51,7 @@ pub(crate) fn prepare(
     let (src_coords, n_src) = source_centroids(mesh_src, src_dim);
 
     TransferOperator::build(
-        TransferMethod::InverseDistance,
+        TransferMethod::InverseDistance { k, exponent },
         src_dim,
         tgt_dim,
         n_src,
@@ -61,55 +66,6 @@ pub(crate) fn prepare(
     )
 }
 
-/// An inverse-distance (Shepard) interpolation transfer between point clouds.
-///
-/// Each target point samples its `k` nearest source points and the value is the
-/// weighted average `sum_i w_i f(x_i)` with weights `w_i ∝ 1/r_i^p`, normalized so
-/// that `sum_i w_i = 1`. Since the weights are non-negative and sum to one, the
-/// transferred value is a convex combination of the source values and can never
-/// overshoot or undershoot the range spanned by the selected neighbours; a target
-/// point coinciding with a source point reproduces that source value exactly.
-///
-/// No local polynomial is fitted (unlike [`super::MovingLeastSquaresTransfer`]),
-/// which makes evaluation a plain weighted sum: the whole interpolation is
-/// precomputed at construction time, so [`Transfer::apply`] costs a fixed `k`
-/// fused multiply-adds per target component. The operator is built from the
-/// coordinates only, so it can be reused to evaluate many fields (e.g. across
-/// time steps) as long as the point sets do not change.
-#[derive(Clone, Debug)]
-pub struct InverseDistanceTransfer(pub(crate) TransferOperator);
-
-impl InverseDistanceTransfer {
-    /// Builds an inverse-distance interpolation operator from source points to
-    /// target points.
-    ///
-    /// For each target point the `k` nearest source points are gathered and
-    /// weighed by `1 / r^exponent`, where `r` is the distance to the target
-    /// point. Weights are normalized so each row sums to one, which makes the
-    /// interpolation a convex combination of the source values (no overshoot or
-    /// undershoot). A target point coinciding with a source point interpolates
-    /// it exactly.
-    ///
-    /// # Panics
-    ///
-    /// - If `mesh_src` and `mesh_tgt` do not share the same space dimension, or
-    ///   if it is not 2 or 3.
-    /// - If `k` is zero or `exponent` is not positive.
-    pub fn new(mesh_src: &UMeshView, mesh_tgt: &UMeshView, k: usize, exponent: f64) -> Self {
-        Self(prepare(mesh_src, mesh_tgt, k, exponent))
-    }
-}
-
-impl Transfer for InverseDistanceTransfer {
-    fn apply(&self, field: &FieldViewD, field_nature: FieldNature, default: f64) -> FieldOwnedD {
-        self.0.apply(field, field_nature, default)
-    }
-
-    fn tgt_dim(&self) -> Dimension {
-        self.0.tgt_dim()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,8 +74,23 @@ mod tests {
     use ndarray as nd;
 
     use crate::element_traits::ElementGeo;
-    use crate::mesh::{ElementType, UMesh};
+    use crate::mesh::{Dimension, ElementType, FieldOwnedD, FieldViewD, UMesh};
     use crate::mesh_examples as me;
+    use crate::tools::transfer::transfer_trait::{FieldNature, Transfer};
+
+    /// Builds an inverse-distance operator for the common `(k, exponent)` test pairs.
+    fn invdist(
+        source: &UMeshView,
+        target: &UMeshView,
+        k: usize,
+        exponent: f64,
+    ) -> TransferOperator {
+        TransferOperator::new(
+            source,
+            target,
+            TransferMethod::InverseDistance { k, exponent },
+        )
+    }
 
     fn source_with_field(values: nd::Array<f64, nd::IxDyn>) -> UMesh {
         let mut source = me::make_imesh_2d(1);
@@ -137,7 +108,7 @@ mod tests {
     fn transfer_constant_intensive() {
         let source = source_with_field(nd::array![7.0].into_dyn());
         let target = me::make_imesh_2d(4);
-        let op = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
+        let op = invdist(&source.view(), &target.view(), 4, 2.0);
         let field = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         let arr = &field.0[&ElementType::QUAD4];
         assert_eq!(arr.shape(), &[16]);
@@ -165,7 +136,7 @@ mod tests {
         let target = me::make_imesh_2d(8);
         for k in [1, 2, 4, 8] {
             for exponent in [1.0, 2.0, 4.0] {
-                let op = InverseDistanceTransfer::new(&source.view(), &target.view(), k, exponent);
+                let op = invdist(&source.view(), &target.view(), k, exponent);
                 let out = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
                 let arr = &out.0[&ElementType::QUAD4];
                 for &v in arr {
@@ -183,7 +154,7 @@ mod tests {
     fn transfer_coincident_is_exact() {
         let source = source_with_field(nd::array![7.0].into_dyn());
         let target = me::make_imesh_2d(1);
-        let op = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
+        let op = invdist(&source.view(), &target.view(), 4, 2.0);
         let out = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         assert_eq!(out.0[&ElementType::QUAD4][0], 7.0);
     }
@@ -193,7 +164,7 @@ mod tests {
     fn transfer_nearest_neighbour() {
         let source = source_with_field(nd::array![7.0].into_dyn());
         let target = me::make_imesh_2d(4);
-        let op = InverseDistanceTransfer::new(&source.view(), &target.view(), 1, 2.0);
+        let op = invdist(&source.view(), &target.view(), 1, 2.0);
         let out = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         assert!(out.0[&ElementType::QUAD4].iter().all(|&v| v == 7.0));
     }
@@ -210,7 +181,7 @@ mod tests {
         source.update_field("f", field.into_shared());
 
         let target = me::make_imesh_2d(8);
-        let op = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
+        let op = invdist(&source.view(), &target.view(), 4, 2.0);
         let out = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         for &v in out.0[&ElementType::QUAD4].iter() {
             assert!((0.0..=1.0).contains(&v), "value {v} out of [0, 1]");
@@ -223,7 +194,7 @@ mod tests {
     fn transfer_empty_source_panics() {
         let source = UMesh::new(nd::ArcArray2::from_shape_vec((0, 2), vec![]).unwrap());
         let target = me::make_imesh_2d(2);
-        let _ = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
+        let _ = invdist(&source.view(), &target.view(), 4, 2.0);
     }
 
     /// A source whose topological cells span several element types (regression: the transfer
@@ -253,7 +224,7 @@ mod tests {
         source.update_field("f", field.into_shared());
 
         let target = me::make_imesh_2d(3);
-        let op = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
+        let op = invdist(&source.view(), &target.view(), 4, 2.0);
         let out = op.apply(
             &source.field("f", Some(Dimension::D2)).unwrap(),
             FieldNature::Intensive,
@@ -289,7 +260,7 @@ mod tests {
             None,
         );
 
-        let op = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
+        let op = invdist(&source.view(), &target.view(), 4, 2.0);
         let out = op.apply(
             &source.field("f", Some(Dimension::D3)).unwrap(),
             FieldNature::Intensive,
@@ -313,7 +284,7 @@ mod tests {
         source.update_field("f1", f1.into_shared());
         source.update_field("f2", f2.into_shared());
         let target = me::make_imesh_2d(2);
-        let op = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
+        let op = invdist(&source.view(), &target.view(), 4, 2.0);
         let r1 = op.apply(
             &source.field("f1", Some(Dimension::D2)).unwrap(),
             FieldNature::Intensive,
@@ -333,7 +304,7 @@ mod tests {
     fn transfer_apply_update() {
         let source = source_with_field(nd::array![7.0].into_dyn());
         let mut target = me::make_imesh_2d(2);
-        let op = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
+        let op = invdist(&source.view(), &target.view(), 4, 2.0);
         let old = op.apply_update(
             &mut target,
             "transferred",
@@ -352,7 +323,7 @@ mod tests {
     fn transfer_space_dim_mismatch_panics() {
         let source = me::make_imesh_2d(1);
         let target = me::make_imesh_3d(1);
-        let _ = InverseDistanceTransfer::new(&source.view(), &target.view(), 4, 2.0);
+        let _ = invdist(&source.view(), &target.view(), 4, 2.0);
     }
 
     /// Zero neighbours or a non-positive exponent fail with a clear message.
@@ -361,6 +332,6 @@ mod tests {
     fn transfer_zero_k_panics() {
         let source = me::make_imesh_2d(1);
         let target = me::make_imesh_2d(2);
-        let _ = InverseDistanceTransfer::new(&source.view(), &target.view(), 0, 2.0);
+        let _ = invdist(&source.view(), &target.view(), 0, 2.0);
     }
 }

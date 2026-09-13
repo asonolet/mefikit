@@ -11,13 +11,10 @@ use std::collections::BTreeMap;
 use ndarray as nd;
 
 use super::operator::{RowSparse, TransferMethod, TransferOperator, validated_dims};
-use super::transfer_trait::{FieldNature, PointLocation, Transfer};
+use super::transfer_trait::PointLocation;
 use crate::element_traits::{ElementGeo, ElementTopo};
 use crate::geometry::{Polygon, point_in_phed};
-use crate::mesh::{
-    Dimension, Element, ElementId, ElementIds, ElementLike, ElementType, FieldOwnedD, FieldViewD,
-    UMeshView,
-};
+use crate::mesh::{Dimension, Element, ElementId, ElementIds, ElementLike, ElementType, UMeshView};
 use crate::tools::spatial_index::{SpIdx2, SpIdx3, SpatiallyIndexable};
 
 /// Builds the piecewise-constant operator: each target cell is located in the source mesh
@@ -92,47 +89,14 @@ pub(crate) fn prepare(
     }
 
     TransferOperator::build(
-        TransferMethod::ConstantPiecewise,
+        TransferMethod::ConstantPiecewise {
+            point_location: *point,
+        },
         src_dim,
         tgt_dim,
         n_src,
         data,
     )
-}
-
-/// Piecewise-constant transfer operator.
-///
-/// The operator precomputes, for every target cell, the source cell containing its sampling point
-/// (chosen with [`PointLocation`]); at apply time each located target cell copies the source cell
-/// value, and the others keep the `default` value.
-#[derive(Debug, Clone)]
-pub struct ConstantPiecewiseTransfer(pub(crate) TransferOperator);
-
-impl ConstantPiecewiseTransfer {
-    /// Precomputes the piecewise-constant transfer operator from `source` to `target`.
-    ///
-    /// Each target cell (of its topological dimension) is located in the source mesh (of the
-    /// source's topological dimension) through its sampling point, chosen with `point`.
-    ///
-    /// # Panics
-    ///
-    /// - If `source` and `target` do not live in the same space dimension.
-    /// - If `source` is not full-dimensional (its topological dimension must match its space
-    ///   dimension so that its cells define regions).
-    /// - If the space dimension is neither 2 nor 3.
-    pub fn new(source: &UMeshView, target: &UMeshView, point: PointLocation) -> Self {
-        Self(prepare(source, target, &point))
-    }
-}
-
-impl Transfer for ConstantPiecewiseTransfer {
-    fn apply(&self, field: &FieldViewD, field_nature: FieldNature, default: f64) -> FieldOwnedD {
-        self.0.apply(field, field_nature, default)
-    }
-
-    fn tgt_dim(&self) -> Dimension {
-        self.0.tgt_dim()
-    }
 }
 
 /// Computes the sampling point of an element according to `point`.
@@ -244,8 +208,9 @@ mod tests {
     use ndarray as nd;
 
     use crate::element_traits::ElementGeo;
-    use crate::mesh::{ElementType, UMesh};
+    use crate::mesh::{ElementType, FieldOwnedD, FieldViewD, UMesh};
     use crate::mesh_examples as me;
+    use crate::tools::transfer::transfer_trait::{FieldNature, Transfer};
 
     fn source_with_field(values: nd::Array<f64, nd::IxDyn>) -> UMesh {
         let mut source = me::make_imesh_2d(1);
@@ -258,13 +223,23 @@ mod tests {
         source.field("f", Some(Dimension::D2)).unwrap()
     }
 
+    /// Builds a centroid-sampling piecewise-constant operator for the common 2D test meshes.
+    fn cpw(source: &UMeshView, target: &UMeshView) -> TransferOperator {
+        TransferOperator::new(
+            source,
+            target,
+            TransferMethod::ConstantPiecewise {
+                point_location: PointLocation::Centroid,
+            },
+        )
+    }
+
     /// A constant intensive field is sampled on each target cell.
     #[test]
     fn transfer_constant_intensive() {
         let source = source_with_field(nd::array![7.0].into_dyn());
         let target = me::make_imesh_2d(4);
-        let op =
-            ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
+        let op = cpw(&source.view(), &target.view());
         let field = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         let arr = &field.0[&ElementType::QUAD4];
         assert_eq!(arr.shape(), &[16]);
@@ -291,8 +266,7 @@ mod tests {
         )]));
         source.update_field("f", field.into_shared());
         let target = me::make_imesh_2d(4);
-        let op =
-            ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
+        let op = cpw(&source.view(), &target.view());
         let field = op.apply(&field_view(&source), FieldNature::Intensive, -1.0);
         let arr = &field.0[&ElementType::QUAD4];
         for (i, elem) in target.elements_of_dim(Dimension::D2).enumerate() {
@@ -323,8 +297,7 @@ mod tests {
             nd::arr2(&[[0, 1, 4, 3], [1, 2, 5, 4], [3, 4, 7, 6], [4, 5, 8, 7]]).to_shared(),
             None,
         );
-        let op =
-            ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
+        let op = cpw(&source.view(), &target.view());
         let field = op.apply(&field_view(&source), FieldNature::Intensive, 99.0);
         let arr = &field.0[&ElementType::QUAD4];
         assert_eq!(arr[0], 7.0);
@@ -348,8 +321,7 @@ mod tests {
         source.update_field("f1", f1.into_shared());
         source.update_field("f2", f2.into_shared());
         let target = me::make_imesh_2d(2);
-        let op =
-            ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
+        let op = cpw(&source.view(), &target.view());
         let r1 = op.apply(
             &source.field("f1", Some(Dimension::D2)).unwrap(),
             FieldNature::Intensive,
@@ -369,8 +341,7 @@ mod tests {
     fn transfer_apply_update() {
         let source = source_with_field(nd::array![7.0].into_dyn());
         let mut target = me::make_imesh_2d(2);
-        let op =
-            ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
+        let op = cpw(&source.view(), &target.view());
         let old = op.apply_update(
             &mut target,
             "transferred",
@@ -413,8 +384,7 @@ mod tests {
             nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
             None,
         );
-        let op =
-            ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
+        let op = cpw(&source.view(), &target.view());
         let field = op.apply(
             &source.field("f", Some(Dimension::D3)).unwrap(),
             FieldNature::Intensive,
@@ -430,8 +400,7 @@ mod tests {
     fn transfer_space_dim_mismatch_panics() {
         let source = me::make_imesh_2d(1);
         let target = me::make_imesh_3d(1);
-        let _ =
-            ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
+        let _ = cpw(&source.view(), &target.view());
     }
 
     /// A PHED source whose connectivity repeats vertices across faces is sampled correctly.
@@ -466,8 +435,7 @@ mod tests {
 
         // Target: the unit cube split into 8 HEX8 cells.
         let target = me::make_imesh_3d(2);
-        let op =
-            ConstantPiecewiseTransfer::new(&source.view(), &target.view(), PointLocation::Centroid);
+        let op = cpw(&source.view(), &target.view());
         let field = op.apply(
             &source.field("f", Some(Dimension::D3)).unwrap(),
             FieldNature::Intensive,

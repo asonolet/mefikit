@@ -14,46 +14,8 @@ use std::{
 use super::centroids::{centroids, x_center, y_center, z_center};
 use super::measure::measure;
 use super::normals::{normals, nx as normal_x, ny as normal_y, nz as normal_z};
-use crate::mesh::{
-    Dimension, FieldArcD, FieldCowD, FieldOwnedD, FieldViewD, UMesh, UMeshBase, UMeshView,
-};
-use crate::tools::transfer::{
-    ConservativeP0Transfer, ConstantPiecewiseTransfer, FieldNature, InverseDistanceTransfer,
-    MovingLeastSquaresTransfer, Transfer,
-};
-
-/// A concrete transfer operator used inside field expression trees.
-#[derive(Clone, Debug)]
-pub enum TransferOp {
-    /// Conservative P0 (measure-weighted overlap) transfer.
-    ConservativeP0(ConservativeP0Transfer),
-    /// Constant piecewise (nearest-cell copy) transfer.
-    ConstantPiecewise(ConstantPiecewiseTransfer),
-    /// Inverse-distance (k-NN Shepard) transfer.
-    InverseDistance(InverseDistanceTransfer),
-    /// Moving least squares transfer.
-    MovingLeastSquares(MovingLeastSquaresTransfer),
-}
-
-impl Transfer for TransferOp {
-    fn apply(&self, field: &FieldViewD, field_nature: FieldNature, default: f64) -> FieldOwnedD {
-        match self {
-            TransferOp::ConservativeP0(t) => t.apply(field, field_nature, default),
-            TransferOp::ConstantPiecewise(t) => t.apply(field, field_nature, default),
-            TransferOp::InverseDistance(t) => t.apply(field, field_nature, default),
-            TransferOp::MovingLeastSquares(t) => t.apply(field, field_nature, default),
-        }
-    }
-
-    fn tgt_dim(&self) -> Dimension {
-        match self {
-            TransferOp::ConservativeP0(t) => t.tgt_dim(),
-            TransferOp::ConstantPiecewise(t) => t.tgt_dim(),
-            TransferOp::InverseDistance(t) => t.tgt_dim(),
-            TransferOp::MovingLeastSquares(t) => t.tgt_dim(),
-        }
-    }
-}
+use crate::mesh::{Dimension, FieldArcD, FieldCowD, FieldOwnedD, UMesh, UMeshBase, UMeshView};
+use crate::tools::transfer::{FieldNature, Transfer, TransferOperator};
 
 /// Evaluates a field expression on the source mesh, inferring the source dimension.
 fn eval_source(source_mesh: &UMesh, source: FieldExpr) -> FieldOwnedD {
@@ -61,7 +23,7 @@ fn eval_source(source_mesh: &UMesh, source: FieldExpr) -> FieldOwnedD {
     source.evaluate(&src_view, None).to_owned()
 }
 
-impl TransferOp {
+impl TransferOperator {
     /// Evaluates `source` on `source_mesh` and wraps the transfer as a field expression.
     ///
     /// `nature` distinguishes intensive fields (per-unit-measure) from extensive ones
@@ -143,7 +105,7 @@ pub enum FieldExpr {
         /// Source field values, pre-evaluated on the source mesh.
         source_values: FieldOwnedD,
         /// The transfer operator.
-        op: Arc<TransferOp>,
+        op: Arc<TransferOperator>,
         /// Topological dimension of the target cells.
         tgt_dim: Dimension,
         /// Default value for uncovered target cells.
@@ -646,6 +608,7 @@ mod test {
     use crate::mesh_examples as me;
     use crate::prelude as mf;
     use crate::tools::Measurable;
+    use crate::tools::transfer::TransferMethod;
     use approx::*;
     use ndarray as nd;
     use std::collections::BTreeMap;
@@ -968,10 +931,11 @@ mod test {
         let source = source_with_field(7.0);
         let target = me::make_imesh_2d(2);
 
-        let op = Arc::new(TransferOp::ConservativeP0(ConservativeP0Transfer::new(
+        let op = Arc::new(TransferOperator::new(
             &source.view(),
             &target.view(),
-        )));
+            TransferMethod::ConservativeP0,
+        ));
 
         let from_expr = target.eval_field(
             Some(Dimension::D2),
@@ -992,10 +956,11 @@ mod test {
         let source = source_with_field(3.0);
         let target = me::make_imesh_2d(2);
 
-        let op = Arc::new(TransferOp::ConservativeP0(ConservativeP0Transfer::new(
+        let op = Arc::new(TransferOperator::new(
             &source.view(),
             &target.view(),
-        )));
+            TransferMethod::ConservativeP0,
+        ));
 
         // rho * 2 is computed on the source mesh, so every target cell receives 6.0.
         let result = target.eval_field(
@@ -1017,10 +982,11 @@ mod test {
         let source = source_with_field(7.0);
         let target = me::make_imesh_2d(2);
 
-        let op = Arc::new(TransferOp::ConservativeP0(ConservativeP0Transfer::new(
+        let op = Arc::new(TransferOperator::new(
             &source.view(),
             &target.view(),
-        )));
+            TransferMethod::ConservativeP0,
+        ));
 
         // Each 0.25-measure target cell lies entirely inside the single 1.0-measure source cell.
         let intensive = op.eval(&source, field("f"), FieldNature::Intensive, 0.0);

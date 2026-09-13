@@ -1,4 +1,4 @@
-//! Benchmarks for the conservative P0 transfer (`ConservativeP0Transfer`) on 3D hexa meshes.
+//! Benchmarks for the conservative P0 transfer (`TransferMethod::ConservativeP0`) on 3D hexa meshes.
 //!
 //! Measures the two phases separately:
 //!
@@ -14,7 +14,7 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 
 use mefikit::mesh::{Dimension, ElementType, FieldOwnedD, UMesh};
 use mefikit::tools::grid::RegularUMeshBuilder;
-use mefikit::tools::transfer::{ConservativeP0Transfer, FieldNature, Transfer};
+use mefikit::tools::transfer::{FieldNature, Transfer, TransferMethod, TransferOperator};
 
 /// Structured `n^3` HEX8 mesh on `[x0, x0 + width] x [0, 1] x [0, 1]`.
 fn hex_mesh(n: usize, x0: f64, width: f64) -> UMesh {
@@ -59,15 +59,16 @@ fn conservative_transfer_3d(c: &mut Criterion) {
             &(&src, &tgt),
             |b, (src, tgt)| {
                 b.iter(|| {
-                    std::hint::black_box(mefikit::tools::transfer::ConservativeP0Transfer::new(
+                    std::hint::black_box(mefikit::tools::transfer::TransferOperator::new(
                         &src.view(),
                         &tgt.view(),
+                        mefikit::tools::transfer::TransferMethod::ConservativeP0,
                     ))
                 });
             },
         );
 
-        let op = ConservativeP0Transfer::new(&src.view(), &tgt.view());
+        let op = TransferOperator::new(&src.view(), &tgt.view(), TransferMethod::ConservativeP0);
         let field = src.field("f", Some(Dimension::D3)).unwrap();
         group.bench_with_input(
             BenchmarkId::new("apply", i * i * i),

@@ -13,10 +13,9 @@ use std::collections::BTreeMap;
 use ndarray as nd;
 
 use super::operator::{RowSparse, TransferMethod, TransferOperator, validated_dims};
-use super::transfer_trait::{FieldNature, Transfer};
 use crate::element_traits::ElementGeo;
 use crate::geometry::{Polyhedron, cross2, into_ccw2, signed_area2};
-use crate::mesh::{Dimension, ElementId, ElementType, FieldOwnedD, FieldViewD, UMeshView};
+use crate::mesh::{Dimension, ElementId, ElementType, UMeshView};
 use crate::tools::spatial_index::SpatiallyIndexable;
 
 /// Builds the conservative P0 operator by intersecting every source/target cell pair.
@@ -68,49 +67,6 @@ pub(crate) fn prepare(mesh_src: &UMeshView, mesh_tgt: &UMeshView) -> TransferOpe
         n_src,
         data,
     )
-}
-
-/// Conservative P0 transfer operator.
-///
-/// The operator precomputes, for every target cell, the measure of its intersection with every
-/// overlapping source cell (the intersection area in 2D, the intersection volume in 3D). At apply
-/// time each target cell accumulates the source values weighted by the overlap measures: the raw
-/// sum for [`FieldNature::Extensive`] fields and the sum normalized by the target cell measure for
-/// [`FieldNature::Intensive`] fields. A target cell not covered by the source mesh keeps the
-/// `default` value.
-///
-/// The overlap precompute and the apply-time sparse product are handled by the shared
-/// transfer operator machinery.
-#[derive(Debug, Clone)]
-pub struct ConservativeP0Transfer(pub(crate) TransferOperator);
-
-impl ConservativeP0Transfer {
-    /// Builds a conservative P0 transfer operator from source cells to target cells.
-    ///
-    /// Both meshes must be full-dimensional (their topological dimension must match the space
-    /// dimension `D`, which must be 2 or 3): the transfer computes the intersection area (in 2D)
-    /// or intersection volume (in 3D) of the source and target cells, so every cell must be a full
-    /// `D`-dimensional region (the intersection of a full-dimensional cell with a lower-dimensional
-    /// cell has zero measure). The cells must be convex: this is always the case for `TRI3`,
-    /// `QUAD4`, `TET4` and `HEX8` elements, while `PGON` and `PHED` cells are assumed convex.
-    ///
-    /// # Panics
-    ///
-    /// - If `mesh_src` and `mesh_tgt` do not share the same space dimension, or if it is not 2 or 3.
-    /// - If either mesh is empty or not full-dimensional.
-    pub fn new(mesh_src: &UMeshView, mesh_tgt: &UMeshView) -> Self {
-        Self(prepare(mesh_src, mesh_tgt))
-    }
-}
-
-impl Transfer for ConservativeP0Transfer {
-    fn apply(&self, field: &FieldViewD, field_nature: FieldNature, default: f64) -> FieldOwnedD {
-        self.0.apply(field, field_nature, default)
-    }
-
-    fn tgt_dim(&self) -> Dimension {
-        self.0.tgt_dim()
-    }
 }
 
 /// Builds the source-pair overlap areas for all target cells of a 2D mesh.
@@ -320,9 +276,15 @@ mod tests {
     use ndarray as nd;
 
     use crate::geometry::{into_ccw2, signed_area2};
-    use crate::mesh::{ElementType, UMesh};
+    use crate::mesh::{ElementType, FieldOwnedD, FieldViewD, UMesh};
     use crate::mesh_examples as me;
     use crate::tools::grid::RegularUMeshBuilder;
+    use crate::tools::transfer::transfer_trait::{FieldNature, Transfer};
+
+    /// Builds a conservative P0 operator for the common test meshes.
+    fn cp0(source: &UMeshView, target: &UMeshView) -> TransferOperator {
+        TransferOperator::new(source, target, TransferMethod::ConservativeP0)
+    }
 
     fn source_with_field(values: nd::Array<f64, nd::IxDyn>) -> UMesh {
         let mut source = me::make_imesh_2d(1);
@@ -351,7 +313,7 @@ mod tests {
     fn transfer_constant_intensive() {
         let source = source_with_field(nd::array![7.0].into_dyn());
         let target = me::make_imesh_2d(4);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let field = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         let arr = &field.0[&ElementType::QUAD4];
         assert_eq!(arr.shape(), &[16]);
@@ -368,7 +330,7 @@ mod tests {
         )]));
         source.update_field("f", field.into_shared());
         let target = me::make_imesh_2d(4);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let field = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         let arr = &field.0[&ElementType::QUAD4];
         assert_eq!(arr.shape(), &[16, 2]);
@@ -387,7 +349,7 @@ mod tests {
         source.update_field("f", field.into_shared());
         let target = me::make_imesh_2d(4);
 
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let out = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         let arr = &out.0[&ElementType::QUAD4];
         // Target cell (i, j) of a 4×4 grid lies in source cell (i / 2, j / 2).
@@ -417,7 +379,7 @@ mod tests {
             nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
             None,
         );
-        let op = ConservativeP0Transfer::new(&source.view(), &half.view());
+        let op = cp0(&source.view(), &half.view());
         let int = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         let ext = op.apply(&field_view(&source), FieldNature::Extensive, 0.0);
         assert_eq!(int.0[&ElementType::QUAD4][0], 7.0);
@@ -433,7 +395,7 @@ mod tests {
             nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
             None,
         );
-        let op = ConservativeP0Transfer::new(&source.view(), &quarter.view());
+        let op = cp0(&source.view(), &quarter.view());
         let int = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         let ext = op.apply(&field_view(&source), FieldNature::Extensive, 0.0);
         assert_eq!(int.0[&ElementType::QUAD4][0], 3.5);
@@ -472,7 +434,7 @@ mod tests {
             .map(|(arr, area)| area * arr.iter().sum::<f64>())
             .sum();
 
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let ext = op.apply(&field_view(&source), FieldNature::Extensive, 0.0);
         let ext_total: f64 = ext.0.values().map(|a| a.sum()).sum();
         assert!(
@@ -501,7 +463,7 @@ mod tests {
             .add_axis(vec![0.0, 1.0, 2.0])
             .add_axis(vec![0.0, 1.0, 2.0])
             .build();
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let field = op.apply(&field_view(&source), FieldNature::Intensive, 99.0);
         let arr = &field.0[&ElementType::QUAD4];
         assert_eq!(
@@ -518,7 +480,7 @@ mod tests {
             .add_axis(vec![2.0, 3.0])
             .add_axis(vec![2.0, 3.0])
             .build();
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let field = op.apply(&field_view(&source), FieldNature::Intensive, 99.0);
         assert!(field.0[&ElementType::QUAD4].iter().all(|&v| v == 99.0));
     }
@@ -537,7 +499,7 @@ mod tests {
         source.update_field("f", field.into_shared());
 
         let target = me::make_imesh_2d(4);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let out = op.apply(&field_view(&source), FieldNature::Intensive, 0.0);
         let arr = &out.0[&ElementType::QUAD4];
         for (k, &v) in arr.iter().enumerate() {
@@ -588,7 +550,7 @@ mod tests {
             None,
         );
 
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         // Left cell overlaps the triangle (area 1/2, extensive 10), right cell the quad (10).
         let ext = op.apply(&field_view(&source), FieldNature::Extensive, 0.0);
         assert_eq!(
@@ -623,7 +585,7 @@ mod tests {
         source.update_field("f1", f1.into_shared());
         source.update_field("f2", f2.into_shared());
         let target = me::make_imesh_2d(2);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let r1 = op.apply(
             &source.field("f1", Some(Dimension::D2)).unwrap(),
             FieldNature::Intensive,
@@ -643,7 +605,7 @@ mod tests {
     fn transfer_apply_update() {
         let source = source_with_field(nd::array![7.0].into_dyn());
         let mut target = me::make_imesh_2d(2);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let old = op.apply_update(
             &mut target,
             "transferred",
@@ -691,7 +653,7 @@ mod tests {
     fn transfer3d_constant_intensive() {
         let source = source3d_with_field(nd::array![7.0].into_dyn());
         let target = me::make_imesh_3d(4);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let field = op.apply(&field_view_3d(&source), FieldNature::Intensive, 0.0);
         let arr = &field.0[&ElementType::HEX8];
         assert_eq!(arr.shape(), &[64]);
@@ -708,7 +670,7 @@ mod tests {
         )]));
         source.update_field("f", field.into_shared());
         let target = me::make_imesh_3d(4);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let field = op.apply(&field_view_3d(&source), FieldNature::Intensive, 0.0);
         let arr = &field.0[&ElementType::HEX8];
         assert_eq!(arr.shape(), &[64, 2]);
@@ -731,7 +693,7 @@ mod tests {
         source.update_field("f", field.into_shared());
         let target = me::make_imesh_3d(4);
 
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let out = op.apply(&field_view_3d(&source), FieldNature::Intensive, 0.0);
         let arr = &out.0[&ElementType::HEX8];
         // Target cell index k = ((z * 4) + y) * 4 + x maps to source (x/2, y/2, z/2) numbered
@@ -765,7 +727,7 @@ mod tests {
             [0.5, 1.0, 1.0],
             [0.0, 1.0, 1.0],
         ]);
-        let op = ConservativeP0Transfer::new(&source.view(), &half.view());
+        let op = cp0(&source.view(), &half.view());
         let int = op.apply(&field_view_3d(&source), FieldNature::Intensive, 0.0);
         let ext = op.apply(&field_view_3d(&source), FieldNature::Extensive, 0.0);
         assert!((int.0[&ElementType::HEX8][0] - 7.0).abs() < 1e-10);
@@ -782,7 +744,7 @@ mod tests {
             [0.5, 0.5, 1.0],
             [0.0, 0.5, 1.0],
         ]);
-        let op = ConservativeP0Transfer::new(&source.view(), &quarter.view());
+        let op = cp0(&source.view(), &quarter.view());
         let int = op.apply(&field_view_3d(&source), FieldNature::Intensive, 0.0);
         let ext = op.apply(&field_view_3d(&source), FieldNature::Extensive, 0.0);
         assert!((int.0[&ElementType::HEX8][0] - 7.0).abs() < 1e-10);
@@ -830,7 +792,7 @@ mod tests {
             .map(|(arr, vol)| vol * arr.iter().sum::<f64>())
             .sum();
 
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let ext = op.apply(&field_view_3d(&source), FieldNature::Extensive, 0.0);
         let ext_total: f64 = ext.0.values().map(|a| a.sum()).sum();
         assert!(
@@ -860,7 +822,7 @@ mod tests {
             .add_axis(vec![0.0, 1.0, 2.0])
             .add_axis(vec![0.0, 1.0, 2.0])
             .build();
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let field = op.apply(&field_view_3d(&source), FieldNature::Intensive, 99.0);
         let arr = &field.0[&ElementType::HEX8];
         assert_eq!(arr.shape(), &[8]);
@@ -879,7 +841,7 @@ mod tests {
             .add_axis(vec![2.0, 3.0])
             .add_axis(vec![2.0, 3.0])
             .build();
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let field = op.apply(&field_view_3d(&source), FieldNature::Intensive, 99.0);
         assert!(field.0[&ElementType::HEX8].iter().all(|&v| v == 99.0));
     }
@@ -906,7 +868,7 @@ mod tests {
         source.update_field("f", field.into_shared());
 
         let target = me::make_imesh_3d(4);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let out = op.apply(&field_view_3d(&source), FieldNature::Intensive, 0.0);
         let arr = &out.0[&ElementType::HEX8];
         for (k, &v) in arr.iter().enumerate() {
@@ -980,7 +942,7 @@ mod tests {
         );
 
         let src_view = field_view_3d(&source);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
 
         let ext = op.apply(&src_view, FieldNature::Extensive, 0.0);
         assert!((ext.0[&ElementType::HEX8][0] - 10.0).abs() < 1e-12);
@@ -1006,7 +968,7 @@ mod tests {
         source.update_field("f1", f1.into_shared());
         source.update_field("f2", f2.into_shared());
         let target = me::make_imesh_3d(2);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let r1 = op.apply(
             &source.field("f1", Some(Dimension::D3)).unwrap(),
             FieldNature::Intensive,
@@ -1034,7 +996,7 @@ mod tests {
     fn transfer3d_apply_update() {
         let source = source3d_with_field(nd::array![7.0].into_dyn());
         let mut target = me::make_imesh_3d(2);
-        let op = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let op = cp0(&source.view(), &target.view());
         let old = op.apply_update(
             &mut target,
             "transferred",
@@ -1062,7 +1024,7 @@ mod tests {
             None,
         );
         let target = me::make_imesh_3d(1);
-        let _ = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let _ = cp0(&source.view(), &target.view());
     }
 
     /// Feeding meshes with different space dimensions fails with a clear message.
@@ -1071,7 +1033,7 @@ mod tests {
     fn transfer_space_dim_mismatch_panics() {
         let source = me::make_imesh_2d(1);
         let target = me::make_imesh_3d(1);
-        let _ = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let _ = cp0(&source.view(), &target.view());
     }
 
     /// An empty source mesh fails with a clear message.
@@ -1080,7 +1042,7 @@ mod tests {
     fn transfer_empty_source_panics() {
         let source = UMesh::new(nd::ArcArray2::from_shape_vec((0, 2), vec![]).unwrap());
         let target = me::make_imesh_2d(2);
-        let _ = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let _ = cp0(&source.view(), &target.view());
     }
 
     /// A lower-dimensional target mesh fails with a clear message.
@@ -1091,7 +1053,7 @@ mod tests {
         let mut target =
             UMesh::new(nd::ArcArray2::from_shape_vec((2, 2), vec![0.0, 0.0, 1.0, 0.0]).unwrap());
         target.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
-        let _ = ConservativeP0Transfer::new(&source.view(), &target.view());
+        let _ = cp0(&source.view(), &target.view());
     }
 
     /// Remapping a PHED Voronoi cell against itself must reproduce its value exactly: the overlap
@@ -1117,7 +1079,7 @@ mod tests {
         assert!(block.element_type() == ElementType::PHED);
         let _ = et;
 
-        let op = ConservativeP0Transfer::new(&m.view(), &m.view());
+        let op = cp0(&m.view(), &m.view());
 
         // The measure self-remap must equal the cell measure itself: a cell remapped against
         // itself must be a fixed point (overlap / measure == 1).

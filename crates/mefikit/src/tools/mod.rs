@@ -51,7 +51,6 @@ pub use centroids::*;
 pub use connected_components::*;
 pub use crack::*;
 pub use extrude::*;
-pub use fieldexpr::TransferOp;
 pub use grid::*;
 pub use measure::*;
 pub use neighbours::*;

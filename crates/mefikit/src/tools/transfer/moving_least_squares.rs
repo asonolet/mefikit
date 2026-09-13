@@ -10,8 +10,7 @@
 
 use super::operator::{TransferMethod, TransferOperator, point_interpolation, validated_dims};
 use super::solver::{DistanceWeighting, NeighbourScheme, solve_neighbours, source_centroids};
-use super::transfer_trait::{FieldNature, Transfer};
-use crate::mesh::{Dimension, FieldOwnedD, FieldViewD, UMeshView};
+use crate::mesh::UMeshView;
 
 /// Builds the moving least-squares operator over the `k` nearest source points of every target point.
 ///
@@ -47,7 +46,7 @@ pub(crate) fn prepare(
     let (src_coords, n_src) = source_centroids(mesh_src, src_dim);
 
     TransferOperator::build(
-        TransferMethod::MovingLeastSquares,
+        TransferMethod::MovingLeastSquares { k, weighting },
         src_dim,
         tgt_dim,
         n_src,
@@ -62,53 +61,6 @@ pub(crate) fn prepare(
     )
 }
 
-/// A moving least-squares interpolation transfer between point clouds.
-///
-/// The operator is built from the coordinates only, so it can be reused to evaluate many fields
-/// (e.g. across time steps) as long as the point sets do not change.
-#[derive(Clone, Debug)]
-pub struct MovingLeastSquaresTransfer(pub(crate) TransferOperator);
-
-impl MovingLeastSquaresTransfer {
-    /// Builds a moving least-squares interpolation operator from source points to target points.
-    ///
-    /// For each target point the `k` nearest source points are gathered and a degree-1 polynomial
-    /// is fitted through them by weighted least squares, the weights coming from
-    /// [`DistanceWeighting`]. The fit is evaluated at the target point, which yields `k`
-    /// interpolation weights `w_i` such that the transferred value is `sum_i w_i f(x_i)`. Affine
-    /// fields are reproduced exactly when the local system is full rank; degenerate local systems
-    /// fall back to the normalized kernel weights (Shepard's method), then to a plain average, so
-    /// building the operator never fails. The characteristic length `h` of the weighting kernel is
-    /// the distance from the target point to its farthest selected neighbour, computed once with
-    /// no inflation: a compact-support kernel gives the neighbour at distance `h` a zero weight,
-    /// which can drop it out of the fit and trigger the fallback when `k` barely overdetermines
-    /// the local system (increase `k` to keep the neighbour inside the fit).
-    ///
-    /// # Panics
-    ///
-    /// - If `mesh_src` and `mesh_tgt` do not share the same space dimension, or if it is not 2
-    ///   or 3.
-    /// - If `k` is zero.
-    pub fn new(
-        mesh_src: &UMeshView,
-        mesh_tgt: &UMeshView,
-        k: usize,
-        weighting: DistanceWeighting,
-    ) -> Self {
-        Self(prepare(mesh_src, mesh_tgt, k, weighting))
-    }
-}
-
-impl Transfer for MovingLeastSquaresTransfer {
-    fn apply(&self, field: &FieldViewD, field_nature: FieldNature, default: f64) -> FieldOwnedD {
-        self.0.apply(field, field_nature, default)
-    }
-
-    fn tgt_dim(&self) -> Dimension {
-        self.0.tgt_dim()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,9 +68,24 @@ mod tests {
 
     use approx::assert_relative_eq;
 
-    use crate::mesh::{ElementType, UMesh};
+    use crate::mesh::{Dimension, ElementType, FieldOwnedD, UMesh};
     use crate::mesh_examples as me;
+    use crate::tools::transfer::transfer_trait::{FieldNature, Transfer};
     use ndarray as nd;
+
+    /// Builds a moving least-squares operator for the common `(k, weighting)` test pairs.
+    fn mls(
+        source: &UMeshView,
+        target: &UMeshView,
+        k: usize,
+        weighting: DistanceWeighting,
+    ) -> TransferOperator {
+        TransferOperator::new(
+            source,
+            target,
+            TransferMethod::MovingLeastSquares { k, weighting },
+        )
+    }
 
     fn src_grid_3d() -> nd::Array2<f64> {
         let mut pts = Vec::new();
@@ -400,7 +367,7 @@ mod tests {
         source.update_field("f", field.into_shared());
 
         let target = me::make_imesh_2d(3);
-        let op = MovingLeastSquaresTransfer::new(
+        let op = mls(
             &source.view(),
             &target.view(),
             4,
@@ -431,7 +398,7 @@ mod tests {
 
         // 3D -> 3D
         let target = me::make_imesh_3d(2);
-        let op = MovingLeastSquaresTransfer::new(
+        let op = mls(
             &source.view(),
             &target.view(),
             4,
@@ -457,7 +424,7 @@ mod tests {
             nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
             None,
         );
-        let op = MovingLeastSquaresTransfer::new(
+        let op = mls(
             &source.view(),
             &surface.view(),
             4,

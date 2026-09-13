@@ -28,25 +28,40 @@ use std::collections::BTreeMap;
 use ndarray as nd;
 use ndarray::{Axis, concatenate};
 
-use super::transfer_trait::{FieldNature, Transfer};
+use super::solver::DistanceWeighting;
+use super::transfer_trait::{FieldNature, PointLocation, Transfer};
 use crate::element_traits::ElementGeo;
 use crate::mesh::{Dimension, ElementType, FieldOwnedD, FieldViewD, UMeshView};
 
 /// The four transfer methods sharing the [`TransferOperator`] machinery.
 ///
-/// The method only shapes the construction of the coefficients; at apply time it only decides
-/// whether an intensive [`TransferMethod::ConservativeP0`] field is normalized by the target cell
-/// measure.
+/// Each variant carries exactly the parameters of the method, so building an operator is a single
+/// call to [`TransferOperator::new`] without any unused argument. The method only shapes the
+/// construction of the coefficients; at apply time it only decides whether an intensive
+/// [`TransferMethod::ConservativeP0`] field is normalized by the target cell measure.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum TransferMethod {
-    /// Piecewise-constant copy of the containing source cell.
-    ConstantPiecewise,
+pub enum TransferMethod {
+    /// Piecewise-constant copy of the cell containing a target sampling point.
+    ConstantPiecewise {
+        /// How the target sampling point is chosen inside each target cell.
+        point_location: PointLocation,
+    },
     /// Measure-weighted overlap average (`ConservativeP0`).
     ConservativeP0,
     /// Inverse-distance (`k`-nearest-neighbours Shepard) interpolation.
-    InverseDistance,
+    InverseDistance {
+        /// Number of nearest source points gathered per target point.
+        k: usize,
+        /// Distance exponent: weights scale as `1 / r^exponent`.
+        exponent: f64,
+    },
     /// Moving least-squares interpolation.
-    MovingLeastSquares,
+    MovingLeastSquares {
+        /// Number of nearest source points used for each local fit.
+        k: usize,
+        /// Kernel turning the distance to a neighbour into a fit weight.
+        weighting: DistanceWeighting,
+    },
 }
 
 /// Sparse (CSR) interpolation coefficients from the flattened source cells to the target cells of
@@ -99,8 +114,10 @@ pub(crate) fn validated_dims(
 /// The source cells are flattened over the per-element-type field arrays in `BTreeMap` order,
 /// exactly like the concatenation of the field arrays done at apply time, so the global index
 /// stored in [`RowSparse::src_idx`] is valid whatever the source element types are.
+///
+/// Build one with [`TransferOperator::new`] (or directly with the per-method `prepare` functions).
 #[derive(Clone, Debug)]
-pub(crate) struct TransferOperator {
+pub struct TransferOperator {
     method: TransferMethod,
     /// Topological dimension of the full-dimensional source cells.
     src_dim: Dimension,
@@ -158,7 +175,10 @@ impl TransferOperator {
             row_ptr.push(src_idx.len());
         }
         Self {
-            method: TransferMethod::MovingLeastSquares,
+            method: TransferMethod::MovingLeastSquares {
+                k: indices.ncols(),
+                weighting: DistanceWeighting::Constant,
+            },
             src_dim,
             tgt_dim,
             n_src,
@@ -203,8 +223,8 @@ impl TransferOperator {
         out_shape[0] = n_tgt;
         let src_view = src.view().into_shape_with_order((n_src, n_compo)).unwrap();
 
-        let normalize =
-            self.method == TransferMethod::ConservativeP0 && field_nature == FieldNature::Intensive;
+        let normalize = matches!(self.method, TransferMethod::ConservativeP0)
+            && field_nature == FieldNature::Intensive;
 
         let mut tgt = nd::Array::zeros((n_tgt, n_compo));
         for j in 0..n_tgt {

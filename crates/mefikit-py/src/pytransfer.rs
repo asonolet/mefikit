@@ -5,7 +5,6 @@ use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
 use mefikit::prelude as mf;
-use mefikit::prelude::fieldexpr::TransferOp;
 use mefikit::tools::Transfer;
 
 use crate::element::etype_to_str;
@@ -24,7 +23,7 @@ fn field_nature(extensive: bool) -> mf::FieldNature {
 fn transfer_expr<'py>(
     py: Python<'py>,
     src_mesh: &Py<PyUMesh>,
-    op: &Arc<TransferOp>,
+    op: &Arc<mf::TransferOperator>,
     def_val: f64,
     extensive: bool,
     expr: &Bound<'py, PyAny>,
@@ -40,7 +39,7 @@ fn transfer_expr<'py>(
 fn transfer_eval<'py>(
     py: Python<'py>,
     src_mesh: &Py<PyUMesh>,
-    op: &Arc<TransferOp>,
+    op: &Arc<mf::TransferOperator>,
     def_val: f64,
     extensive: bool,
     expr: &Bound<'py, PyAny>,
@@ -87,7 +86,7 @@ impl From<PyDistanceWeighting> for mf::DistanceWeighting {
 #[pyclass(str)]
 #[pyo3(name = "ConstantPiecewise")]
 pub struct PyConstantPiecewise {
-    op: Arc<TransferOp>,
+    op: Arc<mf::TransferOperator>,
     src_mesh: Py<PyUMesh>,
     def_val: f64,
 }
@@ -103,13 +102,15 @@ impl PyConstantPiecewise {
     #[new]
     #[pyo3(signature = (src_mesh, tgt_mesh, def_val=0.0))]
     fn new(src_mesh: &Bound<'_, PyUMesh>, tgt_mesh: &Bound<'_, PyUMesh>, def_val: f64) -> Self {
-        let transfer = mf::ConstantPiecewiseTransfer::new(
+        let transfer = mf::TransferOperator::new(
             &into_view(&src_mesh.borrow()),
             &into_view(&tgt_mesh.borrow()),
-            mf::PointLocation::Centroid,
+            mf::TransferMethod::ConstantPiecewise {
+                point_location: mf::PointLocation::Centroid,
+            },
         );
         PyConstantPiecewise {
-            op: Arc::new(TransferOp::ConstantPiecewise(transfer)),
+            op: Arc::new(transfer),
             src_mesh: src_mesh.clone().unbind(),
             def_val,
         }
@@ -161,7 +162,7 @@ impl PyConstantPiecewise {
 #[pyclass(str)]
 #[pyo3(name = "MovingLeastSquares")]
 pub struct PyMovingLeastSquares {
-    op: Arc<TransferOp>,
+    op: Arc<mf::TransferOperator>,
     src_mesh: Py<PyUMesh>,
     def_val: f64,
 }
@@ -183,14 +184,16 @@ impl PyMovingLeastSquares {
         weighting: PyDistanceWeighting,
         def_val: f64,
     ) -> Self {
-        let transfer = mf::MovingLeastSquaresTransfer::new(
+        let transfer = mf::TransferOperator::new(
             &into_view(&src_mesh.borrow()),
             &into_view(&tgt_mesh.borrow()),
-            k,
-            weighting.into(),
+            mf::TransferMethod::MovingLeastSquares {
+                k,
+                weighting: weighting.into(),
+            },
         );
         PyMovingLeastSquares {
-            op: Arc::new(TransferOp::MovingLeastSquares(transfer)),
+            op: Arc::new(transfer),
             src_mesh: src_mesh.clone().unbind(),
             def_val,
         }
@@ -242,7 +245,7 @@ impl PyMovingLeastSquares {
 #[pyclass(str)]
 #[pyo3(name = "ConservativeP0")]
 pub struct PyConservativeP0 {
-    op: Arc<TransferOp>,
+    op: Arc<mf::TransferOperator>,
     src_mesh: Py<PyUMesh>,
     def_val: f64,
 }
@@ -258,12 +261,13 @@ impl PyConservativeP0 {
     #[new]
     #[pyo3(signature = (src_mesh, tgt_mesh, def_val=0.0))]
     fn new(src_mesh: &Bound<'_, PyUMesh>, tgt_mesh: &Bound<'_, PyUMesh>, def_val: f64) -> Self {
-        let transfer = mf::ConservativeP0Transfer::new(
+        let transfer = mf::TransferOperator::new(
             &into_view(&src_mesh.borrow()),
             &into_view(&tgt_mesh.borrow()),
+            mf::TransferMethod::ConservativeP0,
         );
         PyConservativeP0 {
-            op: Arc::new(TransferOp::ConservativeP0(transfer)),
+            op: Arc::new(transfer),
             src_mesh: src_mesh.clone().unbind(),
             def_val,
         }
@@ -318,7 +322,7 @@ impl PyConservativeP0 {
 #[pyclass(str)]
 #[pyo3(name = "InverseDistance")]
 pub struct PyInverseDistance {
-    op: Arc<TransferOp>,
+    op: Arc<mf::TransferOperator>,
     src_mesh: Py<PyUMesh>,
     def_val: f64,
 }
@@ -340,14 +344,13 @@ impl PyInverseDistance {
         exponent: f64,
         def_val: f64,
     ) -> Self {
-        let transfer = mf::InverseDistanceTransfer::new(
+        let transfer = mf::TransferOperator::new(
             &into_view(&src_mesh.borrow()),
             &into_view(&tgt_mesh.borrow()),
-            k,
-            exponent,
+            mf::TransferMethod::InverseDistance { k, exponent },
         );
         PyInverseDistance {
-            op: Arc::new(TransferOp::InverseDistance(transfer)),
+            op: Arc::new(transfer),
             src_mesh: src_mesh.clone().unbind(),
             def_val,
         }
