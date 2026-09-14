@@ -1,0 +1,1362 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>vs. medcoupling - Mefikit Book</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../css/chrome-d279d366.css">
+        <link rel="stylesheet" href="../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../";
+            const default_light_theme = "light";
+            const default_dark_theme = "navy";
+            window.path_to_searchindex_js = "../searchindex-9a89b8f1.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc-a0d6a0d5.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">Mefikit Book</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="mefikit-vs-medcoupling"><a class="header" href="#mefikit-vs-medcoupling">mefikit vs. medcoupling</a></h1>
+<p>A friendly, side-by-side look at two libraries that solve the same class of
+problems, in slightly different ways.</p>
+<p><strong><a href="https://docs.salome-platform.org/latest/dev/MEDCoupling/">medcoupling</a></strong> is
+the reference implementation of the MED world: mature, broad and
+battle-tested in industrial workflows. It set the bar for mesh interchange —
+mefikit itself happily reads and writes the very same <code>.med</code> files.</p>
+<p><strong><a href="https://github.com/asonolet/mefikit">mefikit</a></strong> is a younger library, written
+in Rust and exposed to Python. It pursues the same goal — manipulate
+unstructured meshes and their fields — with a shorter, more expressive API and
+a performance-oriented core.</p>
+<p>This notebook is neither a verdict nor a “rip and replace”. It is an
+invitation: we build the <strong>same meshes</strong>, run the <strong>same operations</strong>, and
+compare the <strong>interface</strong> and the <strong>timings</strong> step by step. If you know
+medcoupling, you should find your bearings immediately — and, hopefully, be
+tempted.</p>
+<p>Every mesh below is built from the <em>exact same geometry</em> on both sides, and
+every value is cross-checked against the other library before we say one word
+about speed.</p>
+<pre><code class="language-python">import os
+import time
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import medcoupling as mc
+import numpy as np
+import pyvista as pv
+
+import mefikit as mf
+
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
+
+print("mefikit     :", mf.__file__)
+print("medcoupling :", mc.__file__)
+print("medcoupling version:", mc.__version__)
+print("numpy       :", np.__version__)
+</code></pre>
+<pre><code>mefikit     : /home/asonolet/Codes/mefikit/src/mefikit/__init__.py
+medcoupling : /home/asonolet/Codes/mefikit/.venv/lib/python3.13/site-packages/medcoupling.py
+medcoupling version: V9_15_0
+numpy       : 2.5.2
+</code></pre>
+<h3 id="a-couple-of-plumbing-helpers"><a class="header" href="#a-couple-of-plumbing-helpers">A couple of plumbing helpers</a></h3>
+<p>Nothing to learn here — two small utilities used to cross-check node counts
+and surface areas between the libraries below.</p>
+<pre><code class="language-python">def used_nodes(mesh):
+    ids = np.concatenate([np.asarray(b) for b in mesh.blocks().values()])
+    return int(np.unique(ids).size)
+
+
+def area_2d(mesh):
+    return float(sum(np.asarray(v).sum() for v in mesh.measure().values()))
+</code></pre>
+<h2 id="building-the-same-mesh"><a class="header" href="#building-the-same-mesh">Building the same mesh</a></h2>
+<p>Every mesh workflow starts with creating a grid. In mefikit, <code>build_cmesh</code>
+builds a structured (cartesian) mesh from the coordinate axes in <strong>one call</strong>.</p>
+<p>In medcoupling the standard route goes through a structured <code>MEDCouplingCMesh</code>,
+materialised as an unstructured mesh with <code>buildUnstructured()</code>. Three lines,
+still very readable.</p>
+<p>The good news: the result is <em>the same mesh</em> — same nodes, same cells —
+because a cartesian grid is just a very regular unstructured mesh.</p>
+<pre><code class="language-python">def medcoupling_cmesh(*axes):
+    # medcoupling counterpart of mf.build_cmesh(*axes): build a structured
+    # MEDCouplingCMesh, then materialise it as an unstructured mesh with the
+    # standard buildUnstructured() call.
+    cmesh = mc.MEDCouplingCMesh()
+    cmesh.setCoords(
+        *[mc.DataArrayDouble(np.ascontiguousarray(a, np.float64)) for a in axes]
+    )
+    umesh = cmesh.buildUnstructured()
+    umesh.setMeshDimension(len(axes))
+    return umesh
+
+
+x = np.linspace(0.0, 1.0, 6)
+mf_mesh = mf.build_cmesh(x, x)  # mefikit    : one call
+mc_mesh = medcoupling_cmesh(x, x)  # medcoupling: structured -&gt; unstructured
+</code></pre>
+<pre><code class="language-python">print(
+    "mefikit     :",
+    mf_mesh.num_elements(),
+    "QUAD4 cells,",
+    mf_mesh.coords().shape[0],
+    "nodes",
+)
+print(
+    "medcoupling :",
+    mc_mesh.getNumberOfCells(),
+    "QUAD4 cells,",
+    mc_mesh.getNumberOfNodes(),
+    "nodes",
+)
+
+assert mc_mesh.getNumberOfCells() == mf_mesh.num_elements()
+assert np.allclose(mc_mesh.getCoords().toNumPyArray(), mf_mesh.coords())
+print("identical geometry (nodes and cells): OK")
+</code></pre>
+<pre><code>mefikit     : 25 QUAD4 cells, 36 nodes
+medcoupling : 25 QUAD4 cells, 36 nodes
+identical geometry (nodes and cells): OK
+</code></pre>
+<pre><code class="language-python"># The bridge in the other direction is a one-liner: mefikit meshes
+# export to medcoupling with to_mc(), geometry untouched.
+twin = mf_mesh.to_mc()
+twin.setMeshDimension(2)
+print(
+    "to_mc() bridge:",
+    twin.getNumberOfCells(),
+    "cells,",
+    twin.getNumberOfNodes(),
+    "nodes",
+)
+</code></pre>
+<pre><code>to_mc() bridge: 25 cells, 36 nodes
+</code></pre>
+<pre><code class="language-python">def mc_to_pyvista(mmesh):
+    # Render a medcoupling mesh with pyvista, in-memory (no temp files).
+    vtk_type = {
+        mc.NORM_SEG2: pv.CellType.LINE,
+        mc.NORM_TRI3: pv.CellType.TRIANGLE,
+        mc.NORM_QUAD4: pv.CellType.QUAD,
+        mc.NORM_POLYGON: pv.CellType.POLYGON,
+        mc.NORM_HEXA8: pv.CellType.HEXAHEDRON,
+    }
+    n = mmesh.getNumberOfCells()
+    coords = mmesh.getCoords().toNumPyArray()
+    if coords.shape[1] == 2:
+        coords = np.c_[coords, np.zeros(len(coords))]
+    conn = mmesh.getNodalConnectivity().toNumPyArray()
+    off = mmesh.getNodalConnectivityIndex().toNumPyArray()
+    cells_arr = np.concatenate(
+        [
+            np.r_[off[i + 1] - off[i] - 1, conn[off[i] + 1 : off[i + 1]]]
+            for i in range(n)
+        ]
+    ).astype(np.int64)
+    cell_types = np.array(
+        [vtk_type[mmesh.getTypeOfCell(i)] for i in range(n)], np.uint8
+    )
+    return pv.UnstructuredGrid(cells_arr, cell_types, coords)
+
+
+pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text("mefikit - mf.build_cmesh(x, x)")
+pt.add_mesh(mf_mesh.to_pyvista(), show_edges=True)
+pt.camera_position = "xy"
+pt.subplot(0, 1)
+pt.add_text("medcoupling - MEDCouplingCMesh.buildUnstructured()")
+pt.add_mesh(mc_to_pyvista(mc_mesh), show_edges=True)
+pt.camera_position = "xy"
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_8_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_8_0.png" alt="png"></span></label></p>
+<h2 id="fields-measures-and-one-line-expressions"><a class="header" href="#fields-measures-and-one-line-expressions">Fields, measures, and one-line expressions</a></h2>
+<p>Everyone needs per-cell measures in remapping workflows. mefikit exposes a
+symbolic field <code>mf.M</code> — the measure — evaluated on demand, together with a
+small expression DSL on <code>mf.Field</code>: you <em>write</em> the computation, mefikit
+<em>evaluates</em> it on the mesh, and combinations of <code>select</code> / <code>mean</code> / <code>sum</code>
+become one-liners.</p>
+<p>medcoupling takes the more explicit route: you build a <code>DataArrayDouble</code>,
+wrap it into a <code>MEDCouplingFieldDouble</code>, and attach it to the mesh. Both
+compute exactly the same numbers.</p>
+<pre><code class="language-python"># --- mefikit ----------------------------------------------------------------
+mf_mesh.fields["Measure"] = mf.M  # symbolic measure
+mf_mesh.fields["T"] = 1.0 + mf.X**2 + 0.5 * mf.Y
+
+print("measure sum  :", mf_mesh.fields["Measure"].sum())
+hot = mf_mesh.select(mf.Field("T") &gt; 1.5)
+print("cells T &gt; 1.5:", len(hot))
+print("mean T above :", hot.mean("T"))
+</code></pre>
+<pre><code>measure sum  : 1.0
+cells T &gt; 1.5: 13
+mean T above : 1.8338461538461535
+</code></pre>
+<pre><code class="language-python"># --- medcoupling -------------------------------------------------------------
+mc_measure = mc_mesh.getMeasureField(True)
+mc_measure.setNature(mc.IntensiveConservation)
+
+centers = np.asarray(mc_mesh.computeCellCenterOfMass().toNumPyArray())
+mc_T_vals = 1.0 + centers[:, 0] ** 2 + 0.5 * centers[:, 1]
+
+mc_T = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
+_arr = mc.DataArrayDouble(np.ascontiguousarray(mc_T_vals, np.float64))
+_arr.setName("T")
+mc_T.setArray(_arr)
+mc_T.setMesh(mc_mesh)
+mc_T.setNature(mc.IntensiveConservation)
+
+print("measure sum  :", float(mc_measure.getArray().toNumPyArray().sum()))
+</code></pre>
+<pre><code>measure sum  : 1.0
+</code></pre>
+<pre><code class="language-python"># identical numbers, whichever library computed them
+mf_T_vals = np.asarray(mf_mesh.fields["T"].numpy()).ravel()
+mc_T_vals = mc_T.getArray().toNumPyArray()
+print("max |mf_T - mc_T|:", float(np.abs(mf_T_vals - mc_T_vals).max()))
+assert np.allclose(mf_T_vals, mc_T_vals, atol=1e-12)
+</code></pre>
+<pre><code>max |mf_T - mc_T|: 1.3322676295501878e-15
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text("mefikit - mf.Field / select / eval")
+g1 = mf_mesh.to_pyvista()
+g1["T"] = mf_T_vals
+pt.add_mesh(g1, scalars="T", show_edges=True)
+pt.camera_position = "xy"
+pt.subplot(0, 1)
+pt.add_text("medcoupling - MEDCouplingFieldDouble")
+g2 = mc_to_pyvista(mc_mesh)
+g2["T"] = mc_T_vals
+pt.add_mesh(g2, scalars="T", show_edges=True)
+pt.camera_position = "xy"
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_13_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_13_0.png" alt="png"></span></label></p>
+<h2 id="common-operations-side-by-side"><a class="header" href="#common-operations-side-by-side">Common operations, side by side</a></h2>
+<h3 id="descending-connectivity"><a class="header" href="#descending-connectivity">Descending connectivity</a></h3>
+<p>The faces of a volume mesh — the bread and butter of boundary conditions and
+surface integrals. mefikit: one call, <code>descend()</code>. medcoupling:
+<code>buildDescendingConnectivity()</code>. Both report the same face count.</p>
+<pre><code class="language-python">axes3 = [np.linspace(0.0, 1.0, 5)] * 3
+m3 = mf.build_cmesh(*axes3)
+mc3 = medcoupling_cmesh(*axes3)
+
+mf_faces = m3.descend()
+mc_desc = mc3.buildDescendingConnectivity()
+mc_faces = mc_desc[0] if isinstance(mc_desc, tuple) else mc_desc
+
+print("faces (mefikit)    :", mf_faces.num_elements())
+print("faces (medcoupling):", mc_faces.getNumberOfCells())
+assert mf_faces.num_elements() == mc_faces.getNumberOfCells()
+print("identical face count: OK")
+</code></pre>
+<pre><code>faces (mefikit)    : 240
+faces (medcoupling): 240
+identical face count: OK
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text("descend() - faces in black")
+pt.add_mesh(m3.to_pyvista(), show_edges=True, opacity=0.35)
+pt.add_mesh(mf_faces.to_pyvista(), show_edges=True, color="black", line_width=2)
+pt.subplot(0, 1)
+pt.add_text("buildDescendingConnectivity()")
+pt.add_mesh(mc_to_pyvista(mc3), show_edges=True, opacity=0.35)
+pt.add_mesh(mc_to_pyvista(mc_faces), show_edges=True, color="black", line_width=2)
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_16_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_16_0.png" alt="png"></span></label></p>
+<h3 id="merging-duplicated-nodes"><a class="header" href="#merging-duplicated-nodes">Merging duplicated nodes</a></h3>
+<p>Meshes often carry duplicated nodes (split or intersected interfaces). The
+reference cure is a node merge. mefikit’s <code>merge_nodes()</code> and medcoupling’s
+<code>mergeNodes()</code> collapse the same duplicates.</p>
+<p>A small nuance worth knowing: mefikit keeps the coordinate array untouched and
+rewires the connectivity — cheap and zero-copy friendly — while medcoupling
+physically compacts nodes. The <em>number of used nodes</em> is identical.</p>
+<pre><code class="language-python"># crack a small hex stack so its shared interface is duplicated
+volumes = mf.build_cmesh([0.0, 1.0], np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
+faces = volumes.descend()
+cracked = volumes.crack(faces)
+cracked_mc = cracked.to_mc()
+cracked_mc.setMeshDimension(3)
+
+merged = cracked.merge_nodes()
+merged_mc = cracked_mc.deepCopy()
+merged_mc.mergeNodes(1e-12)
+
+print("components before merge:", len(cracked.connected_components()))
+print("components after merge :", len(merged.connected_components()))
+print(
+    "used nodes  before/after (mefikit)    :",
+    used_nodes(cracked),
+    "-&gt;",
+    used_nodes(merged),
+)
+print(
+    "nodes       before/after (medcoupling):",
+    cracked_mc.getNumberOfNodes(),
+    "-&gt;",
+    merged_mc.getNumberOfNodes(),
+)
+assert len(merged.connected_components()) == 1
+assert used_nodes(merged) == merged_mc.getNumberOfNodes()
+print("identical result: OK")
+</code></pre>
+<pre><code>components before merge: 16
+components after merge : 1
+used nodes  before/after (mefikit)    : 128 -&gt; 50
+nodes       before/after (medcoupling): 128 -&gt; 50
+identical result: OK
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text(f"cracked - {len(cracked.connected_components())} components")
+for compo in cracked.connected_components():
+    pt.add_mesh(compo.to_pyvista(), show_edges=True, opacity=0.6)
+pt.subplot(0, 1)
+pt.add_text("merge_nodes() - 1 component")
+pt.add_mesh(merged.to_pyvista(), show_edges=True)
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_19_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_19_0.png" alt="png"></span></label></p>
+<h3 id="2d-overlay--imprint"><a class="header" href="#2d-overlay--imprint">2D overlay / imprint</a></h3>
+<p>Boolean overlay of two 2D meshes (insert an embedded mesh into a background
+one). mefikit: <code>overlay()</code>. medcoupling: <code>Intersect2DMeshes()</code>. Both imprint
+the embedded grid into the background and preserve the total area.</p>
+<pre><code class="language-python">g1 = mf.build_cmesh(np.linspace(0.0, 1.0, 7), np.linspace(0.0, 1.0, 7))
+g2 = mf.build_cmesh(np.linspace(0.25, 0.75, 5), np.linspace(0.25, 0.75, 5))
+
+imprint = g1.overlay(g2, mf.OverlayOperation.IMPRINT)
+
+g1m, g2m = g1.to_mc(), g2.to_mc()
+g1m.setMeshDimension(2)
+g2m.setMeshDimension(2)
+mc_imprint = mc.MEDCouplingUMesh.Intersect2DMeshes(g1m, g2m, 1e-12)[0]
+
+a_mf = area_2d(imprint)
+a_mc = float(np.asarray(mc_imprint.getMeasureField(True).getArray().getValues()).sum())
+print("imprint area (mefikit)    :", a_mf)
+print("imprint area (medcoupling):", a_mc)
+assert abs(a_mf - 1.0) &lt; 1e-9 and abs(a_mc - 1.0) &lt; 1e-9
+print("identical (unit) area: OK")
+</code></pre>
+<pre><code>imprint area (mefikit)    : 1.0000000000000002
+imprint area (medcoupling): 1.0
+identical (unit) area: OK
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text("overlay(IMPRINT)")
+pt.add_mesh(g1.to_pyvista(), show_edges=True, opacity=0.25, color="grey")
+pt.add_mesh(imprint.to_pyvista().shrink(0.8), show_edges=True, line_width=2)
+pt.camera_position = "xy"
+pt.subplot(0, 1)
+pt.add_text("Intersect2DMeshes()")
+pt.add_mesh(mc_to_pyvista(g1m), show_edges=True, opacity=0.25, color="grey")
+pt.add_mesh(mc_to_pyvista(mc_imprint).shrink(0.8), show_edges=True, line_width=2)
+pt.camera_position = "xy"
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_22_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_22_0.png" alt="png"></span></label></p>
+<h3 id="conservative-p0p0-field-transfer-quad4"><a class="header" href="#conservative-p0p0-field-transfer-quad4">Conservative P0/P0 field transfer (QUAD4)</a></h3>
+<p>The flagship operation: transfer a cell field from a source mesh to a target
+mesh, conserving mass. Same prepare / apply split on both sides:</p>
+<ul>
+<li>mefikit: build the operator once (<code>mf.transfer.ConservativeP0</code>), then call
+<code>apply_update</code>.</li>
+<li>medcoupling: <code>MEDCouplingRemapper</code>, <code>prepare("P0P0")</code>, then <code>transferField</code>.</li>
+</ul>
+<p>The transferred fields match to machine precision.</p>
+<pre><code class="language-python"># --- mefikit ----------------------------------------------------------------
+src2 = mf.build_cmesh(np.linspace(0.0, 1.0, 20), np.linspace(0.0, 1.0, 20))
+tgt2 = mf.build_cmesh(np.linspace(0.0, 1.0, 24), np.linspace(0.0, 1.0, 24))
+src2.fields["T"] = 1.0 + (mf.X - 0.5) ** 2 + 0.5 * mf.Y
+
+op = mf.transfer.ConservativeP0(src2, tgt2)  # prepare once
+op.apply_update(src2, "T", tgt2, "T", def_val=0.0)
+mf_tgt_vals = tgt2.fields["T"].numpy()
+
+# --- medcoupling -------------------------------------------------------------
+sc = src2.to_mc()
+sc.setMeshDimension(2)
+tc = tgt2.to_mc()
+tc.setMeshDimension(2)
+
+f_src = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
+_arr = mc.DataArrayDouble(
+    np.ascontiguousarray(np.asarray(src2.fields["T"].numpy()).ravel())
+)
+_arr.setName("T")
+f_src.setArray(_arr)
+f_src.setMesh(sc)
+f_src.setNature(mc.IntensiveConservation)
+
+remap = mc.MEDCouplingRemapper()
+remap.prepare(sc, tc, "P0P0")  # prepare once
+f_tgt = remap.transferField(f_src, 0.0)
+mc_tgt_vals = f_tgt.getArray().toNumPyArray()
+
+print(
+    "max |mefikit - medcoupling| after P0P0:",
+    float(np.abs(mf_tgt_vals - mc_tgt_vals).max()),
+)
+assert np.allclose(mf_tgt_vals, mc_tgt_vals, atol=1e-9)
+print("transferred fields match: OK")
+</code></pre>
+<pre><code>max |mefikit - medcoupling| after P0P0: 3.552713678800501e-15
+transferred fields match: OK
+</code></pre>
+<pre><code class="language-python">vmin, vmax = 0.5, 1.75
+pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text("Source")
+s_pv = src2.to_pyvista()
+s_pv["T"] = np.asarray(src2.fields["T"].numpy()).ravel()
+pt.add_mesh(s_pv, scalars="T", clim=[vmin, vmax], show_edges=True)
+pt.camera_position = "xy"
+pt.subplot(0, 1)
+pt.add_text("Target (transferred)")
+t_pv = tgt2.to_pyvista()
+t_pv["T"] = mf_tgt_vals
+pt.add_mesh(t_pv, scalars="T", clim=[vmin, vmax], show_edges=True)
+pt.camera_position = "xy"
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_25_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_25_0.png" alt="png"></span></label></p>
+<h2 id="polyhedra-where-mefikit-shines-the-most"><a class="header" href="#polyhedra-where-mefikit-shines-the-most">Polyhedra, where mefikit shines the most</a></h2>
+<p>Real-world meshes are very often polyhedral: Voronoi meshes, cell-centred
+finite volumes, unrolled CAD… Both libraries store them; the difference
+shows when it is time to <em>use</em> them.</p>
+<p>We take two different 2000-cell polyhedral meshes shipped with mefikit’s test
+suite — <code>mesh_36.med</code> and <code>mesh_27.med</code> — and feed the <em>same .med files</em> to
+both libraries.</p>
+<pre><code class="language-python"># locate the test meshes whatever the current working directory is
+root = Path(os.getcwd())
+while root != root.parent and not (root / "tests" / "data" / "mesh_36.med").exists():
+    root = root.parent
+data = root / "tests" / "data"
+
+mf_src = mf.UMesh.read(str(data / "mesh_36.med"))  # mefikit : 1 line
+mf_tgt = mf.UMesh.read(str(data / "mesh_27.med"))
+mc_src = mc.ReadMeshFromFile(str(data / "mesh_36.med"), 0)  # medcoupling
+mc_tgt = mc.ReadMeshFromFile(str(data / "mesh_27.med"), 0)
+
+print("mefikit  mesh_36 :", mf_src.block_types(), mf_src.num_elements(), "cells")
+print("mefikit  mesh_27 :", mf_tgt.block_types(), mf_tgt.num_elements(), "cells")
+print(
+    "medcoupl mesh_36 :",
+    mc_src.getNumberOfCells(),
+    "cells,",
+    mc_src.getNumberOfNodes(),
+    "nodes",
+)
+print("medcoupl mesh_27 :", mc_tgt.getNumberOfCells(), "cells")
+
+# measure + a field + a selection, poly edition, all in mefikit
+mf_src.fields["Measure"] = mf.M
+mf_src.fields["T"] = 1.0 + 2.0 * mf.M
+print("volume(mesh_36):", mf_src.fields["Measure"].sum())
+big = mf_src.select(mf.M &gt; mf_src.fields["Measure"].mean())
+print("cells above mean volume:", len(big))
+</code></pre>
+<pre><code>mefikit  mesh_36 : ['PHED'] 2000 cells
+mefikit  mesh_27 : ['PHED'] 2000 cells
+medcoupl mesh_36 : 2000 cells, 12404 nodes
+medcoupl mesh_27 : 2000 cells
+
+
+volume(mesh_36): 0.99999999869571
+cells above mean volume: 898
+</code></pre>
+<pre><code class="language-python"># boundaries and descending connectivity on polyhedra
+mf_bnd = mf_src.boundaries()
+mf_desc = mf_src.descend()
+
+mc_bnd = mc_src.buildBoundaryMesh(True)
+mc_d = mc_src.buildDescendingConnectivity()
+mc_desc = mc_d[0] if isinstance(mc_d, tuple) else mc_d
+
+print(
+    "boundary faces (mefikit)     :",
+    mf_bnd.num_elements(),
+    "| medcoupling:",
+    mc_bnd.getNumberOfCells(),
+)
+print(
+    "descending    (mefikit)     :",
+    mf_desc.num_elements(),
+    "| medcoupling:",
+    mc_desc.getNumberOfCells(),
+)
+assert mf_bnd.num_elements() == mc_bnd.getNumberOfCells()
+assert mf_desc.num_elements() == mc_desc.getNumberOfCells()
+print("identical counts: OK")
+</code></pre>
+<pre><code>boundary faces (mefikit)     : 888 | medcoupling: 888
+descending    (mefikit)     : 14401 | medcoupling: 14401
+identical counts: OK
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text("mefikit - boundaries() of mesh_36 (PHED)")
+pt.add_mesh(mf_bnd.to_pyvista(), color="grey", show_edges=True)
+pt.camera_position = "xy"
+pt.subplot(0, 1)
+pt.add_text("medcoupling - buildBoundaryMesh() (PHED)")
+pt.add_mesh(mc_to_pyvista(mc_bnd), color="grey", show_edges=True)
+pt.camera_position = "xy"
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_29_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_29_0.png" alt="png"></span></label></p>
+<h3 id="polyhedral-to-polyhedral-remap"><a class="header" href="#polyhedral-to-polyhedral-remap">Polyhedral-to-polyhedral remap</a></h3>
+<p>Same P0/P0 transfer, but between the two <em>real polyhedral</em> meshes. Prepare
+once, apply many times is the name of the game for unsteady runs, so both
+sides are timed separately. We scan a few mesh sizes (always the same geometry
+on both sides) and check that the actual transferred fields coincide.</p>
+<pre><code class="language-python">def poly_subset(path, n, mc_side):
+    if mc_side:
+        m = mc.ReadMeshFromFile(str(path), 0)
+        m = m.buildPartOfMySelf(np.arange(n, dtype=np.int64).tolist())
+        m.mergeNodes(1e-12)
+        return m
+    m = mf.UMesh.read(str(path))
+    return m.select(mf.sel.ids({"PHED": np.arange(n)})).to_mesh()
+
+
+def mc_p0_field(mesh, vals):
+    f = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
+    a = mc.DataArrayDouble(np.ascontiguousarray(vals, np.float64))
+    a.setName("T")
+    f.setArray(a)
+    f.setMesh(mesh)
+    f.setNature(mc.IntensiveConservation)
+    return f
+
+
+def median_ms(fn, n=3):
+    times = []
+    for _ in range(n):
+        t0 = time.perf_counter()
+        fn()
+        times.append(time.perf_counter() - t0)
+    return float(np.median(times) * 1e3)
+
+
+poly_res = []
+for n in (100, 200, 400):
+    p_src = poly_subset(data / "mesh_36.med", n, False)
+    p_tgt = poly_subset(data / "mesh_27.med", n, False)
+    p_src.fields["T"] = 1.0 + 2.0 * mf.M
+
+    mf_prepare = median_ms(
+        lambda p_src=p_src, p_tgt=p_tgt: mf.transfer.ConservativeP0(p_src, p_tgt)
+    )
+    op = mf.transfer.ConservativeP0(p_src, p_tgt)
+    mf_apply = median_ms(
+        lambda op=op, p_src=p_src, p_tgt=p_tgt: op.apply_update(
+            p_src, "T", p_tgt, "T", def_val=0.0
+        )
+    )
+
+    c_src = poly_subset(data / "mesh_36.med", n, True)
+    c_tgt = poly_subset(data / "mesh_27.med", n, True)
+    f_src = mc_p0_field(c_src, np.asarray(p_src.fields["T"].numpy()).ravel())
+
+    remap = mc.MEDCouplingRemapper()
+    mc_prepare = median_ms(
+        lambda remap=remap, c_src=c_src, c_tgt=c_tgt: remap.prepare(
+            c_src, c_tgt, "P0P0"
+        )
+    )
+    mc_apply = median_ms(
+        lambda remap=remap, f_src=f_src: remap.transferField(f_src, 0.0)
+    )
+
+    op.apply_update(p_src, "T", p_tgt, "T", def_val=0.0)
+    out_mf = np.asarray(p_tgt.fields["T"].numpy()).ravel()
+    remap.prepare(c_src, c_tgt, "P0P0")
+    out_mc = remap.transferField(f_src, 0.0).getArray().toNumPyArray()
+
+    diff = float(np.abs(out_mf - out_mc).max())
+    poly_res.append((n, mf_prepare, mf_apply, mc_prepare, mc_apply, diff))
+    print(
+        f"poly n={n:4d} | mefikit {mf_prepare:7.2f} ms (prepare) / {mf_apply:5.2f} ms (apply)"
+        f" | medcoupling {mc_prepare:8.1f} ms / {mc_apply:5.2f} ms | {mc_prepare / mf_prepare:4.0f}x faster"
+    )
+    print(
+        f"            | max |mefikit - medcoupling| on the transferred field: {diff:.2e}"
+    )
+
+assert all(r[5] &lt; 1e-9 for r in poly_res)
+print("transferred fields match at every size: OK")
+</code></pre>
+<pre><code>poly n= 100 | mefikit    2.59 ms (prepare) /  0.01 ms (apply) | medcoupling    153.5 ms /  0.20 ms |   59x faster
+            | max |mefikit - medcoupling| on the transferred field: 5.88e-15
+
+
+poly n= 200 | mefikit    7.14 ms (prepare) /  0.01 ms (apply) | medcoupling    568.9 ms /  0.38 ms |   80x faster
+            | max |mefikit - medcoupling| on the transferred field: 6.38e-15
+
+
+poly n= 400 | mefikit   23.26 ms (prepare) /  0.02 ms (apply) | medcoupling   2347.4 ms /  0.74 ms |  101x faster
+            | max |mefikit - medcoupling| on the transferred field: 7.22e-15
+transferred fields match at every size: OK
+</code></pre>
+<pre><code class="language-python">ns = [r[0] for r in poly_res]
+fig, ax = plt.subplots(figsize=(8, 5))
+ax.loglog(ns, [r[1] for r in poly_res], "o-", label="mefikit prepare")
+ax.loglog(ns, [r[3] for r in poly_res], "s-", label="medcoupling prepare")
+ax.set_xlabel("polyhedral cells")
+ax.set_ylabel("prepare time (ms)")
+ax.set_title("P0/P0 remap prepare on real polyhedral meshes (mesh_36 -&gt; mesh_27)")
+ax.grid(True, which="both", ls="--", alpha=0.4)
+ax.legend()
+fig.tight_layout()
+plt.show()
+
+
+r = poly_res[-1]
+print(
+    f"At {r[0]} cells mefikit prepares the polyhedral remap {r[3] / r[1]:.0f} times faster "
+    "than medcoupling, and the gap grows with the mesh size."
+)
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_32_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_32_0.png" alt="png"></span></label></p>
+<pre><code>At 400 cells mefikit prepares the polyhedral remap 101 times faster than medcoupling, and the gap grows with the mesh size.
+</code></pre>
+<h2 id="performance-on-common-operations"><a class="header" href="#performance-on-common-operations">Performance on common operations</a></h2>
+<p>Now the same benchmark spirit on the structured meshes (quad / hexa) of daily
+life. Timings are <strong>medians of several runs</strong> on this machine; tiny absolute
+values should be read with perspective. Both libraries always work on the
+<em>exact same geometry</em>: this is what fairness looks like.</p>
+<p>Workloads are the same ones used in mefikit’s <code>tests/bench_vs_medcoupling.py</code>.</p>
+<pre><code class="language-python">N_ITER = 10
+MC_INTENSIVE = 37
+MC_EXTENSIVE = 35
+
+N2D = 96  # 96x96  = 9216 QUAD4 cells
+N3D = 16  # 16^3   = 4096 HEX8 cells
+NPOLY = 16  # poly remap target, 16^3 source
+MERGE_N = 24  # 2 stacked 24x24 HEX8 layers, duplicated interface
+DESCEND_N = 24  # 24^3 hexa grid -&gt; faces
+OVERLAY_N = 32  # 32x32 grid overlayed by an embedded 8x8 block
+CRACK_N = 20  # 20^3 hexa grid, cracked along all its faces
+
+RTOL = 1e-9
+ATOL = 1e-9
+
+
+def median_time(fn, n=N_ITER):
+    # median wall time of fn over n runs, in milliseconds
+    times = []
+    for _ in range(n):
+        t0 = time.perf_counter()
+        fn()
+        times.append(time.perf_counter() - t0)
+    return float(np.median(times) * 1e3)
+
+
+def mc_mesh(mesh, dim):
+    m = mesh.to_mc()
+    m.setMeshDimension(dim)
+    return m
+
+
+def mc_field(mmesh, vals, nature, name="T"):
+    f = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
+    a = mc.DataArrayDouble(np.ascontiguousarray(vals.ravel()))
+    a.setName(name)
+    f.setArray(a)
+    f.setMesh(mmesh)
+    f.setNature(nature)
+    return f
+
+
+def field_2d(nx):
+    i, j = np.meshgrid(np.arange(nx), np.arange(nx), indexing="ij")
+    xc, yc = (i + 0.5) / nx, (j + 0.5) / nx
+    return (1.0 + 0.5 * np.sin(2 * np.pi * xc) * np.cos(np.pi * yc)).reshape(-1, 1)
+
+
+def field_3d(nx):
+    i, j, k = np.meshgrid(np.arange(nx), np.arange(nx), np.arange(nx), indexing="ij")
+    xc, yc, zc = (i + 0.5) / nx, (j + 0.5) / nx, (k + 0.5) / nx
+    return (
+        1.0 + 0.5 * np.sin(2 * np.pi * xc) * np.cos(np.pi * yc) * np.cos(np.pi * zc)
+    ).reshape(-1, 1)
+
+
+def dump_merged_mesh(nx):
+    # two stacked HEX8 layers; the shared interface is duplicated (2 node sets)
+    gx = np.linspace(0.0, 1.0, nx + 1)
+    px, py = np.meshgrid(gx, gx, indexing="ij")
+    z0 = np.c_[px.ravel(), py.ravel(), np.zeros((nx + 1) ** 2)]
+    z1 = np.c_[px.ravel(), py.ravel(), np.ones((nx + 1) ** 2)]
+    coords = np.ascontiguousarray(np.vstack([z0, z1, z1, z0 + 2.0]), np.float64)
+
+    def nid(i, j, layer):
+        return layer * (nx + 1) ** 2 + i * (nx + 1) + j
+
+    conn = []
+    for i in range(nx):
+        for j in range(nx):
+            conn += [
+                [
+                    nid(i, j, 0),
+                    nid(i + 1, j, 0),
+                    nid(i + 1, j + 1, 0),
+                    nid(i, j + 1, 0),
+                    nid(i, j, 1),
+                    nid(i + 1, j, 1),
+                    nid(i + 1, j + 1, 1),
+                    nid(i, j + 1, 1),
+                ],
+                [
+                    nid(i, j, 2),
+                    nid(i + 1, j, 2),
+                    nid(i + 1, j + 1, 2),
+                    nid(i, j + 1, 2),
+                    nid(i, j, 3),
+                    nid(i + 1, j, 3),
+                    nid(i + 1, j + 1, 3),
+                    nid(i, j + 1, 3),
+                ],
+            ]
+    mesh = mf.UMesh(coords)
+    mesh.add_regular_block("HEX8", np.ascontiguousarray(np.array(conn), np.uintp))
+    return mesh
+</code></pre>
+<pre><code class="language-python">def bench_remap(dim, n, build_iter, poly=False):
+    x = np.linspace(0.0, 1.0, n + 1)
+    axes = [x] * dim
+    shift = [0.5 / n] + [0.0] * (dim - 1)
+    et = "QUAD4" if dim == 2 else "HEX8"
+    vals = field_2d(n) if dim == 2 else field_3d(n)
+
+    src = mf.build_cmesh(*axes)
+    tgt = mf.build_cmesh(*[a + s for a, s in zip(axes, shift)])
+    if poly:
+        tgt = tgt.polyze()
+
+    sm = mc_mesh(src, dim)
+    tm = mc_mesh(mf.build_cmesh(*[a + s for a, s in zip(axes, shift)]), dim)
+    if poly:
+        tm.convertAllToPoly()
+
+    mf_build = median_time(lambda: mf.ConservativeP0(src, tgt), build_iter)
+
+    vt = mc.MEDCouplingRemapper()
+    mc_prepare = median_time(lambda: vt.prepare(sm, tm, "P0P0"), build_iter)
+
+    src.set_field("T", {et: np.ascontiguousarray(vals)})
+    op = mf.ConservativeP0(src, tgt)
+    mf_apply = median_time(lambda: op.apply_update(src, "T", tgt, "T", def_val=0.0))
+
+    field = mc_field(sm, vals, MC_INTENSIVE)
+    mc_transfer = median_time(lambda: vt.transferField(field, 0.0))
+
+    checks = {}
+
+    def read_mf():
+        parts = [np.asarray(v).ravel() for v in tgt.fields["T"].values().values()]
+        return np.concatenate(parts)
+
+    op.apply_update(src, "T", tgt, "T", def_val=0.0)
+    out_mf = read_mf()
+    out_mc = np.asarray(vt.transferField(field, 0.0).getArray().getValues())
+
+    if not poly:
+        diff = np.max(np.abs(out_mf - out_mc))
+        checks["intensive match (mf == mc)"] = (
+            np.allclose(out_mf, out_mc, rtol=RTOL, atol=ATOL),
+            diff,
+        )
+
+    vol = 1.0 / n**dim
+    mass_analytic = float(vals.sum() * vol)
+    cs = mf.build_cmesh(*axes)
+    ct = cs.polyze() if poly else mf.build_cmesh(*axes)
+    cs.set_field("T", {et: np.ascontiguousarray(vals)})
+    opc = mf.ConservativeP0(cs, ct)
+    opc.apply_update(cs, "T", ct, "T", def_val=0.0, extensive=True)
+    parts = [np.asarray(v).ravel() for v in ct.fields["T"].values().values()]
+    mass_mf = float(np.concatenate(parts).sum())
+    csm = mc_mesh(cs, dim)
+    ctm = mc_mesh(mf.build_cmesh(*axes), dim)
+    if poly:
+        ctm.convertAllToPoly()
+    mass_mc = float(
+        np.asarray(
+            vt.transferField(mc_field(csm, vals * vol, MC_EXTENSIVE), 0.0)
+            .getArray()
+            .getValues()
+        ).sum()
+    )
+    tol = max(1e-9, mass_analytic * 1e-9)
+    checks["mass (mf == analytic)"] = (
+        abs(mass_mf - mass_analytic) &lt;= tol,
+        (round(mass_analytic, 10), round(mass_mf, 10)),
+    )
+    checks["mass (mc == mf)"] = (
+        abs(mass_mc - mass_mf) &lt;= tol,
+        (round(mass_mf, 10), round(mass_mc, 10)),
+    )
+
+    return {
+        "mf_build": mf_build,
+        "mc_prepare": mc_prepare,
+        "mf_apply": mf_apply,
+        "mc_transfer": mc_transfer,
+        "checks": checks,
+    }
+
+
+def bench_merge():
+    mesh = dump_merged_mesh(MERGE_N)
+    mm = mesh.to_mc()
+    mf_t = median_time(lambda: mesh.merge_nodes(1e-12))
+    mc_t = median_time(lambda: mm.mergeNodes(1e-12))
+    used_after = used_nodes(mesh.merge_nodes(1e-12))
+    mc_ref = mc_mesh(mesh, 3)
+    mc_ref.mergeNodes(1e-12)
+    nodes_after = mc_ref.getNumberOfNodes()
+    return {
+        "mf": mf_t,
+        "mc": mc_t,
+        "checks": {
+            "used nodes == 1875": (used_after == 1875, used_after),
+            "mc nodes == mf": (nodes_after == used_after, (used_after, nodes_after)),
+        },
+    }
+
+
+def bench_descend():
+    n = DESCEND_N
+    axes = [np.linspace(0.0, 1.0, n + 1)] * 3
+    mesh = mf.build_cmesh(*axes)
+    mm = mc_mesh(mesh, 3)
+    mf_t = median_time(mesh.descend)
+    mc_t = median_time(mm.buildDescendingConnectivity)
+    f_mf = int(mesh.descend().blocks()["QUAD4"].shape[0])
+    f_mc = int(mm.buildDescendingConnectivity()[0].getNumberOfCells())
+    expected = 3 * n * n * (n + 1)
+    return {
+        "mf": mf_t,
+        "mc": mc_t,
+        "checks": {
+            "faces == 3 n^2 (n+1)": (
+                (f_mf == expected) and (f_mc == expected),
+                (expected, f_mf, f_mc),
+            )
+        },
+    }
+
+
+def bench_overlay():
+    n = OVERLAY_N
+    m1 = mf.build_cmesh(np.linspace(0.0, 1.0, n + 1), np.linspace(0.0, 1.0, n + 1))
+    m2 = mf.build_cmesh(np.linspace(0.2, 0.7, 9), np.linspace(0.2, 0.7, 9))
+    m1m = mc_mesh(m1, 2)
+    m2m = mc_mesh(m2, 2)
+    mf_t = median_time(lambda: m1.overlay(m2), 5)
+    mc_t = median_time(
+        lambda: mc.MEDCouplingUMesh.Intersect2DMeshes(m1m, m2m, 1e-12), 5
+    )
+    a_mf = area_2d(m1.overlay(m2))
+    a_mc = float(
+        np.asarray(
+            mc.MEDCouplingUMesh.Intersect2DMeshes(m1m, m2m, 1e-12)[0]
+            .getMeasureField(True)
+            .getArray()
+            .getValues()
+        ).sum()
+    )
+    return {
+        "mf": mf_t,
+        "mc": mc_t,
+        "checks": {
+            "area == 1 (both)": (
+                abs(a_mf - 1.0) &lt; ATOL and abs(a_mc - 1.0) &lt; ATOL,
+                (a_mf, a_mc),
+            )
+        },
+    }
+
+
+def bench_crack():
+    n = CRACK_N
+    axes = [np.linspace(0.0, 1.0, n + 1)] * 3
+    mesh = mf.build_cmesh(*axes)
+    faces = mesh.descend()
+
+    # medcoupling cracks an MEDFileUMesh along a group of M1 faces
+    vm = mc_mesh(mesh, 3)
+    fm = vm.buildDescendingConnectivity()[0]
+    fm.setName(vm.getName())
+    grp = mc.DataArrayInt(np.arange(fm.getNumberOfCells(), dtype=np.int64))
+    grp.setName("crack-line")
+    fmu = mc.MEDFileUMesh.New()
+    fmu.setMeshAtLevel(0, vm)
+    fmu.setMeshAtLevel(-1, fm)
+    fmu.setGroupsAtLevel(-1, [grp])
+
+    def run_mc():
+        box = fmu.deepCopy()
+        box.crackAlong("crack-line")
+        return box
+
+    mf_t = median_time(lambda: mesh.crack(faces))
+    mc_t = median_time(run_mc, n=3)
+
+    n_mf = used_nodes(mesh.crack(faces))
+    n_mc = run_mc().getNumberOfNodes()
+    return {
+        "mf": mf_t,
+        "mc": mc_t,
+        "checks": {"node count (mf == mc)": (n_mf == n_mc, (n_mf, n_mc))},
+    }
+</code></pre>
+<pre><code class="language-python">bench = {}
+bench["remap-2d"] = bench_remap(2, N2D, build_iter=10, poly=False)
+print("remap-2d done")
+bench["remap-3d"] = bench_remap(3, N3D, build_iter=10, poly=False)
+print("remap-3d done")
+bench["remap-3d-poly"] = bench_remap(3, NPOLY, build_iter=5, poly=True)
+print("remap-3d-poly done")
+bench["merge-nodes"] = bench_merge()
+print("merge-nodes done")
+bench["descend"] = bench_descend()
+print("descend done")
+bench["overlay"] = bench_overlay()
+print("overlay done")
+bench["crack"] = bench_crack()
+print("crack done")
+</code></pre>
+<pre><code>remap-2d done
+
+
+remap-3d done
+
+
+remap-3d-poly done
+merge-nodes done
+
+
+descend done
+
+
+overlay done
+
+
+crack done
+</code></pre>
+<pre><code class="language-python">rows = [
+    (
+        "remap-2d",
+        "build/prepare",
+        bench["remap-2d"]["mf_build"],
+        bench["remap-2d"]["mc_prepare"],
+    ),
+    (
+        "remap-2d",
+        "transfer",
+        bench["remap-2d"]["mf_apply"],
+        bench["remap-2d"]["mc_transfer"],
+    ),
+    (
+        "remap-3d",
+        "build/prepare",
+        bench["remap-3d"]["mf_build"],
+        bench["remap-3d"]["mc_prepare"],
+    ),
+    (
+        "remap-3d",
+        "transfer",
+        bench["remap-3d"]["mf_apply"],
+        bench["remap-3d"]["mc_transfer"],
+    ),
+    (
+        "remap-3d-poly",
+        "build/prepare",
+        bench["remap-3d-poly"]["mf_build"],
+        bench["remap-3d-poly"]["mc_prepare"],
+    ),
+    (
+        "remap-3d-poly",
+        "transfer",
+        bench["remap-3d-poly"]["mf_apply"],
+        bench["remap-3d-poly"]["mc_transfer"],
+    ),
+    ("merge-nodes", "merge", bench["merge-nodes"]["mf"], bench["merge-nodes"]["mc"]),
+    ("descend", "run", bench["descend"]["mf"], bench["descend"]["mc"]),
+    ("overlay", "run", bench["overlay"]["mf"], bench["overlay"]["mc"]),
+    ("crack", "crack", bench["crack"]["mf"], bench["crack"]["mc"]),
+]
+
+print(
+    f"{'case':&lt;14s} {'step':&lt;14s} {'mefikit ms':&gt;12s} {'medcoup ms':&gt;12s} {'mc/mf':&gt;9s}"
+)
+print("-" * 62)
+for case, step, mf_t, mc_t in rows:
+    print(f"{case:&lt;14s} {step:&lt;14s} {mf_t:&gt;12.3f} {mc_t:&gt;12.3f} {mc_t / mf_t:&gt;8.1f}x")
+
+print()
+print("correctness cross-checks:")
+all_ok = True
+for tag in bench:
+    for label, (ok, info) in bench[tag]["checks"].items():
+        all_ok &amp;= ok
+        print(f"  [{'OK' if ok else 'FAIL'}] {tag}: {label}  {info}")
+assert all_ok, "a cross-check failed"
+</code></pre>
+<pre><code>case           step             mefikit ms   medcoup ms     mc/mf
+--------------------------------------------------------------
+remap-2d       build/prepare        27.045       24.817      0.9x
+remap-2d       transfer              0.181        3.905     21.5x
+remap-3d       build/prepare       162.564      692.317      4.3x
+remap-3d       transfer              0.094        1.235     13.2x
+remap-3d-poly  build/prepare       356.550     8746.085     24.5x
+remap-3d-poly  transfer              0.099        2.171     22.0x
+merge-nodes    merge                 0.538        4.019      7.5x
+descend        run                  56.470      103.696      1.8x
+overlay        run                   2.071       68.392     33.0x
+crack          crack               235.632     1624.416      6.9x
+
+correctness cross-checks:
+  [OK] remap-2d: intensive match (mf == mc)  7.752687380957468e-13
+  [OK] remap-2d: mass (mf == analytic)  (1.0, 1.0)
+  [OK] remap-2d: mass (mc == mf)  (1.0, 1.0)
+  [OK] remap-3d: intensive match (mf == mc)  0.0
+  [OK] remap-3d: mass (mf == analytic)  (1.0, 1.0)
+  [OK] remap-3d: mass (mc == mf)  (1.0, 1.0)
+  [OK] remap-3d-poly: mass (mf == analytic)  (1.0, 1.0)
+  [OK] remap-3d-poly: mass (mc == mf)  (1.0, 1.0)
+  [OK] merge-nodes: used nodes == 1875  1875
+  [OK] merge-nodes: mc nodes == mf  (1875, 1875)
+  [OK] descend: faces == 3 n^2 (n+1)  (43200, 43200, 43200)
+  [OK] overlay: area == 1 (both)  (1.0, 1.0)
+  [OK] crack: node count (mf == mc)  (64000, 64000)
+</code></pre>
+<pre><code class="language-python">def twin_bars(labels, mf_vals, mc_vals, ylabel, title, rot=0):
+    x = np.arange(len(labels))
+    w = 0.36
+    fig, ax = plt.subplots(figsize=(10, 5))
+    b1 = ax.bar(x - w / 2, mf_vals, w, label="mefikit")
+    b2 = ax.bar(x + w / 2, mc_vals, w, label="medcoupling")
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=rot, ha="right")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend()
+    ax.bar_label(b1, fmt="%.1f", padding=1, fontsize=8)
+    ax.bar_label(b2, fmt="%.1f", padding=1, fontsize=8)
+    fig.tight_layout()
+    plt.show()
+
+
+# --- prepare / build: every operation has exactly one ---
+codes = ["remap-2d", "remap-3d", "remap-3d-poly"]
+singles = ["merge-nodes", "descend", "overlay", "crack"]
+labels = codes + singles
+twin_bars(
+    labels,
+    [bench[c]["mf_build"] for c in codes] + [bench[c]["mf"] for c in singles],
+    [bench[c]["mc_prepare"] for c in codes] + [bench[c]["mc"] for c in singles],
+    "time (ms)",
+    "Prepare / build time — all operations",
+    rot=25,
+)
+
+
+# --- transfer / apply: only the P0/P0 remaps have a separate apply step ---
+twin_bars(
+    codes,
+    [bench[c]["mf_apply"] for c in codes],
+    [bench[c]["mc_transfer"] for c in codes],
+    "time (ms)",
+    "Transfer / apply time — P0/P0 remaps",
+)
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_38_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_38_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_38_1.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_38_1.png" alt="png"></span></label></p>
+<pre><code class="language-python">labels = [f"{c}\n{s}" for c, s, _, _ in rows]
+ratios = [mc_t / mf_t for _, _, mf_t, mc_t in rows]
+
+fig, ax = plt.subplots(figsize=(10, 6))
+colors = ["tab:blue" if r &gt;= 1 else "tab:red" for r in ratios]
+yloc = np.arange(len(ratios))[::-1]
+ax.barh(yloc, ratios, color=colors)
+ax.axvline(1.0, color="white", ls="--", lw=1)
+ax.set_yticks(yloc)
+ax.set_yticklabels(labels)
+ax.set_xscale("log")
+ax.set_xlabel("medcoupling time / mefikit time  (&gt;1 means mefikit is faster)")
+ax.set_title("How many times longer medcoupling takes than mefikit, per operation")
+for y, r in zip(yloc, ratios):
+    ax.text(r * 1.25, y, f" {r:.1f}x", va="center", ha="left", fontsize=8)
+fig.tight_layout()
+plt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_39_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_39_0.png" alt="png"></span></label></p>
+<h2 id="feature-comparison-at-a-glance"><a class="header" href="#feature-comparison-at-a-glance">Feature comparison at a glance</a></h2>
+<p>Both libraries cover the common operations shown above. Beyond that, mefikit
+adds ergonomics of its own — most of it already exercised in this notebook.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>medcoupling</th><th>mefikit</th></tr>
+</thead>
+<tbody>
+<tr><td>Structured grid</td><td><code>MEDCouplingCMesh</code> + <code>buildUnstructured()</code></td><td><code>build_cmesh(*axes)</code> — one call</td></tr>
+<tr><td>Read / write <code>.med</code></td><td><code>ReadMeshFromFile</code> / <code>write</code></td><td><code>UMesh.read</code> / <code>write</code> (same format)</td></tr>
+<tr><td>Per-cell measure</td><td><code>getMeasureField</code> + field plumbing</td><td><code>mf.M</code> — symbolic, evaluated on demand</td></tr>
+<tr><td>P0/P0 conservative remap (quad / hex)</td><td><code>MEDCouplingRemapper.prepare("P0P0")</code></td><td><code>mf.transfer.ConservativeP0</code></td></tr>
+<tr><td>Polyhedral remap</td><td><code>MEDCouplingRemapper.prepare("P0P0")</code></td><td><code>mf.transfer.ConservativeP0</code></td></tr>
+<tr><td>Faces of a volume mesh</td><td><code>buildDescendingConnectivity</code></td><td><code>descend()</code></td></tr>
+<tr><td>Merge duplicated nodes</td><td><code>mergeNodes</code></td><td><code>merge_nodes()</code></td></tr>
+<tr><td>2D boolean overlay / imprint</td><td><code>Intersect2DMeshes</code></td><td><code>overlay(operation=...)</code></td></tr>
+<tr><td>Mixed element types</td><td>yes</td><td>yes</td></tr>
+<tr><td>Fields, groups and selections</td><td>DataArray arithmetic + explicit plumbing</td><td><code>mf.Field</code> DSL, <code>select</code> / <code>eval</code>, groups</td></tr>
+<tr><td>Meshless field transfers</td><td>manual / lower-level</td><td><code>ConstantPiecewise</code>, <code>MovingLeastSquares</code></td></tr>
+<tr><td>File formats</td><td>MED, VTK, ENSIGHT, …</td><td>med, vtk/vtu, vtkhdf, cgns, json, yaml</td></tr>
+<tr><td>Native API language</td><td>C++ (with Python bindings)</td><td>Rust core with first-class Python bindings</td></tr>
+</tbody>
+</table>
+</div>
+<p>Let us be perfectly honest: medcoupling remains far broader than mefikit —
+decades of API surface, advanced field machinery, spline remapping and a huge
+ecosystem around the MED format. mefikit does not try to replace that. It
+tries to be <em>direct</em> for the operations above, and <em>fast</em> where it counts:
+two propositions you have just measured.</p>
+<h2 id="closing-thoughts"><a class="header" href="#closing-thoughts">Closing thoughts</a></h2>
+<p>A fair question: should a medcoupling user switch to mefikit? As always, it
+depends.</p>
+<ul>
+<li>You already have a solid, mature medcoupling pipeline: nothing here is
+broken, and mefikit reads the very same <code>.med</code> files — you can adopt it as a
+<strong>complement</strong>. <code>mesh.to_mc()</code> hands you the medcoupling twin of a mefikit
+mesh in one line.</li>
+<li>You are starting a new project, work a lot with <strong>polyhedral</strong> meshes, value
+a short readable API and care about remap performance: give mefikit a try,
+you should feel at home very quickly.</li>
+</ul>
+<p>Both libraries agree on the most important thing: the meshes are the same, the
+physics is the same, and the results match to machine precision. Thank you
+medcoupling for setting such a high bar — mefikit simply tries to reach it
+with fewer keystrokes and a bit more speed.</p>
+<p>If you want to go further: browse the other notebooks of this book, have a
+look at the <a href="https://github.com/asonolet/mefikit/blob/master/ROADMAP.md">roadmap</a>
+and try the operations above on your own meshes.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../python_examples/example_bubbles.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../python_examples/example_bubbles.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../mark-09e88c2c.min.js"></script>
+        <script src="../searcher-09f2665d.js"></script>
+
+        <script src="../clipboard-1626706a.min.js"></script>
+        <script src="../highlight-abc7f01d.js"></script>
+        <script src="../book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>
