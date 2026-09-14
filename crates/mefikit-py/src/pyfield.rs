@@ -16,7 +16,7 @@ use crate::select::PySelection;
 #[pyo3(name = "Field")]
 #[derive(Clone)]
 pub struct PyField {
-    inner: FieldExpr,
+    pub(crate) inner: FieldExpr,
 }
 
 impl Display for PyField {

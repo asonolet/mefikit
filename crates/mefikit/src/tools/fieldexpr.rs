@@ -15,6 +15,51 @@ use super::centroids::{centroids, x_center, y_center, z_center};
 use super::measure::measure;
 use super::normals::{normals, nx as normal_x, ny as normal_y, nz as normal_z};
 use crate::mesh::{Dimension, FieldArcD, FieldCowD, FieldOwnedD, UMesh, UMeshBase, UMeshView};
+use crate::tools::transfer::{FieldNature, Transfer, TransferOperator};
+
+/// Evaluates a field expression on the source mesh, inferring the source dimension.
+fn eval_source(source_mesh: &UMesh, source: FieldExpr) -> FieldOwnedD {
+    let src_view = source_mesh.view();
+    source.evaluate(&src_view, None).to_owned()
+}
+
+impl TransferOperator {
+    /// Evaluates `source` on `source_mesh` and wraps the transfer as a field expression.
+    ///
+    /// `nature` distinguishes intensive fields (per-unit-measure) from extensive ones
+    /// (total quantities), and `default` is used for source-uncovered target cells.
+    pub fn expr(
+        self: Arc<Self>,
+        source_mesh: &UMesh,
+        source: FieldExpr,
+        nature: FieldNature,
+        default: f64,
+    ) -> FieldExpr {
+        let tgt_dim = self.tgt_dim();
+        let source_values = eval_source(source_mesh, source);
+        FieldExpr::Transfer {
+            source_values,
+            op: self,
+            tgt_dim,
+            default,
+            nature,
+        }
+    }
+
+    /// Evaluates `source` on `source_mesh` and maps it onto the target cells immediately.
+    ///
+    /// Returns the transferred field defined on the target mesh.
+    pub fn eval(
+        &self,
+        source_mesh: &UMesh,
+        source: FieldExpr,
+        nature: FieldNature,
+        default: f64,
+    ) -> FieldOwnedD {
+        let source_values = eval_source(source_mesh, source);
+        self.apply(&source_values.view(), nature, default)
+    }
+}
 
 /// An expression tree for field computations.
 #[derive(Clone, Debug)]
@@ -54,6 +99,20 @@ pub enum FieldExpr {
     Ny,
     /// Z component of the surface normal.
     Nz,
+    /// A pre-evaluated field transfer: source values have been materialised on the source mesh
+    /// and the transfer operator will re-map them onto the target mesh at evaluation time.
+    Transfer {
+        /// Source field values, pre-evaluated on the source mesh.
+        source_values: FieldOwnedD,
+        /// The transfer operator.
+        op: Arc<TransferOperator>,
+        /// Topological dimension of the target cells.
+        tgt_dim: Dimension,
+        /// Default value for uncovered target cells.
+        default: f64,
+        /// Nature of the source field, forwarded to the transfer operator.
+        nature: FieldNature,
+    },
 }
 
 /// Binary operations available in field expressions.
@@ -316,6 +375,9 @@ fn collect_dim_hints(
         | FieldExpr::X
         | FieldExpr::Y
         | FieldExpr::Z => {}
+        FieldExpr::Transfer { tgt_dim, .. } => {
+            field_dims.insert(*tgt_dim);
+        }
     }
 }
 
@@ -487,6 +549,13 @@ impl Evaluable for FieldExpr {
                     .collect(),
             )
             .into(),
+            FieldExpr::Transfer {
+                source_values,
+                op,
+                tgt_dim: _,
+                default,
+                nature,
+            } => op.apply(&source_values.view(), *nature, *default).into(),
         }
     }
 }
@@ -539,6 +608,7 @@ mod test {
     use crate::mesh_examples as me;
     use crate::prelude as mf;
     use crate::tools::Measurable;
+    use crate::tools::transfer::TransferMethod;
     use approx::*;
     use ndarray as nd;
     use std::collections::BTreeMap;
@@ -842,5 +912,94 @@ mod test {
         assert!(result.0.contains_key(&ElementType::QUAD4));
         assert!(!result.0.contains_key(&ElementType::HEX8));
         assert_abs_diff_eq!(result.0[&ElementType::QUAD4][0], 2.0, epsilon = 1e-12);
+    }
+
+    /// A mesh with a single QUAD4 cell carrying a constant intensive field, reused below.
+    fn source_with_field(value: f64) -> mf::UMesh {
+        let mut source = me::make_imesh_2d(1);
+        let values = FieldOwnedD::new(BTreeMap::from([(
+            ElementType::QUAD4,
+            nd::array![value].into_dyn(),
+        )]));
+        source.update_field("f", values.into_shared());
+        source
+    }
+
+    /// `expr` wraps a transfer whose evaluation on the target mesh equals `eval`.
+    #[test]
+    fn transfer_op_expr_matches_eval() {
+        let source = source_with_field(7.0);
+        let target = me::make_imesh_2d(2);
+
+        let op = Arc::new(TransferOperator::new(
+            &source.view(),
+            &target.view(),
+            TransferMethod::ConservativeP0,
+        ));
+
+        let from_expr = target.eval_field(
+            Some(Dimension::D2),
+            Arc::clone(&op).expr(&source, field("f"), FieldNature::Intensive, 0.0),
+        );
+        let from_eval = op.eval(&source, field("f"), FieldNature::Intensive, 0.0);
+
+        assert_eq!(
+            from_expr.0[&ElementType::QUAD4],
+            from_eval.0[&ElementType::QUAD4]
+        );
+        assert!(from_eval.0[&ElementType::QUAD4].iter().all(|&v| v == 7.0));
+    }
+
+    /// The source expression is evaluated on the source mesh before the transfer applies.
+    #[test]
+    fn transfer_op_expr_evaluates_source_expression() {
+        let source = source_with_field(3.0);
+        let target = me::make_imesh_2d(2);
+
+        let op = Arc::new(TransferOperator::new(
+            &source.view(),
+            &target.view(),
+            TransferMethod::ConservativeP0,
+        ));
+
+        // rho * 2 is computed on the source mesh, so every target cell receives 6.0.
+        let result = target.eval_field(
+            Some(Dimension::D2),
+            Arc::clone(&op).expr(
+                &source,
+                field("f") * arr(nd::arr0(2.0)),
+                FieldNature::Intensive,
+                0.0,
+            ),
+        );
+        assert!(result.0[&ElementType::QUAD4].iter().all(|&v| v == 6.0));
+    }
+
+    /// The field nature is forwarded to the operator: an extensive field sums the overlapped
+    /// quantity while an intensive field averages over the target cell.
+    #[test]
+    fn transfer_op_eval_respects_field_nature() {
+        let source = source_with_field(7.0);
+        let target = me::make_imesh_2d(2);
+
+        let op = Arc::new(TransferOperator::new(
+            &source.view(),
+            &target.view(),
+            TransferMethod::ConservativeP0,
+        ));
+
+        // Each 0.25-measure target cell lies entirely inside the single 1.0-measure source cell.
+        let intensive = op.eval(&source, field("f"), FieldNature::Intensive, 0.0);
+        let extensive = op.eval(&source, field("f"), FieldNature::Extensive, 0.0);
+        assert!(
+            intensive.0[&ElementType::QUAD4]
+                .iter()
+                .all(|&v| (v - 7.0).abs() < 1e-12)
+        );
+        assert!(
+            extensive.0[&ElementType::QUAD4]
+                .iter()
+                .all(|&v| (v - 1.75).abs() < 1e-12)
+        );
     }
 }
