@@ -15,3 +15,4 @@
   - [Field transfers](./python_examples/transfers.md)
   - [Bubbles](./python_examples/example_bubbles.md)
   - [vs. medcoupling](./python_examples/compare_medcoupling.md)
+  - [vs. medcoupling short](./python_examples/mefikit_vs_medcoupling_short.md)
