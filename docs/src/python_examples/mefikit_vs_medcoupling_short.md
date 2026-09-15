@@ -1,206 +1,375 @@
 # mefikit vs. medcoupling
 
-## Goal
+**Same geometry. Same operations. Same numbers. Measured.**
 
-Compare two Python APIs for unstructured mesh and field operations:
+---
 
-- **medcoupling**: mature C++ library with broad MED ecosystem.
-- **mefikit**: Rust core with Python bindings, focused on concise APIs and performance.
+## Two libraries, one goal
 
-All comparisons use equivalent meshes and cross-check numerical results.
+- Manipulate unstructured meshes and their fields.
+- Both work on the very same `.med` files.
+- This talk compares them fairly: same meshes, same operations, same numbers.
 
-## 1. Reimplemented features
+---
 
-| Feature | mefikit | medcoupling |
-|---|---|---|
-| Structured mesh | `build_cmesh(*axes)` | `MEDCouplingCMesh` + `buildUnstructured()` |
-| MED I/O | `UMesh.read()` / `write()` | `ReadMeshFromFile()` / `write()` |
-| Cell measures | `mf.M` | `getMeasureField()` |
-| Field expressions | `mf.Field` DSL | `DataArrayDouble` + explicit field setup |
-| Selection | `select()` | Explicit field/array operations |
-| Descending connectivity | `descend()` | `buildDescendingConnectivity()` |
-| Boundary mesh | `boundaries()` | `buildBoundaryMesh()` |
-| Merge duplicated nodes | `merge_nodes()` | `mergeNodes()` |
-| 2D overlay/imprint | `overlay()` | `Intersect2DMeshes()` |
-| Conservative P0/P0 remap | `ConservativeP0` | `MEDCouplingRemapper.prepare("P0P0")` |
-| Polyhedral meshes | Supported | Supported |
-| Meshless transfers | `ConstantPiecewise`, `MovingLeastSquares` | More manual/lower-level |
-| Mixed element types | Supported | Supported |
+## medcoupling
 
-mefikit also provides a direct bridge to medcoupling:
+- Mature C++ library, **the reference implementation** of the MED world.
+- Decades of API surface, embedded in many industrial codes (Salome, ...).
+- Advanced field machinery, spline remapping, a huge ecosystem.
 
+---
+
+## mefikit
+
+- Young library, **Rust core** with Python bindings.
+- Same goal as medcoupling, with a more concise API and a fast core.
+- Aimed at the common operations first: polyhedral meshes, fields, transfers.
+
+---
+
+## The roadmap, honestly
+
+- The long-term goal is to go further than mefikit's current scope — one day.
+- Today, many features are not implemented: mefikit **complements**, it does not replace.
+- medcoupling is used in many other codes; moving to mefikit has not started — it is not even near its end.
+- Here, we only compare **interfaces** and **timings** on a handful of operations.
+
+---
+
+## Method: fair by construction
+
+- Both libraries always work on the **same geometry**.
+- Every result is **cross-checked** with the other library — agreement ≈ 1e-15.
+- Timings are **medians of repeated runs** on one machine.
+
+---
+
+## Building a grid
+
+`build_cmesh(*axes)` ⊗ `MEDCouplingCMesh` + `buildUnstructured()`
+
+::::: columns
+::: column
 ```python
-mc_mesh = mf_mesh.to_mc()
-```
-
-## 2. Same mesh, different API
-
-### Structured mesh
-
-```python
-import numpy as np
-import mefikit as mf
-import medcoupling as mc
-
-x = np.linspace(0.0, 1.0, 6)
-
 # mefikit
+x = np.linspace(0.0, 1.0, 6)
 mf_mesh = mf.build_cmesh(x, x)
-
+```
+:::
+::: column
+```python
 # medcoupling
-cmesh = mc.MEDCouplingCMesh()
-cmesh.setCoords(
-    mc.DataArrayDouble(x),
-    mc.DataArrayDouble(x),
-)
-mc_mesh = cmesh.buildUnstructured()
+c = mc.MEDCouplingCMesh()
+c.setCoords(mc.DataArrayDouble(x), mc.DataArrayDouble(x))
+mc_mesh = c.buildUnstructured()
 mc_mesh.setMeshDimension(2)
 ```
+:::
+:::::
 
-Both produce 25 QUAD4 cells and 36 nodes.
+Identical: **25 QUAD4 cells, 36 nodes.**
 
-### Fields and selection
+---
 
+## The same grid, side by side
+
+![Same cartesian grid, two engines](compare_medcoupling_files/compare_medcoupling_8_0.png){width=92%}
+
+---
+
+## Fields and measures
+
+`mf.M`, `mf.Field` DSL ⊗ `DataArrayDouble` + field objects
+
+::::: columns
+::: column
 ```python
 # mefikit
-mf_mesh.fields["Measure"] = mf.M
-mf_mesh.fields["T"] = 1.0 + mf.X**2 + 0.5 * mf.Y
-
-hot = mf_mesh.select(mf.Field("T") > 1.5)
-mean_hot = hot.mean("T")
+mesh.fields["Measure"] = mf.M
+mesh.fields["T"] = 1.0 + mf.X**2
+                 + 0.5 * mf.Y
+hot = mesh.select(mf.Field("T") > 1.5)
+print(hot.mean("T"))
 ```
-
+:::
+::: column
 ```python
 # medcoupling
-measure = mc_mesh.getMeasureField(True)
-
-centers = np.asarray(mc_mesh.computeCellCenterOfMass().toNumPyArray())
-values = 1.0 + centers[:, 0] ** 2 + 0.5 * centers[:, 1]
-
-field = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-field.setArray(mc.DataArrayDouble(values))
-field.setMesh(mc_mesh)
-field.setNature(mc.IntensiveConservation)
+m = mesh.getMeasureField(True)
+c = mesh.computeCellCenterOfMass()
+T = 1.0 + c[:, 0] ** 2 + 0.5 * c[:, 1]
+f = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
+f.setArray(mc.DataArrayDouble(T))
+f.setMesh(mesh)
 ```
+:::
+:::::
 
-**API difference:** mefikit exposes symbolic expressions and selection directly on meshes. medcoupling uses explicit arrays and field objects.
+Same values: measure sum = 1.0, max |ΔT| ≈ 1.3e-15.
 
-### Descending connectivity
+---
 
+## Fields — same values
+
+![Same field, two engines](compare_medcoupling_files/compare_medcoupling_13_0.png){width=92%}
+
+---
+
+## Faces of a volume mesh
+
+`descend()` ⊗ `buildDescendingConnectivity()`
+
+::::: columns
+::: column
 ```python
 # mefikit
 faces = mesh.descend()
 ```
-
+:::
+::: column
 ```python
 # medcoupling
-faces = mesh.buildDescendingConnectivity()[0]
+desc = mesh.buildDescendingConnectivity()
+faces = desc[0]
 ```
+:::
+:::::
 
-### Merge duplicated nodes
+Identical: **240 faces** on a 4³ hexa grid.
 
+---
+
+## Faces — visual
+
+![Faces of a volume mesh](compare_medcoupling_files/compare_medcoupling_16_0.png){width=92%}
+
+---
+
+## Merge duplicated nodes
+
+`merge_nodes()` ⊗ `mergeNodes(1e-12)`
+
+::::: columns
+::: column
 ```python
 # mefikit
-merged = mesh.merge_nodes()
+merged = cracked.merge_nodes()
 ```
-
+:::
+::: column
 ```python
 # medcoupling
-mesh.mergeNodes(1e-12)
+m = cracked_mc.deepCopy()
+m.mergeNodes(1e-12)
 ```
+:::
+:::::
 
-Both produce the same used-node count. mefikit rewires connectivity without compacting the coordinate array; medcoupling compacts the nodes.
+- Cracked hex stack: **128 → 50 nodes**, **16 → 1 component**, both sides.
+- mefikit rewires connectivity (no node compaction); medcoupling compacts.
 
-### Conservative P0/P0 remap
+---
 
+## Merge — visual
+
+![Cracked vs merged](compare_medcoupling_files/compare_medcoupling_19_0.png){width=88%}
+
+---
+
+## 2D overlay / imprint
+
+`overlay(operation=...)` ⊗ `Intersect2DMeshes()`
+
+::::: columns
+::: column
 ```python
 # mefikit
-op = mf.transfer.ConservativeP0(source, target)
-op.apply_update(source, "T", target, "T", def_val=0.0)
+imprint = g1.overlay(g2, mf.OverlayOperation.IMPRINT)
 ```
+:::
+::: column
+```python
+# medcoupling
+imprint = mc.MEDCouplingUMesh.Intersect2DMeshes(g1m, g2m, 1e-12)[0]
+```
+:::
+:::::
 
+Unit area preserved — **1.0 on both sides.**
+
+---
+
+## Overlay — visual
+
+![Overlay imprint](compare_medcoupling_files/compare_medcoupling_22_0.png){width=92%}
+
+---
+
+## Polyhedral boundaries
+
+`boundaries()` ⊗ `buildBoundaryMesh()`
+
+::::: columns
+::: column
+```python
+# mefikit
+bnd = mf_src.boundaries()
+```
+:::
+::: column
+```python
+# medcoupling
+bnd = mc_src.buildBoundaryMesh(True)
+```
+:::
+:::::
+
+Real 2000-cell PHED meshes (`mesh_36.med`, `mesh_27.med`): **888 faces each**.
+
+---
+
+## Polyhedra — visual
+
+![Polyhedral boundary](compare_medcoupling_files/compare_medcoupling_29_0.png){width=92%}
+
+---
+
+## Conservative P0/P0 transfer
+
+Prepare once, apply many. `ConservativeP0` ⊗ `MEDCouplingRemapper`
+
+::::: columns
+::: column
+```python
+# mefikit
+op = mf.transfer.ConservativeP0(src, tgt)
+op.apply_update(src, "T", tgt, "T", def_val=0.0)
+```
+:::
+::: column
 ```python
 # medcoupling
 remap = mc.MEDCouplingRemapper()
-remap.prepare(source_mc, target_mc, "P0P0")
-result = remap.transferField(source_field, 0.0)
+remap.prepare(src, tgt, "P0P0")
+f_tgt = remap.transferField(f_src, 0.0)
 ```
+:::
+:::::
 
-Both use a prepare/apply workflow. The transferred values match to numerical precision.
+Transferred fields match to ≈ 3.6e-15.
 
-## 3. Performance
+---
 
-Measurements are medians of repeated runs on the same geometries. Values are from the benchmark notebook; they are machine-dependent.
+## Transfer — visual
 
-| Operation | Mesh | mefikit (ms) | medcoupling (ms) | Ratio |
-|---|---|---:|---:|---:|
-| Remap prepare | 2D QUAD4 | 27.045 | 24.817 | 0.9× |
-| Remap transfer | 2D QUAD4 | 0.181 | 3.905 | 21.5× |
-| Remap prepare | 3D HEX8 | 162.564 | 692.317 | 4.3× |
-| Remap transfer | 3D HEX8 | 0.094 | 1.235 | 13.2× |
-| Remap prepare | 3D polyhedral | 356.550 | 8746.085 | 24.5× |
-| Remap transfer | 3D polyhedral | 0.099 | 2.171 | 22.0× |
-| Merge nodes | 3D HEX8 | 0.538 | 4.019 | 7.5× |
-| Descend | 3D HEX8 | 56.470 | 103.696 | 1.8× |
-| Overlay | 2D QUAD4 | 2.071 | 68.392 | 33.0× |
-| Crack | 3D HEX8 | 235.632 | 1624.416 | 6.9× |
+![P0/P0 transfer, source to target](compare_medcoupling_files/compare_medcoupling_25_0.png){width=92%}
 
-**Main result:** mefikit is substantially faster for most tested operations, especially polyhedral remap preparation and 2D overlay.
+---
 
-The 2D remap preparation is the exception: medcoupling is slightly faster in this case.
+## Performance: the honest framing
 
-### Polyhedral remap scaling
+- Only a **handful of operations** are timed — no general claim.
+- Same geometry on every run, results **machine-dependent**.
+- ms, medians of several runs.
 
-| Cells | mefikit prepare | medcoupling prepare | medcoupling / mefikit |
-|---:|---:|---:|---:|
-| 100 | 2.59 ms | 153.5 ms | 59× |
-| 200 | 7.14 ms | 568.9 ms | 80× |
-| 400 | 23.26 ms | 2347.4 ms | 101× |
+---
 
-The benchmark shows a growing advantage for mefikit as the polyhedral mesh size increases.
+## Prepare / build — one-off cost
 
-## 4. Correctness
+| Operation | mefikit | medcoupling | ratio |
+|---|---:|---:|---:|
+| Remap 2D · QUAD4 (9216 cells) | 27.0 ms | 24.8 ms | 0.9× |
+| Remap 3D · HEX8 (4096 cells) | 162.6 ms | 692.3 ms | 4.3× |
+| Remap 3D · polyhedral | 356.6 ms | 8746.1 ms | 24.5× |
+| Merge nodes · 3D HEX8 | 0.5 ms | 4.0 ms | 7.5× |
+| Descend · 24³ HEX8 | 56.5 ms | 103.7 ms | 1.8× |
+| Overlay · 32² QUAD4 | 2.1 ms | 68.4 ms | 33.0× |
+| Crack · 20³ HEX8 | 235.6 ms | 1624.4 ms | 6.9× |
 
-The tested operations produced equivalent results:
+> ratio = medcoupling / mefikit — **> 1 ⇒ mefikit faster**.
 
-- Structured meshes: same cell and node counts.
-- Measures: same total area/volume.
-- Field expressions: maximum difference near machine precision.
-- P0/P0 remap: transferred fields match within tolerance.
-- Merge nodes: same resulting node count.
-- Descending connectivity: same face count.
-- Overlay: unit area preserved.
-- Crack: same node count.
+---
 
-These checks establish equivalence for the tested cases, not complete behavioral equivalence across both libraries.
+## Prepare / build — all operations
 
-## 5. Blind zones and limits
+![Prepare and build times](compare_medcoupling_files/compare_medcoupling_38_0.png){width=92%}
 
-medcoupling remains broader and more mature.
+On this set, only 2D remap prepare goes medcoupling's way (0.9×).
 
-Areas where medcoupling has an advantage:
+---
 
-- Larger API and ecosystem.
-- Advanced field machinery.
-- More established industrial workflows.
-- Spline remapping and other advanced algorithms.
-- Broad MED-related tooling and integrations.
+## Transfer / apply — per-step cost
 
-Areas not fully covered by this comparison:
+| P0/P0 remap | mefikit | medcoupling | ratio |
+|---|---:|---:|---:|
+| 2D QUAD4 | 0.18 ms | 3.90 ms | 21.5× |
+| 3D HEX8 | 0.09 ms | 1.24 ms | 13.2× |
+| 3D polyhedral | 0.10 ms | 2.17 ms | 22.0× |
 
-- Complete API compatibility.
-- All mesh and field types.
-- Advanced remapping modes.
-- Parallel execution and distributed meshes.
-- Large-scale production workloads.
-- All supported file formats and edge cases.
+Sub-millisecond on both sides — the cost is in **prepare**, not **apply**.
 
-mefikit should therefore be viewed as a focused alternative or complement, not a drop-in replacement.
+---
 
-## Takeaways
+## Polyhedral remap — a first real gap
 
-- **API:** mefikit is shorter and more expressive for common mesh and field operations.
-- **Performance:** mefikit is faster in most tested operations, with the strongest results on polyhedral remapping.
-- **Compatibility:** both libraries can exchange `.med` meshes and produce matching results for the tested features.
-- **Scope:** medcoupling remains the broader and more mature solution.
-- **Use case:** mefikit is particularly attractive for new projects, polyhedral meshes, and performance-sensitive remapping workflows.
+![Polyhedral remap scaling](compare_medcoupling_files/compare_medcoupling_32_0.png){width=88%}
+
+> 101× faster at 400 cells on this test, and the gap grows with size — fields still match to ~1e-14.
+
+---
+
+## Every ratio at a glance
+
+![Speedup ratios per operation](compare_medcoupling_files/compare_medcoupling_39_0.png){width=88%}
+
+> > 1 ⇒ mefikit faster. **9 of 10 workloads** go mefikit's way.
+
+---
+
+## Feature comparison
+
+| Operation | medcoupling | mefikit |
+|---|---|---|
+| Structured grid | `CMesh` + `buildUnstructured()` | `build_cmesh(*axes)` |
+| Per-cell measure | `getMeasureField()` + plumbing | `mf.M` — symbolic |
+| Faces / boundary | `buildDescendingConnectivity`, `buildBoundaryMesh` | `descend()`, `boundaries()` |
+| Merge nodes | `mergeNodes()` | `merge_nodes()` |
+| 2D overlay / imprint | `Intersect2DMeshes()` | `overlay()` |
+| P0/P0 conservative remap | `MEDCouplingRemapper.prepare("P0P0")` | `ConservativeP0` |
+| Meshless transfers | lower-level / manual | `ConstantPiecewise`, `MovingLeastSquares` |
+| File formats | MED, VTK, ENSIGHT, ... | med, vtk/vtu, vtkhdf, cgns, json, yaml |
+| Core | C++ (Python bindings) | Rust (first-class Python) |
+
+---
+
+## What mefikit offers today
+
+- A **concise API** for common mesh and field operations.
+- Strong speed on **some** operations — polyhedral remap, overlay.
+- Polyhedral meshes handled from the start.
+
+---
+
+## Where medcoupling stays ahead
+
+- **Breadth**: spline remapping, advanced field machinery, big ecosystem.
+- **Proven** in many production codes over decades.
+- mefikit still has a lot to implement before reaching that level.
+
+---
+
+## Conclusion: step by step
+
+- mefikit is faster on several operations — real, but **partial**.
+- Many features remain to be written; the API is still evolving.
+- medcoupling lives in many other codes; adopting mefikit has **not started**.
+- The long-term aim is to go further — built on medcoupling's strengths, one step at a time.
+
+---
+
+## Try it
+
+- Full side-by-side notebook: `docs/python_examples/compare_medcoupling.ipynb`.
+- Same workloads live in `tests/bench_vs_medcoupling.py`.
+- [Roadmap](https://github.com/asonolet/mefikit/blob/master/ROADMAP.md) and the other notebooks of this book.
