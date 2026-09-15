@@ -2,14 +2,14 @@
 
 ## ✅ Stage 1 — Core Mesh Representation
 
-| Functionality                 | UMesh                        | MEDCoupling             | Notes                                                                             |
-| ----------------------------- | ---------------------------- | ----------------------- | --------------------------------------------------------------------------------- |
-| Basic mesh types (1D, 2D, 3D) | ✔️ via `build_cmesh`         | ✔️                      | Structured grids (SEG2/QUAD4/HEX8) via `RegularUMeshBuilder`.                      |
-| Multi element type mesh       | ✔️ (`ElementBlock`)          | ✔️ (`MEDCouplingUMesh`) | UMesh uses `BTreeMap<ElementType, ElementBlock>` to cleanly group by type.        |
-| Connectivity storage          | ✔️ (`Connectivity`)          | ✔️                      | Regular and poly (data/offsets) connectivities.                                   |
-| Coordinates                   | ✔️                           | ✔️                      | `ArcArray2` with copy-on-write sharing.                                           |
-| Fields on elements            | ✔️                           | ✔️                      | Fields stored per `ElementBlock`.                                                 |
-| Cell groups & families        | ✔️ (rust)                    | ✔️ (MEDLoader)          | Stored in `BTreeMap<String, BTreeSet<usize>>`; python binding not exposed yet.    |
+| Functionality                 | UMesh                        | MEDCoupling             | Notes                                                                          |
+| ----------------------------- | ---------------------------- | ----------------------- | -------------------------------------------------------------------------------|
+| Basic mesh types (1D, 2D, 3D) | ✔️ via `build_cmesh`         | ✔️                      | Structured grids (SEG2/QUAD4/HEX8) via `RegularUMeshBuilder`.                  |
+| Multi element type mesh       | ✔️ (`ElementBlock`)          | ✔️ (`MEDCouplingUMesh`) | UMesh uses `BTreeMap<ElementType, ElementBlock>` to cleanly group by type.     |
+| Connectivity storage          | ✔️ (`Connectivity`)          | ✔️                      | Regular and poly (data/offsets) connectivities.                                |
+| Coordinates                   | ✔️                           | ✔️                      | `ArcArray2` with copy-on-write sharing.                                        |
+| Fields on elements            | ✔️                           | ✔️                      | Fields stored per `ElementBlock`.                                              |
+| Cell groups & families        | ✔️ (rust)                    | ✔️ (MEDLoader)          | Stored in `BTreeMap<String, BTreeSet<usize>>`; python binding not exposed yet. |
 
 ---
 
@@ -55,9 +55,9 @@
 | Conversion to NumPy Arrays          | ✔️    | ✔️          | For coords, connectivity, fields                           |
 | Pythonic Mesh Access (coords, conn) | ✔️    | ✔️          | Rust-style getter wrappers                                 |
 | Field transfer in Python            | ✔️    | ✔️          | `mf.transfer.*` + `apply_update`                           |
-| C/C++ FFI Interface via `cbindgen`  | ⏳    | ✔️          | Exported symbols with C ABI                                |
+| C/C++ FFI Interface via `cxx`       | ⏳    | ✔️          | Exported symbols with C ABI                                |
 | Rust in C/C++ via `extern "C"`      | ⏳    | ✔️          | Allows calling UMesh from legacy code                      |
-| Python Submesh Creation             | ✔️    | ✔️          | `mesh.descend()`, `mesh.select(...)`, `mesh.split()`       |
+| Python derived mesh Creation        | ✔️    | ✔️          | `mesh.descend()`, `mesh.select(...)`, `mesh.split()`       |
 | PyPI Distribution                   | ✔️    | ✔️          | Simple install with `pip install mefikit`                  |
 
 ---
@@ -70,16 +70,15 @@
 | Cell Centroid Computation              | ✔️         | ✔️          | Vertex centroid; `tools::centroids` / `ElementGeo`.      |
 | Bounding Box Computation               | ✔️         | ✔️          | Useful for acceleration structures                       |
 | Mesh Bounding Box                      | ✔️         | ✔️          | Global extent for visualization, filtering, etc.         |
-| 2D Mesh-Mesh Overlay                   | ✔️         | ✔️          | `overlay` + `OverlayOperation` (IMPRINT, UNION,          |
-|                                        |            |             | INTERSECTION, DIFFERENCE, SYMMETRIC_DIFFERENCE)          |
+| 2D Mesh-Mesh Overlay                   | ✔️         | ✔️          | `overlay` + `OverlayOperation` (IMPRINT, UNION, INTERSECTION, DIFFERENCE, SYMMETRIC_DIFFERENCE) |
+| 2D Manifold Mesh-Mesh Overlay          | ⏳         | ✔️          | `overlay` + `OverlayOperation` (IMPRINT, UNION, INTERSECTION, DIFFERENCE, SYMMETRIC_DIFFERENCE) |
 | 3D Cell Slicing with Plane             | ⏳         | ✔️          | Module stub only                                         |
-| Cell-to-Cell Intersection Measure      | 🚧         | ✔️          | Partial: 3D `Polyhedron::convex_intersection_volume` +   |
-|                                        |            |             | 2D `overlay`; ConservativeP0 transfer relies on it      |
+| 3D mesh_mesh conformization             | ⏳         | ✔️          | requires 2d Manifold mesh-mesh overlay                                         |
+| Cell-to-Cell Intersection Measure      | ✔️         | ✔️          | Partial: 3D `Polyhedron::convex_intersection_volume` |
 | Distance to Point / Nearest Cell       | 🚧         | ✔️          | Partial: BVH spatial index / kNN used internally         |
-| Cell Normals (2D/3D)                   | ⏳         | ✔️          | Important for post-processing and boundary conditions    |
-| Intersections with Line, Plane, Volume | 🚧         | ✔️          | Partial: segment/polygon/polyhedron point-in tests +     |
-|                                        |            |             | 3D polyhedron intersection                                |
-| Parallel Geometry Computation          | ⏳         | ❌          | `rayon` feature + `par_elements()` iterator available    |
+| Cell Normals (2D/3D)                   | ✔️         | ✔️          | Important for post-processing and boundary conditions    |
+| Intersections with Line, Plane, Volume | 🚧         | ✔️          | Partial: segment/polygon/polyhedron point-in tests |
+| Parallel Geometry Computation          | ✔️         | ❌          | `rayon` feature + `par_elements()` iterator available    |
 
 ---
 
@@ -91,8 +90,8 @@
 | Field interpolation       | ✔️    | ✔️          | `transfer`: ConstantPiecewise,                |
 |                           |       |             | MovingLeastSquares, InverseDistance,          |
 |                           |       |             | ConservativeP0 (2D/3D).                       |
-| Field reduction / stats   | ⏳    | ❌          |                                               |
-| Norms, extrema, threshold | 🚧    | ❌          | Partial: `fieldexpr` math functions +         |
+| Field reduction / stats   | ✔️    | ❌          |                                               |
+| Norms, extrema, threshold | ✔️    | ❌          | Partial: `fieldexpr` math functions +         |
 |                           |       |             | comparisons for field-based selections        |
 
 ---
