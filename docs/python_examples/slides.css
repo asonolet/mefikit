@@ -1,0 +1,21 @@
+<style>
+  .reveal { font-size: 46px; }
+  .reveal h1.title { font-size: 1.6em; letter-spacing: 0.02em; }
+  .reveal h2 { font-size: 1.2em; margin-bottom: 0.4em; }
+  .reveal blockquote { font-size: 0.8em; color: #9fc2ff; border-left-color: #3d7eff; }
+  .reveal table { font-size: 0.72em; margin: 0 auto; }
+  .reveal th, .reveal td { padding: 0.12em 0.5em; }
+  .reveal code { font-size: 0.8em; }
+  .reveal li { margin: 0.18em 0; }
+  .reveal figure { margin: 0.3em auto 0; }
+  .reveal figcaption { font-size: 0.55em; font-style: italic; opacity: 0.7; }
+  .reveal .columns {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: 1.2em;
+    width: 100%;
+  }
+  .reveal .column { flex: 1 1 0; min-width: 0; }
+  .reveal .column pre { width: 100%; }
+</style>
