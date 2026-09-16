@@ -172,35 +172,88 @@ The tested operations produced equivalent results:
 - Overlay: unit area preserved.
 - Crack: same node count.
 
-These checks establish equivalence for the tested cases, not complete behavioral equivalence across both libraries.
+## Feature comparison
 
-## 5. Blind zones and limits
+| Feature | mefikit | medcoupling |
+| --- | --- | --- |
+| MED I/O | Supported | Supported |
+| CGNS I/O | Supported | Not supported |
+| VTKHDF I/O | Supported | Not supported |
+| Structured meshes | Supported | Supported |
+| Polyhedral meshes | Supported | Supported |
+| Field expressions | Symbolic `Field` API | Explicit arrays and field objects |
+| Field selection | High-level `select()` API | More explicit field/array operations |
+| Conservative P0/P0 remapping | Supported | Supported |
+| Meshless interpolation | MLS and distance-based operators | No equivalent high-level API |
+| Distance kernels | Gaussian, inverse distance, inverse squared distance, etc. | Not available through an equivalent API |
+| Descending connectivity | Supported | Supported |
+| Boundary extraction | Supported | Supported |
+| Node merging | Supported | Supported |
+| 2D overlay | Supported | Supported |
+| 3D conformization | Not supported | Supported |
+| 2D manifold overlay | Not supported | Supported |
+| Quadratic polygon overlay | Not supported | Supported |
+| Slicing | Not supported | Supported |
+| Mixed element types | Supported | Supported |
 
-medcoupling remains broader and more mature.
+## Data-model distinction
 
-Areas where medcoupling has an advantage:
+Mefikit unifies mesh and MED-file concepts in `UMesh`. A `UMesh` can contain:
 
-- Larger API and ecosystem.
-- Advanced field machinery.
-- More established industrial workflows.
-- Spline remapping and other advanced algorithms.
-- Broad MED-related tooling and integrations.
+- mesh levels;
+- groups;
+- fields;
+- MED metadata;
+- topology and geometry.
 
-Areas not fully covered by this comparison:
+The core medcoupling object, `MEDCouplingUMesh`, represents a single mesh level. MED-file organization is handled separately.
+This makes the mefikit model more convenient when working with groups, fields, and multiple levels as one object.
 
-- Complete API compatibility.
-- All mesh and field types.
-- Advanced remapping modes.
-- Parallel execution and distributed meshes.
-- Large-scale production workloads.
-- All supported file formats and edge cases.
 
-mefikit should therefore be viewed as a focused alternative or complement, not a drop-in replacement.
+```python
+mesh = mf.UMesh.read("mesh.med")
 
-## Takeaways
+mesh.groups
+mesh.fields
+```
 
-- **API:** mefikit is shorter and more expressive for common mesh and field operations.
-- **Performance:** mefikit is faster in most tested operations, with the strongest results on polyhedral remapping.
-- **Compatibility:** both libraries can exchange `.med` meshes and produce matching results for the tested features.
-- **Scope:** medcoupling remains the broader and more mature solution.
-- **Use case:** mefikit is particularly attractive for new projects, polyhedral meshes, and performance-sensitive remapping workflows.
+The bridge to medcoupling remains available:
+
+```python
+mesh_mc = mesh.to_mc()
+```
+
+## Meshless interpolation
+
+mefikit provides high-level meshless interpolation operators, including:
+
+```python
+op = mf.transfer.MovingLeastSquares(
+    source,
+    target,
+    kernel="gaussian",
+)
+```
+
+Supported weighting approaches include:
+
+* MLS;
+* distance weighting;
+* inverse-distance weighting;
+* inverse-squared-distance weighting;
+* Gaussian and other distance kernels.
+
+This is a clear mefikit capability that is not represented by an equivalent high-level medcoupling API.
+
+## Conclusions
+
+- API: mefikit provides a shorter, higher-level API for common mesh and field operations.
+- Performance: mefikit was faster in most tested cases, especially polyhedral remapping.
+- I/O: mefikit supports MED, CGNS, and VTKHDF workflows.
+- Interpolation: mefikit provides meshless interpolation with MLS and configurable distance kernels.
+- Data model: `UMesh` unifies mesh levels, groups, fields, and MED metadata.
+- Geometry: medcoupling remains stronger for 3D conformization, 2D manifold overlay, quadratic polygon overlay, and slicing.
+- Maturity: medcoupling remains the broader and more established ecosystem.
+- Positioning: mefikit is particularly attractive for new projects, polyhedral
+  meshes, and performance-sensitive remapping workflows. Not a drop-in
+  replacement for now.
