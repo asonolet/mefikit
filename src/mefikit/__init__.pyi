@@ -231,6 +231,19 @@ class UMesh:
         block: Array2U,
         fields: dict[str, ArrayDynF] | None = ...,
     ) -> None: ...
+    def add_poly_block(
+        self,
+        et: str,
+        conn: Array1U,
+        offsets: Array1U,
+        fields: dict[str, ArrayDynF] | None = ...,
+    ) -> None: ...
+    @classmethod
+    def from_mc(
+        cls,
+        mesh: mc.MEDCouplingUMesh | mc.MEDFileUMesh,
+        fields: Sequence[mc.MEDCouplingFieldDouble] | None = ...,
+    ) -> UMesh: ...
     def set_field(self, name: str, field: dict[str, ArrayDynF]) -> None: ...
 
     # --- topology operations ---

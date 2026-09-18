@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from collections.abc import Sequence
 
 import numpy as np
@@ -238,3 +239,201 @@ def install_conversions():
     UMesh.to_meshio = to_meshio
     UMesh.to_mc = to_mc
     UMesh.to_pyvista = to_pyvista
+
+    def from_mc(cls, mesh, fields=None):
+        if not isinstance(mesh, (mc.MEDFileUMesh, mc.MEDCouplingUMesh)):
+            raise TypeError(
+                "Expected a MEDCouplingUMesh or MEDFileUMesh, got "
+                f"{type(mesh).__name__}"
+            )
+
+        if isinstance(fields, mc.MEDCouplingFieldDouble):
+            fields = (fields,)
+
+        mf_types_num_node = {
+            "VERTEX": 1,
+            "SEG2": 2,
+            "SEG3": 3,
+            "SEG4": 4,
+            "TRI3": 3,
+            "TRI6": 6,
+            "TRI7": 7,
+            "QUAD4": 4,
+            "QUAD8": 8,
+            "QUAD9": 9,
+            "TET4": 4,
+            "TET10": 10,
+            "HEX8": 8,
+        }
+
+        _mf_permutations = {
+            "TET4": (0, 1, 3, 2),
+            "TET10": (0, 1, 3, 2, 4, 8, 7, 6, 5, 9),
+            "HEX8": (4, 5, 6, 7, 0, 1, 2, 3),
+        }
+
+        _mc_codes = {
+            0: "VERTEX",
+            1: "SEG2",
+            2: "SEG3",
+            10: "SEG4",
+            3: "TRI3",
+            6: "TRI6",
+            7: "TRI7",
+            4: "QUAD4",
+            8: "QUAD8",
+            9: "QUAD9",
+            14: "TET4",
+            20: "TET10",
+            18: "HEX8",
+            5: "PGON",
+            31: "PHED",
+        }
+        known_codes = np.array(sorted(_mc_codes), dtype=np.int64)
+        known_types = [_mc_codes[int(c)] for c in known_codes]
+        poly_types = {"PGON", "PHED"}
+
+        def _type_labels(codes):
+            idx = np.searchsorted(known_codes, codes)
+            np.clip(idx, 0, len(known_codes) - 1, out=idx)
+            hit = known_codes[idx] == codes
+            labels = np.full(len(codes), -1, dtype=np.intp)
+            labels[hit] = idx[hit]
+            return labels
+
+        def _extract_level(umesh):
+            conn = umesh.getNodalConnectivity().toNumPyArray()
+            conn_i = umesh.getNodalConnectivityIndex().toNumPyArray()
+            n = umesh.getNumberOfCells()
+            codes = conn[conn_i[:n]]
+            labels = _type_labels(codes)
+            unknown = codes[labels < 0]
+            if len(unknown):
+                codes_list = ", ".join(f"{c}" for c in np.unique(unknown))
+                warnings.warn(
+                    f"{len(unknown)} cells of unsupported MEDCoupling cell type "
+                    f"(code(s) {codes_list}) skipped"
+                )
+            starts = conn_i[:n] + 1
+            ends = conn_i[1 : n + 1]
+            global_ids = {}
+            for t, et in enumerate(known_types):
+                sel = labels == t
+                if np.any(sel):
+                    global_ids[et] = np.nonzero(sel)[0]
+            return conn, starts, ends, labels, global_ids
+
+        def _gather(conn, starts, counts):
+            n = len(counts)
+            offsets = np.zeros(n + 1, dtype=np.int64)
+            np.cumsum(counts, out=offsets[1:])
+            within = np.arange(offsets[-1]) - np.repeat(offsets[:-1], counts)
+            entries = conn[np.repeat(starts, counts) + within]
+            return offsets, within, entries
+
+        def _build_blocks(res, conn, starts, ends, labels):
+            for t, et in enumerate(known_types):
+                sel = labels == t
+                n_cells = np.count_nonzero(sel)
+                if n_cells == 0:
+                    continue
+                counts = ends[sel] - starts[sel]
+                if et in poly_types:
+                    offsets, within, entries = _gather(conn, starts[sel], counts)
+                    if et == "PGON":
+                        data = entries.astype(np.uintp)
+                        poly_offsets = offsets[1:].astype(np.uintp)
+                    else:
+                        base = offsets[:-1] + np.arange(n_cells)
+                        out = np.full(offsets[-1] + n_cells, -1, dtype=np.int64)
+                        out[base.repeat(counts) + within] = entries
+                        data = out.astype(np.uintp)
+                        poly_offsets = (offsets[1:] + np.arange(1, n_cells + 1)).astype(
+                            np.uintp
+                        )
+                    res.add_poly_block(et, data, poly_offsets)
+                else:
+                    nn = mf_types_num_node[et]
+                    block = conn[starts[sel][:, None] + np.arange(nn)]
+                    if et in _mf_permutations:
+                        block = block[:, _mf_permutations[et]]
+                    res.add_regular_block(et, block.astype(np.uintp))
+
+        if isinstance(mesh, mc.MEDFileUMesh):
+            levels = [lev for lev in mesh.getNonEmptyLevelsExt() if lev != 1]
+            level_meshes = [mesh.getMeshAtLevel(lev, False) for lev in levels]
+        else:
+            levels = [0]
+            level_meshes = [mesh]
+
+        ref_lev = 0 if 0 in levels else levels[0]
+        coords = level_meshes[levels.index(ref_lev)].getCoords().toNumPyArray()
+        space_dim = mesh.getSpaceDimension()
+
+        level_data = [None] * len(levels)
+        level_ids = [None] * len(levels)
+        for j, (lev, umesh) in enumerate(zip(levels, level_meshes)):
+            level_data[j] = _extract_level(umesh)
+            level_ids[j] = level_data[j][4]
+
+        res = cls(coords.reshape(-1, space_dim))
+
+        for lev, (conn, starts, ends, labels, _) in zip(levels, level_data):
+            _build_blocks(res, conn, starts, ends, labels)
+
+        if isinstance(mesh, mc.MEDFileUMesh):
+            handled = set()
+            groups_by_name = {}
+            for lev, ids in zip(levels, level_ids):
+                for grp in mesh.getGroupsOnSpecifiedLev(lev):
+                    handled.add(grp)
+                    grp_ids = mesh.getGroupArr(lev, grp, False).toNumPyArray()
+                    per_et = {}
+                    for et, gids in ids.items():
+                        local = np.nonzero(np.isin(gids, grp_ids))[0]
+                        if len(local):
+                            per_et[et] = local.astype(np.uintp)
+                    if per_et:
+                        groups_by_name.setdefault(grp, {}).update(per_et)
+            for grp, per_et in groups_by_name.items():
+                res.groups[grp] = per_et
+            for grp in mesh.getGroupsOnSpecifiedLev(1):
+                if grp not in handled:
+                    warnings.warn(
+                        f"Node group '{grp}' has no element at a cell level; "
+                        "skipping it"
+                    )
+
+        if fields:
+            for field in fields:
+                if field.getTypeOfField() != mc.ON_CELLS:
+                    raise ValueError(
+                        "Only ON_CELLS fields are supported "
+                        f"(field '{field.getName()}' is "
+                        f"{field.getTypeOfField()})"
+                    )
+                fmesh = field.getMesh()
+                lev = None
+                for j, umesh in enumerate(level_meshes):
+                    if fmesh is umesh or (
+                        hasattr(fmesh, "isEqual") and fmesh.isEqual(umesh, 1e-12)
+                    ):
+                        lev = j
+                        break
+                if lev is None:
+                    raise ValueError(
+                        f"Field '{field.getName()}' is not attached to an "
+                        "imported mesh level"
+                    )
+                values = field.getArray().toNumPyArray()
+                n_cells = field.getNumberOfTuples()
+                n_comp = field.getNumberOfComponents()
+                values = values.reshape(n_cells, n_comp)
+                per_et = {}
+                for et, gids in level_ids[lev].items():
+                    per_et[et] = values[gids]
+                res.set_field(field.getName(), per_et)
+
+        return res
+
+    UMesh.from_mc = classmethod(from_mc)

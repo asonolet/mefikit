@@ -117,6 +117,28 @@ impl PyUMesh {
             .add_regular_block(str_to_etype(et), block.as_array().to_shared(), fields);
     }
 
+    /// Add a poly (variable-size) element block to the mesh.
+    #[pyo3(signature = (et, conn, offsets, fields=None))]
+    fn add_poly_block(
+        &mut self,
+        et: &str,
+        conn: np::PyReadonlyArray1<'_, usize>,
+        offsets: np::PyReadonlyArray1<'_, usize>,
+        fields: Option<BTreeMap<String, np::PyReadonlyArray<'_, f64, nd::IxDyn>>>,
+    ) {
+        let fields = fields.map(|f| {
+            f.iter()
+                .map(|(n, f)| (n.to_owned(), f.as_array().to_shared()))
+                .collect()
+        });
+        self.inner.add_poly_block(
+            str_to_etype(et),
+            conn.as_array().to_shared(),
+            offsets.as_array().to_shared(),
+            fields,
+        );
+    }
+
     /// Add a field to the mesh.
     fn set_field(
         &mut self,
