@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import os
-import time
-
 import medcoupling as mc
 import numpy as np
 
 import mefikit as mf
+
+N_SUBSET = 256
 
 
 def mc_field(
@@ -24,90 +23,45 @@ def mc_field(
     return f
 
 
-def mc_remap(mc_src, mc_tgt, field_npy) -> tuple[float, float, np.ndarray]:
-    mcf = mc_field(mc_src, field_npy)
-
-    t0 = time.time()
-    vt = mc.MEDCouplingRemapper()
-    vt.prepare(mc_src, mc_tgt, "P0P0")
-    t1 = time.time()
-    mcf_tgt = vt.transferField(mcf, 0.0)
-    t2 = time.time()
-
-    tgt_npy = mcf_tgt.getArray().toNumPyArray()
-    return t1 - t0, t2 - t1, tgt_npy
-
-
-def mf_remap(mf_src, mf_tgt) -> tuple[float, float, np.ndarray]:
-    t0 = time.time()
-    trsf = mf.transfer.ConservativeP0(mf_src, mf_tgt)
-    t1 = time.time()
-    trsf.apply_update(mf_src, "Measure", mf_tgt, def_val=0.0)
-    t2 = time.time()
-    return t1 - t0, t2 - t1, mf_tgt.fields["Measure"].numpy()
-
-
-# --- remap timing + validation ---------------------------------------------
 def test_remap():
-    """Test medcoupling remapper vs mefikit transfer and bench."""
-    mesh_files = os.listdir("tests/data")
-    mc_preps = []
-    mc_applies = []
-    mf_preps = []
-    mf_applies = []
+    """mefikit ConservativeP0 transfer matches medcoupling P0P0 on real meshes.
 
-    error = False
+    The remap runs on a deterministic cell subset of the reference meshes
+    because medcoupling's PDE-based `prepare` is quadratic in the number of
+    cells (a few seconds for 2000-cell files); building both sides from the
+    very same subset keeps the geometry comparison exact.
+    """
+    mesh_files = ["mesh_27.med", "mesh_36.med"]
 
     for i, mfn_src in enumerate(mesh_files):
+        src_path = "tests/data/" + mfn_src
+        # mefikit's own reader on the reference file stays covered at low cost
+        assert mf.UMesh.read(src_path).num_elements() == 2000
         for mfn_tgt in mesh_files[i:]:
-            print("Testing", mfn_src, mfn_tgt)
-
-            mf_src = mf.UMesh.read("tests/data/" + mfn_src)
-            mf_tgt = mf.UMesh.read("tests/data/" + mfn_tgt)
-
-            mf_src = mf_src.reorient()
-            mf_tgt = mf_tgt.reorient()
-
-            mc_src = mc.ReadMeshFromFile("tests/data/" + mfn_src, 0)
+            mc_src = mc.ReadMeshFromFile(src_path, 0)
             mc_tgt = mc.ReadMeshFromFile("tests/data/" + mfn_tgt, 0)
+
+            cells = list(range(min(N_SUBSET, mc_src.getNumberOfCells())))
+            s = mc_src.buildPartOfMySelf(cells)
+            t = mc_tgt.buildPartOfMySelf(cells)
+
+            mf_src = mf.UMesh.from_mc(s).reorient()
+            mf_tgt = mf.UMesh.from_mc(t).reorient()
 
             mf_src.fields["Measure"] = mf.M
             mes_npy = mf_src.fields["Measure"].numpy()
 
-            mc_prep, mc_apply, mcf_remapped = mc_remap(mc_src, mc_tgt, mes_npy)
-            print("MEDCoupling prepare: ", mc_prep)
-            print("MEDCoupling apply  : ", mc_apply)
-            mf_prep, mf_apply, mff_remapped = mf_remap(mf_src, mf_tgt)
-            print("Mefikit prepare    : ", mf_prep)
-            print("Mefikit apply      : ", mf_apply)
-            mc_preps.append(mc_prep)
-            mc_applies.append(mc_apply)
-            mf_preps.append(mf_prep)
-            mf_applies.append(mf_apply)
+            vt = mc.MEDCouplingRemapper()
+            vt.prepare(s, t, "P0P0")
+            mcf_remapped = vt.transferField(mc_field(s, mes_npy), 0.0)
+            tgt_npy = mcf_remapped.getArray().toNumPyArray()
 
-            allclose = np.allclose(mcf_remapped, mff_remapped)
-            if not allclose:
-                mf_tgt.fields["mc_remapped"] = mcf_remapped
-                mf_tgt.fields["diff"] = mf.Field("Measure") - mf.Field("mc_remapped")
-                diff_cells = np.abs(mcf_remapped - mff_remapped) > 1e-9
-                print(np.where(diff_cells))
-                print("mc : ", mcf_remapped[diff_cells])
-                print("mf : ", mff_remapped[diff_cells])
-                print("mes: ", mes_npy[diff_cells])
-                mc_tgt.write(f"diff_{mfn_src[:-4]}_{mfn_tgt[:-4]}.med")
-                cell = mc_tgt.buildPartOfMySelf([80])
-                cell.zipCoords()
-                cell.write(f"cell80_{mfn_tgt[:-4]}.med")
-                # mc.WriteMesh(f"diff_{mfn_src[:-4]}_{mfn_tgt[:-4]}.med", mc_tgt, True)
-                # mc.WriteField(f"diff_{mfn_src[:-4]}_{mfn_tgt[:-4]}.med", )
-                error = True
-                break
-        if error:
-            break
-    print("MEDCoupling prepare: ", np.mean(mc_preps))
-    print("MEDCoupling apply  : ", np.mean(mc_applies))
-    print("Mefikit prepare    : ", np.mean(mf_preps))
-    print("Mefikit apply      : ", np.mean(mf_applies))
+            trsf = mf.transfer.ConservativeP0(mf_src, mf_tgt)
+            trsf.apply_update(mf_src, "Measure", mf_tgt, def_val=0.0)
+            mff_remapped = mf_tgt.fields["Measure"].numpy()
+
+            assert tgt_npy.shape == mff_remapped.shape
+            assert np.allclose(tgt_npy, mff_remapped)
 
 
 if __name__ == "__main__":
