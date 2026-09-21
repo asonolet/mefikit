@@ -12,3 +12,4 @@ src/mefikit/*.so
 venv
 .venv
 .ipynb_checkpoints
+/docs/pres/mefikit_vs_medcoupling_slides.pdf

@@ -6,37 +6,3 @@ src/$(PYEXDIR)/%.md: $(PYEXDIR)/%.ipynb
 	uv run jupyter nbconvert --to markdown --execute --output-dir=src/$(PYEXDIR) $<
 
 notebooks: src/$(PYEXDIR)/umesh_basics.md src/$(PYEXDIR)/extrusions.md src/$(PYEXDIR)/input_output.md src/$(PYEXDIR)/topological_tools.md src/$(PYEXDIR)/geometric_tools.md src/$(PYEXDIR)/selection.md src/$(PYEXDIR)/fields.md src/$(PYEXDIR)/transfers.md src/$(PYEXDIR)/example_bubbles.md src/$(PYEXDIR)/compare_medcoupling.md
-
-# --- pandoc slide decks -----------------------------------------------------------
-# `make slides`      -> reveal.js HTML deck: interactive, self-contained (4 MB),
-#                       works offline (reveal.js JS/CSS + images are embedded).
-# `make slides-pdf`  -> beamer PDF deck. Requires a TeX engine with the `pgf`/
-#                       tikz packages installed (e.g. `sudo apt install texlive-pictures`)
-#                       and lualatex for the ×/·/→ characters.
-SLIDES_SRC  = $(SPYEXDIR)/mefikit_vs_medcoupling_short.md
-SLIDES_CSS  = $(PYEXDIR)/slides.css
-SLIDES_HTML = mefikit_vs_medcoupling_slides.html
-SLIDES_PDF  = mefikit_vs_medcoupling_slides.pdf
-PANDOC      ?= pandoc
-REVEALJS_URL = https://unpkg.com/reveal.js@4.6.1
-
-.PHONY: slides slides-html slides-pdf
-slides: slides-html
-
-slides-html: $(SLIDES_HTML)
-
-slides-pdf: $(SLIDES_PDF)
-
-$(SLIDES_HTML): $(SLIDES_SRC) $(SLIDES_CSS)
-	$(PANDOC) -t revealjs --standalone --embed-resources --slide-level=2 \
-		--resource-path=$(SPYEXDIR) \
-		--include-in-header=$(SLIDES_CSS) \
-		-V revealjs-url=$(REVEALJS_URL) \
-		-V theme=black -V slide-number=true \
-		-o $@ $(SLIDES_SRC)
-
-$(SLIDES_PDF): $(SLIDES_SRC)
-	$(PANDOC) -t beamer --standalone --slide-level=2 \
-		--pdf-engine=lualatex \
-		--resource-path=$(SPYEXDIR) \
-		-o $@ $(SLIDES_SRC)
