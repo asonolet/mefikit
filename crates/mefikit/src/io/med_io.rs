@@ -320,23 +320,29 @@ fn write_families(file: &File, mesh: &UMeshView) -> hdf5_metno::Result<()> {
         let gro = fam_group.create_group("GRO")?;
         write_scalar_attr(&gro, "NBR", names.len() as i64)?;
 
-        // NOM: (n_groups, 80) array of signed i8, space-padded (meshio/MED convention).
-        let n_groups = names.len();
-        let mut buf2d = Array2::<i8>::from_elem((n_groups, 80), 0x20);
-        for (i, name) in names.iter().enumerate() {
-            let name_bytes = name.as_bytes();
-            let len = name_bytes.len().min(80);
-            for (j, &b) in name_bytes[..len].iter().enumerate() {
-                buf2d[[i, j]] = b as i8;
-            }
-        }
-
-        let nom_ds = gro.new_dataset_builder().with_data(&buf2d).create("NOM")?;
-
-        let _ = nom_ds;
+        // NOM: the MED library stores each group name as a fixed-size array of
+        // (MED_GROUPE_NAME_SIZE) signed bytes, space-padded — i.e. an H5T_ARRAY
+        // of 80 int8 per element. Neither plain int8 arrays nor HDF5 strings are
+        // accepted by the MED reader for this dataset, so we must reproduce the
+        // exact layout.
+        let slots: Vec<[i8; MED_GROUPE_NAME_SIZE]> =
+            names.iter().map(|n| encode_group_name(n)).collect();
+        gro.new_dataset_builder().with_data(&slots).create("NOM")?;
     }
 
     Ok(())
+}
+
+/// Encode a group name into its on-disk `GRO/NOM` slot: 80 signed bytes, name
+/// left-aligned and space-padded (MED convention).
+fn encode_group_name(name: &str) -> [i8; MED_GROUPE_NAME_SIZE] {
+    let mut slot = [b' ' as i8; MED_GROUPE_NAME_SIZE];
+    let bytes = name.as_bytes();
+    let len = bytes.len().min(MED_GROUPE_NAME_SIZE);
+    for (dst, &src) in slot.iter_mut().zip(bytes[..len].iter()) {
+        *dst = src as i8;
+    }
+    slot
 }
 
 // ---------------------------------------------------------------------------
@@ -345,6 +351,9 @@ fn write_families(file: &File, mesh: &UMeshView) -> hdf5_metno::Result<()> {
 
 /// MED fixed-width for component names (16 chars each).
 const MED_NOM_LEN: usize = 16;
+
+/// MED fixed width for a group (family) name in the GRO/NOM dataset.
+const MED_GROUPE_NAME_SIZE: usize = 80;
 
 /// Upper bound on `16 * n_components` for the in-memory `FixedAscii` buffer.
 /// MED caps the number of field components at `MED_NUM_CDT = 32`.
@@ -730,25 +739,38 @@ fn read_fas_subgroup(parent: &Group, name: &str) -> BTreeMap<i64, Vec<String>> {
         if let Ok(gro) = fam_group.group("GRO")
             && let Ok(nom_ds) = gro.dataset("NOM")
         {
-            // NOM is an array of 80-byte char slots.
-            let raw: Array2<i8> = nom_ds.read().unwrap_or_else(|_| Array2::zeros((0, 80)));
-            for row in raw.rows() {
-                let name_str: String = row
-                    .iter()
-                    .map(|&b| b as u8)
-                    .take_while(|&b| b != 0 && b != b' ')
-                    .map(|b| b as char)
-                    .collect();
-                if !name_str.is_empty() {
-                    names.push(name_str);
-                }
-            }
+            names = read_group_names(&nom_ds);
         }
 
         result.insert(num, names);
     }
 
     result
+}
+
+/// Decode one `GRO/NOM` slot (name, space/NUL-padded to `MED_GROUPE_NAME_SIZE`
+/// signed bytes) back into the group name.
+fn decode_group_name(slot: &[i8; MED_GROUPE_NAME_SIZE]) -> String {
+    slot.iter()
+        .map(|&b| b as u8)
+        .take_while(|&b| b != 0 && b != b' ')
+        .map(char::from)
+        .collect()
+}
+
+/// Read the group names of a `GRO/NOM` dataset.
+///
+/// MED stores NOM as a 1-D dataset whose elements are fixed arrays of
+/// `MED_GROUPE_NAME_SIZE` signed bytes per group name (H5T_ARRAY).
+fn read_group_names(ds: &hdf5_metno::Dataset) -> Vec<String> {
+    ds.read::<[i8; MED_GROUPE_NAME_SIZE], Ix1>()
+        .map(|raw| {
+            raw.into_iter()
+                .map(|slot| decode_group_name(&slot))
+                .filter(|name| !name.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn read_nodal_data(timestep: &Group, dim: usize) -> Result<(usize, Array2<f64>), MefikitIOError> {
@@ -1083,6 +1105,7 @@ mod tests {
     use crate::mesh::ElementIds;
     use crate::mesh::ElementLike;
     use crate::mesh_examples as me;
+    use hdf5_metno::types::IntSize;
     use std::collections::BTreeSet;
     use std::path::PathBuf;
 
@@ -1242,11 +1265,11 @@ mod tests {
         let mut mesh = mesh;
 
         let mut wall_ids = ElementIds::new();
-        wall_ids.add_block(ElementType::TET4, vec![0, 1]);
+        wall_ids.add_block(ElementType::HEX8, vec![0, 1]);
         mesh.add_to_group("wall", &wall_ids);
 
         let mut inlet_ids = ElementIds::new();
-        inlet_ids.add_block(ElementType::TET4, vec![2]);
+        inlet_ids.add_block(ElementType::HEX8, vec![2]);
         mesh.add_to_group("inlet", &inlet_ids);
 
         write(&path, &mesh.view()).unwrap();
@@ -1262,17 +1285,77 @@ mod tests {
         let mut mesh = mesh;
 
         let mut ids1 = ElementIds::new();
-        ids1.add_block(ElementType::TET4, vec![0, 1, 2]);
+        ids1.add_block(ElementType::HEX8, vec![0, 1, 2]);
         mesh.add_to_group("region_a", &ids1);
 
         let mut ids2 = ElementIds::new();
-        ids2.add_block(ElementType::TET4, vec![2, 3, 4]);
+        ids2.add_block(ElementType::HEX8, vec![2, 3, 4]);
         mesh.add_to_group("region_b", &ids2);
 
         write(&path, &mesh.view()).unwrap();
         let mesh2 = read(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_roundtrip_med_group_covers_whole_block() {
+        // A group that covers every element of a block must survive a roundtrip:
+        // it used to be silently dropped because the added cells never left the
+        // reserved family 0, which the writer skips.
+        let path = PathBuf::from("test_roundtrip_med_whole_block_group.med");
+        let mesh = me::make_imesh_3d(2);
+        let mut mesh = mesh;
+
+        let n_hex = mesh.block(ElementType::HEX8).unwrap().len();
+        let mut all_ids = ElementIds::new();
+        all_ids.add_block(ElementType::HEX8, (0..n_hex).collect());
+        mesh.add_to_group("everything", &all_ids);
+
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_med_groups_nom_fixed_string() {
+        // The FAM GRO/NOM dataset must be stored exactly as the MED library
+        // stores it: an H5T_ARRAY of MED_GROUPE_NAME_SIZE (80) signed bytes per
+        // group name. The MED reader (medcoupling) rejects plain int8 arrays and
+        // HDF5 strings alike for this dataset.
+        let path = PathBuf::from("test_med_groups_nom_fixed_string.med");
+        let mesh = me::make_imesh_3d(2);
+        let mut mesh = mesh;
+
+        let mut wall_ids = ElementIds::new();
+        wall_ids.add_block(ElementType::HEX8, vec![0, 1, 2, 3]);
+        mesh.add_to_group("wall", &wall_ids);
+
+        write(&path, &mesh.view()).unwrap();
+
+        let file = File::open(&path).unwrap();
+        let fas = file.group("FAS").unwrap();
+        let families = fas.group("mesh").unwrap();
+        let eleme = families.group("ELEME").unwrap();
+        let fam1 = eleme.group("FAM_1_").unwrap();
+        let gro = fam1.group("GRO").unwrap();
+        let nom_ds = gro.dataset("NOM").unwrap();
+        let nom_dt = nom_ds.dtype().unwrap().to_descriptor().unwrap();
+        assert_eq!(
+            nom_dt,
+            TypeDescriptor::FixedArray(
+                Box::new(TypeDescriptor::Integer(IntSize::U1)),
+                MED_GROUPE_NAME_SIZE
+            ),
+            "GRO/NOM must be an array of {}x int8 per name",
+            MED_GROUPE_NAME_SIZE
+        );
+
+        let names = read_group_names(&nom_ds);
+        assert_eq!(names, vec!["wall".to_string()]);
+
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]

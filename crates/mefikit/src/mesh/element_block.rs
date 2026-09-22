@@ -422,16 +422,22 @@ impl ElementBlock {
             element_group_snapshot.push_iter(group_names);
         }
 
-        // Step 2: Compute new family IDs from signatures (using the snapshot)
+        // Step 2: Compute new family IDs from signatures (using the snapshot).
+        // Family 0 is reserved for elements without any group membership; all
+        // other signatures are assigned strictly positive family IDs so that a
+        // group can never silently reference the reserved zero family.
         let mut signature_to_family: HashMap<Vec<String>, usize> = HashMap::new();
+        signature_to_family.insert(Vec::new(), 0);
+        let mut next_family = 1usize;
         let mut new_families_vec = vec![0; n];
 
         for (i, sig) in element_group_snapshot.iter().enumerate() {
             let family_id = if let Some(&id) = signature_to_family.get(sig) {
                 id
             } else {
-                let id = signature_to_family.len();
+                let id = next_family;
                 signature_to_family.insert(sig.to_vec(), id);
+                next_family += 1;
                 id
             };
             new_families_vec[i] = family_id;
@@ -461,8 +467,10 @@ impl ElementBlock {
     /// Add elements to a group with family splitting.
     ///
     /// When adding only some elements of a family, the family is split so the
-    /// added elements get a new family ID that is placed in the group. This
-    /// preserves the invariant without a full recompute.
+    /// added elements get a new family ID that is placed in the group. Family 0 is
+    /// reserved for elements without group membership, so any added element that
+    /// still carries family 0 is always moved to a new, strictly positive family.
+    /// This preserves the invariant without a full recompute.
     pub fn add_to_group_internal(&mut self, group: &str, elem_indices: &[usize]) {
         if elem_indices.is_empty() {
             return;
@@ -478,7 +486,7 @@ impl ElementBlock {
             let fid = self.families[i];
             let has_non_added =
                 (0..n).any(|j| self.families[j] == fid && !elem_indices.contains(&j));
-            if has_non_added {
+            if has_non_added || fid == 0 {
                 needs_split = true;
                 break;
             }
@@ -499,7 +507,7 @@ impl ElementBlock {
                 }
                 let has_non_added =
                     (0..n).any(|j| self.families[j] == fid && !elem_indices.contains(&j));
-                if has_non_added {
+                if has_non_added || fid == 0 {
                     splits.insert(fid, next_fid);
                     next_fid += 1;
                 }

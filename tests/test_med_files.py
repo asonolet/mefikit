@@ -150,3 +150,76 @@ def test_med_fields_roundtrip_via_mefikit(tmp_path):
             assert np.array_equal(
                 np.asarray(m2.fields[name].values()[et]), np.asarray(values)
             )
+
+
+def test_med_groups_readable_by_medcoupling(tmp_path):
+    """Element groups must be readable by the MED library (medcoupling).
+
+    MED stores the group names of each family in FAS/mesh/ELEME/<FAM>/GRO/NOM
+    as an H5T_ARRAY of 80 signed bytes per name; medcoupling rejects other
+    layouts with an HDF5 conversion error.
+    """
+    path = str(tmp_path / "groups.med")
+    m = mf.UMesh(np.arange(30.0).reshape(10, 3))
+    m.add_regular_block(
+        "QUAD4",
+        np.array(
+            [[0, 1, 2, 3], [1, 2, 3, 4], [4, 5, 6, 7], [5, 6, 7, 8]], dtype=np.uintp
+        ),
+        fields={"T": np.array([1.0, 2.0, 4.0, 8.0])},
+    )
+    m.groups["mygroup"] = {"QUAD4": np.array([1, 3])}
+    m.write(path)
+
+    fum = mc.MEDFileUMesh(path)
+    levels = list(fum.getNonEmptyLevelsExt())
+    matched = False
+    for lev in levels:
+        gs = list(fum.getGroupsOnSpecifiedLev(lev))
+        if "mygroup" in gs:
+            arr = fum.getGroupArr(lev, "mygroup", False).toNumPyArray().ravel()
+            assert sorted(arr.tolist()) == [1, 3]
+            matched = True
+    assert matched, f"group 'mygroup' missing on levels {levels}"
+
+
+def test_med_groups_roundtrip_via_mefikit(tmp_path):
+    path = str(tmp_path / "groups_rt.med")
+    m = mf.UMesh(np.arange(30.0).reshape(10, 3))
+    m.add_regular_block(
+        "QUAD4",
+        np.array(
+            [[0, 1, 2, 3], [1, 2, 3, 4], [4, 5, 6, 7], [5, 6, 7, 8]], dtype=np.uintp
+        ),
+    )
+    m.groups["a"] = {"QUAD4": np.array([0, 1])}
+    m.groups["b"] = {"QUAD4": np.array([1, 2, 3])}
+    m.write(path)
+    m2 = mf.UMesh.read(path)
+    assert set(m2.groups) == {"a", "b"}
+    assert sorted(m2.groups["a"].ids()["QUAD4"]) == [0, 1]
+    assert sorted(m2.groups["b"].ids()["QUAD4"]) == [1, 2, 3]
+
+
+def test_med_groups_nom_is_int8_array_dataset(tmp_path):
+    """On-disk GRO/NOM must be the exact layout MED uses (1-D dataset whose
+    element type is a fixed array of 80 int8), otherwise the MED reader
+    cannot convert it while reading."""
+    import h5py
+
+    path = str(tmp_path / "groups_nom.med")
+    m = mf.UMesh(np.arange(30.0).reshape(10, 3))
+    m.add_regular_block(
+        "QUAD4",
+        np.array(
+            [[0, 1, 2, 3], [1, 2, 3, 4], [4, 5, 6, 7], [5, 6, 7, 8]], dtype=np.uintp
+        ),
+    )
+    m.groups["mygroup"] = {"QUAD4": np.array([1, 3])}
+    m.write(path)
+
+    with h5py.File(path) as h:
+        d = h["/FAS/mesh/ELEME/FAM_1_/GRO/NOM"]
+        assert d.dtype == np.dtype(("i1", (80,))), d.dtype
+        assert d.shape == (1,)
+        assert bytes(d[0]) == b"mygroup" + b" " * 73
