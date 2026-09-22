@@ -1,3 +1,186 @@
+//! HDF5 layout of a MED mesh file.
+//!
+//! A MED file is an ordinary HDF5 file: groups, datasets and attributes only.
+//! No custom HDF5 types are required beyond standard *fixed-size* compound /
+//! array types. This page describes the layout that mefikit both writes and
+//! reads (verified against `medcoupling`), so you can implement your own
+//! reader/writer with plain HDF5 bindings.
+//!
+//! ## Top-level layout
+//!
+//! ```text
+//! <file>
+//! ├── INFOS_GENERALES/          group  — MED library version
+//! │     attrs: MAJ=3, MIN=0, REL=0
+//! ├── ENS_MAA/                  group  — "ensembles" (all meshes)
+//! │   └── <mesh_name>/          group  — one subgroup per mesh
+//! │         attrs: DIM, ESP, REP, UNT, UNI, SRT, NOM, DES, TYP
+//! │         └── -<step>-<step>/ group  — time step (LT*8 = 40 chars)
+//! │               attrs: CGT=1, NDT=-1, NOR=-1, PDT=-1.0
+//! │               ├── CHA/     group  — mesh-level state (currently empty)
+//! │               ├── NOE/     group  — nodes
+//! │               └── MAI/     group  — element blocks
+//! ├── FAS/                        group  — families / groups
+//! │   └── <mesh_name>/
+//! │       └── ELEME/
+//! │           ├── FAMILLE_ZERO/  group (attr NUM=0)
+//! │           └── FAM_<n>_/      group (attr NUM=<n>)
+//! │                 ├── GRO/     group (attr NBR=<count>)
+//! │                 │   └── NOM  dataset — array of 80×int8 slots
+//! ├── CHA/                        group  — all fields (may be absent)
+//! └── DDA/                        group  — all nodal fields (may be absent)
+//! ```
+//!
+//! ## Coordinate system / mesh group attributes
+//!
+//! On the mesh group (`ENS_MAA/<mesh_name>`):
+//!
+//! | name | type | meaning |
+//! |------|------|---------|
+//! | `DIM` | 1×int64 | spatial dimension (the number of coordinates) |
+//! | `ESP` | 1×int64 | same value as `DIM` |
+//! | `REP` | 1×int64 | coordinate reference (0 = cartesian/full) |
+//! | `UNT` | fixed bytes | units of coordinates (blank = none) |
+//! | `UNI` | fixed bytes | user-defined coordinate names (blank = none) |
+//! | `SRT` | 1×int64 | sorting flag (1) |
+//! | `NOM` | fixed bytes | coordinate names, one 16-char slot each, space
+//! |       |            | padded (`"X" "Y" "Z"` for a 3-D mesh) |
+//! | `DES` | fixed bytes | free-form description |
+//! | `TYP` | 1×int64 | mesh type (0 = unstructured) |
+//!
+//! `NOM` is written as a single fixed-ASCII byte string of `16 * DIM` bytes
+//! (one 16-char slot per coordinate).
+//!
+//! ## Nodes (`NOE`)
+//!
+//! ```text
+//! NOE/
+//!   attrs: CGT=1, CGS=1, PFL="MED_NO_PROFILE_INTERNAL"
+//!   COO/       dataset   f64, shape [n_coords×n_nodes] in Fortran order
+//!              attrs: CGT=1, NBR=n_nodes
+//! ```
+//!
+//! `COO` is stored **column-major**: consecutive values are the 1st
+//! coordinate of every node, then the 2nd coordinate of every node, etc.
+//! This is the opposite of mefikit's in-memory row-major `[node, coord]`
+//! array, so the write path transposes it.
+//!
+//! ## Element blocks (`MAI`)
+//!
+//! ```text
+//! MAI/
+//!   attrs: CGT=1
+//!   └── <MED_type>/            one subgroup per element type
+//!         attrs: CGT=1, CGS=1, GEO=<geo-code>, PFL="MED_NO_PROFILE_INTERNAL"
+//!         NOD/   dataset   u64, shape [n_nodes_per_elem × n_cells], Fortran order
+//!                attrs: CGT=1, NBR=n_cells
+//!         FAM/   dataset   int64, shape [n_cells]  (only if any family id ≠ 0)
+//!                attrs: CGT=1, NBR=n_cells
+//! ```
+//!
+//! * `GEO` is the MED geometry code (see [`ElementType::med_geo_code`]). For
+//!   a regular (whole) element-block, connectivity lives in `NOD`.
+//! * Node indices inside `NOD` are **1-based** and are written in Fortran
+//!   order (`n` blocks of `n_nodes` values). mefikit's connectivity is
+//!   already laid out in the MED node order; on read, MED fields are 0-based
+//!   by subtracting one. `TET4`/`TET10` are permuted between VTK and MED
+//!   ordering (see [`ElementType::med_permutation`]).
+//! * `FAM` holds the family id of every cell. Family id 0 (the implicit
+//!   "no group" family) is **not** written: the whole `FAM` dataset is
+//!   omitted when all cells belong to family 0.
+//!
+//! ### Regular blocks
+//!
+//! A *regular* block writes a `NOD` dataset shaped `[n_nodes_per_elem ×
+//! n_cells]` where each column is one cell whose nodes are stored in MED
+//! order : the dataset has `n_cells` rows.
+//!
+//! ### Polygonal blocks (`PGON`, `POE` for polyhedra)
+//!
+//! ```text
+//! PGON/            (or POE for polyhedra)
+//!   attrs: CGT=1, CGS=1, GEO=400 (PGON) / 500 (POE), PFL="..."
+//!   NOD/   dataset   u64 — flat, 1-based node id per face-corner
+//!          attrs: CGT=1, NBR=<len>
+//!   INN/   dataset   u64 — 1-based cumulative end offset per face (size n_faces+1)
+//!          attrs: CGT=1, NBR=<len>
+//!   IFN/   dataset   u64 — 1-based cumulative end offset per poly (size n_poly+1)
+//!          attrs: CGT=1, NBR=<len>        (polyhedra only)
+//!   FAM/   dataset   int64 — per-poly family id (as above)
+//! ```
+//!
+//! Polygons use `INN` to say where each face's corners end; polyhedra add
+//! `IFN` to say where each polyhedron's faces end. `NOD` lists every face
+//! corner in order (1-based).
+//!
+//! ## Groups / families (`FAS`)
+//!
+//! ```text
+//! FAS/
+//! └── <mesh_name>/
+//!     └── ELEME/
+//!         ├── FAMILLE_ZERO/      attr NUM=0 (always present)
+//!         └── FAM_<n>_/          attr NUM=<n>
+//!                 └── GRO/
+//!                     NBR/       attr: count of groups in this family
+//!                     NOM/       dataset : array of fixed-size names
+//! ```
+//!
+//! * Family id 0 is represented by the mandatory `FAMILLE_ZERO` group; it
+//!   groups the cells that belong to no named group.
+//! * Each named family `n≥1` gets a `FAM_<n>_` group whose `NUM` attribute
+//!   is its numeric family id.
+//! * The actual group *names* are stored under `GRO/`:
+//!   * `NBR` : an integer attribute giving the number of group names.
+//!   * `NOM` : a **dataset** whose element type is an HDF5 array of 80
+//!     `int8`-valued elements (`H5T_ARRAY`, i.e. `(80,)` int8). Each element
+//!     is one group name, left-aligned and padded with spaces to exactly 80
+//!     bytes. It must be written as a *fixed-array* of 80 signed bytes — a
+//!     plain 1-D byte-string or variable-length string is **not** accepted by
+//!     the reference MED readers.
+//!
+//! ## Fields (`CHA` and `DDA`)
+//!
+//! Field data lives in `CHA` (cell / element fields) and `DDA` (nodal
+//! fields); either group may be absent. Each field is a subgroup named after
+//! the field:
+//!
+//! ```text
+//! CHA/<field_name>/
+//!   attrs: TYP=6 (MED_FLOAT64), NCO=<n_components>, MAI="mesh",
+//!          UNI="", UNT="", NOM=<16-char × n_components fixed bytes>
+//!   └── 0000000000000000000100000000000000000001/     group — iteration, time
+//!         attrs: NDT=1, NOR=1, PDT=0.0, RDT=-1, ROR=-1
+//!         └── MAI.<MED_type>/                        group — per element type
+//!               attrs: GAU="", PFL="MED_NO_PROFILE_INTERNAL"
+//!               └── MED_NO_PROFILE_INTERNAL/
+//!                     attrs: NBR=<n_cells>, NGA=1, GAU=""
+//!                     CO /  dataset  f64, shape [n_cells × n_components],
+//!                           Fortran order
+//!                           attrs: CGT=1
+//! ```
+//!
+//! * `NDT`/`NOR` are the iteration indices, `PDT` the computation time,
+//!   `RDT`/`ROR` the reference time. A single static step with `NDT=NOR=1`
+//!   is written (MED couples `NDT`/`NOR` > 0 with `PDT` a real time, the
+//!   exact pair is a convention; the reference reader accepts them).
+//! * `NOM` stores one 16-char name per field component: the field name for a
+//!   scalar field, or `V1`, `V2`, … for multi-component fields. It is a
+//!   fixed-ascii attribute of exactly `16 * NCO` bytes.
+//! * The `CO` dataset stores `n_cells × n_components` in **Fortran order**
+//!   (component-major: all cells of component 1, then all cells of component
+//!   2, …). mefikit transposes its row-major in-memory layout on write.
+//!
+//! ## Byte-format conventions
+//!
+//! * All names in the file are fixed-width ASCII, padded with spaces, never
+//!   NUL-terminated strings: group names are 80 bytes; coordinate names are
+//!   16 bytes; field component names are 16 bytes.
+//! * MED uses 1-based indexing on disk for `NOD`/`INN`/`IFN`; mefikit stores
+//!   0-based indices in memory.
+//! * `<step>` groups and dataset names that look like numbers are just group /
+//!   dataset names — they carry no numeric meaning to HDF5 itself.
+
 use super::error::MefikitIOError;
 use crate::mesh::ConnectivityView;
 use crate::mesh::ElementBlock;
