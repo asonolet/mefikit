@@ -9,6 +9,7 @@ use crate::mesh::UMesh;
 use crate::mesh::UMeshView;
 
 use hdf5_metno::types::FixedAscii;
+use hdf5_metno::types::TypeDescriptor;
 use hdf5_metno::types::VarLenAscii;
 use hdf5_metno::{File, Group};
 use ndarray::prelude::*;
@@ -345,6 +346,10 @@ fn write_families(file: &File, mesh: &UMeshView) -> hdf5_metno::Result<()> {
 /// MED fixed-width for component names (16 chars each).
 const MED_NOM_LEN: usize = 16;
 
+/// Upper bound on `16 * n_components` for the in-memory `FixedAscii` buffer.
+/// MED caps the number of field components at `MED_NUM_CDT = 32`.
+const MED_NOM_MAX: usize = MED_NOM_LEN * 32;
+
 /// Write element-centered fields into the CHA group.
 ///
 /// Layout per field:
@@ -469,23 +474,28 @@ fn build_field_nom(field_name: &str, n_components: usize) -> Vec<u8> {
     }
 }
 
-/// Write the field component-name attribute. MED stores it on the field group
-/// (as `attrs["NOM"]`, a fixed-size char array of `16 * n_components`) — not as
-/// a dataset. The hdf5-metno API requires a concrete `FixedAscii<N>` size at
-/// compile time, but `n_components` is runtime, so we write a variable-length
-/// ASCII string attribute instead, which MED readers accept.
+/// Write the field component-name attribute. The MED spec stores it on the
+/// field group as a *fixed-length* ASCII string attribute of exactly
+/// `16 * n_components` bytes (one 16-char slot per component), not as a
+/// dataset. hdf5-metno has no safe way to write a fixed string of a *runtime*
+/// length with `with_data`, so we create the attribute with the runtime
+/// type descriptor and write a `FixedAscii<MED_NOM_MAX>` memory value; HDF5
+/// converts it down to the declared size.
 fn write_field_nom_attr(
     grp: &Group,
     name: &str,
     nom_bytes: &[u8],
-    _total_len: usize,
+    total_len: usize,
 ) -> Result<(), MefikitIOError> {
-    let value = VarLenAscii::from_ascii(nom_bytes)
+    let attr = grp
+        .new_attr_builder()
+        .empty_as(&TypeDescriptor::FixedAscii(total_len))
+        .create(name)?;
+
+    let value = FixedAscii::<MED_NOM_MAX>::from_ascii(nom_bytes)
         .map_err(|e| hdf5_metno::Error::Internal(e.to_string()))?;
 
-    grp.new_attr::<VarLenAscii>()
-        .create(name)?
-        .write_scalar(&value)?;
+    attr.write_scalar(&value)?;
 
     Ok(())
 }
@@ -1442,6 +1452,24 @@ mod tests {
             field.dataset("NOM").is_err(),
             "field NOM must not be a dataset"
         );
+
+        // The NOM attribute must be a *fixed-length* ASCII string of exactly
+        // MED_NOM_LEN bytes per component (MED standard), not variable-length.
+        let nom_dt = field
+            .attr("NOM")
+            .unwrap()
+            .dtype()
+            .unwrap()
+            .to_descriptor()
+            .unwrap();
+        assert_eq!(
+            nom_dt,
+            TypeDescriptor::FixedAscii(MED_NOM_LEN),
+            "scalar field NOM must be a fixed-length {} char string",
+            MED_NOM_LEN
+        );
+        let nom: FixedAscii<16> = field.attr("NOM").unwrap().read_scalar().unwrap();
+        assert_eq!(nom.as_bytes(), b"pressure        ");
 
         // Round-trip sanity, then cleanup.
         let mesh2 = read(&path).unwrap();
