@@ -1,5 +1,16 @@
 # CHANGELOG
 
+## [0.4.1](https://github.com/asonolet/mefikit/compare/v0.4.0...v0.4.1) - 2026-09-22
+
+### Fix
+
+- family zero is reserved, medfile family name fix
+- save fields with FixedLen NOM in .med
+
+### Other
+
+- add module comment to describe med file
+
 ## [0.4.0](https://github.com/asonolet/mefikit/compare/v0.3.2...v0.4.0) - 2026-09-18
 
 ### Breaking
