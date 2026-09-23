@@ -6,10 +6,11 @@ SPYEXDIR = .
 # `make slides-pdf`  -> beamer PDF deck. Requires a TeX engine with the `pgf`/
 #                       tikz packages installed (e.g. `sudo apt install texlive-pictures`)
 #                       and lualatex for the ×/·/→ characters.
-SLIDES_SRC  = $(SPYEXDIR)/mefikit_vs_medcoupling_short.md
+SLIDES ?= mefikit_vs_medcoupling_short
+SLIDES_SRC  = $(SPYEXDIR)/$(SLIDES).md
 SLIDES_CSS  = $(SPYEXDIR)/slides.css
-SLIDES_HTML = mefikit_vs_medcoupling_slides.html
-SLIDES_PDF  = mefikit_vs_medcoupling_slides.pdf
+SLIDES_HTML = $(SLIDES).html
+SLIDES_PDF  = $(SLIDES).pdf
 PANDOC      ?= pandoc
 REVEALJS_URL = https://unpkg.com/reveal.js@4.6.1
 
