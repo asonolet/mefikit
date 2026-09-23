@@ -9,7 +9,13 @@ aspectratio: 169
 
 ![](../src/logo/mefikit_logo_v2.png){width=94%}
 
+::::::: {.columns align=center}
+::: {.column width="30%"}
+:::
+::: {.column align=center}
 **Kesako ?**
+:::
+:::::::
 
 ## Des idées neuves, inspirées de l'existant
 
@@ -46,12 +52,12 @@ aspectratio: 169
 
 ## Une API plus pythonique
 
-```python
-# builtins: mf.X, mf.Y, mf.Z, mf.M, ...
-mesh.fields["T"] = 1.0 + mf.X**2 + 0.5 * mf.Y
+### Interface
 
-# custom field expressions
-T = mf.Field("T")
+```python
+mesh.fields["T"] = 1.0 + mf.X**2 + 0.5 * mf.Y  # primitives
+
+T = mf.Field("T")  # custom expressions
 K = T + 273.15
 
 mesh.groups["liquid"] = (T > 0.0) & (T < 100.0)
@@ -74,7 +80,7 @@ mean = mesh.select("liquid").mean(K)
 
 ## Remapping conservatif P0/P0
 
-Le transfert suit un modèle simple :
+### Interface cohérente avec les expressions
 
 ```python
 tr = mf.transfer.ConservativeP0(source, target)
@@ -82,14 +88,12 @@ T = mf.Field("T")
 target.fields["K"] = tr(T + 273.15)
 ```
 
-- Préparation géométrique réutilisable.
-- Application à plusieurs champs.
-- 2D, 3D et maillages polyédriques.
-- Conservation vérifiée.
-- Résultats cohérents avec MEDCoupling sur les cas communs.
+### Comme MEDCoupling
 
-Le remapper polyédrique est aujourd'hui l'un des cas où les performances sont
-particulièrement intéressantes.
+- Préparation géométrique réutilisable
+- 2D, 3D, types d'éléments mixtes
+- Conservation vérifiée
+- Résultats cohérents avec MEDCoupling
 
 ---
 
@@ -103,6 +107,8 @@ particulièrement intéressantes.
 
 - Utilisateur : Interface unifiée plus simple (pas de manipulation d'index en python par défaut)
 - Développeur : itérateurs, abstractions pratiques et peu nombreuses.
+
+. . .
 
 ### Critères objectifs
 
