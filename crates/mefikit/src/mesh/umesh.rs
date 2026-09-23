@@ -12,7 +12,7 @@ use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use std::collections::BTreeMap;
 
-use super::connectivity::ConnectivityBase;
+use super::connectivity::{Connectivity, ConnectivityBase};
 use super::element_block::{
     ElementBlock, ElementBlockBase, ElementBlockView, IntoElementBlockEntry,
 };
@@ -73,9 +73,12 @@ where
                 ConnectivityBase::Regular(arr) => {
                     view.add_regular_block(et, arr.view(), Some(block.families()))
                 }
-                ConnectivityBase::Poly(conn) => {
-                    view.add_poly_block(et, conn.data.view(), conn.offsets.view())
-                }
+                ConnectivityBase::Poly(conn) => view.add_poly_block(
+                    et,
+                    conn.data.view(),
+                    conn.offsets.view(),
+                    Some(block.families()),
+                ),
             };
             view.element_blocks.get_mut(&et).unwrap().fields = block
                 .fields
@@ -478,15 +481,35 @@ impl<'a> UMeshView<'a> {
 
     /// Converts this view into an owned mesh.
     pub fn to_shared(&self) -> UMesh {
-        let mut umesh = UMesh::new(self.coords.to_shared());
+        self.to_owned_with_coords(self.coords.to_shared())
+    }
+
+    /// Returns an owned mesh with the same element blocks (copied into owned arrays) but using
+    /// the given coordinates.
+    ///
+    /// The connectivity, fields, families and groups are copied over unchanged, which is
+    /// exactly what coordinates-only operations (transforms) need on borrowed data.
+    pub(crate) fn to_owned_with_coords(&self, coords: nd::ArcArray2<f64>) -> UMesh {
+        let mut umesh = UMesh::new(coords);
         for (&et, eb) in &self.element_blocks {
-            match &eb.connectivity {
-                // TODO: pass fields and families
-                ConnectivityBase::Regular(r) => umesh.add_regular_block(et, r.to_shared(), None),
+            let fields: BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>> = eb
+                .fields
+                .iter()
+                .map(|(n, f)| (n.clone(), f.to_owned().into_shared()))
+                .collect();
+            let conn = match &eb.connectivity {
+                ConnectivityBase::Regular(r) => Connectivity::Regular(r.to_shared()),
                 ConnectivityBase::Poly(conn) => {
-                    umesh.add_poly_block(et, conn.data.to_shared(), conn.offsets.to_shared(), None)
+                    Connectivity::new_poly(conn.data.to_shared(), conn.offsets.to_shared())
                 }
-            }
+            };
+            umesh.insert_block(ElementBlock::new_with_metadata(
+                et,
+                conn,
+                eb.families().to_owned().into_shared(),
+                fields,
+                eb.arc_groups().clone(),
+            ));
         }
         umesh
     }
@@ -509,8 +532,9 @@ impl<'a> UMeshView<'a> {
         et: ElementType,
         conn: nd::ArrayView1<'a, usize>,
         offsets: nd::ArrayView1<'a, usize>,
+        families: Option<nd::ArrayView1<'a, usize>>,
     ) {
-        let block = ElementBlockView::new_poly(et, conn, offsets);
+        let block = ElementBlockView::new_poly(et, conn, offsets, families);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -528,6 +552,18 @@ impl UMesh {
     /// Returns a view of the coordinates array.
     pub fn coords_mut(&mut self) -> nd::ArrayViewMut2<'_, f64> {
         self.coords.view_mut()
+    }
+
+    /// Returns an owned mesh sharing this mesh's element blocks (`Arc`-cheap) but using the
+    /// given coordinates.
+    ///
+    /// The connectivity, fields, families and groups are carried over unchanged, which is
+    /// exactly what coordinates-only operations (transforms) need.
+    pub(crate) fn with_coords(&self, coords: nd::ArcArray2<f64>) -> UMesh {
+        UMesh {
+            coords,
+            element_blocks: self.element_blocks.clone(),
+        }
     }
 
     /// Add a full regular block to the mesh (inplace)

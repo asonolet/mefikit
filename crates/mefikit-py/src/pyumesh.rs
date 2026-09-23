@@ -8,7 +8,7 @@ use mefikit::{
     mesh::{ElementType, FieldArcD},
     prelude as mf,
     tools::{
-        Descendable, Measurable, NodeDuplicates, Overlayable, Reorientable,
+        Descendable, Measurable, NodeDuplicates, Overlayable, Reorientable, Transformable,
         fieldexpr::{MeshEvalUpdatable, MeshEvaluable},
     },
 };
@@ -336,6 +336,107 @@ impl PyUMesh {
 
     fn num_elements(&self) -> usize {
         self.inner.num_elements()
+    }
+
+    // ==================== Geometry transforms ====================
+
+    /// Returns a translated copy of this mesh.
+    fn translate(&self, v: Vec<f64>) -> PyResult<Self> {
+        Transformable::translate(&self.inner, &v)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a non-uniformly scaled copy of this mesh.
+    fn scale(&self, factors: Vec<f64>) -> PyResult<Self> {
+        Transformable::scale(&self.inner, &factors)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a uniformly scaled copy of this mesh.
+    fn scale_uniform(&self, factor: f64) -> PyResult<Self> {
+        Transformable::scale_uniform(&self.inner, factor)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a copy of this mesh rotated by `angle` radians around an axis
+    /// through the origin.
+    fn rotate(&self, axis: Vec<f64>, angle: f64) -> PyResult<Self> {
+        Transformable::rotate(&self.inner, &axis, angle)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a copy of this mesh rotated by `angle` radians around an axis
+    /// through `center`.
+    fn rotate_about(&self, center: Vec<f64>, axis: Vec<f64>, angle: f64) -> PyResult<Self> {
+        Transformable::rotate_about(&self.inner, &center, &axis, angle)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a copy of this mesh mirrored through a plane through the origin
+    /// with the given normal.
+    fn mirror(&self, normal: Vec<f64>) -> PyResult<Self> {
+        Transformable::mirror(&self.inner, &normal)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a copy of this mesh mirrored through a plane through `point` with
+    /// the given normal.
+    fn mirror_about(&self, point: Vec<f64>, normal: Vec<f64>) -> PyResult<Self> {
+        Transformable::mirror_about(&self.inner, &point, &normal)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a copy of this mesh transformed by a `Transform` (or an explicit
+    /// 4x4 homogeneous matrix).
+    fn transform(&self, tr: &Bound<'_, pyo3::types::PyAny>) -> PyResult<Self> {
+        let tr = crate::pytransform::extract_transform(tr)?;
+        Transformable::transform(&self.inner, &tr)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a mesh made of `n` copies of this mesh, each transformed by the
+    /// powers `step`, `step@step`, ... of `step`.
+    fn duplicate(&self, step: &crate::pytransform::PyTransform, n: usize) -> PyResult<Self> {
+        Transformable::duplicate(&self.inner, &step.inner, n)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Replaces the coordinates of this mesh in place (keeping topology, fields,
+    /// families and groups). The new array must have the same shape.
+    fn set_coords(&mut self, coords: PyReadonlyArray2<'_, f64>) -> PyResult<()> {
+        self.inner
+            .set_coordinates(coords.as_array())
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
+    /// Replaces the coordinates of this mesh in place with `function(coords)`,
+    /// where `function` receives and must return a 2D array with the same shape.
+    fn transform_coords<'py>(
+        &mut self,
+        py: Python<'py>,
+        f: &Bound<'py, pyo3::types::PyAny>,
+    ) -> PyResult<()> {
+        let coords = np::PyArray2::from_array(py, &self.inner.coords());
+        let result = f.call1((coords,))?;
+        let arr = result.extract::<PyReadonlyArray2<'_, f64>>().map_err(|_| {
+            pyo3::exceptions::PyTypeError::new_err(
+                "transform_coords function must return a 2D `f64` numpy array.",
+            )
+        })?;
+        let new_coords = arr.as_array().to_owned();
+        let out = mf::transform_coords(&self.inner.view(), move |_| new_coords.clone())
+            .map_err(pyo3::exceptions::PyValueError::new_err)?;
+        self.inner = out;
+        Ok(())
     }
 
     // ==================== Group Operations ====================

@@ -46,6 +46,8 @@ pub mod spatial_index;
 pub mod split_cells;
 /// Reusable field transfer operators between meshes.
 pub mod transfer;
+/// Coordinate transforms, duplication and concatenation.
+pub mod transforms;
 
 pub use centroids::*;
 pub use connected_components::*;
@@ -62,3 +64,4 @@ pub use selector::*;
 pub use snap::*;
 pub use split_cells::*;
 pub use transfer::*;
+pub use transforms::*;

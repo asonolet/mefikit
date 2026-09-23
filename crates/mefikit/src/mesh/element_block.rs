@@ -704,18 +704,23 @@ impl<'a> ElementBlockView<'a> {
     /// # Arguments
     /// * `cell_type` - The type of the elements in this block.
     /// * `connectivity` - The connectivity of the elements in this block.
-    /// * `fields` - A map of field names to their values for each element.
-    /// * `families` - An array of family indices for each element.
-    /// * `groups` - A map of group names to sets of element indices.
+    /// * `offsets` - The offsets of the elements in this block.
+    /// * `families` - An array of family indices for each element (one per element).
     /// # Returns
     /// A new `ElementBlock` instance.
     pub fn new_poly(
         cell_type: ElementType,
         connectivity: nd::ArrayView1<'a, usize>,
         offsets: nd::ArrayView1<'a, usize>,
+        families: Option<nd::ArrayView1<'a, usize>>,
     ) -> Self {
-        let conn_len = connectivity.len();
-        let reg_vec = Box::new(nd::Array1::from(vec![0; conn_len]));
+        let reg_vec = match families {
+            Some(fams) => fams,
+            None => {
+                let zeros = Box::new(nd::Array1::from(vec![0; offsets.len()]));
+                Box::leak(zeros).view()
+            }
+        };
         Self {
             cell_type,
             connectivity: ConnectivityView::Poly(IndirectIndex {
@@ -723,7 +728,7 @@ impl<'a> ElementBlockView<'a> {
                 offsets,
             }),
             fields: BTreeMap::new(),
-            families: Box::leak(reg_vec).view(),
+            families: reg_vec,
             groups: ArcGroups::new(),
         }
     }
