@@ -4,9 +4,11 @@ Produces three PNGs in `docs/images/`:
 
 - `field_visualization.png`  — a 2D QUAD4 mesh with a computed scalar field and
   the associated "liquid" selection group.
-- `polyhedral_mesh.png`      — the 2000-cell polyhedral mesh `mesh_36.med`.
-- `polyhedral_remap.png`     — a conservative P0/P0 remap: source mesh_36 ->
-  target mesh_27.
+- `polyhedral_mesh.png`      — the 2000-cell polyhedral mesh `mesh_36.med`
+  (quarter cut-away revealing the polyhedra inside, colored by cell center X).
+- `polyhedral_remap.png`     — a conservative P0/P0 remap: a Gaussian "blob"
+  field defined on mesh_36 (source) is transferred onto mesh_27 (target)
+  (`K = tr(T + 273.15)`).
 
 Inspired by `docs/python_examples/*.ipynb`, but with a light theme suited to the
 presentation (the notebooks use the dark mdbook theme).
@@ -68,13 +70,9 @@ def field_visualization() -> None:
 
     T = mf.Field("T")
     liquid = mesh.select((T > 1.25) & (T < 1.95))
-    liquid_ids = np.concatenate(list(liquid.ids().values()))
 
     all_pv = mesh.to_pyvista()
     all_pv["T"] = mesh.fields["T"].numpy()
-    region = np.zeros(mesh.num_elements())
-    region[liquid_ids] = 1.0
-    all_pv["In"] = region
 
     def left(pt: pv.Plotter) -> None:
         pt.add_mesh(
@@ -84,21 +82,23 @@ def field_visualization() -> None:
             show_edges=True,
             line_width=0.5,
             lighting=False,
+            show_scalar_bar=False,
         )
         pt.add_scalar_bar(title="T", fmt="%.2f")
         pt.camera_position = "xy"
 
     def right(pt: pv.Plotter) -> None:
+        liquid_mesh = liquid.to_mesh()
         pt.add_mesh(
-            all_pv,
-            scalars="In",
-            cmap=["#cfcfcf", "#e74c3c"],
-            clim=[0, 1],
+            liquid_mesh.to_pyvista(),
+            scalars="T",
+            cmap="viridis",
             show_edges=True,
             line_width=0.5,
             lighting=False,
             show_scalar_bar=False,
         )
+        pt.add_scalar_bar(title="T", fmt="%.2f")
         pt.camera_position = "xy"
 
     save(hstack(render_scene(left), render_scene(right)), "field_visualization.png")
@@ -106,19 +106,26 @@ def field_visualization() -> None:
 
 def polyhedral_mesh() -> None:
     mesh = mf.UMesh.read(str(DATA / "mesh_36.med"))
-    boundary = mesh.boundaries().to_pyvista()
+    centers = mesh.to_pyvista().cell_centers().points
+    mesh.set_field("X", {"PHED": np.ascontiguousarray(centers[:, 0])})
+    poly = mesh.to_pyvista()
 
     def setup(pt: pv.Plotter) -> None:
         pt.add_mesh(
-            boundary,
-            color="#9bb8d3",
+            poly,
+            scalars="X",
+            cmap="viridis",
+            clim=[0, 1],
             show_edges=True,
-            edge_color="#2c3e50",
-            line_width=0.6,
+            edge_color="gray",
+            line_width=0.3,
+            lighting=False,
+            show_scalar_bar=False,
         )
+        pt.add_scalar_bar(title="cell center X", fmt="%.2f")
         pt.camera_position = "iso"
         pt.reset_camera()
-        pt.camera.zoom(0.95)
+        pt.camera.zoom(0.9)
 
     save(render_scene(setup, SIZE_SINGLE), "polyhedral_mesh.png")
 
@@ -127,18 +134,44 @@ def polyhedral_remap() -> None:
     src = mf.UMesh.read(str(DATA / "mesh_36.med"))
     tgt = mf.UMesh.read(str(DATA / "mesh_27.med"))
 
-    src_faces = src.boundaries().to_pyvista()
-    tgt_faces = tgt.boundaries().to_pyvista()
+    centers = src.to_pyvista().cell_centers().points
+    sigma = 0.20
+    hotspot = (
+        np.exp(
+            -(
+                (centers[:, 0] - 0.5) ** 2
+                + (centers[:, 1] - 0.5) ** 2
+                + (centers[:, 2] - 0.95) ** 2
+            )
+            / (2.0 * sigma**2)
+        )
+        * 0.6
+        + 0.4 * centers[:, 0]
+        + 0.2 * centers[:, 1]
+    )
+    src.set_field("T", {"PHED": np.ascontiguousarray(hotspot)})
+
+    tr = mf.ConservativeP0(src, tgt)
+    tgt.fields["K"] = tr(mf.Field("T") + 273.15)
+
+    src_poly = src.to_pyvista()
+    tgt_poly = tgt.to_pyvista()
+    k = tgt.fields["K"].numpy()
 
     def source(pt: pv.Plotter) -> None:
         pt.add_text("Source : mesh_36.med", font_size=22, position=(20, 840))
         pt.add_mesh(
-            src_faces,
-            color="#9bb8d3",
+            src_poly,
+            scalars="T",
+            cmap="viridis",
+            clim=[hotspot.min(), hotspot.max()],
             show_edges=True,
-            edge_color="#2c3e50",
-            line_width=0.6,
+            edge_color="gray",
+            line_width=0.3,
+            lighting=False,
+            show_scalar_bar=False,
         )
+        pt.add_scalar_bar(title="T", fmt="%.2f")
         pt.camera_position = "iso"
         pt.reset_camera()
         pt.camera.zoom(0.9)
@@ -146,12 +179,17 @@ def polyhedral_remap() -> None:
     def target(pt: pv.Plotter) -> None:
         pt.add_text("Target : mesh_27.med", font_size=22, position=(20, 840))
         pt.add_mesh(
-            tgt_faces,
-            color="#d3a99b",
+            tgt_poly,
+            scalars="K",
+            cmap="viridis",
+            clim=[np.min(k), np.max(k)],
             show_edges=True,
-            edge_color="#7f4a3a",
-            line_width=0.6,
+            edge_color="gray",
+            line_width=0.3,
+            lighting=False,
+            show_scalar_bar=False,
         )
+        pt.add_scalar_bar(title="K = T + 273.15 (remapped)", fmt="%.2f")
         pt.camera_position = "iso"
         pt.reset_camera()
         pt.camera.zoom(0.9)
