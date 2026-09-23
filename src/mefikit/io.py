@@ -49,6 +49,7 @@ mf_types_dim = {
     "TET10": 3,
     "HEX8": 3,
     "HEX20": 3,
+    "PHED": 3,
 }
 
 
@@ -175,6 +176,7 @@ def install_conversions():
             "TET10": pv.CellType.QUADRATIC_TETRA,
             "HEX8": pv.CellType.HEXAHEDRON,
             "HEX20": pv.CellType.QUADRATIC_HEXAHEDRON,
+            "PHED": pv.CellType.POLYHEDRON,
         }
 
         if dim is None:
@@ -187,28 +189,107 @@ def install_conversions():
             new_connectivity = np.insert(
                 conn.flatten(), np.arange(n_elem) * num_nodes, num_nodes
             )
-            elems_type = np.array([mf_types_to_pv[et]] * n_elem)
+            elems_type = np.full(n_elem, mf_types_to_pv[et], dtype=np.intp)
             return new_connectivity, elems_type
 
         def _mf_poly_to_pv_connectivity(et: str, conn: np.ndarray, offsets: np.ndarray):
             n_elem = offsets.shape[0]
-            offsets = offsets.astype(int)
-
-            num_nodes = np.r_[offsets[0], offsets[1:] - offsets[:-1]]
-            pos = np.r_[0, offsets[:-1]]
-
-            new_connectivity = np.insert(conn.flatten(), pos, num_nodes)
-            elems_type = np.array([mf_types_to_pv[et]] * n_elem)
+            offsets = offsets.astype(np.intp)
+            starts = np.concatenate(([0], offsets[:-1]))
+            num_nodes = offsets - starts
+            new_connectivity = np.insert(
+                conn.reshape(-1).astype(np.intp), starts, num_nodes
+            )
+            elems_type = np.full(n_elem, mf_types_to_pv[et], dtype=np.intp)
             return new_connectivity, elems_type
+
+        def _mf_phed_to_pv_connectivity(
+            conn: np.ndarray, offsets: np.ndarray
+        ) -> tuple[np.ndarray, np.ndarray]:
+            # Polyhedral connectivity is a flat node id array split into cells
+            # by `offsets` (cumulative ends, no leading zero). Within each cell
+            # the faces are separated by the `usize::MAX` sentinel. Each cell is
+            # emitted as [n_entries, n_faces, nv_0, ids..., nv_1, ids..., ...]
+            # which is the pyvista/VTK polyhedron layout.
+            n_cells = offsets.shape[0]
+            if n_cells == 0:
+                return np.array([], dtype=int), np.array([], dtype=int)
+
+            data = np.asarray(conn, dtype=np.uintp)
+            offsets = offsets.astype(np.intp)
+            max_id = np.iinfo(np.uintp).max
+            sent = data == max_id
+            node_rank = np.cumsum(~sent, dtype=np.intp) - 1
+            nodes = data[~sent].astype(np.int64)
+
+            # `offsets` are cumulative cell ends, so `cell_starts` slice each
+            # cell inside `data`. A face starts right after a sentinel or at a
+            # cell start (cells may carry a trailing sentinel).
+            n_nodes_per_cell = np.diff(np.r_[-1, node_rank[offsets - 1]])
+            cell_starts = np.concatenate(([0], offsets[:-1]))
+
+            is_face_start = np.zeros(sent.size, dtype=bool)
+            is_face_start[1:] = sent[:-1]
+            is_face_start[cell_starts] = True
+            face_pos = np.flatnonzero(is_face_start)
+            n_faces_per_cell = np.bincount(
+                np.searchsorted(offsets, face_pos, side="right"), minlength=n_cells
+            )
+            cell_spec_len = 1 + n_faces_per_cell + n_nodes_per_cell
+
+            # Face node counts are the distances between consecutive face starts
+            # in the (ordered) node stream.
+            face_start_node = node_rank[face_pos]
+            face_n_nodes = np.diff(np.r_[face_start_node, nodes.size])
+
+            cell_first_node = node_rank[cell_starts]
+
+            # Three token kinds land at node positions: the cell entry length and
+            # face count at each cell start, then each face's node count at the
+            # face start. Tokens sharing a position keep plan order
+            # (entry length < face count < face node count).
+            insert_pos = np.concatenate(
+                [cell_first_node, cell_first_node, face_start_node]
+            )
+            insert_val = np.concatenate([cell_spec_len, n_faces_per_cell, face_n_nodes])
+            insert_prio = np.concatenate(
+                [
+                    np.zeros_like(cell_first_node),
+                    np.ones_like(cell_first_node),
+                    np.full_like(face_start_node, 2),
+                ]
+            )
+
+            order = np.lexsort((insert_prio, insert_pos))
+            insert_pos = insert_pos[order]
+            insert_val = insert_val[order]
+
+            n_insert = insert_pos.size
+            insert_count = np.bincount(insert_pos, minlength=nodes.size)
+            insert_cum = np.cumsum(insert_count)
+            cells = np.empty(nodes.size + n_insert, dtype=np.intp)
+            cells[np.arange(nodes.size) + insert_cum] = nodes
+            insert_base = insert_pos + insert_cum[insert_pos] - insert_count[insert_pos]
+            group_first = np.concatenate([[0], np.flatnonzero(np.diff(insert_pos)) + 1])
+            in_group = np.arange(n_insert) - np.repeat(
+                group_first, np.diff(np.r_[group_first, n_insert])
+            )
+            cells[insert_base + in_group] = insert_val
+
+            elems_type = np.full(n_cells, mf_types_to_pv["PHED"], dtype=np.intp)
+            return cells, elems_type
 
         conns = []
         et_typess = []
         fields_dict = {f: [] for f in fields}
-        for et in type_order:
+        for et in [*type_order, "PHED"]:
             if et not in blocks or (dim != "all" and mf_types_dim[et] != dim):
                 continue
 
-            if et == "PGON":
+            if et == "PHED":
+                conn, offsets = blocks[et]
+                conn, et_types = _mf_phed_to_pv_connectivity(conn, offsets)
+            elif et == "PGON":
                 conn, offsets = blocks[et]
                 conn, et_types = _mf_poly_to_pv_connectivity(et, conn, offsets)
             else:
@@ -218,8 +299,10 @@ def install_conversions():
             for f, v in fields.items():
                 fields_dict[f].append(v[et])
 
-        pv_conn = np.hstack(conns, dtype=int)
-        pv_et_types = np.hstack(et_typess, dtype=int)
+        pv_conn = conns[0] if len(conns) == 1 else np.hstack(conns, dtype=int)
+        pv_et_types = (
+            et_typess[0] if len(et_typess) == 1 else np.hstack(et_typess, dtype=int)
+        )
 
         pv_fields_dict = {f: np.hstack(fields_dict[f], dtype=float) for f in fields}
 
