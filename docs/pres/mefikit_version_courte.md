@@ -6,33 +6,38 @@ date: 17-09-2026
 aspectratio: 169
 ---
 
-# Mefikit, qu'est-ce ?
+# Mefikit ?
 
 ## Des idées neuves, inspirées de l'existant
 
 ### Existant
-* IO MED.
-* Remapping de champs pour le couplage conservatif.
-* `Intersect2DMeshes` (overlay en `mefikit`)
+
+- Interface Python
+- Bibliothèque d'opérations pour maillages non-structurés et champs.
+- Lecture/Écriture MED.
+- Transfert conservatif de champs pour le couplage.
+- `Intersect2DMeshes` (overlay en `mefikit`)
 
 ### Neuf
-* Cœur **Rust**, API Python.
-* Bibliothèque générique pour maillages et champs.
-* Conçue pour être concise, performante et extensible.
-* Interopérable avec `pyvista` pour la visu, `vtkhdf`, `CGNS`, ...
+
+- Cœur **Rust**.
+- Conçue pour être concise, performante et extensible.
+- Interopérable avec `pyvista` pour la visu, `vtkhdf`, `CGNS`, ...
 
 ## Un cœur de maillage générique
 
-* Maillages non structurés.
-* Éléments mixtes : `TRI3`, `QUAD4`, `TET4`, `HEX8`, `PGON`, `PHED`, ...
-* Connectivité, groupes.
-* Champs et opérations sur les champs.
-* Sélections géométriques.
-* Fusion, découpage, composantes connexes, overlay...
-* Formats : MED, VTKHDF, CGNS, JSON/YAML.
-* Interopérabilité : PyVista, meshio, MEDCoupling.
+- Maillages non structurés.
+- Éléments mixtes : `VERTEX`, `SEG2`, `TRI3`, `QUAD4`, `TET4`, `HEX8`, `PGON`,
+  `PHED`, ...
+- Connectivité, groupes.
+- Champs et opérations sur les champs.
+- Sélections.
+- Fusion, composantes connexes, overlay...
+- Formats : MED, VTKHDF, CGNS, JSON/YAML.
+- Interopérabilité : PyVista, meshio, MEDCoupling.
 
-L'objectif est de disposer d'un **socle générique**, et de l'étendre de manière modulaire.
+L'objectif est de disposer d'un **socle générique**, et de l'étendre de manière
+modulaire.
 
 ## Une API plus pythonique
 
@@ -72,11 +77,11 @@ T = mf.Field("T")
 target.fields["K"] = tr(T + 273.15)
 ```
 
-* Préparation géométrique réutilisable.
-* Application à plusieurs champs.
-* 2D, 3D et maillages polyédriques.
-* Conservation vérifiée.
-* Résultats cohérents avec MEDCoupling sur les cas communs.
+- Préparation géométrique réutilisable.
+- Application à plusieurs champs.
+- 2D, 3D et maillages polyédriques.
+- Conservation vérifiée.
+- Résultats cohérents avec MEDCoupling sur les cas communs.
 
 Le remapper polyédrique est aujourd'hui l'un des cas où les performances sont
 particulièrement intéressantes.
@@ -92,7 +97,7 @@ particulièrement intéressantes.
 - Simplicité, maîtrise et agilité:
   - Interface unifiée plus simple (pas de manipulation d'index en python par défaut)
   - Une plus grande facilité d'implémenter des algorithmes (descend: 150loc, buildDescendingConnectivity: ~3000loc)
-  - Une meilleure maîtrise : ce n'est pas parce que le code est dur à lire et à comprendre que l'algorithmie sous-jacente est géniale.
+  - Une meilleure maîtrise : ce n'est pas parce que le code est dur à lire que l'algorithmie sous-jacente est géniale.
 - De meilleures performances !
 
 ## Quelques opérations représentatives
@@ -128,47 +133,51 @@ Les résultats sont systématiquement vérifiés sur les cas communs.
 ## Pourquoi Rust ?
 
 ### Langage natif
-* contrôle précis de la mémoire et des allocations ;
-* parallélisation naturelle d'une partie des algorithmes ;
+
+- contrôle précis de la mémoire et des allocations
+- parallélisation naturelle d'une partie des algorithmes
 
 ### Langage moderne
-- interface Python standard ;
+
+- interface Python standard
 - binaire portable et disponible sur Windows, MacOS, Linux, Muslinux, x86, x86_64, armv7, aarch64, ppc64le à coût nul
-- implémentation d'algorithmes haut-niveau.
+- implémentation d'algorithmes haut-niveau
 
 ## Stade de maturité
 
 ### Aujourd'hui
 
-* cœur de maillage générique ;
-* champs et post-traitement ;
-* connectivité, géométrie et topologie ;
-* transferts conservatifs ;
-* formats et interopérabilité ;
-* performances intéressantes sur plusieurs opérations.
+- cœur de maillage non structuré stable
+- champs et post-traitement
+- connectivité, géométrie et topologie
+- transferts conservatifs
+- formats et interopérabilité
+- performances intéressantes sur plusieurs opérations
 
 ### Mais
 
-* couverture fonctionnelle inférieure à MEDCoupling ;
-* interface encore instable.
+- couverture fonctionnelle inférieure à MEDCoupling
+- interface encore instable
 
 ## Conclusion
 
-### Générique
+### Base solide
 
 - Maillages, Champs, Groupes
-- Opérations géométriques, Sélection
-- Expressions, Transferts
+- Opérations géométriques, topologiques
+- Expressions, Sélections, Transferts
 
 ### Moderne
+
 - Rust - Python
-- Parallélisme  (multithread en python)
+- Parallélisme  (multithread)
 - Pas un plateforme, un package
 
-### Performant
-- descending
-- transfer
-- overlay
+### Performante
+
+- descending x1.8
+- overlay    x30
+- transfer   x1-100
 
 ## Perspectives
 
