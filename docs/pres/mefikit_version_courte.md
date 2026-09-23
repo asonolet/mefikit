@@ -1,12 +1,15 @@
 ---
 title: Mefikit
-subtitle: Mesh and Fields Kit
+subtitle: "**Me**sh and **Fi**elds **Kit**, une réécriture en Rust"
 author: A. SONOLET
 date: 17-09-2026
 aspectratio: 169
 ---
 
-# Mefikit ?
+
+![](../src/logo/mefikit_logo_v2.png){width=94%}
+
+**Kesako ?**
 
 ## Des idées neuves, inspirées de l'existant
 
@@ -24,20 +27,22 @@ aspectratio: 169
 - Conçue pour être concise, performante et extensible.
 - Interopérable avec `pyvista` pour la visu, `vtkhdf`, `CGNS`, ...
 
-## Un cœur de maillage générique
+## Un outil pour les maillages non-structurés
 
-- Maillages non structurés.
+### Coeur générique cohérent
+
+- Maillages non structurés
 - Éléments mixtes : `VERTEX`, `SEG2`, `TRI3`, `QUAD4`, `TET4`, `HEX8`, `PGON`,
   `PHED`, ...
-- Connectivité, groupes.
-- Champs et opérations sur les champs.
-- Sélections.
-- Fusion, composantes connexes, overlay...
-- Formats : MED, VTKHDF, CGNS, JSON/YAML.
-- Interopérabilité : PyVista, meshio, MEDCoupling.
+- Connectivité, groupes
+- Champs
 
-L'objectif est de disposer d'un **socle générique**, et de l'étendre de manière
-modulaire.
+### Fonctionnalités modulaires
+
+- Sélections
+- Fusion, composantes connexes, overlay...
+- Formats : MED, VTKHDF, CGNS, JSON/YAML, ...
+- Interopérabilité : PyVista, meshio, MEDCoupling
 
 ## Une API plus pythonique
 
@@ -94,10 +99,17 @@ particulièrement intéressantes.
 
 ## Des gains plus subjectifs et d'autres moins
 
-- Simplicité, maîtrise et agilité:
-  - Interface unifiée plus simple (pas de manipulation d'index en python par défaut)
-  - Une plus grande facilité d'implémenter des algorithmes (descend: 150loc, buildDescendingConnectivity: ~3000loc)
-  - Une meilleure maîtrise : ce n'est pas parce que le code est dur à lire que l'algorithmie sous-jacente est géniale.
+### Plutôt subjectif: meilleure interface
+
+- Utilisateur : Interface unifiée plus simple (pas de manipulation d'index en python par défaut)
+- Développeur : itérateurs, abstractions pratiques et peu nombreuses.
+
+### Critères objectifs
+
+- Beacoup moins de lignes de code (binding + python 3k vs SWIG 25k loc, rust 21k avec tests vs C++ 250k loc)
+  - rust 21k avec tests et benchs, vs 250k loc C++ MEDCoupling
+  - bindings rust + python 3k vs 25k loc SWIG
+- Grande portabilité
 - De meilleures performances !
 
 ## Quelques opérations représentatives
@@ -105,21 +117,20 @@ particulièrement intéressantes.
 | Opération                 | Mefikit | MEDCoupling | Ratio |
 | ------------------------- | ------: | ----------: | ----: |
 | Descente · HEX8 24³       | 56,5 ms |    103,7 ms |   1,8 |
-| Fusion de nœuds · HEX8 3D |  0,5 ms |      4,0 ms |     8 |
 | Overlay · QUAD4 32²       |  2,1 ms |     68,4 ms |  32,6 |
 
 Les résultats sont systématiquement vérifiés sur les cas communs.
 
 ## Transfert P0-P0
 
-|                           |  Mefikit | MEDCoupling | Ratio |
-| ------------------------- | -------: | ----------: | ----: |
-| Prepare QUAD4 · 2D        |    27 ms |       25 ms |  0,93 |
-| Apply QUAD4 · 2D          |  0,18 ms |     3,90 ms |  21,6 |
-| Prepare HEX8 · 3D         |   163 ms |      692 ms |   4,2 |
-| Apply HEX8 · 3D           |  0,09 ms |     1,24 ms |  13,8 |
-| Prepare Polyédrique · 3D  |   357 ms |     8746 ms |  24,5 |
-| Apply Polyédrique · 3D    |  0,10 ms |     2,17 ms |  21,7 |
+|                      |  Mefikit | MEDCoupling | Ratio |
+| -------------------- | -------: | ----------: | ----: |
+| Prepare QUAD4        |    27 ms |       25 ms |  0,93 |
+| Prepare HEX8         |   163 ms |      692 ms |   4,2 |
+| Prepare PHED         |   357 ms |     8746 ms |  24,5 |
+| Apply QUAD4          |  0,18 ms |     3,90 ms |  21,6 |
+| Apply HEX8           |  0,09 ms |     1,24 ms |  13,8 |
+| Apply PHED           |  0,10 ms |     2,17 ms |  21,7 |
 
 ### Gains
 
@@ -140,7 +151,8 @@ Les résultats sont systématiquement vérifiés sur les cas communs.
 ### Langage moderne
 
 - interface Python standard
-- binaire portable et disponible sur Windows, MacOS, Linux, Muslinux, x86, x86_64, armv7, aarch64, ppc64le à coût nul
+- binaire portable et disponible sur Windows, MacOS, Linux, Muslinux, x86,
+  x86_64, armv7, aarch64, ppc64le à coût nul
 - implémentation d'algorithmes haut-niveau
 
 ## Stade de maturité
@@ -151,7 +163,7 @@ Les résultats sont systématiquement vérifiés sur les cas communs.
 - champs et post-traitement
 - connectivité, géométrie et topologie
 - transferts conservatifs
-- formats et interopérabilité
+- exports et interopérabilité python
 - performances intéressantes sur plusieurs opérations
 
 ### Mais
@@ -197,3 +209,7 @@ Les résultats sont systématiquement vérifiés sur les cas communs.
 - Bindings haut-niveau C/C++
 - Kernels GPU (`CubeCL` / `std::offload`) ?
 - Distribué (`mpi-rs`)
+
+## Merci pour votre attention
+
+![](../src/logo/mefikit_logo_v2.png){width=94%}
