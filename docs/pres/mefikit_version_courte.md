@@ -35,9 +35,9 @@ aspectratio: 169
 
 ## Un outil pour les maillages non-structurés
 
-### Coeur générique cohérent
+### Objet central: `mf.UMesh`
 
-- Maillages non structurés
+- Maillage non structurés
 - Éléments mixtes : `VERTEX`, `SEG2`, `TRI3`, `QUAD4`, `TET4`, `HEX8`, `PGON`,
   `PHED`, ...
 - Connectivité, groupes
@@ -99,7 +99,7 @@ target.fields["K"] = tr(T + 273.15)
 
 ![Remapping : maillage source → maillage cible](../images/polyhedral_remap.png){width=94%}
 
-# Pourquoi ?
+# Une réécriture, pourquoi ?
 
 ## Des gains plus subjectifs et d'autres moins
 
@@ -112,9 +112,9 @@ target.fields["K"] = tr(T + 273.15)
 
 ### Critères objectifs
 
-- Beacoup moins de lignes de code (binding + python 3k vs SWIG 25k loc, rust 21k avec tests vs C++ 250k loc)
-  - rust 21k avec tests et benchs, vs 250k loc C++ MEDCoupling
+- Beacoup moins de lignes de code
   - bindings rust + python 3k vs 25k loc SWIG
+  - rust 21k avec tests et benchs, vs 250k loc C++ MEDCoupling
 - Grande portabilité
 - De meilleures performances !
 
@@ -152,14 +152,18 @@ Les résultats sont systématiquement vérifiés sur les cas communs.
 ### Langage natif
 
 - contrôle précis de la mémoire et des allocations
-- parallélisation naturelle d'une partie des algorithmes
+- pas de comportements indéfinis
+- parallélisation naturelle et sûre d'une partie des algorithmes
+- implémentation haut-niveau
+
+. . .
 
 ### Langage moderne
 
-- interface Python standard
+- interface Python avec wheels standard, sans `SWIG`
 - binaire portable et disponible sur Windows, MacOS, Linux, Muslinux, x86,
-  x86_64, armv7, aarch64, ppc64le à coût nul
-- implémentation d'algorithmes haut-niveau
+  x86_64, armv7, aarch64, ppc64le, avec 0 ligne de `CMake`
+- outils d'audit, de benchmark, de profiling très accessibles
 
 ## Stade de maturité
 
@@ -201,7 +205,7 @@ Les résultats sont systématiquement vérifiés sur les cas communs.
 
 ### Maillage
 
-- éléments quadratiques 2d et opération overlay
+- éléments quadratiques 2d avec overlay
 - conformize3D
 - symétrie / translation / rotation
 
