@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::{Display, Formatter},
 };
 
@@ -8,7 +8,7 @@ use mefikit::{
     mesh::{ElementType, FieldArcD},
     prelude as mf,
     tools::{
-        Descendable, Measurable, NodeDuplicates, Overlayable, Reorientable,
+        Descendable, Measurable, NodeDuplicates, Overlayable, Reorientable, Transformable,
         fieldexpr::{MeshEvalUpdatable, MeshEvaluable},
     },
 };
@@ -45,6 +45,54 @@ impl PyUMesh {
     #[new]
     fn new(coords: np::PyReadonlyArray2<'_, f64>) -> Self {
         mf::UMesh::new(coords.as_array().to_shared()).into()
+    }
+
+    #[classmethod]
+    #[pyo3(signature = (source, coords=None, *, dim=None, element_types=None))]
+    fn from_mesh(
+        _cls: &Bound<'_, pyo3::types::PyType>,
+        source: &PyUMesh,
+        coords: Option<PyReadonlyArray2<'_, f64>>,
+        dim: Option<usize>,
+        element_types: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        if dim.is_some() && element_types.is_some() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Only one of dim and element_types may be provided.",
+            ));
+        }
+
+        let selected = if let Some(dim) = dim {
+            let dimension =
+                mf::Dimension::try_from(dim).map_err(pyo3::exceptions::PyValueError::new_err)?;
+            Some(
+                source
+                    .inner
+                    .element_types()
+                    .copied()
+                    .filter(|element_type| element_type.dimension() == dimension)
+                    .collect::<BTreeSet<_>>(),
+            )
+        } else {
+            element_types
+                .map(|names| {
+                    names
+                        .into_iter()
+                        .map(|name| super::element::try_str_to_etype(&name))
+                        .collect::<Result<BTreeSet<_>, _>>()
+                        .map_err(pyo3::exceptions::PyValueError::new_err)
+                })
+                .transpose()?
+        };
+
+        let coords = coords.map(|coords| coords.as_array().to_owned().into_shared());
+        let result = mf::from_mesh(
+            &source.inner.view(),
+            coords.as_ref().map(|coords| coords.view()),
+            selected.as_ref(),
+        )
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
+        Ok(result.into())
     }
 
     /// Returns a copy owned by python of the array coordinates
@@ -336,6 +384,78 @@ impl PyUMesh {
 
     fn num_elements(&self) -> usize {
         self.inner.num_elements()
+    }
+
+    // ==================== Geometry transforms ====================
+
+    /// Returns a translated copy of this mesh.
+    fn translate(&self, v: Vec<f64>) -> PyResult<Self> {
+        Transformable::translate(&self.inner, &v)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a non-uniformly scaled copy of this mesh.
+    fn scale(&self, factors: Vec<f64>) -> PyResult<Self> {
+        Transformable::scale(&self.inner, &factors)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a uniformly scaled copy of this mesh.
+    fn scale_uniform(&self, factor: f64) -> PyResult<Self> {
+        Transformable::scale_uniform(&self.inner, factor)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a copy of this mesh rotated by `angle` radians around an axis
+    /// through the origin.
+    fn rotate(&self, axis: Vec<f64>, angle: f64) -> PyResult<Self> {
+        Transformable::rotate(&self.inner, &axis, angle)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a copy of this mesh rotated by `angle` radians around an axis
+    /// through `center`.
+    fn rotate_about(&self, center: Vec<f64>, axis: Vec<f64>, angle: f64) -> PyResult<Self> {
+        Transformable::rotate_about(&self.inner, &center, &axis, angle)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a copy of this mesh mirrored through a plane through the origin
+    /// with the given normal.
+    fn mirror(&self, normal: Vec<f64>) -> PyResult<Self> {
+        Transformable::mirror(&self.inner, &normal)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a copy of this mesh mirrored through a plane through `point` with
+    /// the given normal.
+    fn mirror_about(&self, point: Vec<f64>, normal: Vec<f64>) -> PyResult<Self> {
+        Transformable::mirror_about(&self.inner, &point, &normal)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a copy of this mesh transformed by a `Transform` (or an explicit
+    /// 4x4 homogeneous matrix).
+    fn transform(&self, tr: &Bound<'_, pyo3::types::PyAny>) -> PyResult<Self> {
+        let tr = crate::pytransform::extract_transform(tr)?;
+        Transformable::transform(&self.inner, &tr)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
+    }
+
+    /// Returns a mesh made of `n` copies of this mesh, each transformed by the
+    /// powers `step`, `step@step`, ... of `step`.
+    fn duplicate(&self, step: &crate::pytransform::PyTransform, n: usize) -> PyResult<Self> {
+        Transformable::duplicate(&self.inner, &step.inner, n)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+            .map(Into::into)
     }
 
     // ==================== Group Operations ====================

@@ -29,6 +29,22 @@ pub fn make_mesh_3d_seg2() -> mf::UMesh {
     mesh
 }
 
+/// Creates a simple 3D mesh with a single positively-oriented TET4 element.
+pub fn make_mesh_3d_tet() -> mf::UMesh {
+    let coords = nd::Array2::from_shape_vec(
+        (4, 3),
+        vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0],
+    )
+    .unwrap();
+    let mut mesh = mf::UMesh::new(coords.into());
+    mesh.add_regular_block(
+        mf::ElementType::TET4,
+        nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
+        None,
+    );
+    mesh
+}
+
 /// Creates a 2D mesh with multiple element types:
 /// - Two SEG2 elements
 /// - One QUAD4 element

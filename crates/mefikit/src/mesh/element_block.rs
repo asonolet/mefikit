@@ -331,15 +331,17 @@ impl ElementBlock {
         cell_type: ElementType,
         connectivity: nd::ArcArray1<usize>,
         offsets: nd::ArcArray1<usize>,
+        families: Option<nd::ArcArray1<usize>>,
         fields: Option<BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>>>,
     ) -> Self {
         let n_elements = offsets.len();
+        let families = families.unwrap_or_else(|| nd::ArcArray1::from(vec![0; n_elements]));
         let fields = fields.unwrap_or_default();
         Self {
             cell_type,
             connectivity: Connectivity::new_poly(connectivity, offsets),
             fields,
-            families: nd::ArcArray1::from(vec![0; n_elements]),
+            families,
             groups: ArcGroups::new(),
         }
     }
@@ -676,25 +678,25 @@ impl<'a> ElementBlockView<'a> {
     /// # Arguments
     /// * `cell_type` - The type of the elements in this block.
     /// * `connectivity` - The connectivity of the elements in this block.
-    /// * `fields` - A map of field names to their values for each element.
-    /// * `families` - An array of family indices for each element.
-    /// * `groups` - A map of group names to sets of element indices.
+    /// * `families` - An array of family indices for each regular element; it must remain
+    ///   alive for the lifetime of the returned view.
     /// # Returns
     /// A new `ElementBlock` instance.
     pub fn new_regular(
         cell_type: ElementType,
         connectivity: nd::ArrayView2<'a, usize>,
-        families: Option<nd::ArrayView1<'a, usize>>,
+        families: nd::ArrayView1<'a, usize>,
     ) -> Self {
-        let families = match families {
-            Some(fams) => Some(fams),
-            None => todo!("Implement something meaningful?"),
-        };
+        assert_eq!(
+            families.len(),
+            connectivity.nrows(),
+            "family count must match the number of regular elements"
+        );
         Self {
             cell_type,
             connectivity: ConnectivityView::Regular(connectivity),
             fields: BTreeMap::new(),
-            families: families.unwrap(),
+            families,
             groups: ArcGroups::new(),
         }
     }
@@ -704,18 +706,22 @@ impl<'a> ElementBlockView<'a> {
     /// # Arguments
     /// * `cell_type` - The type of the elements in this block.
     /// * `connectivity` - The connectivity of the elements in this block.
-    /// * `fields` - A map of field names to their values for each element.
-    /// * `families` - An array of family indices for each element.
-    /// * `groups` - A map of group names to sets of element indices.
+    /// * `offsets` - The offsets of the elements in this block.
+    /// * `families` - An array of family indices for each polygonal element; it must remain
+    ///   alive for the lifetime of the returned view.
     /// # Returns
     /// A new `ElementBlock` instance.
     pub fn new_poly(
         cell_type: ElementType,
         connectivity: nd::ArrayView1<'a, usize>,
         offsets: nd::ArrayView1<'a, usize>,
+        families: nd::ArrayView1<'a, usize>,
     ) -> Self {
-        let conn_len = connectivity.len();
-        let reg_vec = Box::new(nd::Array1::from(vec![0; conn_len]));
+        assert_eq!(
+            families.len(),
+            offsets.len(),
+            "family count must match the number of polygonal elements"
+        );
         Self {
             cell_type,
             connectivity: ConnectivityView::Poly(IndirectIndex {
@@ -723,7 +729,7 @@ impl<'a> ElementBlockView<'a> {
                 offsets,
             }),
             fields: BTreeMap::new(),
-            families: Box::leak(reg_vec).view(),
+            families,
             groups: ArcGroups::new(),
         }
     }
@@ -793,6 +799,38 @@ mod tests {
         let elements: Vec<Element> = element_block.iter(coords.view()).collect();
 
         assert_eq!(elements.len(), 3);
+    }
+
+    #[test]
+    fn test_view_constructors_use_explicit_families() {
+        let regular_connectivity = array![[0, 1, 2], [1, 2, 0]];
+        let regular_families = array![0usize, 1usize];
+        let regular = ElementBlockView::new_regular(
+            ElementType::TRI3,
+            regular_connectivity.view(),
+            regular_families.view(),
+        );
+        assert_eq!(regular.families().to_vec(), vec![0, 1]);
+
+        let poly_connectivity = array![0, 1, 2, 0, 1];
+        let poly_offsets = array![3, 5];
+        let poly_families = array![0usize, 1usize];
+        let poly = ElementBlockView::new_poly(
+            ElementType::QUAD4,
+            poly_connectivity.view(),
+            poly_offsets.view(),
+            poly_families.view(),
+        );
+        assert_eq!(poly.families().to_vec(), vec![0, 1]);
+    }
+
+    #[test]
+    #[should_panic(expected = "family count must match")]
+    fn test_view_rejects_mismatched_family_count() {
+        let connectivity = array![[0, 1, 2], [1, 2, 0]];
+        let families = array![0usize];
+        let _ =
+            ElementBlockView::new_regular(ElementType::TRI3, connectivity.view(), families.view());
     }
 
     #[test]

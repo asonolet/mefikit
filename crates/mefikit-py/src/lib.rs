@@ -6,6 +6,7 @@ mod pyfield;
 mod pyfields;
 mod pygroups;
 mod pytransfer;
+mod pytransform;
 mod pyumesh;
 mod select;
 
@@ -53,6 +54,9 @@ mod mefipy {
 
     #[pymodule_export]
     use super::pygroups::{PyGroupRef, PyGroupsMapping};
+
+    #[pymodule_export]
+    use super::pytransform::{PyTransform, aggregate, concat};
 
     #[pymodule_export]
     use super::select::{PySelection, PySelectionResult};
