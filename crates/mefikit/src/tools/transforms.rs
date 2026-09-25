@@ -1457,12 +1457,12 @@ mod tests {
         let mut a = UMeshView::new(coords_a.view());
         let conn_a = nd::arr2(&[[0, 1, 3, 2]]);
         let fam_a = nd::array![0usize];
-        a.add_regular_block(ElementType::QUAD4, conn_a.view(), Some(fam_a.view()));
+        a.add_regular_block(ElementType::QUAD4, conn_a.view(), fam_a.view());
         let coords_b = nd::array![[2.0, 0.0], [3.0, 0.0], [2.0, 1.0], [3.0, 1.0]];
         let mut b = UMeshView::new(coords_b.view());
         let conn_b = nd::arr2(&[[0, 1, 3, 2]]);
         let fam_b = nd::array![2usize];
-        b.add_regular_block(ElementType::QUAD4, conn_b.view(), Some(fam_b.view()));
+        b.add_regular_block(ElementType::QUAD4, conn_b.view(), fam_b.view());
         let joined = aggregate(&[a, b]).unwrap();
         // family 2 of the second mesh is relabeled by max_family+1 = 1 -> 3
         assert_eq!(
@@ -1481,15 +1481,16 @@ mod tests {
         let mut a = UMeshView::new(coords.view());
         let conn_a = nd::arr2(&[[0, 1, 2, 0]]);
         let fam = nd::array![0usize];
-        a.add_regular_block(ElementType::QUAD4, conn_a.view(), Some(fam.view()));
+        a.add_regular_block(ElementType::QUAD4, conn_a.view(), fam.view());
         let mut b = UMeshView::new(coords.view());
         let conn_b = nd::Array1::from(vec![0, 1, 2]);
         let off_b = nd::Array1::from(vec![0, 3]);
+        let fam_b = nd::array![0usize, 0usize];
         b.add_poly_block(
             ElementType::QUAD4,
             conn_b.view(),
             off_b.view(),
-            Some(fam.view()),
+            fam_b.view(),
         );
         let err = aggregate(&[a, b]).unwrap_err();
         assert!(
@@ -1504,11 +1505,11 @@ mod tests {
         let fam = nd::array![0usize];
         let mut a = UMeshView::new(coords.view());
         let conn_a = nd::arr2(&[[0, 1, 2, 0]]);
-        a.add_regular_block(ElementType::QUAD4, conn_a.view(), Some(fam.view()));
+        a.add_regular_block(ElementType::QUAD4, conn_a.view(), fam.view());
         let mut b = UMeshView::new(coords.view());
         // same element type, different connectivity width
         let conn_b = nd::arr2(&[[0, 1, 2]]);
-        b.add_regular_block(ElementType::QUAD4, conn_b.view(), Some(fam.view()));
+        b.add_regular_block(ElementType::QUAD4, conn_b.view(), fam.view());
         let err = aggregate(&[a, b]).unwrap_err();
         assert!(err.contains("incompatible connectivity width"), "{err}");
     }

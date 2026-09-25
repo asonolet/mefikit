@@ -71,14 +71,11 @@ where
         for (&et, block) in self.element_blocks.iter() {
             match &block.connectivity {
                 ConnectivityBase::Regular(arr) => {
-                    view.add_regular_block(et, arr.view(), Some(block.families()))
+                    view.add_regular_block(et, arr.view(), block.families())
                 }
-                ConnectivityBase::Poly(conn) => view.add_poly_block(
-                    et,
-                    conn.data.view(),
-                    conn.offsets.view(),
-                    Some(block.families()),
-                ),
+                ConnectivityBase::Poly(conn) => {
+                    view.add_poly_block(et, conn.data.view(), conn.offsets.view(), block.families())
+                }
             };
             view.element_blocks.get_mut(&et).unwrap().fields = block
                 .fields
@@ -525,25 +522,25 @@ impl<'a> UMeshView<'a> {
         umesh
     }
 
-    /// Adds a regular element block to this view.
+    /// Adds a regular element block to this view using caller-owned family data.
     pub fn add_regular_block(
         &mut self,
         et: ElementType,
         connectivity: nd::ArrayView2<'a, usize>,
-        families: Option<nd::ArrayView1<'a, usize>>,
+        families: nd::ArrayView1<'a, usize>,
     ) {
         let block = ElementBlockView::new_regular(et, connectivity, families);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
 
-    /// Adds a poly element block to this view.
+    /// Adds a poly element block to this view using caller-owned family data.
     pub fn add_poly_block(
         &mut self,
         et: ElementType,
         conn: nd::ArrayView1<'a, usize>,
         offsets: nd::ArrayView1<'a, usize>,
-        families: Option<nd::ArrayView1<'a, usize>>,
+        families: nd::ArrayView1<'a, usize>,
     ) {
         let block = ElementBlockView::new_poly(et, conn, offsets, families);
         let (key, wrapped) = block.into_entry();
