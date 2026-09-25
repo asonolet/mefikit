@@ -3,8 +3,12 @@
 
 ```python
 import numpy as np
+import pyvista as pv
 
 import mefikit as mf
+
+pv.set_plot_theme("dark")
+pv.set_jupyter_backend("static")
 
 coords = np.array(
     [
@@ -28,20 +32,62 @@ source unchanged.
 
 ```python
 translated = mesh.translate([10.0, 0.0])
-assert np.isclose(translated.coords()[1, 0], 11.0)
-
-rotated = mesh.rotate([0.0, 0.0, 1.0], np.pi / 2)
-assert np.allclose(rotated.coords()[1], [0.0, 1.0], atol=1e-9)
-
-scaled = mesh.scale([2.0, 3.0])
-assert np.allclose(scaled.coords()[3], [2.0, 3.0])
-
-uniform = mesh.scale_uniform(4.0)
-assert np.isclose(uniform.coords()[3, 0], 4.0)
-
-mirrored = mesh.mirror([1.0, 0.0, 0.0])
-assert np.isclose(mirrored.coords()[1, 0], -1.0)
+translated.to_pyvista().plot()
 ```
+
+
+
+![png](geometric_transforms_files/geometric_transforms_4_0.png)
+
+
+
+
+```python
+rotated = mesh.rotate([0.0, 0.0, 1.0], np.pi / 6)
+rotated.to_pyvista().plot()
+```
+
+
+
+![png](geometric_transforms_files/geometric_transforms_5_0.png)
+
+
+
+
+```python
+mirrored = mesh.rotate([0.0, 0.0, 1.0], np.pi / 6).mirror([1.0, 0.0, 0.0])
+mirrored.to_pyvista().plot()
+```
+
+
+
+![png](geometric_transforms_files/geometric_transforms_6_0.png)
+
+
+
+
+```python
+scaled = mesh.scale([2.0, 3.0])
+scaled.to_pyvista().plot()
+```
+
+
+
+![png](geometric_transforms_files/geometric_transforms_7_0.png)
+
+
+
+
+```python
+uniform = mesh.scale_uniform(4.0)
+uniform.to_pyvista().plot()
+```
+
+
+
+![png](geometric_transforms_files/geometric_transforms_8_0.png)
+
+
 
 The input mesh is never modified.
 
@@ -99,12 +145,22 @@ except ValueError as err:
 
 
 ```python
-column = mesh.duplicate(mf.Transform.translation([0.0, 3.0, 0.0]), 3)
+ts = mf.Transform.translation([0.0, 3.0, 0.0])
+rt = mf.Transform.rotation([0.0, 0.0, 1.0], np.pi / 4)
+column = mesh.duplicate(ts @ rt, 3)
 assert column.coords().shape[0] == 12
-assert np.allclose(
-    np.sort(np.unique(column.coords()[:, 1])), [0.0, 1.0, 3.0, 4.0, 6.0, 7.0]
-)
 ```
+
+
+```python
+column.to_pyvista().plot(show_edges=True)
+```
+
+
+
+![png](geometric_transforms_files/geometric_transforms_18_0.png)
+
+
 
 Arbitrary arrangements can be built with the module-level `aggregate` /
 `concat` functions, which concatenate meshes while preserving blocks, fields,
@@ -114,10 +170,24 @@ stays valid).
 
 ```python
 line = mf.concat(mesh, mesh.translate([5.0, 0.0]))
-three = mf.aggregate([mesh, mesh.translate([5.0, 0.0]), mesh.translate([10.0, 0.0])])
+three = mf.aggregate([mesh, mesh.translate([5.0, 0.0]), mesh.translate([15.0, 0.0])])
 assert line.coords().shape[0] == 8
 assert three.coords().shape[0] == 12
+line.to_pyvista().plot()
+three.to_pyvista().plot()
 ```
+
+
+
+![png](geometric_transforms_files/geometric_transforms_20_0.png)
+
+
+
+
+
+![png](geometric_transforms_files/geometric_transforms_20_1.png)
+
+
 
 Transforms preserve the mesh metadata: blocks, fields, families and groups
 survive untouched.
@@ -130,13 +200,23 @@ fields, families and groups. Omitting `coords` reuses the source coordinates.
 
 
 ```python
+coords = mesh.coords()
+coords[:, 0] *= 2.0
+coords[:, 1] *= coords[:, 0] + 1.0
 warped = mf.UMesh.from_mesh(
     mesh,
-    np.column_stack((mesh.coords()[:, 0] ** 2, mesh.coords()[:, 1])),
+    coords,
 )
-assert np.allclose(warped.coords()[:, 0], mesh.coords()[:, 0] ** 2)
-assert np.allclose(mesh.coords(), coords)
+# assert np.allclose(warped.coords()[:, 0], mesh.coords()[:, 0] ** 2)
+assert np.allclose(warped.coords(), coords)
+warped.to_pyvista().plot()
 ```
+
+
+
+![png](geometric_transforms_files/geometric_transforms_23_0.png)
+
+
 
 `from_mesh` can select source element blocks by topological dimension or by
 element type. The two selectors are mutually exclusive; the source mesh is
