@@ -19,8 +19,8 @@ mesh.add_regular_block("QUAD4", np.array([[0, 1, 3, 2]], dtype=np.uint))
 
 **All angles are given in radians.** A `Transform` is an affine transformation
 represented by a 4x4 homogeneous matrix (last row `0 0 0 1`). `UMesh` objects
-can be transformed out-of-place (each method returns a new mesh) or mutated
-in place.
+are transformed out-of-place: each transform returns a new mesh and leaves the
+source unchanged.
 
 ## Out-of-place transforms
 
@@ -112,15 +112,29 @@ assert three.coords().shape[0] == 12
 Transforms preserve the mesh metadata: blocks, fields, families and groups
 survive untouched.
 
-## In-place transforms
+## Reconstructing coordinates
 
-`set_coords` and `transform_coords` mutate the mesh in place instead of
-returning a new one.
+For non-affine coordinate changes, use `UMesh.from_mesh`. It accepts a
+same-shaped coordinate array and preserves the selected source connectivity,
+fields, families and groups. Omitting `coords` reuses the source coordinates.
 
 ```python
-mesh.set_coords(np.full((4, 2), 1.0))
-assert np.allclose(mesh.coords(), 1.0)
-
-mesh.transform_coords(lambda c: np.concatenate((c[:, :1] ** 2, c[:, 1:]), axis=1))
-assert np.allclose(mesh.coords(), 1.0)
+warped = mf.UMesh.from_mesh(
+    mesh,
+    np.column_stack((mesh.coords()[:, 0] ** 2, mesh.coords()[:, 1])),
+)
+assert np.allclose(warped.coords()[:, 0], mesh.coords()[:, 0] ** 2)
+assert np.allclose(mesh.coords(), coords)
 ```
+
+`from_mesh` can select source element blocks by topological dimension or by
+element type. The two selectors are mutually exclusive; the source mesh is
+never changed.
+
+```python
+surfaces = mf.UMesh.from_mesh(mesh, dim=2)
+quads = mf.UMesh.from_mesh(mesh, element_types=["QUAD4"])
+```
+
+Coordinate arrays are structurally validated when a mesh is reconstructed;
+geometric quality checks are not performed.

@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::{Display, Formatter},
 };
 
@@ -45,6 +45,54 @@ impl PyUMesh {
     #[new]
     fn new(coords: np::PyReadonlyArray2<'_, f64>) -> Self {
         mf::UMesh::new(coords.as_array().to_shared()).into()
+    }
+
+    #[classmethod]
+    #[pyo3(signature = (source, coords=None, *, dim=None, element_types=None))]
+    fn from_mesh(
+        _cls: &Bound<'_, pyo3::types::PyType>,
+        source: &PyUMesh,
+        coords: Option<PyReadonlyArray2<'_, f64>>,
+        dim: Option<usize>,
+        element_types: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        if dim.is_some() && element_types.is_some() {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Only one of dim and element_types may be provided.",
+            ));
+        }
+
+        let selected = if let Some(dim) = dim {
+            let dimension =
+                mf::Dimension::try_from(dim).map_err(pyo3::exceptions::PyValueError::new_err)?;
+            Some(
+                source
+                    .inner
+                    .element_types()
+                    .copied()
+                    .filter(|element_type| element_type.dimension() == dimension)
+                    .collect::<BTreeSet<_>>(),
+            )
+        } else {
+            element_types
+                .map(|names| {
+                    names
+                        .into_iter()
+                        .map(|name| super::element::try_str_to_etype(&name))
+                        .collect::<Result<BTreeSet<_>, _>>()
+                        .map_err(pyo3::exceptions::PyValueError::new_err)
+                })
+                .transpose()?
+        };
+
+        let coords = coords.map(|coords| coords.as_array().to_owned().into_shared());
+        let result = mf::from_mesh(
+            &source.inner.view(),
+            coords.as_ref().map(|coords| coords.view()),
+            selected.as_ref(),
+        )
+        .map_err(pyo3::exceptions::PyValueError::new_err)?;
+        Ok(result.into())
     }
 
     /// Returns a copy owned by python of the array coordinates
@@ -408,35 +456,6 @@ impl PyUMesh {
         Transformable::duplicate(&self.inner, &step.inner, n)
             .map_err(pyo3::exceptions::PyValueError::new_err)
             .map(Into::into)
-    }
-
-    /// Replaces the coordinates of this mesh in place (keeping topology, fields,
-    /// families and groups). The new array must have the same shape.
-    fn set_coords(&mut self, coords: PyReadonlyArray2<'_, f64>) -> PyResult<()> {
-        self.inner
-            .set_coordinates(coords.as_array())
-            .map_err(pyo3::exceptions::PyValueError::new_err)
-    }
-
-    /// Replaces the coordinates of this mesh in place with `function(coords)`,
-    /// where `function` receives and must return a 2D array with the same shape.
-    fn transform_coords<'py>(
-        &mut self,
-        py: Python<'py>,
-        f: &Bound<'py, pyo3::types::PyAny>,
-    ) -> PyResult<()> {
-        let coords = np::PyArray2::from_array(py, &self.inner.coords());
-        let result = f.call1((coords,))?;
-        let arr = result.extract::<PyReadonlyArray2<'_, f64>>().map_err(|_| {
-            pyo3::exceptions::PyTypeError::new_err(
-                "transform_coords function must return a 2D `f64` numpy array.",
-            )
-        })?;
-        let new_coords = arr.as_array().to_owned();
-        let out = mf::transform_coords(&self.inner.view(), move |_| new_coords.clone())
-            .map_err(pyo3::exceptions::PyValueError::new_err)?;
-        self.inner = out;
-        Ok(())
     }
 
     // ==================== Group Operations ====================

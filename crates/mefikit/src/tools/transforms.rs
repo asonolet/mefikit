@@ -45,11 +45,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::mesh::{
-    ArcGroups, Connectivity, ConnectivityView, ElementBlock, ElementType, UMesh, UMeshView,
+    ArcGroups, Connectivity, ConnectivityView, Dimension, ElementBlock, ElementType, UMesh,
+    UMeshView,
 };
 use nalgebra as na;
 use ndarray as nd;
-use rustc_hash::FxHashSet;
 
 /// Tolerance under which a value is treated as exactly `0` in validation checks.
 const EPS: f64 = 1e-12;
@@ -72,12 +72,25 @@ pub struct Transform {
 /// Pads a 1-, 2- or 3-element slice to a fixed-length 3-vector, filling the
 /// missing trailing components with `default`.
 fn pad(v: &[f64], default: f64) -> Result<[f64; 3], String> {
+    if v.iter().any(|value| !value.is_finite()) {
+        return Err("Vector components must be finite.".to_string());
+    }
     match v {
         [x] => Ok([*x, default, default]),
         [x, y] => Ok([*x, *y, default]),
         [x, y, z] => Ok([*x, *y, *z]),
         _ => Err(format!("Expected 1, 2 or 3 components, got {}.", v.len())),
     }
+}
+
+fn normalized_direction(v: [f64; 3], name: &str) -> Result<na::Vector3<f64>, String> {
+    let vector = na::Vector3::from_row_slice(&v);
+    let scale = v.iter().map(|value| value.abs()).fold(0.0, f64::max);
+    if scale == 0.0 {
+        return Err(format!("Zero-length {name}."));
+    }
+    let scaled = vector / scale;
+    Ok(scaled / scaled.norm())
 }
 
 /// Builds a homogeneous 4x4 matrix out of a `d`-dimensional linear part and a
@@ -107,6 +120,9 @@ impl Transform {
                 "Expected a 4x4 homogeneous matrix, got {:?}.",
                 mat.shape()
             ));
+        }
+        if mat.iter().any(|value| !value.is_finite()) {
+            return Err("Transform matrix components must be finite.".to_string());
         }
         let last = [mat[[3, 0]], mat[[3, 1]], mat[[3, 2]], mat[[3, 3]]];
         if last.iter().take(3).any(|v| v.abs() > EPS) || (last[3] - 1.0).abs() > EPS {
@@ -143,12 +159,10 @@ impl Transform {
     /// work as expected.
     pub fn rotation(axis: &[f64], angle: f64) -> Result<Self, String> {
         let [ax, ay, az] = pad(axis, 0.0)?;
-        let u = na::Vector3::new(ax, ay, az);
-        let norm = u.norm();
-        if norm < EPS {
-            return Err("Zero-length rotation axis.".to_string());
+        if !angle.is_finite() {
+            return Err("Rotation angle must be finite.".to_string());
         }
-        let u = u / norm;
+        let u = normalized_direction([ax, ay, az], "rotation axis")?;
         // Rodrigues: R = cos(θ)·I + sin(θ)·[u]_× + (1 - cos(θ))·u·uᵀ
         let c = angle.cos();
         let s = angle.sin();
@@ -171,12 +185,8 @@ impl Transform {
     /// given normal.
     pub fn reflection(normal: &[f64]) -> Result<Self, String> {
         let [nx, ny, nz] = pad(normal, 0.0)?;
-        let n = na::Vector3::new(nx, ny, nz);
-        let n2 = n.dot(&n);
-        if n2 < EPS {
-            return Err("Zero-length reflection normal.".to_string());
-        }
-        let lin = na::Matrix3::identity() - (2.0 / n2) * (n * n.transpose());
+        let n = normalized_direction([nx, ny, nz], "reflection normal")?;
+        let lin = na::Matrix3::identity() - 2.0 * (n * n.transpose());
         let lin = nd::Array2::from_shape_fn((3, 3), |(r, c)| lin[(r, c)]);
         Ok(embed(3, &lin, [0.0, 0.0, 0.0]))
     }
@@ -200,12 +210,20 @@ impl Transform {
 
     /// The inverse affine transform, or an error if the linear part is singular.
     pub fn inverse(&self) -> Result<Self, String> {
+        if self.mat.iter().any(|value| !value.is_finite()) {
+            return Err("Transform matrix components must be finite.".to_string());
+        }
         let lin = na::Matrix3::from_fn(|r, c| self.mat[[r, c]]);
         let lin_inv = lin
             .try_inverse()
             .ok_or_else(|| "Transform is not invertible (singular linear part).".to_string())?;
         let t = na::Vector3::new(self.mat[[0, 3]], self.mat[[1, 3]], self.mat[[2, 3]]);
         let t_inv = -lin_inv * t;
+        if t_inv.iter().any(|value| !value.is_finite())
+            || lin_inv.iter().any(|value| !value.is_finite())
+        {
+            return Err("Transform inverse is not finite.".to_string());
+        }
         let lin_inv = nd::Array2::from_shape_fn((3, 3), |(r, c)| lin_inv[(r, c)]);
         Ok(embed(3, &lin_inv, [t_inv[0], t_inv[1], t_inv[2]]))
     }
@@ -242,7 +260,13 @@ fn map_coords(
     mat: &nd::Array2<f64>,
 ) -> Result<nd::Array2<f64>, String> {
     let d = coords.ncols();
-    match d {
+    if coords.iter().any(|value| !value.is_finite()) {
+        return Err("Mesh coordinates must be finite.".to_string());
+    }
+    if mat.iter().any(|value| !value.is_finite()) {
+        return Err("Transform matrix components must be finite.".to_string());
+    }
+    let result = match d {
         3 => Ok(apply_affine(coords, mat, 3)),
         2 => {
             check_extra_axes_at_rest(mat, 2)?;
@@ -254,7 +278,11 @@ fn map_coords(
         }
         0 => Err("Cannot apply a transform to a mesh with 0 coordinates per node.".to_string()),
         c => Err(format!("Unsupported space dimension {c}.")),
+    }?;
+    if result.iter().any(|value| !value.is_finite()) {
+        return Err("Transformed coordinates are not finite.".to_string());
     }
+    Ok(result)
 }
 
 /// Verifies that rows `d..3` of the matrix leave the extra coordinates `d..3`
@@ -299,7 +327,12 @@ pub fn set_coords(mesh: &UMeshView, coords: nd::ArrayView2<f64>) -> Result<UMesh
             mesh.coords().shape()
         ));
     }
-    Ok(mesh.to_owned_with_coords(coords.to_owned().into_shared()))
+    if coords.iter().any(|value| !value.is_finite()) {
+        return Err("New coordinates must be finite.".to_string());
+    }
+    let mesh = mesh.to_owned_with_coords(coords.to_owned().into_shared());
+    mesh.validate_structure()?;
+    Ok(mesh)
 }
 
 /// Returns an owned mesh whose coordinates are `f(mesh.coords())`.
@@ -318,14 +351,21 @@ where
             mesh.coords().shape()
         ));
     }
-    Ok(mesh.to_owned_with_coords(new_coords.into_shared()))
+    if new_coords.iter().any(|value| !value.is_finite()) {
+        return Err("The coordinate function returned non-finite coordinates.".to_string());
+    }
+    let mesh = mesh.to_owned_with_coords(new_coords.into_shared());
+    mesh.validate_structure()?;
+    Ok(mesh)
 }
 
 /// Applies a [`Transform`] to all node coordinates of `mesh`, keeping topology,
 /// fields, families and groups untouched.
 pub fn transform(mesh: &UMeshView, tr: &Transform) -> Result<UMesh, String> {
     let new_coords = map_coords(mesh.coords(), &tr.mat)?.into_shared();
-    Ok(mesh.to_owned_with_coords(new_coords))
+    let result = mesh.to_owned_with_coords(new_coords);
+    result.validate_structure()?;
+    Ok(result)
 }
 
 // ----------------------------------------------------------------------------
@@ -346,6 +386,13 @@ pub fn transform(mesh: &UMeshView, tr: &Transform) -> Result<UMesh, String> {
 /// This is a topology-agnostic operation: meshes are *not* checked for
 /// intersection or shared boundaries.
 pub fn aggregate(meshes: &[UMeshView]) -> Result<UMesh, String> {
+    aggregate_with_family_mode(meshes, FamilyMode::Relabel)
+}
+
+fn aggregate_with_family_mode(
+    meshes: &[UMeshView],
+    family_mode: FamilyMode,
+) -> Result<UMesh, String> {
     if meshes.is_empty() {
         return Err("aggregate requires at least one mesh.".to_string());
     }
@@ -371,13 +418,22 @@ pub fn aggregate(meshes: &[UMeshView]) -> Result<UMesh, String> {
         acc += m.coords().nrows();
     }
 
-    let etypes: FxHashSet<ElementType> = meshes
+    let field_names = aggregate_field_names(meshes)?;
+    let etypes: BTreeSet<ElementType> = meshes
         .iter()
         .flat_map(|m| m.element_types().copied())
         .collect();
     for et in etypes {
-        aggregate_block(&mut out, meshes, &node_offsets, et)?;
+        aggregate_block(
+            &mut out,
+            meshes,
+            &node_offsets,
+            et,
+            &field_names,
+            family_mode,
+        )?;
     }
+    out.validate_structure()?;
     Ok(out)
 }
 
@@ -386,6 +442,8 @@ fn aggregate_block(
     meshes: &[UMeshView],
     node_offsets: &[usize],
     et: ElementType,
+    field_names: &BTreeMap<Dimension, BTreeSet<String>>,
+    family_mode: FamilyMode,
 ) -> Result<(), String> {
     let source: Vec<Option<&crate::mesh::ElementBlockView>> =
         meshes.iter().map(|m| m.block(et)).collect();
@@ -395,8 +453,8 @@ fn aggregate_block(
         .next()
         .expect("element type comes from the meshes");
 
-    let fields = aggregate_fields(meshes, et)?;
-    let (families, groups) = aggregate_families(meshes, et);
+    let fields = aggregate_fields(meshes, et, field_names)?;
+    let (families, groups) = aggregate_families(meshes, et, family_mode);
 
     match &first.connectivity {
         ConnectivityView::Regular(first_conn) => {
@@ -473,76 +531,136 @@ fn aggregate_block(
     Ok(())
 }
 
-/// Concatenates the values of every field present on element type `et`, requiring
-/// that a field of a given name exists on every mesh that carries `et`, with the
-/// same trailing shape.
+fn aggregate_field_names(
+    meshes: &[UMeshView],
+) -> Result<BTreeMap<Dimension, BTreeSet<String>>, String> {
+    let mut names_by_dim = BTreeMap::<Dimension, BTreeSet<String>>::new();
+    for mesh in meshes {
+        for (&et, block) in mesh.blocks() {
+            names_by_dim
+                .entry(et.dimension())
+                .or_default()
+                .extend(block.fields.keys().cloned());
+        }
+    }
+
+    for (&dim, names) in &names_by_dim {
+        for name in names {
+            let mut reference = None;
+            for mesh in meshes {
+                for (&et, block) in mesh.blocks() {
+                    if et.dimension() != dim {
+                        continue;
+                    }
+                    let field = block.fields.get(name).ok_or_else(|| {
+                        format!(
+                            "Field '{name}' is missing on element type {et:?} of dimension {dim:?} \
+                             in one of the aggregated meshes."
+                        )
+                    })?;
+                    if field.ndim() == 0 {
+                        return Err(format!(
+                            "Field '{name}' on element type {et:?} must have an element axis."
+                        ));
+                    }
+                    if field.shape()[0] != block.len() {
+                        return Err(format!(
+                            "Field '{name}' on element type {et:?} has {} values for {} elements.",
+                            field.shape()[0],
+                            block.len()
+                        ));
+                    }
+                    let trailing = field.shape()[1..].to_vec();
+                    if let Some(expected) = &reference {
+                        if *expected != trailing {
+                            return Err(format!(
+                                "Field '{name}' has incompatible trailing shapes across element \
+                                 types of dimension {dim:?}."
+                            ));
+                        }
+                    } else {
+                        reference = Some(trailing);
+                    }
+                }
+            }
+        }
+    }
+    Ok(names_by_dim)
+}
+
+/// Concatenates the values of every field present on the requested topological
+/// dimension, requiring one compatible schema on every block of that dimension.
 fn aggregate_fields(
     meshes: &[UMeshView],
     et: ElementType,
+    field_names: &BTreeMap<Dimension, BTreeSet<String>>,
 ) -> Result<BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>>, String> {
-    let first = meshes
-        .iter()
-        .find_map(|m| m.block(et))
-        .expect("element type comes from the meshes");
     let mut fields = BTreeMap::new();
-    for name in first.fields.keys() {
+    let names = field_names
+        .get(&et.dimension())
+        .cloned()
+        .unwrap_or_default();
+    for name in names {
         let mut parts: Vec<nd::ArrayViewD<f64>> = Vec::new();
         let mut reference: Option<Vec<usize>> = None;
-        for m in meshes {
-            if let Some(b) = m.block(et) {
-                let f = b.fields.get(name).ok_or_else(|| {
-                    format!(
-                        "Field '{name}' is missing on element type {et:?} in one of the \
-                         aggregated meshes."
-                    )
-                })?;
-                if let Some(exp) = reference.as_deref() {
-                    if f.shape()[1..] != *exp {
+        for mesh in meshes {
+            if let Some(block) = mesh.block(et) {
+                let field = block
+                    .fields
+                    .get(&name)
+                    .ok_or_else(|| format!("Field '{name}' is missing on element type {et:?}."))?;
+                if let Some(expected) = &reference {
+                    if field.shape()[1..] != *expected {
                         return Err(format!(
                             "Field '{name}' has incompatible trailing shape {:?} (expected \
                              {:?}).",
-                            &f.shape()[1..],
-                            exp
+                            &field.shape()[1..],
+                            expected
                         ));
                     }
                 } else {
-                    reference = Some(f.shape()[1..].to_vec());
+                    reference = Some(field.shape()[1..].to_vec());
                 }
-                parts.push(f.view());
+                parts.push(field.view());
             }
         }
-        if !parts.is_empty() {
-            let arr = nd::concatenate(nd::Axis(0), &parts).map_err(|e| e.to_string())?;
-            fields.insert(name.clone(), arr.into_shared());
-        }
+        let array = nd::concatenate(nd::Axis(0), &parts).map_err(|e| e.to_string())?;
+        fields.insert(name.clone(), array.into_shared());
     }
     Ok(fields)
 }
 
-/// Concatenates families and groups of element type `et`, relabeling the family
-/// ids of every contribution so that the partitions of the source blocks stay
-/// distinct in the result (family ids are block-local).
+#[derive(Clone, Copy)]
+enum FamilyMode {
+    Relabel,
+    Preserve,
+}
+
 fn aggregate_families(
     meshes: &[UMeshView],
     et: ElementType,
+    mode: FamilyMode,
 ) -> (nd::ArcArray1<usize>, BTreeMap<String, BTreeSet<usize>>) {
     let mut families: Vec<usize> = Vec::new();
     let mut groups: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
-    let mut offset: usize = 0;
-    for m in meshes {
-        if let Some(b) = m.block(et) {
-            let mut max_family = 0usize;
-            for &fid in b.families().iter() {
-                families.push(fid + offset);
-                max_family = max_family.max(fid);
-            }
-            for (name, fids) in b.groups().iter() {
+    let mut family_offset = 0;
+    for mesh in meshes {
+        if let Some(block) = mesh.block(et) {
+            let shift = match mode {
+                FamilyMode::Relabel => family_offset,
+                FamilyMode::Preserve => 0,
+            };
+            families.extend(block.families().iter().map(|&family| family + shift));
+            for (name, family_ids) in block.groups().iter() {
                 groups
                     .entry(name.clone())
                     .or_default()
-                    .extend(fids.iter().map(|&f| f + offset));
+                    .extend(family_ids.iter().map(|&family| family + shift));
             }
-            offset += max_family + 1;
+            if matches!(mode, FamilyMode::Relabel) {
+                family_offset =
+                    family_offset + block.families().iter().copied().max().unwrap_or(0) + 1;
+            }
         }
     }
     (nd::Array1::from_vec(families).into_shared(), groups)
@@ -552,6 +670,43 @@ fn aggregate_families(
 pub fn concat(a: &UMeshView, b: &UMeshView) -> Result<UMesh, String> {
     let views: [UMeshView; 2] = [a.view(), b.view()];
     aggregate(&views)
+}
+
+pub fn from_mesh(
+    source: &UMeshView,
+    coords: Option<nd::ArrayView2<'_, f64>>,
+    selected: Option<&BTreeSet<ElementType>>,
+) -> Result<UMesh, String> {
+    if let Some(selected) = selected {
+        if selected.is_empty() {
+            return Err("Element type selection cannot be empty.".to_string());
+        }
+        if let Some(element_type) = selected
+            .iter()
+            .find(|element_type| source.block(**element_type).is_none())
+        {
+            return Err(format!(
+                "Element type {element_type:?} is not present in the source mesh."
+            ));
+        }
+    }
+
+    let coords = match coords {
+        Some(coords) => {
+            if coords.shape() != source.coords().shape() {
+                return Err(format!(
+                    "Coordinates shape {:?} does not match source mesh shape {:?}.",
+                    coords.shape(),
+                    source.coords().shape()
+                ));
+            }
+            coords.to_owned().into_shared()
+        }
+        None => source.coords().to_owned().into_shared(),
+    };
+    let mesh = source.to_owned_with_coords_and_types(coords, selected);
+    mesh.validate_structure()?;
+    Ok(mesh)
 }
 
 // ----------------------------------------------------------------------------
@@ -576,7 +731,7 @@ pub fn duplicate(mesh: &UMeshView, step: &Transform, n: usize) -> Result<UMesh, 
         current = current.then(step);
     }
     let views: Vec<UMeshView> = copies.iter().map(|m| m.view()).collect();
-    aggregate(&views)
+    aggregate_with_family_mode(&views, FamilyMode::Preserve)
 }
 
 // ----------------------------------------------------------------------------
@@ -634,7 +789,9 @@ pub trait Transformable {
 impl Transformable for UMesh {
     fn transform(&self, tr: &Transform) -> Result<UMesh, String> {
         let new_coords = map_coords(self.coords(), &tr.mat)?.into_shared();
-        Ok(self.with_coords(new_coords))
+        let result = self.with_coords(new_coords);
+        result.validate_structure()?;
+        Ok(result)
     }
 
     /// `n` copies of this mesh with successive transforms `step`, `step^2`, ...
@@ -646,7 +803,9 @@ impl Transformable for UMesh {
 impl Transformable for UMeshView<'_> {
     fn transform(&self, tr: &Transform) -> Result<UMesh, String> {
         let new_coords = map_coords(self.coords(), &tr.mat)?.into_shared();
-        Ok(self.to_owned_with_coords(new_coords))
+        let result = self.to_owned_with_coords(new_coords);
+        result.validate_structure()?;
+        Ok(result)
     }
 
     /// `n` copies of this mesh with successive transforms `step`, `step^2`, ...
@@ -671,6 +830,10 @@ impl UMesh {
                 self.coords().shape()
             ));
         }
+        if coords.iter().any(|value| !value.is_finite()) {
+            return Err("New coordinates must be finite.".to_string());
+        }
+        self.validate_structure()?;
         let mut own = std::mem::take(&mut self.coords).into_owned();
         own.assign(&coords);
         self.coords = own.into_shared();
@@ -681,6 +844,7 @@ impl UMesh {
     /// keeping topology, fields, families and groups untouched).
     pub fn transform_coordinates(&mut self, tr: &Transform) -> Result<(), String> {
         let new_coords = map_coords(self.coords(), &tr.mat)?;
+        self.validate_structure()?;
         let mut own = std::mem::take(&mut self.coords).into_owned();
         own.assign(&new_coords);
         self.coords = own.into_shared();
@@ -699,6 +863,110 @@ mod tests {
 
     fn quad() -> UMesh {
         make_mesh_2d_quad()
+    }
+
+    #[test]
+    fn test_from_mesh_preserves_source_and_selects_blocks() {
+        let source = crate::mesh_examples::make_mesh_2d_multi();
+        let original = source.coords().to_owned();
+        let copy = from_mesh(&source.view(), None, None).unwrap();
+        assert_eq!(copy.coords(), original);
+        assert_eq!(copy.element_types().count(), source.element_types().count());
+
+        let changed =
+            nd::arr2(&[[9.0, 9.0], [8.0, 8.0], [7.0, 7.0], [6.0, 6.0], [5.0, 5.0]]).into_shared();
+        let changed_copy = from_mesh(&source.view(), Some(changed.view()), None).unwrap();
+        assert_eq!(changed_copy.coords(), changed);
+        assert_eq!(source.coords(), original);
+
+        let selected = BTreeSet::from([ElementType::QUAD4]);
+        let selected_copy = from_mesh(&source.view(), None, Some(&selected)).unwrap();
+        assert_eq!(
+            selected_copy.element_types().collect::<Vec<_>>(),
+            vec![&ElementType::QUAD4]
+        );
+        assert!(selected_copy.block(ElementType::SEG2).is_none());
+    }
+
+    #[test]
+    fn test_from_mesh_rejects_invalid_structure() {
+        let mut bad = UMesh::new(nd::arr2(&[[0.0, 0.0], [1.0, 0.0]]).into_shared());
+        bad.add_regular_block(
+            ElementType::QUAD4,
+            nd::arr2(&[[0, 1, 2, 3]]).into_shared(),
+            None,
+        );
+        assert!(from_mesh(&bad.view(), None, None).is_err());
+
+        let nonfinite = UMesh::new(nd::arr2(&[[f64::NAN, 0.0]]).into_shared());
+        assert!(from_mesh(&nonfinite.view(), None, None).is_err());
+
+        let mut bad_poly = UMesh::new(nd::arr2(&[[0.0, 0.0], [1.0, 0.0]]).into_shared());
+        bad_poly.add_poly_block(
+            ElementType::PGON,
+            nd::arr1(&[0, 1]).into_shared(),
+            nd::arr1(&[3]).into_shared(),
+            None,
+        );
+        assert!(from_mesh(&bad_poly.view(), None, None).is_err());
+    }
+
+    #[test]
+    fn test_duplicate_preserves_exact_family_ids() {
+        let mut source = crate::mesh_examples::make_imesh_2d(2);
+        let mut ids = crate::mesh::ElementIds::new();
+        ids.add_block(ElementType::QUAD4, vec![0, 2]);
+        source.set_groups(BTreeMap::from([("selected".to_string(), ids)]));
+        let original = source
+            .block(ElementType::QUAD4)
+            .unwrap()
+            .families()
+            .to_vec();
+        let duplicated = duplicate(
+            &source.view(),
+            &Transform::translation(&[10.0, 0.0]).unwrap(),
+            2,
+        )
+        .unwrap();
+        let families = duplicated
+            .block(ElementType::QUAD4)
+            .unwrap()
+            .families()
+            .to_vec();
+        assert_eq!(families.len(), original.len() * 2);
+        assert_eq!(&families[..original.len()], original.as_slice());
+        assert_eq!(&families[original.len()..], original.as_slice());
+    }
+
+    #[test]
+    fn test_transform_rejects_nonfinite_and_handles_large_directions() {
+        assert!(Transform::translation(&[f64::NAN]).is_err());
+        assert!(
+            Transform::from_matrix(
+                nd::arr2(&[
+                    [1.0, 0.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0, 0.0],
+                    [0.0, 0.0, 1.0, 0.0],
+                    [f64::NAN, 0.0, 0.0, 1.0],
+                ])
+                .into_shared()
+                .view()
+            )
+            .is_err()
+        );
+        let rotation = Transform::rotation(&[1.0e300, 1.0e300, 0.0], 0.7);
+        assert!(rotation.is_ok());
+        assert!(
+            rotation
+                .unwrap()
+                .matrix()
+                .iter()
+                .all(|value| value.is_finite())
+        );
+        let reflection = Transform::reflection(&[1.0e300, 1.0e300, 0.0]);
+        assert!(reflection.is_ok());
+        let huge = quad().scale_uniform(f64::MAX).unwrap();
+        assert!(huge.scale_uniform(2.0).is_err());
     }
 
     #[test]

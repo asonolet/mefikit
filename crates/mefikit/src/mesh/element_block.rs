@@ -331,15 +331,17 @@ impl ElementBlock {
         cell_type: ElementType,
         connectivity: nd::ArcArray1<usize>,
         offsets: nd::ArcArray1<usize>,
+        families: Option<nd::ArcArray1<usize>>,
         fields: Option<BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>>>,
     ) -> Self {
         let n_elements = offsets.len();
+        let families = families.unwrap_or_else(|| nd::ArcArray1::from(vec![0; n_elements]));
         let fields = fields.unwrap_or_default();
         Self {
             cell_type,
             connectivity: Connectivity::new_poly(connectivity, offsets),
             fields,
-            families: nd::ArcArray1::from(vec![0; n_elements]),
+            families,
             groups: ArcGroups::new(),
         }
     }

@@ -125,20 +125,43 @@ def test_aggregate_mismatched_dimension():
         mf.concat(m, seg)
 
 
-def test_set_coords():
+def test_from_mesh():
     m = _quad_mesh()
-    m.set_coords(np.full((4, 2), 1.0))
-    assert np.allclose(m.coords(), 1.0)
+    assert not hasattr(m, "set_coords")
+    assert not hasattr(m, "transform_coords")
+    changed = mf.UMesh.from_mesh(
+        m,
+        np.array([[9.0, 9.0], [8.0, 8.0], [7.0, 7.0], [6.0, 6.0]]),
+    )
+    assert np.allclose(
+        changed.coords(),
+        np.array([[9.0, 9.0], [8.0, 8.0], [7.0, 7.0], [6.0, 6.0]]),
+    )
+    assert np.array_equal(m.coords(), _quad_mesh().coords())
+    assert changed.block_types() == ["QUAD4"]
     with np.testing.assert_raises(ValueError):
-        m.set_coords(np.zeros((3, 2)))
+        mf.UMesh.from_mesh(m, np.zeros((3, 2)))
+    with np.testing.assert_raises(ValueError):
+        mf.UMesh.from_mesh(m, np.full((4, 2), np.nan))
+    with np.testing.assert_raises(ValueError):
+        mf.UMesh.from_mesh(m, dim=1, element_types=["QUAD4"])
 
 
-def test_transform_coords_function():
-    m = _quad_mesh()
-    m.transform_coords(lambda c: np.concatenate((c[:, :1] ** 2, c[:, 1:]), axis=1))
-    assert np.isclose(m.coords()[1, 0], 1.0)
+def test_from_mesh_selects_source_blocks():
+    coords = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0], [2.0, 0.0]])
+    m = mf.UMesh(coords)
+    m.add_regular_block("SEG2", np.array([[0, 1]], dtype=np.uint))
+    m.add_regular_block("QUAD4", np.array([[0, 1, 3, 2]], dtype=np.uint))
+    m.set_field("temperature", {"QUAD4": np.array([4.0])})
+    selected = mf.UMesh.from_mesh(m, element_types=["QUAD4"])
+    assert selected.block_types() == ["QUAD4"]
+    assert np.array_equal(selected.blocks()["QUAD4"], [[0, 1, 3, 2]])
+    assert np.array_equal(selected.fields["temperature"].values()["QUAD4"], [4.0])
+    assert mf.UMesh.from_mesh(m, dim=2).block_types() == ["QUAD4"]
     with np.testing.assert_raises(ValueError):
-        m.transform_coords(lambda c: c[:, :1])  # wrong shape
+        mf.UMesh.from_mesh(m, element_types=["TET4"])
+    with np.testing.assert_raises(ValueError):
+        mf.UMesh.from_mesh(m, element_types=[])
 
 
 def test_transform_preserves_fields_and_groups():
@@ -199,6 +222,14 @@ def test_constructor_errors():
         mf.Transform.reflection([0.0, 0.0, 0.0])
     with np.testing.assert_raises(ValueError):
         mf.Transform.scaling([2.0, 0.0, 1.0]).inverse()
+    with np.testing.assert_raises(ValueError):
+        mf.Transform.translation([np.nan])
+    with np.testing.assert_raises(ValueError):
+        mf.Transform.rotation([1.0e300, 1.0e300, 0.0], np.nan)
+    assert np.isfinite(
+        mf.Transform.rotation([1.0e300, 1.0e300, 0.0], 0.7).matrix()
+    ).all()
+    assert np.isfinite(mf.Transform.reflection([1.0e300, 1.0e300, 0.0]).matrix()).all()
 
 
 def test_identity_and_apply():
