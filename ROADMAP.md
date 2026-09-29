@@ -55,7 +55,7 @@
 | Conversion to NumPy Arrays          | ✔️    | ✔️          | For coords, connectivity, fields                           |
 | Pythonic Mesh Access (coords, conn) | ✔️    | ✔️          | Rust-style getter wrappers                                 |
 | Field transfer in Python            | ✔️    | ✔️          | `mf.transfer.*` + `apply_update`                           |
-| C/C++ FFI Interface via `cxx`       | ⏳    | ✔️          | Exported symbols with C ABI                                |
+| C/C++ FFI Interface via `cxx`       | ✔️    | ✔️          | `mefikit::UMesh` + `TransferOperator`, CMake integration   |
 | Rust in C/C++ via `extern "C"`      | ⏳    | ✔️          | Allows calling UMesh from legacy code                      |
 | Python derived mesh Creation        | ✔️    | ✔️          | `mesh.descend()`, `mesh.select(...)`, `mesh.split()`       |
 | PyPI Distribution                   | ✔️    | ✔️          | Simple install with `pip install mefikit`                  |

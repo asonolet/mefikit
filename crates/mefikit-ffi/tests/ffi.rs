@@ -355,6 +355,96 @@ fn transferring_a_field_the_source_does_not_have_is_an_error() {
 }
 
 #[test]
+fn a_uniform_field_survives_a_transfer_between_two_med_files() {
+    // The two reference meshes in the repository's test data: 2000 polyhedra
+    // each, two different discretizations of the unit cube. Reading a real .med
+    // file and moving a field between them is the workflow the bindings exist
+    // for, so it is worth doing against real geometry and not only against the
+    // small structured meshes above.
+    let data = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/data");
+    let mut src = UMesh::read(&format!("{data}/mesh_27.med")).unwrap();
+    let mut tgt = UMesh::read(&format!("{data}/mesh_36.med")).unwrap();
+
+    // Both files are 3D polyhedral blocks, so the field is per-PHED, not per-node.
+    assert_eq!(src.n_elements(), 2000);
+    assert_eq!(tgt.n_elements(), 2000);
+    assert_eq!(src.n_elements_of(ElementType::PHED), 2000);
+    assert_eq!(src.space_dimension(), 3);
+    assert_eq!(src.topological_dimension(), Dimension::D3);
+    assert_eq!(src.element_types(), vec![ElementType::PHED]);
+
+    // Deliberately not calling validate_structure(): it fails on these two files,
+    // and not because of the bindings. The core's MED reader marks the face
+    // boundaries inside a polyhedron with usize::MAX sentinels
+    // (crates/mefikit/src/io/med_io.rs, "mefikit convention") while the core's own
+    // validate_structure() rejects any node index >= n_nodes
+    // (crates/mefikit/src/mesh/umesh.rs). The transfer below is what shows the
+    // mesh is usable regardless.
+
+    // A field of 1.0 on every cell. Every method here is an average or a
+    // least-squares fit, so a constant field has to come back constant: the value
+    // cannot depend on how the two meshes happen to be cut up.
+    let uniform = vec![1.0; 2000];
+    let negative = vec![-1.0; 2000];
+    src.set_field_uniform("u", ElementType::PHED, 1, slice(&uniform))
+        .unwrap();
+    src.set_field_uniform("v", ElementType::PHED, 1, slice(&negative))
+        .unwrap();
+
+    let methods = [
+        TransferMethod::conservative_p0(),
+        TransferMethod::constant_piecewise(PointLocation::Centroid),
+        TransferMethod::inverse_distance(8, 2.0),
+        TransferMethod::moving_least_squares(8, DistanceWeighting::Gaussian),
+    ];
+    for method in &methods {
+        // One prepare, two fields: the shape of a time-step loop, and the reason
+        // prepare() is separate from apply_update().
+        let op = mefikit_ffi::TransferOperator::prepare(&src, &tgt, method).unwrap();
+        op.apply_update(&src, "u", &mut tgt, "u", 0.0, FieldNature::Intensive)
+            .unwrap();
+        op.apply_update(&src, "v", &mut tgt, "v", 0.0, FieldNature::Intensive)
+            .unwrap();
+
+        // The meshes discretize the same unit cube, so no target cell falls back
+        // to the default value and every one of them must come back at 1.0.
+        // SAFETY: no method taking &mut self runs while the borrow is alive.
+        let got = unsafe { tgt.field_values("u", ElementType::PHED) }.unwrap();
+        let got_negative = unsafe { tgt.field_values("v", ElementType::PHED) }.unwrap();
+        assert_eq!(got.len(), 2000);
+        assert_eq!(got_negative.len(), 2000);
+        let worst = got
+            .iter()
+            .chain(got_negative.iter())
+            .map(|&x| (x.abs() - 1.0).abs())
+            .fold(0.0f64, f64::max);
+        assert!(worst < 1e-5, "a uniform field came back as {worst} off 1.0");
+        assert!(
+            !got.contains(&0.0),
+            "some target cell was left uncovered by the source"
+        );
+    }
+
+    // The other direction, on the same two files: 36 -> 27.
+    let back =
+        mefikit_ffi::TransferOperator::prepare(&tgt, &src, &TransferMethod::conservative_p0())
+            .unwrap();
+    back.apply_update(&tgt, "u", &mut src, "u_back", 0.0, FieldNature::Intensive)
+        .unwrap();
+    // SAFETY: no method taking &mut self runs while the borrow is alive.
+    let reversed = unsafe { src.field_values("u_back", ElementType::PHED) }.unwrap();
+    assert_eq!(reversed.len(), 2000);
+    let worst_back = reversed
+        .iter()
+        .map(|&x| (x - 1.0).abs())
+        .fold(0.0f64, f64::max);
+    assert!(
+        worst_back < 1e-5,
+        "the reverse transfer came back as {worst_back} off 1.0"
+    );
+}
+
+#[test]
 fn io_round_trips_through_a_file() {
     let dir = std::env::temp_dir().join("mefikit_ffi_rust_test");
     std::fs::create_dir_all(&dir).unwrap();

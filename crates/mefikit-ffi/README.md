@@ -217,3 +217,10 @@ copy a `UMesh`; move it (`auto b = std::move(a);`).
 - `cargo test -p mefikit-ffi` runs the Rust side.
 - `ctest --test-dir build/cpp` runs the C++ side, written against the public
   header only, in [`examples/tests/test_mefikit.cpp`](examples/tests/test_mefikit.cpp).
+
+Both suites end with a transfer between the two reference meshes in
+`tests/data` (`mesh_27.med` and `mesh_36.med`, 2000 polyhedra each): read both,
+put a uniform field on the source, and check that all four methods hand it back
+unchanged. That is the only test that touches real `.med` geometry, and it is
+where the cost of a wrong answer shows up — a few seconds in Release, a few
+times that in Debug.
