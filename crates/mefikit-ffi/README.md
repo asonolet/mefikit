@@ -183,6 +183,30 @@ Only `PointLocation::Centroid` is implemented; `Barycenter` and `StrictInterior`
 are rejected with an error, since mefikit does not implement them yet and a panic
 crossing the bridge would abort the process.
 
+### What the bindings check for you
+
+mefikit states the preconditions of a transfer as `assert!`s, and a Rust panic
+that reaches C++ aborts the process, so `prepare` returns an error instead for
+each of them: mismatched space dimensions, an empty source or target, `k` below
+one, a non-positive or non-finite exponent, and — for `conservative_p0` and
+`constant_piecewise` — cells that do not fill their space dimension. The same
+applies to the input side: a node index the mesh does not have, a poly offset
+table that does not describe the connectivity it came with, a second block of an
+element type the mesh already has, non-finite coordinates, an empty field name, a
+field whose blocks disagree on the component count, and a field size that
+overflows.
+
+### When to prepare again
+
+An operator holds matrices sized by the two meshes it was built from, so
+`apply_update` checks that the meshes still have the shape it was prepared for:
+the same number of nodes, the same element types, and the same number of cells in
+each. Adding or removing a block, or moving cells between element types, means
+preparing a new operator. Editing coordinates or connectivity *in place*, which
+leaves all of those counts alone, is not detected — nothing in the binding hashes
+the geometry. Keep the geometry fixed for an operator's lifetime, which is what
+preparing once for many time steps already assumes.
+
 ## Error handling
 
 Every fallible method throws a `rust::Error`, which derives from

@@ -16,6 +16,10 @@
 // cannot fail.
 #pragma once
 
+// <cstddef> for std::size_t, used by the factories below. Not pulled in
+// reliably by cxx's header on its own.
+#include <cstddef>
+
 #include "rust/cxx.h"
 #include "mefikit-ffi/src/ffi.rs.h"
 

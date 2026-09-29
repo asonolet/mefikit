@@ -55,18 +55,82 @@ impl From<nd::ShapeError> for Error {
 }
 
 /// An owned mesh, exposed to C++ as an opaque `mefikit::UMesh` held by
-/// `std::unique_ptr`.
+/// `rust::Box`.
 ///
 /// The indirection is required by cxx (opaque types must be defined in the
 /// bridge's own crate) and is also a useful place to keep the FFI surface stable
-/// while `mefikit::UMesh` evolves.
-pub struct UMesh(pub mf::UMesh);
+/// while `mefikit::UMesh` evolves. The wrapped value is private on purpose: the
+/// methods in [`crate::mesh`] check their arguments before handing them to
+/// `mefikit`, and a public field would let a Rust caller skip those checks.
+pub struct UMesh(pub(crate) mf::UMesh);
 
 /// A transfer operator precomputed between a source and a target mesh.
 ///
 /// This is the expensive half of a transfer: build it once, then reuse it for
 /// every field and every time step, as long as the two meshes do not change.
-pub struct TransferOperator(pub mf::TransferOperator);
+///
+/// The bookkeeping fields are not decoration. `mefikit`'s transfer panics — with
+/// an `assert!` — when the meshes handed to
+/// [`apply_update`](crate::transfer::TransferOperator::apply_update) are not
+/// the ones it was built from, and a panic unwinding out of the library would
+/// abort the C++ process instead of raising a catchable `rust::Error`. Recording
+/// what was prepared lets [`crate::transfer`] check the preconditions itself and
+/// report them.
+pub struct TransferOperator {
+    pub(crate) operator: mf::TransferOperator,
+    /// Dimension of the source cells, i.e. the source mesh's topological
+    /// dimension at prepare time.
+    pub(crate) src_dim: mf::Dimension,
+    /// Number of source cells at `src_dim`, matching `TransferOperator::n_src`
+    /// in the core.
+    pub(crate) n_src: usize,
+    /// Shape of the source mesh at prepare time.
+    pub(crate) src_shape: MeshShape,
+    /// Shape of the target mesh at prepare time.
+    pub(crate) tgt_shape: MeshShape,
+}
+
+/// Enough of a mesh's shape to notice that a transfer operator went stale.
+///
+/// Coordinates are not hashed: a mesh edited in place without changing its node
+/// or element counts is not detected, which is why the documentation insists the
+/// geometry stay fixed for the operator's lifetime.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct MeshShape {
+    pub(crate) n_nodes: usize,
+    /// Element count of every block, keyed by element type, so that moving a
+    /// cell from one type to another is noticed even when the total is the same.
+    pub(crate) blocks: Vec<(mf::ElementType, usize)>,
+}
+
+impl MeshShape {
+    pub(crate) fn of(mesh: &UMesh) -> Self {
+        Self {
+            n_nodes: mesh.n_nodes(),
+            blocks: mesh
+                .0
+                .element_types()
+                .map(|element_type| {
+                    let n = mesh.0.block(*element_type).map_or(0, |block| block.len());
+                    (*element_type, n)
+                })
+                .collect(),
+        }
+    }
+}
+
+impl std::fmt::Display for MeshShape {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} nodes and blocks ", self.n_nodes)?;
+        for (i, (element_type, n)) in self.blocks.iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, "{element_type:?} x {n}")?;
+        }
+        Ok(())
+    }
+}
 
 #[cxx::bridge(namespace = "mefikit")]
 pub mod bridge {

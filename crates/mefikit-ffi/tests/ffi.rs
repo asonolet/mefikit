@@ -15,6 +15,15 @@ fn slice<T>(v: &[T]) -> &[T] {
     v
 }
 
+/// `Result::unwrap_err` needs a `Debug` on the success type, and the cxx shared
+/// structs deliberately do not have one.
+fn expect_error<T>(result: Result<T, Error>) -> Error {
+    match result {
+        Ok(_) => panic!("expected an error"),
+        Err(err) => err,
+    }
+}
+
 /// A 2 x 2 grid of QUAD4 cells over [0, 1]^2: 9 nodes, 4 elements.
 fn quad_mesh() -> Box<UMesh> {
     let mut coords = Vec::new();
@@ -152,26 +161,27 @@ fn a_field_must_match_the_mesh_block_layout() {
         "unexpected error: {err}"
     );
 
-    // Declared shape does not match how many values were supplied.
-    let wide = [
+    // Declared shape does not match how many values were supplied: QUAD4 has one
+    // element, so it wants one value, not three.
+    let over = [
         FieldBlock {
             element_type: ElementType::QUAD4,
             n_components: 1,
             offset: 0,
-            len: 1,
+            len: 3,
         },
         FieldBlock {
             element_type: ElementType::TRI3,
-            n_components: 2,
+            n_components: 1,
             offset: 1,
             len: 2,
         },
     ];
     let err = mesh
-        .set_field("U", slice(&wide), slice(&[1.0, 2.0, 3.0]))
+        .set_field("U", slice(&over), slice(&[1.0, 2.0, 3.0]))
         .unwrap_err();
     assert!(
-        matches!(&err, Error::InvalidArgument(m) if m.contains("2 elements x 2 components")),
+        matches!(&err, Error::InvalidArgument(m) if m.contains("1 elements x 1 components")),
         "unexpected error: {err}"
     );
 
@@ -485,4 +495,483 @@ fn io_round_trips_through_a_file() {
         mesh.write("/no/such/dir/mesh.json"),
         Err(Error::Io(_))
     ));
+}
+
+/// A mesh whose blocks are checked against the one just added. The core's
+/// `add_*_block` silently keeps the first block when handed a second of the
+/// same type, which looks like a successful call to a caller that then reads
+/// back the values it just wrote and gets the old ones.
+#[test]
+fn an_element_type_may_only_have_one_block() {
+    let mut mesh = quad_mesh();
+    mesh.set_field_uniform("T", ElementType::QUAD4, 1, slice(&[1.0, 2.0, 3.0, 4.0]))
+        .unwrap();
+
+    let err = mesh
+        .add_regular_block(ElementType::QUAD4, slice(&[8, 7, 6, 5]), 1)
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("already has a QUAD4 block")),
+        "unexpected error: {err}"
+    );
+
+    // A block of a fixed-size type is refused by the poly entry point too, and
+    // that is worth knowing before the duplicate check, since the type is
+    // wrong for this call whichever way round it is reported.
+    let err = mesh
+        .add_poly_block(ElementType::QUAD4, slice(&[0usize]), slice(&[1]))
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("fixed node count")),
+        "unexpected error: {err}"
+    );
+
+    let mut pgon = quad_mesh();
+    pgon.add_poly_block(
+        ElementType::PGON,
+        slice(&[0usize, 1, 2, 3]),
+        slice(&[4usize]),
+    )
+    .unwrap();
+    let err = pgon
+        .add_poly_block(
+            ElementType::PGON,
+            slice(&[3usize, 2, 1, 0]),
+            slice(&[4usize]),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("already has a PGON block")),
+        "unexpected error: {err}"
+    );
+
+    // The rejected call left the mesh exactly as it was.
+    assert_eq!(mesh.n_elements(), 4);
+    // SAFETY: no method taking &mut self runs while the borrow is alive.
+    assert_eq!(
+        unsafe { mesh.field_values("T", ElementType::QUAD4) }.unwrap(),
+        [1.0, 2.0, 3.0, 4.0]
+    );
+}
+
+/// The poly offset table is what tells the core how many elements a block has
+/// and where each one starts. Offsets that do not run from 0 to the number of
+/// given nodes make it read a different number of elements than the caller
+/// intended, which then shows up much later as a transfer of the wrong size or
+/// as a panic.
+#[test]
+fn poly_offsets_must_describe_the_nodes_they_are_given() {
+    let mut mesh = mixed_mesh();
+    // Offsets that go backwards.
+    let err = mesh
+        .add_poly_block(
+            ElementType::PGON,
+            slice(&[0usize, 1, 2, 3]),
+            slice(&[5usize, 3]),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("only 4 nodes were given")),
+        "unexpected error: {err}"
+    );
+    // Two elements that start at the same offset, so the first is empty.
+    let err = mesh
+        .add_poly_block(
+            ElementType::PGON,
+            slice(&[0usize, 1, 2, 3]),
+            slice(&[0usize, 3]),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("empty element at index 0")),
+        "unexpected error: {err}"
+    );
+    // The last offset does not reach the end of the connectivity.
+    let err = mesh
+        .add_poly_block(
+            ElementType::PGON,
+            slice(&[0usize, 1, 2, 3]),
+            slice(&[2usize]),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("ends at node 2")),
+        "unexpected error: {err}"
+    );
+    // The poly entry point only takes variable-size elements.
+    let err = mesh
+        .add_poly_block(
+            ElementType::QUAD4,
+            slice(&[0usize, 1, 2, 3]),
+            slice(&[4usize]),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("fixed node count")),
+        "unexpected error: {err}"
+    );
+    assert_eq!(mesh.n_elements(), 3);
+}
+
+/// The core indexes nodes with these numbers, so a bad one is a panic rather
+/// than a rejected mesh.
+#[test]
+fn connectivity_may_only_reference_existing_nodes() {
+    let mut mesh = UMesh::from_coords(slice(&[0.0, 0.0, 1.0, 0.0, 1.0, 1.0]), 3, 2).unwrap();
+    let err = mesh
+        .add_regular_block(ElementType::TRI3, slice(&[0usize, 1, 99]), 1)
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("node 99 but the mesh has 3 nodes")),
+        "unexpected error: {err}"
+    );
+    let err = mesh
+        .add_poly_block(
+            ElementType::PGON,
+            slice(&[0usize, 1, 2, 42]),
+            slice(&[4usize]),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("node 42 but the mesh has 3 nodes")),
+        "unexpected error: {err}"
+    );
+    assert!(mesh.is_empty());
+}
+
+/// mefikit works in 1D, 2D and 3D space, and a transfer of non-finite
+/// coordinates produces meaningless weights rather than a diagnosable failure.
+#[test]
+fn coordinates_must_be_finite_and_of_a_usable_dimension() {
+    for space_dim in [0usize, 4] {
+        let err = expect_error(UMesh::from_coords(slice(&[0.0; 3]), 1, space_dim));
+        assert!(
+            matches!(&err, Error::InvalidArgument(m) if m.contains("space_dim must be")),
+            "unexpected error: {err}"
+        );
+    }
+    let err = expect_error(UMesh::from_coords(slice(&[0.0, 0.0, f64::NAN, 0.0]), 2, 2));
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("is NaN, which is not finite")),
+        "unexpected error: {err}"
+    );
+    let err = expect_error(UMesh::from_coords(
+        slice(&[0.0, 0.0, f64::INFINITY, 0.0]),
+        2,
+        2,
+    ));
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("is inf, which is not finite")),
+        "unexpected error: {err}"
+    );
+}
+
+/// A transfer reads a field as one array by gluing the per-element-type parts
+/// together, which only makes sense if they agree on the trailing dimensions.
+/// Two blocks of one field with different component counts used to get all the
+/// way into the core before it asserted on the shapes.
+#[test]
+fn a_field_has_one_shape_across_all_of_the_mesh_element_types() {
+    let mut mesh = mixed_mesh();
+    let blocks = [
+        FieldBlock {
+            element_type: ElementType::QUAD4,
+            n_components: 1,
+            offset: 0,
+            len: 1,
+        },
+        FieldBlock {
+            element_type: ElementType::TRI3,
+            n_components: 3,
+            offset: 1,
+            len: 6,
+        },
+    ];
+    let err = mesh
+        .set_field(
+            "T",
+            slice(&blocks),
+            slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]),
+        )
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("1 components on the first block but 3 on TRI3")),
+        "unexpected error: {err}"
+    );
+    assert!(mesh.field_names().is_empty());
+}
+
+#[test]
+fn field_names_may_not_be_empty() {
+    let mut mesh = quad_mesh();
+    let err = mesh
+        .set_field_uniform("", ElementType::QUAD4, 1, slice(&[1.0]))
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("may not be empty")),
+        "unexpected error: {err}"
+    );
+}
+
+#[test]
+fn a_field_block_may_not_be_listed_twice() {
+    let mut mesh = quad_mesh();
+    let blocks = [
+        FieldBlock {
+            element_type: ElementType::QUAD4,
+            n_components: 1,
+            offset: 0,
+            len: 1,
+        },
+        FieldBlock {
+            element_type: ElementType::QUAD4,
+            n_components: 1,
+            offset: 0,
+            len: 1,
+        },
+    ];
+    let err = mesh
+        .set_field("T", slice(&blocks), slice(&[1.0, 2.0]))
+        .unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("lists QUAD4 more than once")),
+        "unexpected error: {err}"
+    );
+}
+
+/// The element count times the component count has to fit in a `usize` before
+/// it is used to slice the caller's array. In release builds the core's
+/// arithmetic used to wrap around and index somewhere else in memory.
+#[test]
+fn an_impossible_field_size_is_reported_rather_than_wrapping() {
+    let mut mesh = quad_mesh();
+    let blocks = [FieldBlock {
+        element_type: ElementType::QUAD4,
+        n_components: usize::MAX / 2 + 1,
+        offset: 0,
+        len: 0,
+    }];
+    let err = mesh.set_field("T", slice(&blocks), slice(&[])).unwrap_err();
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("which overflows")),
+        "unexpected error: {err}"
+    );
+}
+
+/// A `um` built over a hexahedral block, plus a triangle lying on one of its
+/// faces: enough to try a transfer between meshes whose space dimensions or
+/// cell dimensions disagree.
+fn hex_mesh() -> Box<UMesh> {
+    let coords = [
+        0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, //
+        0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0,
+    ];
+    let mut mesh = UMesh::from_coords(slice(&coords), 8, 3).unwrap();
+    mesh.add_regular_block(ElementType::HEX8, slice(&[0usize, 1, 2, 3, 4, 5, 6, 7]), 1)
+        .unwrap();
+    mesh
+}
+
+fn quad_surface() -> Box<UMesh> {
+    let coords = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0];
+    let mut mesh = UMesh::from_coords(slice(&coords), 3, 3).unwrap();
+    mesh.add_regular_block(ElementType::TRI3, slice(&[0usize, 1, 2]), 1)
+        .unwrap();
+    mesh
+}
+
+/// mefikit's transfer methods are documented with preconditions that the core
+/// enforces by asserting. Reaching the core with them violated is a panic, so
+/// the bindings check first and return the reason instead.
+#[test]
+fn a_transfer_that_mefikit_cannot_do_reports_the_reason() {
+    let coords = [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
+    let bare = UMesh::from_coords(slice(&coords), 4, 2).unwrap();
+    let a = quad_mesh();
+    let b = quad_mesh();
+
+    let p0 = TransferMethod::conservative_p0();
+    let cases: [(&str, &UMesh, &UMesh, &TransferMethod, &str); 5] = [
+        ("no source cells", &bare, &a, &p0, "no elements"),
+        ("no target cells", &a, &bare, &p0, "no elements"),
+        (
+            "k of zero",
+            &a,
+            &b,
+            &TransferMethod::inverse_distance(0, 2.0),
+            "k of at least 1",
+        ),
+        (
+            "zero exponent",
+            &a,
+            &b,
+            &TransferMethod::inverse_distance(3, 0.0),
+            "positive exponent",
+        ),
+        (
+            "mls k of zero",
+            &a,
+            &b,
+            &TransferMethod::moving_least_squares(0, DistanceWeighting::Gaussian),
+            "k of at least 1",
+        ),
+    ];
+    for (label, src, tgt, method, expected) in cases {
+        let err = expect_error(mefikit_ffi::TransferOperator::prepare(src, tgt, method));
+        assert!(
+            matches!(&err, Error::InvalidArgument(m) if m.contains(expected)),
+            "{label}: unexpected error: {err}"
+        );
+    }
+
+    // A method that cannot work on cells that do not fill their space dimension
+    // is rejected, but the methods that are defined on a lower-dimensional
+    // source keep working.
+    let hex = hex_mesh();
+    let surface = quad_surface();
+    for method in [
+        TransferMethod::conservative_p0(),
+        TransferMethod::constant_piecewise(PointLocation::Centroid),
+    ] {
+        // A surface target: no cell to integrate over.
+        let err = expect_error(mefikit_ffi::TransferOperator::prepare(
+            &hex, &surface, &method,
+        ));
+        assert!(
+            matches!(&err, Error::InvalidArgument(m) if m.contains("full-dimensional target cells")),
+            "unexpected error: {err}"
+        );
+        // A surface source: no cell to take the value from.
+        let err = expect_error(mefikit_ffi::TransferOperator::prepare(
+            &surface, &hex, &method,
+        ));
+        assert!(
+            matches!(&err, Error::InvalidArgument(m) if m.contains("full-dimensional source cells")),
+            "unexpected error: {err}"
+        );
+    }
+    mefikit_ffi::TransferOperator::prepare(
+        &hex,
+        &surface,
+        &TransferMethod::inverse_distance(1, 2.0),
+    )
+    .unwrap();
+
+    // Both meshes have to live in the same space for an operator to be built.
+    let hex2 = hex_mesh();
+    let err = expect_error(mefikit_ffi::TransferOperator::prepare(
+        &a,
+        &hex2,
+        &TransferMethod::conservative_p0(),
+    ));
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("same space dimension")),
+        "unexpected error: {err}"
+    );
+}
+
+/// A 1 x 1 grid of QUAD4 cells: same kinds as `quad_mesh`, half the size.
+fn coarse_quad_mesh() -> Box<UMesh> {
+    let coords = [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
+    let mut mesh = UMesh::from_coords(slice(&coords), 4, 2).unwrap();
+    mesh.add_regular_block(ElementType::QUAD4, slice(&[0usize, 1, 2, 3]), 1)
+        .unwrap();
+    mesh
+}
+
+/// An operator holds matrices sized by the meshes it was built from. Applying
+/// it to a different mesh used to be an assertion failure inside the core, and
+/// applying it to a mesh that had been modified since had no check at all.
+#[test]
+fn an_operator_refuses_meshes_it_was_not_prepared_for() {
+    let mut src = quad_mesh();
+    src.set_field_uniform("T", ElementType::QUAD4, 1, slice(&[1.0, 2.0, 3.0, 4.0]))
+        .unwrap();
+    let mut tgt = quad_mesh();
+    let op = mefikit_ffi::TransferOperator::prepare(&src, &tgt, &TransferMethod::conservative_p0())
+        .unwrap();
+
+    // A different source of the same kind: the operator's matrices would no
+    // longer line up with it.
+    let mut other = coarse_quad_mesh();
+    other
+        .set_field_uniform("T", ElementType::QUAD4, 1, slice(&[1.0]))
+        .unwrap();
+    let err =
+        expect_error(op.apply_update(&other, "T", &mut tgt, "T", 0.0, FieldNature::Intensive));
+    assert!(
+        matches!(&err, Error::InvalidArgument(m)
+            if m.contains("source mesh given here has 1; the geometry must not change")),
+        "unexpected error: {err}"
+    );
+
+    // A source in a different space is a different kind of mistake.
+    let mut other_space = hex_mesh();
+    other_space
+        .set_field_uniform("T", ElementType::HEX8, 1, slice(&[1.0]))
+        .unwrap();
+    let err = expect_error(op.apply_update(
+        &other_space,
+        "T",
+        &mut tgt,
+        "T",
+        0.0,
+        FieldNature::Intensive,
+    ));
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("at dimension D3")),
+        "unexpected error: {err}"
+    );
+
+    // A target that gained a block since the operator was built.
+    tgt.add_regular_block(ElementType::TRI3, slice(&[0usize, 1, 4]), 1)
+        .unwrap();
+    let err = expect_error(op.apply_update(&src, "T", &mut tgt, "T", 0.0, FieldNature::Intensive));
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("prepared for a target mesh")),
+        "unexpected error: {err}"
+    );
+}
+
+/// A field whose blocks disagree on the component count is something the
+/// bindings cannot build, but a hand-written or third-party file can contain it,
+/// and the core panics when it concatenates such a field. Kept as a literal
+/// rather than produced through the API, because producing it is exactly what is
+/// being tested against.
+const RAGGED_FIELD_MESH: &str = r#"{"coords":{"v":1,"dim":[6,2],"data":[0.0,0.0,1.0,0.0,1.0,1.0,0.0,1.0,0.0,2.0,1.0,2.0]},"element_blocks":{"TRI3":{"cell_type":"TRI3","connectivity":{"Regular":{"v":1,"dim":[2,3],"data":[2,3,4,4,5,2]}},"fields":{"T":{"v":1,"dim":[2,3],"data":[2.5,3.5,4.5,5.5,6.5,7.5]}},"families":{"v":1,"dim":[2],"data":[0,0]},"groups":{}},"QUAD4":{"cell_type":"QUAD4","connectivity":{"Regular":{"v":1,"dim":[1,4],"data":[0,1,2,3]}},"fields":{"T":{"v":1,"dim":[1,1],"data":[1.5]}},"families":{"v":1,"dim":[1],"data":[0]},"groups":{}}}}"#;
+
+#[test]
+fn a_field_from_a_file_still_needs_one_shape() {
+    let dir = std::env::temp_dir().join("mefikit_ffi_ragged_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("ragged.json");
+    std::fs::write(&path, RAGGED_FIELD_MESH).unwrap();
+    let path = path.to_str().unwrap();
+
+    let src = UMesh::read(path).unwrap();
+    let mut tgt = quad_mesh();
+    let method = TransferMethod::conservative_p0();
+
+    let err = expect_error(transfer_field(
+        &src,
+        "T",
+        &mut tgt,
+        "T",
+        &method,
+        0.0,
+        FieldNature::Intensive,
+    ));
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("3 components on TRI3 and 1 on QUAD4")),
+        "unexpected error: {err}"
+    );
+
+    let op = mefikit_ffi::TransferOperator::prepare(&src, &tgt, &method).unwrap();
+    let err = expect_error(op.apply_update(&src, "T", &mut tgt, "T", 0.0, FieldNature::Intensive));
+    assert!(
+        matches!(&err, Error::InvalidArgument(m) if m.contains("3 components on TRI3 and 1 on QUAD4")),
+        "unexpected error: {err}"
+    );
+
+    std::fs::remove_file(path).unwrap();
 }
