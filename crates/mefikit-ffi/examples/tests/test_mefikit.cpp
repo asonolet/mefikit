@@ -364,6 +364,93 @@ void test_io_round_trip() {
   CHECK(threw);
 }
 
+// The two reference meshes in the repository's test data: 2000 polyhedra each,
+// two different discretizations of the unit cube. Reading a real .med file and
+// moving a field between them is the workflow the bindings exist for, so the
+// suite does it once against real geometry rather than only small structured
+// meshes.
+void test_med_transfer_of_a_uniform_field() {
+  const std::string dir = MEFIKIT_TEST_DATA_DIR;
+  auto src = mefikit::UMesh::read(dir + "/mesh_27.med");
+  auto tgt = mefikit::UMesh::read(dir + "/mesh_36.med");
+
+  // Deliberately not calling validate_structure() on these two. It fails, and not
+  // because of the bindings: the core's MED reader marks the face boundaries
+  // inside a polyhedron with usize::MAX sentinels (crates/mefikit/src/io/med_io.rs,
+  // "mefikit convention"), while the core's own validate_structure() rejects any
+  // node index >= n_nodes (crates/mefikit/src/mesh/umesh.rs). So a mesh read from
+  // a .med file fails the validator the core wrote for it, and the transfer below
+  // is what shows the mesh is nonetheless usable.
+
+  CHECK_EQ(src->n_elements(), 2000u);
+  CHECK_EQ(tgt->n_elements(), 2000u);
+  CHECK_EQ(src->n_elements_of(mefikit::ElementType::PHED), 2000u);
+  CHECK_EQ(src->n_elements_of(mefikit::ElementType::TET4), 0u);
+  CHECK_EQ(src->space_dimension(), 3u);
+  CHECK(src->topological_dimension() == mefikit::Dimension::D3);
+  CHECK_EQ(src->element_types().size(), 1u);
+  CHECK(src->element_types()[0] == mefikit::ElementType::PHED);
+
+  // A field of 1.0 on every cell of the source. Every method here is an average
+  // or a least-squares fit, so a constant field has to come back constant: the
+  // value cannot depend on how the two meshes happen to be cut up.
+  const std::size_t n_src = src->n_elements_of(mefikit::ElementType::PHED);
+  const std::vector<double> ones(n_src, 1.0);
+  const std::vector<double> minus_ones(n_src, -1.0);
+  src->set_field_uniform("u", mefikit::ElementType::PHED, 1, slice_of(ones));
+  src->set_field_uniform("v", mefikit::ElementType::PHED, 1, slice_of(minus_ones));
+
+  // The meshes discretize the same unit cube, so no target cell is left without a
+  // source cell to average, and none of them falls back to the default value.
+  const double kDefault = 0.0;
+  const std::vector<mefikit::TransferMethod> methods{
+      mefikit::conservative_p0(),
+      mefikit::constant_piecewise(mefikit::PointLocation::Centroid),
+      mefikit::inverse_distance(8),
+      mefikit::moving_least_squares(8, mefikit::DistanceWeighting::Gaussian),
+  };
+
+  for (const auto &method : methods) {
+    // One prepare, two fields: the shape of a time-step loop, and the reason
+    // prepare() is separate from apply_update().
+    auto op = mefikit::TransferOperator::prepare(*src, *tgt, method);
+    op->apply_update(*src, "u", *tgt, "u", kDefault, mefikit::FieldNature::Intensive);
+    op->apply_update(*src, "v", *tgt, "v", kDefault, mefikit::FieldNature::Intensive);
+
+    const auto got = tgt->field_values("u", mefikit::ElementType::PHED);
+    CHECK_EQ(got.size(), 2000u);
+    const auto got_minus = tgt->field_values("v", mefikit::ElementType::PHED);
+    CHECK_EQ(got_minus.size(), 2000u);
+
+    double worst = 0.0;
+    double worst_minus = 0.0;
+    std::size_t defaulted = 0;
+    for (std::size_t i = 0; i < got.size(); ++i) {
+      worst = std::fmax(worst, std::fabs(got[i] - 1.0));
+      worst_minus = std::fmax(worst_minus, std::fabs(got_minus[i] + 1.0));
+      defaulted += (got[i] == kDefault);
+    }
+    report(worst < 1e-5, "a uniform field transfers as a uniform field", __FILE__,
+           __LINE__, "worst deviation " + show(worst));
+    report(worst_minus < 1e-5, "a second field transfers independently", __FILE__,
+           __LINE__, "worst deviation " + show(worst_minus));
+    report(defaulted == 0, "every target cell was covered by the source", __FILE__,
+           __LINE__, show(defaulted) + " cells took the default value");
+  }
+
+  // The other direction, on the same two files: 36 -> 27.
+  auto back = mefikit::TransferOperator::prepare(*tgt, *src, mefikit::conservative_p0());
+  back->apply_update(*tgt, "u", *src, "u_back", kDefault, mefikit::FieldNature::Intensive);
+  const auto reversed = src->field_values("u_back", mefikit::ElementType::PHED);
+  CHECK_EQ(reversed.size(), 2000u);
+  double worst_back = 0.0;
+  for (std::size_t i = 0; i < reversed.size(); ++i) {
+    worst_back = std::fmax(worst_back, std::fabs(reversed[i] - 1.0));
+  }
+  report(worst_back < 1e-5, "the transfer works in the reverse direction too", __FILE__,
+         __LINE__, "worst deviation " + show(worst_back));
+}
+
 void test_transfer_method_factories() {
   // The factories exist so unused parameters stay zeroed; check the shapes they
   // produce, and that every one of them is accepted by prepare().
@@ -422,6 +509,7 @@ int main() {
   test_default_value_fills_uncovered_cells();
   test_io_round_trip();
   test_transfer_method_factories();
+  test_med_transfer_of_a_uniform_field();
 
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
