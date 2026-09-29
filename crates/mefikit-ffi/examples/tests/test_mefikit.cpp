@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <sstream>
 #include <string>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -494,6 +496,257 @@ void test_transfer_method_factories() {
   }
 }
 
+
+// Two HEX8 cells over [0, 2] x [0, 1] x [0, 1]: a 3D mesh that is not the same
+// size as the one above, to check that an operator notices the difference.
+rust::Box<mefikit::UMesh> two_cell_hex_mesh() {
+  const std::vector<double> coords{0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 1, 0,
+                                   1, 1, 0, 2, 1, 0, 0, 0, 1, 1, 0, 1,
+                                   2, 0, 1, 1, 1, 1, 0, 1, 1, 2, 1, 1};
+  auto mesh = mefikit::UMesh::from_coords(slice_of(coords), 12, 3);
+  mesh->add_regular_block(
+      mefikit::ElementType::HEX8,
+      slice_of(std::vector<std::size_t>{0, 1, 4, 3, 6, 7, 10, 9, 1, 2, 5, 4,
+                                        7, 8, 11, 10}),
+      2);
+  return mesh;
+}
+
+// mefikit states the preconditions of its transfers as assert!s, which abort the
+// process rather than unwinding. Every one of those cases has to come back as a
+// rust::Error, because a C++ caller has no way to handle a Rust panic.
+void test_transfers_that_cannot_work_are_reported() {
+  auto a = cmesh(2);
+  auto b = cmesh(2);
+  const auto p0 = mefikit::conservative_p0();
+  const auto id = mefikit::inverse_distance(1, 2.0);
+
+  // Coordinates but no elements at all: nothing to interpolate from.
+  auto bare = mefikit::UMesh::from_coords(
+      slice_of(std::vector<double>{0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0}), 4, 2);
+
+  const std::vector<std::tuple<const char *, mefikit::UMesh *, mefikit::UMesh *,
+                               mefikit::TransferMethod, const char *>>
+      cases{
+          {"no source cells", &*bare, &*a, p0, "no elements"},
+          {"no target cells", &*a, &*bare, p0, "no elements"},
+          {"k of zero", &*a, &*b, mefikit::inverse_distance(0, 2.0),
+           "k of at least 1"},
+          {"exponent of zero", &*a, &*b, mefikit::inverse_distance(3, 0.0),
+           "positive exponent"},
+          {"negative exponent", &*a, &*b, mefikit::inverse_distance(3, -1.0),
+           "positive exponent"},
+          {"mls k of zero", &*a, &*b,
+           mefikit::moving_least_squares(0, mefikit::DistanceWeighting::Gaussian),
+           "k of at least 1"},
+      };
+  for (const auto &[label, src, tgt, method, expected] : cases) {
+    bool threw = false;
+    try {
+      auto op = mefikit::TransferOperator::prepare(*src, *tgt, method);
+      (void)op;
+    } catch (const rust::Error &e) {
+      threw = true;
+      if (std::string(e.what()).find(expected) == std::string::npos) {
+        report(false, "error message", __FILE__, __LINE__,
+               std::string(label) + ": '" + e.what() + "'");
+      }
+    }
+    report(threw, "transfer refused", __FILE__, __LINE__, label);
+  }
+
+  // Meshes in different spaces, and a source of cells that do not fill their
+  // space: both are refused for the methods that integrate over cells.
+  auto hex = mefikit::UMesh::from_coords(
+      slice_of(std::vector<double>{0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0,
+                                   0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0,
+                                   1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0,
+                                   1.0}),
+      8, 3);
+  hex->add_regular_block(mefikit::ElementType::HEX8,
+                         slice_of(std::vector<std::size_t>{0, 1, 2, 3, 4, 5, 6, 7}),
+                         1);
+  auto surface = mefikit::UMesh::from_coords(
+      slice_of(std::vector<double>{0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0}),
+      3, 3);
+  surface->add_regular_block(mefikit::ElementType::TRI3,
+                             slice_of(std::vector<std::size_t>{0, 1, 2}), 1);
+
+  const std::vector<std::pair<const char *, mefikit::TransferMethod>> cell_methods{
+      {"conservative p0", p0},
+      {"constant piecewise",
+       mefikit::constant_piecewise(mefikit::PointLocation::Centroid)},
+  };
+  for (const auto &[name, method] : cell_methods) {
+    for (const auto &[dir, src, tgt] :
+         std::vector<std::tuple<const char *, mefikit::UMesh *, mefikit::UMesh *>>{
+             {"surface source", &*surface, &*hex},
+             {"surface target", &*hex, &*surface}}) {
+      bool threw = false;
+      try {
+        auto op = mefikit::TransferOperator::prepare(*src, *tgt, method);
+        (void)op;
+      } catch (const rust::Error &) {
+        threw = true;
+      }
+      report(threw, name, __FILE__, __LINE__, dir);
+    }
+  }
+
+  // 2D against 3D.
+  bool threw = false;
+  try {
+    auto op = mefikit::TransferOperator::prepare(*a, *hex, p0);
+    (void)op;
+  } catch (const rust::Error &e) {
+    threw = true;
+    CHECK(std::string(e.what()).find("same space dimension") != std::string::npos);
+  }
+  CHECK(threw);
+
+  // A method that is defined on a lower-dimensional source still works.
+  hex->set_field_uniform("T", mefikit::ElementType::HEX8, 1,
+                         slice_of(std::vector<double>{1.0}));
+  auto op = mefikit::TransferOperator::prepare(*hex, *surface, id);
+  op->apply_update(*hex, "T", *surface, "T", 0.0, mefikit::FieldNature::Intensive);
+  CHECK_NEAR(surface->field_values("T", mefikit::ElementType::TRI3)[0], 1.0, 1e-12);
+
+  // A source of the right dimensionality but the wrong size: the operator's
+  // matrices are sized by the mesh it was built from, so this has to be caught
+  // rather than read past the end of.
+  auto two_cells = two_cell_hex_mesh();
+  two_cells->set_field_uniform("T", mefikit::ElementType::HEX8, 1,
+                               slice_of(std::vector<double>{1.0, 1.0}));
+  threw = false;
+  try {
+    op->apply_update(*two_cells, "T", *surface, "T", 0.0,
+                     mefikit::FieldNature::Intensive);
+  } catch (const rust::Error &e) {
+    threw = true;
+    CHECK(std::string(e.what()).find("must not change") != std::string::npos);
+  }
+  CHECK(threw);
+
+  // The same mesh sizes do not make an operator valid for a different mesh
+  // shape: prepare again for a target that has since gained a block.
+  auto src = cmesh(2);
+  src->set_field_uniform("T", mefikit::ElementType::QUAD4, 1,
+                         slice_of(std::vector<double>{1.0, 2.0, 3.0, 4.0}));
+  auto tgt = cmesh(2);
+  auto op2 = mefikit::TransferOperator::prepare(*src, *tgt, p0);
+  op2->apply_update(*src, "T", *tgt, "T", 0.0, mefikit::FieldNature::Intensive);
+  tgt->add_regular_block(mefikit::ElementType::TRI3,
+                         slice_of(std::vector<std::size_t>{0, 1, 4}), 1);
+  threw = false;
+  try {
+    op2->apply_update(*src, "T", *tgt, "T", 0.0, mefikit::FieldNature::Intensive);
+  } catch (const rust::Error &e) {
+    threw = true;
+    CHECK(std::string(e.what()).find("prepared for a target mesh") !=
+          std::string::npos);
+  }
+  CHECK(threw);
+
+}
+
+// The core keeps the first block when a second of the same type is added, and
+// indexes nodes with the connectivity it is given, so both have to be checked
+// where the bindings can see what went wrong.
+void test_malformed_meshes_are_rejected() {
+  auto mesh = mixed_mesh();
+
+  bool threw = false;
+  try {
+    mesh->add_regular_block(mefikit::ElementType::QUAD4,
+                            slice_of(std::vector<std::size_t>{3, 2, 1, 0}), 1);
+  } catch (const rust::Error &e) {
+    threw = true;
+    CHECK(std::string(e.what()).find("already has a QUAD4 block") !=
+          std::string::npos);
+  }
+  CHECK(threw);
+
+  // Offsets that do not describe the connectivity handed over.
+  const std::vector<std::pair<std::string, std::vector<std::size_t>>> bad_offsets{
+      {"backwards", {5, 3}}, {"empty element", {0, 3}}, {"short", {2}}};
+  for (const auto &[label, offsets] : bad_offsets) {
+    threw = false;
+    try {
+      mesh->add_poly_block(mefikit::ElementType::PGON,
+                           slice_of(std::vector<std::size_t>{0, 1, 2, 3}),
+                           slice_of(offsets));
+    } catch (const rust::Error &) {
+      threw = true;
+    }
+    report(threw, "poly offsets", __FILE__, __LINE__, label);
+  }
+
+  // A node index the mesh does not have.
+  auto bare = mefikit::UMesh::from_coords(
+      slice_of(std::vector<double>{0.0, 0.0, 1.0, 0.0, 1.0, 1.0}), 3, 2);
+  threw = false;
+  try {
+    bare->add_regular_block(mefikit::ElementType::TRI3,
+                            slice_of(std::vector<std::size_t>{0, 1, 99}), 1);
+  } catch (const rust::Error &e) {
+    threw = true;
+    CHECK(std::string(e.what()).find("node 99") != std::string::npos);
+  }
+  CHECK(threw);
+
+  // Coordinates that are not finite, and a space mefikit does not work in.
+  threw = false;
+  try {
+    auto nan_mesh = mefikit::UMesh::from_coords(
+        slice_of(std::vector<double>{0.0, 0.0, 0.0, std::nan(""), 0.0, 0.0}), 3, 2);
+    (void)nan_mesh;
+  } catch (const rust::Error &e) {
+    threw = true;
+    CHECK(std::string(e.what()).find("not finite") != std::string::npos);
+  }
+  CHECK(threw);
+
+  threw = false;
+  try {
+    auto flat = mefikit::UMesh::from_coords(slice_of(std::vector<double>{0.0}), 1, 0);
+    (void)flat;
+  } catch (const rust::Error &e) {
+    threw = true;
+    CHECK(std::string(e.what()).find("space_dim must be") != std::string::npos);
+  }
+  CHECK(threw);
+
+  // One field, one shape: a transfer reads it as a single array.
+  const std::vector<mefikit::FieldBlock> ragged{
+      mefikit::FieldBlock{mefikit::ElementType::QUAD4, 1, 0, 1},
+      mefikit::FieldBlock{mefikit::ElementType::TRI3, 3, 1, 6},
+  };
+  threw = false;
+  try {
+    mesh->set_field("T", slice_of(ragged),
+                    slice_of(std::vector<double>{1, 2, 3, 4, 5, 6, 7}));
+  } catch (const rust::Error &e) {
+    threw = true;
+    CHECK(std::string(e.what()).find("1 components on the first block but 3") !=
+          std::string::npos);
+  }
+  CHECK(threw);
+
+  // A field name is looked up by string everywhere, so an empty one is at best
+  // unreachable. (On a single-block mesh, so the check reached is the name and
+  // not the number of blocks.)
+  auto single = cmesh(2);
+  threw = false;
+  try {
+    single->set_field_uniform("", mefikit::ElementType::QUAD4, 1,
+                               slice_of(std::vector<double>{1.0}));
+  } catch (const rust::Error &e) {
+    threw = true;
+    CHECK(std::string(e.what()).find("may not be empty") != std::string::npos);
+  }
+  CHECK(threw);
+}
+
 } // namespace
 
 int main() {
@@ -509,6 +762,8 @@ int main() {
   test_default_value_fills_uncovered_cells();
   test_io_round_trip();
   test_transfer_method_factories();
+  test_transfers_that_cannot_work_are_reported();
+  test_malformed_meshes_are_rejected();
   test_med_transfer_of_a_uniform_field();
 
   std::printf("%d checks, %d failures\n", checks, failures);

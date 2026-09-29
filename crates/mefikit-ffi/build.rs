@@ -40,25 +40,15 @@ fn main() {
     //   * ffi.rs.cc, the generated glue declaring every function of the bridge,
     //   * cxx.cc, the out-of-line part of cxx's runtime (rust::String, rust::Error,
     //     Slice's internals, ...).
-    // A C++ consumer therefore has to compile its own copy of both; staging the exact
-    // files that were linked in keeps the two sides in step.
-    stage(
-        generated_cc,
-        root.join("src/ffi.rs.cc"),
-        "cxx's generated glue",
-    );
-    stage(
-        locate_cxx_runtime(),
-        root.join("src/cxx.cc"),
-        "cxx's C++ runtime",
-    );
     // Two spellings of the same runtime header: `rust/cxx.h` is what our umbrella
     // header includes, `cxx.h` is what the staged cxx.cc reaches through its own
     // relative `#include "../include/cxx.h"`.
+    let cxx_h = out
+        .join("include/rust/cxx.h")
+        .canonicalize()
+        .expect("cxx stages rust/cxx.h");
     stage(
-        out.join("include/rust/cxx.h")
-            .canonicalize()
-            .expect("cxx stages rust/cxx.h"),
+        cxx_h.clone(),
         include.join("rust/cxx.h"),
         "cxx's C++ runtime header",
     );
@@ -69,6 +59,19 @@ fn main() {
             .expect("rust/cxx.h is staged"),
         include.join("cxx.h"),
         "cxx's C++ runtime header",
+    );
+
+    // A C++ consumer therefore has to compile its own copy of both; staging the exact
+    // files that were linked in keeps the two sides in step.
+    stage(
+        generated_cc,
+        root.join("src/ffi.rs.cc"),
+        "cxx's generated glue",
+    );
+    stage(
+        cxx_runtime(&cxx_h),
+        root.join("src/cxx.cc"),
+        "cxx's C++ runtime",
     );
 
     println!("cargo:rerun-if-changed=src/ffi.rs");
@@ -96,48 +99,22 @@ fn public_cxxbridge_dir() -> PathBuf {
     profile_dir.join("cxxbridge")
 }
 
-/// Finds `src/cxx.cc` inside the vendored `cxx` crate in the cargo registry.
+/// Path of `src/cxx.cc` in the cxx crate that `cxx_h` was taken from.
 ///
-/// cxx publishes the path of its header to build scripts through
-/// `DEP_CXXBRIDGE1_HEADER`, but not the path of its runtime source, and that
-/// variable is only set for crates that depend on cxx as a *build* dependency.
-/// Going through the registry is what every cxx CMake integration does anyway;
-/// doing it once here means users never have to.
-fn locate_cxx_runtime() -> PathBuf {
-    let cargo_home = std::env::var_os("CARGO_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))
-        .expect("CARGO_HOME or HOME is set");
-
-    let registry_src = cargo_home.join("registry/src");
-    let mut candidates: Vec<PathBuf> = std::fs::read_dir(&registry_src)
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| entry.ok())
-        .flat_map(|entry| {
-            std::fs::read_dir(entry.path())
-                .into_iter()
-                .flatten()
-                .filter_map(|inner| inner.ok())
-                .map(|inner| inner.path())
-        })
-        .filter(|dir| {
-            dir.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("cxx-"))
-        })
-        .map(|dir| dir.join("src/cxx.cc"))
-        .filter(|path| path.is_file())
-        .collect();
-    // Highest version wins; the plain string sort is right for cxx's version scheme.
-    candidates.sort();
-
-    candidates.pop().unwrap_or_else(|| {
-        panic!(
-            "cannot find cxx's C++ runtime (cxx.cc) under {}.\n\
-             mefikit-ffi needs it so C++ consumers can link rust::String, rust::Error and \
-             friends. This usually means the cargo registry is not where CARGO_HOME points.",
-            registry_src.display()
-        )
-    })
+/// The header cxx stages into `OUT_DIR` is a symlink into the vendored cxx crate,
+/// so resolving it names that exact version: the runtime source staged next to the
+/// generated glue is always the one that was linked into the Rust library, and not
+/// whichever version happens to be newest in the registry.
+fn cxx_runtime(cxx_h: &Path) -> PathBuf {
+    let crate_dir = cxx_h
+        .ancestors()
+        .nth(2)
+        .expect("cxx.h lives two levels below the cxx crate root");
+    let source = crate_dir.join("src/cxx.cc");
+    assert!(
+        source.is_file(),
+        "cxx's C++ runtime is missing at {}",
+        source.display()
+    );
+    source
 }
