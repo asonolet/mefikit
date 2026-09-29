@@ -1172,14 +1172,24 @@ pub fn read(path: impl AsRef<Path>) -> Result<UMesh, MefikitIOError> {
         match et {
             ElementType::PGON => {
                 let (data, offsets, fam) = read_polygon_block(&mai, &med_type_name)?;
-                let block =
-                    ElementBlock::new_poly(et, data.into_shared(), offsets.into_shared(), None);
+                let block = ElementBlock::new_poly(
+                    et,
+                    data.into_shared(),
+                    offsets.into_shared(),
+                    None,
+                    None,
+                );
                 insert_block(&mut mesh, block, &fam, &elem_fam_map);
             }
             ElementType::PHED => {
                 let (data, offsets, fam) = read_polyhedron_block(&mai)?;
-                let block =
-                    ElementBlock::new_poly(et, data.into_shared(), offsets.into_shared(), None);
+                let block = ElementBlock::new_poly(
+                    et,
+                    data.into_shared(),
+                    offsets.into_shared(),
+                    None,
+                    None,
+                );
                 insert_block(&mut mesh, block, &fam, &elem_fam_map);
             }
             _ => {

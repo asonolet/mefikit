@@ -132,3 +132,6 @@
 - [ ] Decide a single convention for exposing rust `*Transfer` classes in
   python (suffix dropped today: `ConstantPiecewiseTransfer` →
   `transfer.ConstantPiecewise`).
+- [ ] Add an opt-in geometry-quality validation method for degeneracy,
+  orientation, and self-intersection checks; structural validation remains
+  separate and fast.

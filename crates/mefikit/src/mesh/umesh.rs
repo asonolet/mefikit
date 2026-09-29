@@ -10,9 +10,9 @@ use ndarray::{self as nd};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use super::connectivity::ConnectivityBase;
+use super::connectivity::{Connectivity, ConnectivityBase};
 use super::element_block::{
     ElementBlock, ElementBlockBase, ElementBlockView, IntoElementBlockEntry,
 };
@@ -71,10 +71,10 @@ where
         for (&et, block) in self.element_blocks.iter() {
             match &block.connectivity {
                 ConnectivityBase::Regular(arr) => {
-                    view.add_regular_block(et, arr.view(), Some(block.families()))
+                    view.add_regular_block(et, arr.view(), block.families())
                 }
                 ConnectivityBase::Poly(conn) => {
-                    view.add_poly_block(et, conn.data.view(), conn.offsets.view())
+                    view.add_poly_block(et, conn.data.view(), conn.offsets.view(), block.families())
                 }
             };
             view.element_blocks.get_mut(&et).unwrap().fields = block
@@ -478,39 +478,71 @@ impl<'a> UMeshView<'a> {
 
     /// Converts this view into an owned mesh.
     pub fn to_shared(&self) -> UMesh {
-        let mut umesh = UMesh::new(self.coords.to_shared());
+        self.to_owned_with_coords(self.coords.to_shared())
+    }
+
+    /// Returns an owned mesh with the same element blocks (copied into owned arrays) but using
+    /// the given coordinates.
+    ///
+    /// The connectivity, fields, families and groups are copied over unchanged, which is
+    /// exactly what coordinates-only operations (transforms) need on borrowed data.
+    pub(crate) fn to_owned_with_coords(&self, coords: nd::ArcArray2<f64>) -> UMesh {
+        self.to_owned_with_coords_and_types(coords, None)
+    }
+
+    pub(crate) fn to_owned_with_coords_and_types(
+        &self,
+        coords: nd::ArcArray2<f64>,
+        selected: Option<&BTreeSet<ElementType>>,
+    ) -> UMesh {
+        let mut umesh = UMesh::new(coords);
         for (&et, eb) in &self.element_blocks {
-            match &eb.connectivity {
-                // TODO: pass fields and families
-                ConnectivityBase::Regular(r) => umesh.add_regular_block(et, r.to_shared(), None),
-                ConnectivityBase::Poly(conn) => {
-                    umesh.add_poly_block(et, conn.data.to_shared(), conn.offsets.to_shared(), None)
-                }
+            if selected.is_some_and(|selected| !selected.contains(&et)) {
+                continue;
             }
+            let fields: BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>> = eb
+                .fields
+                .iter()
+                .map(|(n, f)| (n.clone(), f.to_owned().into_shared()))
+                .collect();
+            let conn = match &eb.connectivity {
+                ConnectivityBase::Regular(r) => Connectivity::Regular(r.to_shared()),
+                ConnectivityBase::Poly(conn) => {
+                    Connectivity::new_poly(conn.data.to_shared(), conn.offsets.to_shared())
+                }
+            };
+            umesh.insert_block(ElementBlock::new_with_metadata(
+                et,
+                conn,
+                eb.families().to_owned().into_shared(),
+                fields,
+                eb.arc_groups().clone(),
+            ));
         }
         umesh
     }
 
-    /// Adds a regular element block to this view.
+    /// Adds a regular element block to this view using caller-owned family data.
     pub fn add_regular_block(
         &mut self,
         et: ElementType,
         connectivity: nd::ArrayView2<'a, usize>,
-        families: Option<nd::ArrayView1<'a, usize>>,
+        families: nd::ArrayView1<'a, usize>,
     ) {
         let block = ElementBlockView::new_regular(et, connectivity, families);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
 
-    /// Adds a poly element block to this view.
+    /// Adds a poly element block to this view using caller-owned family data.
     pub fn add_poly_block(
         &mut self,
         et: ElementType,
         conn: nd::ArrayView1<'a, usize>,
         offsets: nd::ArrayView1<'a, usize>,
+        families: nd::ArrayView1<'a, usize>,
     ) {
-        let block = ElementBlockView::new_poly(et, conn, offsets);
+        let block = ElementBlockView::new_poly(et, conn, offsets, families);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -525,9 +557,172 @@ impl UMesh {
         }
     }
 
+    pub fn validate_structure(&self) -> Result<(), String> {
+        let space_dim = self.coords.ncols();
+        if !(1..=3).contains(&space_dim) {
+            return Err(format!("Unsupported space dimension {space_dim}."));
+        }
+        if let Some((index, _)) = self
+            .coords
+            .iter()
+            .enumerate()
+            .find(|(_, value)| !value.is_finite())
+        {
+            return Err(format!("Coordinate at flat index {index} is not finite."));
+        }
+
+        let mut blocks_per_dim = BTreeMap::<Dimension, usize>::new();
+        let mut field_schemas = BTreeMap::<(String, Dimension), (Vec<usize>, usize)>::new();
+
+        for (&et, block) in &self.element_blocks {
+            let n_elements = block.len();
+            *blocks_per_dim.entry(et.dimension()).or_default() += 1;
+
+            match (&et.regularity(), &block.connectivity) {
+                (Regularity::Regular, ConnectivityBase::Regular(connectivity)) => {
+                    if let Some(expected) = et.num_nodes()
+                        && connectivity.ncols() != expected
+                    {
+                        return Err(format!(
+                            "Element type {et:?} expects {expected} nodes per element, got {}.",
+                            connectivity.ncols()
+                        ));
+                    }
+                    if let Some(((row, column), &node)) = connectivity
+                        .indexed_iter()
+                        .find(|entry| *entry.1 >= self.coords.nrows())
+                    {
+                        return Err(format!(
+                            "Connectivity for element type {et:?} references node {node} at \
+                             ({row}, {column}), but the mesh has {} nodes.",
+                            self.coords.nrows()
+                        ));
+                    }
+                }
+                (Regularity::Poly, ConnectivityBase::Poly(connectivity)) => {
+                    let mut previous = 0;
+                    for (index, &offset) in connectivity.offsets.iter().enumerate() {
+                        if offset < previous {
+                            return Err(format!(
+                                "Poly connectivity offsets for element type {et:?} are not \
+                                 monotonic at index {index}."
+                            ));
+                        }
+                        if offset == previous {
+                            return Err(format!(
+                                "Poly connectivity for element type {et:?} has an empty element \
+                                 at index {index}."
+                            ));
+                        }
+                        if offset > connectivity.data.len() {
+                            return Err(format!(
+                                "Poly connectivity offset {offset} for element type {et:?} exceeds \
+                                 data length {}.",
+                                connectivity.data.len()
+                            ));
+                        }
+                        previous = offset;
+                    }
+                    if previous != connectivity.data.len() {
+                        return Err(format!(
+                            "Poly connectivity for element type {et:?} has {} unreferenced node \
+                             indices.",
+                            connectivity.data.len() - previous
+                        ));
+                    }
+                    if let Some((index, &node)) = connectivity
+                        .data
+                        .iter()
+                        .enumerate()
+                        .find(|entry| *entry.1 >= self.coords.nrows())
+                    {
+                        return Err(format!(
+                            "Poly connectivity for element type {et:?} references node {node} at \
+                             flat index {index}, but the mesh has {} nodes.",
+                            self.coords.nrows()
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(format!(
+                        "Element type {et:?} connectivity representation does not match its \
+                         regularity."
+                    ));
+                }
+            }
+
+            if block.families().len() != n_elements {
+                return Err(format!(
+                    "Element type {et:?} has {} elements but {} family entries.",
+                    n_elements,
+                    block.families().len()
+                ));
+            }
+            let family_ids: BTreeSet<usize> = block.families().iter().copied().collect();
+            for (name, indices) in block.groups() {
+                if let Some(&index) = indices.iter().find(|&&index| !family_ids.contains(&index)) {
+                    return Err(format!(
+                        "Group '{name}' for element type {et:?} references family {index}, but \
+                         that family is not present in the block."
+                    ));
+                }
+            }
+            for (name, field) in &block.fields {
+                if field.ndim() == 0 {
+                    return Err(format!(
+                        "Field '{name}' for element type {et:?} must have an element axis."
+                    ));
+                }
+                if field.shape()[0] != n_elements {
+                    return Err(format!(
+                        "Field '{name}' for element type {et:?} has {} values for {n_elements} \
+                         elements.",
+                        field.shape()[0]
+                    ));
+                }
+                let trailing = field.shape()[1..].to_vec();
+                let entry = field_schemas
+                    .entry((name.clone(), et.dimension()))
+                    .or_insert_with(|| (trailing.clone(), 0));
+                if entry.0 != trailing {
+                    return Err(format!(
+                        "Field '{name}' has incompatible trailing shapes across element types of \
+                         dimension {}.",
+                        u8::from(et.dimension())
+                    ));
+                }
+                entry.1 += 1;
+            }
+        }
+
+        for ((name, dim), (_, carriers)) in field_schemas {
+            let blocks = blocks_per_dim.get(&dim).copied().unwrap_or(0);
+            if carriers != blocks {
+                return Err(format!(
+                    "Field '{name}' is present on {carriers} of {blocks} element blocks of \
+                     dimension {}.",
+                    u8::from(dim)
+                ));
+            }
+        }
+        Ok(())
+    }
+
     /// Returns a view of the coordinates array.
     pub fn coords_mut(&mut self) -> nd::ArrayViewMut2<'_, f64> {
         self.coords.view_mut()
+    }
+
+    /// Returns an owned mesh sharing this mesh's element blocks (`Arc`-cheap) but using the
+    /// given coordinates.
+    ///
+    /// The connectivity, fields, families and groups are carried over unchanged, which is
+    /// exactly what coordinates-only operations (transforms) need.
+    pub(crate) fn with_coords(&self, coords: nd::ArcArray2<f64>) -> UMesh {
+        UMesh {
+            coords,
+            element_blocks: self.element_blocks.clone(),
+        }
     }
 
     /// Add a full regular block to the mesh (inplace)
@@ -556,7 +751,7 @@ impl UMesh {
         offsets: nd::ArcArray1<usize>,
         fields: Option<BTreeMap<String, nd::ArcArray<f64, nd::IxDyn>>>,
     ) {
-        let block = ElementBlock::new_poly(et, conn, offsets, fields);
+        let block = ElementBlock::new_poly(et, conn, offsets, None, fields);
         let (key, wrapped) = block.into_entry();
         self.element_blocks.entry(key).or_insert(wrapped);
     }
@@ -607,6 +802,7 @@ impl UMesh {
                         element_type,
                         nd::arr1(&[]).into_shared(),
                         nd::arr1(&[]).into_shared(),
+                        None,
                         None,
                     )
                 });

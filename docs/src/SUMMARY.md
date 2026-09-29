@@ -10,6 +10,7 @@
   - [Extrusions](./python_examples/extrusions.md)
   - [Topological tools](./python_examples/topological_tools.md)
   - [Geometric tools](./python_examples/geometric_tools.md)
+  - [Geometric transforms](./python_examples/geometric_transforms.md)
   - [Selection](./python_examples/selection.md)
   - [Fields](./python_examples/fields.md)
   - [Field transfers](./python_examples/transfers.md)
