@@ -1,4 +1,5 @@
 PYEXDIR = python_examples
+SPYEXDIR = src/$(PYEXDIR)
 
 src/$(PYEXDIR)/%.md: $(PYEXDIR)/%.ipynb
 	rm -rf src/$(PYEXDIR)/$*_files
