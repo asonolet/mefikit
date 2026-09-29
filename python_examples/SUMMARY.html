@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ad3bee0a.js";
+            window.path_to_searchindex_js = "../searchindex-ec56dbda.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-4506d0f5.js"></script>
@@ -175,6 +175,22 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="python-examples"><a class="header" href="#python-examples">Python Examples</a></h1>
+<p>Following are some python examples of what <code>mefikit</code> can do from python.</p>
+<p>The Python API is first class access to <code>mefikit</code>. As <code>mefikit</code> is in early
+development phase, ideas concerning the python api are welcome !</p>
+<p>Some insights on how to use the current python lib:</p>
+<ul>
+<li>Use autocompletion with the tool you like, type hints are provided! A missing
+type hint is a bug, please report it.</li>
+<li>Only high level whole mesh operations are supported through python. For finer
+grain ops either reach me or implement it in rust consuming the <code>mefikit</code> rust
+crate.</li>
+<li>Use lazy expressions wherever possible, they are fast, reusable, expressive
+and less error prone than manual indexing. They are inspired from <code>polars</code>, a
+DataFrame python-rust lib.</li>
+<li>Visualize with <code>pyvista</code>. It lacks type hints and the syntax may not feel
+familiar but the overall experience is really better than anything else.</li>
+</ul>
 
                     </main>
 
