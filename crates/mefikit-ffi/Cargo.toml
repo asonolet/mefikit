@@ -1,0 +1,24 @@
+[package]
+name = "mefikit-ffi"
+version = "0.4.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/asonolet/mefikit"
+description = "C++ bindings for mefikit, generated with cxx."
+categories = ["science", "simulation"]
+keywords = ["mesh", "cfd", "c++", "ffi", "hpc"]
+
+[lib]
+# `cdylib` is the artifact C++ links against; `lib` lets `cargo test -p mefikit-ffi`
+# link the rlib and run the Rust side of the test suite.
+crate-type = ["cdylib", "lib"]
+bench = false
+
+[dependencies]
+cxx = { workspace = true }
+ndarray = { workspace = true }
+
+mefikit = { path = "../mefikit", features = ["io", "rayon"] }
+
+[build-dependencies]
+cxx-build = { workspace = true }

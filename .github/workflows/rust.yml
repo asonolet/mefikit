@@ -38,6 +38,22 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+  cxx-bindings:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      # The C++ suite links against the artifacts the build script publishes, so the
+      # Rust side has to be built first.
+      - name: Build the Rust artifacts
+        run: cargo build -p mefikit-ffi --release
+      - name: Configure
+        run: cmake -S crates/mefikit-ffi/examples -B build/cpp -DCMAKE_BUILD_TYPE=Release
+      - name: Build the C++ suite
+        run: cmake --build build/cpp
+      - name: Run tests
+        run: ctest --test-dir build/cpp --output-on-failure
+
   # benchmark:
   #   runs-on: ubuntu-latest
 
