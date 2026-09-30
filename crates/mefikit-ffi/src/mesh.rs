@@ -380,8 +380,6 @@ impl UMesh {
         })
     }
 
-    /// Component count of `name` on every block at `dimension`, or an error if
-    /// they do not all agree.
     /// Zero-copy row-major view of field `name` on element type `element_type`.
     ///
     /// # Safety
@@ -389,6 +387,12 @@ impl UMesh {
     /// The returned slice aliases the mesh's own storage. The caller must keep
     /// the mesh alive for as long as it uses the slice, and must not call any
     /// method taking `&mut self` in the meantime.
+    ///
+    /// cxx does not enforce this for C++ callers: the generated method is a
+    /// plain `const` accessor with no borrow tracking, so a C++ caller is
+    /// responsible for the lifetime itself. Rust callers get the contract from
+    /// the borrow checker, since the slice borrows `self`. The `unsafe` marker
+    /// is required by cxx to expose the explicit lifetime at all.
     pub unsafe fn field_values<'a>(
         &'a self,
         name: &str,

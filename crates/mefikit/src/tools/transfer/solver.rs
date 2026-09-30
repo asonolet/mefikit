@@ -156,7 +156,13 @@ fn solve_points<const D: usize>(
     indices: &mut nd::Array2<usize>,
     weights: &mut nd::Array2<f64>,
 ) {
-    let tree = ImmutableKdTree::new_from_slice(as_points::<D>(src_coords)).unwrap();
+    assert_eq!(src_coords.ncols(), D);
+    let src = src_coords
+        .as_slice()
+        .expect("coordinates should be contiguous");
+    let (src_points, src_tail) = src.as_chunks::<D>();
+    debug_assert!(src_tail.is_empty(), "one chunk per source point");
+    let tree = ImmutableKdTree::new_from_slice(src_points).unwrap();
 
     for (j, p) in tgt_coords.outer_iter().enumerate() {
         let query: [f64; D] = std::array::from_fn(|c| p[c]);
@@ -315,16 +321,3 @@ macro_rules! solve_normal {
 
 solve_normal!(solve_normal_2d, Matrix3, 2);
 solve_normal!(solve_normal_3d, Matrix4, 3);
-
-/// Views an `n × D` contiguous coordinate array as a slice of `[f64; D]` points.
-fn as_points<'a, const D: usize>(coords: &nd::ArrayView2<'a, f64>) -> &'a [[f64; D]] {
-    assert_eq!(coords.ncols(), D);
-    let slice = coords.as_slice().expect("coordinates should be contiguous");
-
-    // Safety:
-    // - the slice length is a multiple of D
-    // - f64 is properly aligned
-    // - `[f64; D]` is a contiguous run of D f64 values
-    let len = slice.len() / D;
-    unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const [f64; D], len) }
-}
