@@ -12,8 +12,8 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 use mefikit::mesh::{ElementType as CoreElementType, FieldOwnedD, UMesh as CoreUMesh};
 use mefikit::tools::transfer::{Transfer, TransferOperator as CoreOperator};
 
-use mefikit_ffi::bridge::{Checks, ElementType, FieldBlock, FieldNature, TransferMethod};
-use mefikit_ffi::{TransferOperator, UMesh, set_checks};
+use mefikit_ffi::bridge::{ElementType, FieldBlock, FieldNature, TransferMethod};
+use mefikit_ffi::{TransferOperator, UMesh};
 
 /// Structured `n^3` HEX8 mesh, built once and shared by every benchmark.
 fn hex_mesh_data(n: usize) -> (Vec<f64>, Vec<usize>, usize) {
@@ -106,18 +106,9 @@ fn build_mesh(c: &mut Criterion) {
             },
         );
         group.bench_with_input(
-            BenchmarkId::new("ffi_from_coords_full", n_nodes),
+            BenchmarkId::new("ffi_from_coords", n_nodes),
             &n_nodes,
             |b, &n_nodes| {
-                set_checks(Checks::Full).unwrap();
-                b.iter(|| UMesh::from_coords(&coords, n_nodes, 3).unwrap());
-            },
-        );
-        group.bench_with_input(
-            BenchmarkId::new("ffi_from_coords_fast", n_nodes),
-            &n_nodes,
-            |b, &n_nodes| {
-                set_checks(Checks::Fast).unwrap();
                 b.iter(|| UMesh::from_coords(&coords, n_nodes, 3).unwrap());
             },
         );
@@ -136,23 +127,9 @@ fn build_mesh(c: &mut Criterion) {
             },
         );
         group.bench_with_input(
-            BenchmarkId::new("ffi_add_block_full", n_elems),
+            BenchmarkId::new("ffi_add_block", n_elems),
             &n_elems,
             |b, &ne| {
-                set_checks(Checks::Full).unwrap();
-                b.iter(|| {
-                    let mut mesh = ffi_coords(&coords);
-                    mesh.add_regular_block(ElementType::HEX8, &conn, ne)
-                        .unwrap();
-                    std::hint::black_box(mesh);
-                });
-            },
-        );
-        group.bench_with_input(
-            BenchmarkId::new("ffi_add_block_fast", n_elems),
-            &n_elems,
-            |b, &ne| {
-                set_checks(Checks::Fast).unwrap();
                 b.iter(|| {
                     let mut mesh = ffi_coords(&coords);
                     mesh.add_regular_block(ElementType::HEX8, &conn, ne)

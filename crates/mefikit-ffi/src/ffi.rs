@@ -198,30 +198,6 @@ pub mod bridge {
         Gaussian,
     }
 
-    /// Which of the bindings' own input checks to run.
-    ///
-    /// The checks that cost time proportional to the size of the mesh are the
-    /// only ones `Fast` gives up: the scan for non-finite coordinates in
-    /// `from_coords`, and the scan for out-of-range node indices in
-    /// `add_regular_block` and `add_poly_block`. Everything whose cost does not
-    /// grow with the mesh -- the transfer preconditions, the field block layout,
-    /// the element type of every block -- runs either way.
-    ///
-    /// Turning them off means a malformed mesh is not rejected where it was
-    /// built. mefikit indexes coordinates and connectivity without checking, so
-    /// what used to be an error becomes undefined behaviour; the checks are
-    /// there because that is a bad trade, and `Fast` is a deliberate one.
-    ///
-    /// Set it once at startup: it is a process-wide setting, and the
-    /// `MEFIKIT_FFI_CHECKS` environment variable does the same thing before the
-    /// first mesh is built.
-    enum Checks {
-        /// Only the checks that do not grow with the size of the input.
-        Fast,
-        /// Every check. The default.
-        Full,
-    }
-
     /// Discriminant of [`TransferMethod`]; the other fields of that struct are
     /// only read by the variant selected here.
     enum TransferMethodKind {
@@ -407,29 +383,5 @@ pub mod bridge {
             default_value: f64,
             nature: FieldNature,
         ) -> Result<()>;
-
-        /// Sets how much of the input the bindings check, for the rest of the
-        /// process. See [`Checks`]; the default is `Checks::Full`.
-        fn set_checks(checks: Checks) -> Result<()>;
-
-        /// The level currently in force.
-        fn checks() -> Checks;
     }
-}
-
-/// Sets how much of the input the bindings check. See [`bridge::Checks`].
-///
-/// # Errors
-///
-/// [`Error::InvalidArgument`] if `checks` carries a discriminant this build
-/// does not know about; a cxx shared enum is an open wrapper around an integer,
-/// so a C++ caller can pass any value.
-pub fn set_checks(checks: bridge::Checks) -> Result<(), Error> {
-    crate::checks::set(checks)
-}
-
-/// The level currently in force. See [`bridge::Checks`].
-#[must_use]
-pub fn checks() -> bridge::Checks {
-    crate::checks::get()
 }

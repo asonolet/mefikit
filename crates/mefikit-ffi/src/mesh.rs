@@ -20,9 +20,9 @@ impl UMesh {
     /// Creates an empty mesh from a row-major `(n_nodes, space_dim)` array.
     ///
     /// `coords.len()` must be exactly `n_nodes * space_dim` and `space_dim` must
-    /// be 1, 2 or 3. Whether every coordinate is finite is checked only under
-    /// [`Checks::Full`](crate::bridge::Checks), because it costs a pass over the
-    /// whole array.
+    /// be 1, 2 or 3. Whether every coordinate is finite is not checked here;
+    /// that check belongs to the core and is not available to the bindings yet.
+    /// Call [`validate_structure`](Self::validate_structure) to run it.
     pub fn from_coords(
         coords: &[f64],
         n_nodes: usize,
@@ -33,13 +33,6 @@ impl UMesh {
                 "space_dim must be 1, 2 or 3, got {space_dim}"
             )));
         }
-        if crate::checks::heavy_checks()
-            && let Some((index, &c)) = coords.iter().enumerate().find(|(_, c)| !c.is_finite())
-        {
-            return Err(Error::InvalidArgument(format!(
-                "coordinate at flat index {index} is {c}, which is not finite"
-            )));
-        }
         let array = nd::Array2::from_shape_vec((n_nodes, space_dim), coords.to_vec())?;
         Ok(Box::new(Self(mf::UMesh::new(array.into_shared()))))
     }
@@ -47,9 +40,9 @@ impl UMesh {
     /// Adds a fixed-node-count block from a row-major
     /// `(n_elements, num_nodes(element_type))` connectivity table.
     ///
-    /// Every index referring to a node the mesh has is checked only under
-    /// [`Checks::Full`](crate::bridge::Checks), because it costs a pass over the
-    /// whole table.
+    /// Whether every index refers to a node the mesh has is not checked here;
+    /// that check belongs to the core and is not available to the bindings yet.
+    /// Call [`validate_structure`](Self::validate_structure) to run it.
     pub fn add_regular_block(
         &mut self,
         element_type: ElementType,
@@ -68,9 +61,6 @@ impl UMesh {
             )));
         }
         self.reject_duplicate_block(core_type)?;
-        if crate::checks::heavy_checks() {
-            self.reject_out_of_range_nodes(conn.iter().copied())?;
-        }
         let conn = nd::Array2::from_shape_vec((n_elements, nodes_per_element), conn.to_vec())?;
         self.0
             .add_regular_block(core_type, conn.into_shared(), None);
@@ -80,9 +70,11 @@ impl UMesh {
     /// Adds a variable-node-count block: a flat `conn` node list plus one
     /// cumulative end index per element in `offsets`.
     ///
-    /// Both the offset table and the node indices are checked only under
-    /// [`Checks::Full`](crate::bridge::Checks), because they cost a pass over
-    /// the whole block each.
+    /// Neither the offset table nor the node indices are checked here: the core
+    /// stores this block without looking at it, and later code indexes the node
+    /// list straight out of `offsets`, so a malformed pair is only reported by
+    /// [`validate_structure`](Self::validate_structure) today. The check belongs
+    /// to the core and is not available to the bindings yet.
     pub fn add_poly_block(
         &mut self,
         element_type: ElementType,
@@ -96,44 +88,6 @@ impl UMesh {
             )));
         }
         self.reject_duplicate_block(core_type)?;
-
-        if crate::checks::heavy_checks() {
-            // The core stores this block without looking at it, and later code
-            // indexes the node list straight out of `offsets`. A malformed pair
-            // would either report the wrong element count or panic far from the
-            // mistake, so it is checked here where the caller can still see
-            // which call was wrong.
-            let mut previous = 0;
-            for (index, &offset) in offsets.iter().enumerate() {
-                if offset == previous {
-                    return Err(Error::InvalidArgument(format!(
-                        "poly block for {element_type:?} has an empty element at index {index}"
-                    )));
-                }
-                if offset < previous {
-                    return Err(Error::InvalidArgument(format!(
-                        "poly block for {element_type:?} has non-monotonic offsets: {offset} \
-                         follows {previous}"
-                    )));
-                }
-                if offset > conn.len() {
-                    return Err(Error::InvalidArgument(format!(
-                        "poly block for {element_type:?} ends element {index} at node {offset} \
-                         but only {} nodes were given",
-                        conn.len()
-                    )));
-                }
-                previous = offset;
-            }
-            if previous != conn.len() {
-                return Err(Error::InvalidArgument(format!(
-                    "poly block for {element_type:?} ends at node {previous} but {} nodes were \
-                     given",
-                    conn.len()
-                )));
-            }
-            self.reject_out_of_range_nodes(conn.iter().copied())?;
-        }
 
         self.0.add_poly_block(
             core_type,
@@ -446,20 +400,6 @@ impl UMesh {
         if self.0.block(core_type).is_some() {
             return Err(Error::InvalidArgument(format!(
                 "the mesh already has a {core_type:?} block; an element type may appear only once"
-            )));
-        }
-        Ok(())
-    }
-
-    /// Rejects connectivity pointing at nodes the mesh does not have.
-    fn reject_out_of_range_nodes(
-        &self,
-        mut nodes: impl Iterator<Item = usize>,
-    ) -> Result<(), Error> {
-        let n_nodes = self.n_nodes();
-        if let Some(node) = nodes.find(|&node| node >= n_nodes) {
-            return Err(Error::InvalidArgument(format!(
-                "connectivity references node {node} but the mesh has {n_nodes} nodes"
             )));
         }
         Ok(())
