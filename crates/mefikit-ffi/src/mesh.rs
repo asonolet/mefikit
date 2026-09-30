@@ -19,8 +19,10 @@ type OwnedField = nd::ArcArray<f64, IxDyn>;
 impl UMesh {
     /// Creates an empty mesh from a row-major `(n_nodes, space_dim)` array.
     ///
-    /// `coords.len()` must be exactly `n_nodes * space_dim`, `space_dim` must be
-    /// 1, 2 or 3, and every coordinate must be finite.
+    /// `coords.len()` must be exactly `n_nodes * space_dim` and `space_dim` must
+    /// be 1, 2 or 3. Whether every coordinate is finite is checked only under
+    /// [`Checks::Full`](crate::bridge::Checks), because it costs a pass over the
+    /// whole array.
     pub fn from_coords(
         coords: &[f64],
         n_nodes: usize,
@@ -31,7 +33,9 @@ impl UMesh {
                 "space_dim must be 1, 2 or 3, got {space_dim}"
             )));
         }
-        if let Some((index, &c)) = coords.iter().enumerate().find(|(_, c)| !c.is_finite()) {
+        if crate::checks::heavy_checks()
+            && let Some((index, &c)) = coords.iter().enumerate().find(|(_, c)| !c.is_finite())
+        {
             return Err(Error::InvalidArgument(format!(
                 "coordinate at flat index {index} is {c}, which is not finite"
             )));
@@ -42,6 +46,10 @@ impl UMesh {
 
     /// Adds a fixed-node-count block from a row-major
     /// `(n_elements, num_nodes(element_type))` connectivity table.
+    ///
+    /// Every index refersing to a node the mesh has is checked only under
+    /// [`Checks::Full`](crate::bridge::Checks), because it costs a pass over the
+    /// whole table.
     pub fn add_regular_block(
         &mut self,
         element_type: ElementType,
@@ -60,8 +68,10 @@ impl UMesh {
             )));
         }
         self.reject_duplicate_block(core_type)?;
+        if crate::checks::heavy_checks() {
+            self.reject_out_of_range_nodes(conn.iter().copied())?;
+        }
         let conn = nd::Array2::from_shape_vec((n_elements, nodes_per_element), conn.to_vec())?;
-        self.reject_out_of_range_nodes(conn.iter().copied())?;
         self.0
             .add_regular_block(core_type, conn.into_shared(), None);
         Ok(())
@@ -69,6 +79,10 @@ impl UMesh {
 
     /// Adds a variable-node-count block: a flat `conn` node list plus one
     /// cumulative end index per element in `offsets`.
+    ///
+    /// Both the offset table and the node indices are checked only under
+    /// [`Checks::Full`](crate::bridge::Checks), because they cost a pass over
+    /// the whole block each.
     pub fn add_poly_block(
         &mut self,
         element_type: ElementType,
@@ -83,39 +97,43 @@ impl UMesh {
         }
         self.reject_duplicate_block(core_type)?;
 
-        // The core stores this block without looking at it, and later code
-        // indexes the node list straight out of `offsets`. A malformed pair would
-        // either report the wrong element count or panic far from the mistake, so
-        // it is checked here where the caller can still see which call was wrong.
-        let mut previous = 0;
-        for (index, &offset) in offsets.iter().enumerate() {
-            if offset == previous {
-                return Err(Error::InvalidArgument(format!(
-                    "poly block for {element_type:?} has an empty element at index {index}"
-                )));
+        if crate::checks::heavy_checks() {
+            // The core stores this block without looking at it, and later code
+            // indexes the node list straight out of `offsets`. A malformed pair
+            // would either report the wrong element count or panic far from the
+            // mistake, so it is checked here where the caller can still see
+            // which call was wrong.
+            let mut previous = 0;
+            for (index, &offset) in offsets.iter().enumerate() {
+                if offset == previous {
+                    return Err(Error::InvalidArgument(format!(
+                        "poly block for {element_type:?} has an empty element at index {index}"
+                    )));
+                }
+                if offset < previous {
+                    return Err(Error::InvalidArgument(format!(
+                        "poly block for {element_type:?} has non-monotonic offsets: {offset} \
+                         follows {previous}"
+                    )));
+                }
+                if offset > conn.len() {
+                    return Err(Error::InvalidArgument(format!(
+                        "poly block for {element_type:?} ends element {index} at node {offset} \
+                         but only {} nodes were given",
+                        conn.len()
+                    )));
+                }
+                previous = offset;
             }
-            if offset < previous {
+            if previous != conn.len() {
                 return Err(Error::InvalidArgument(format!(
-                    "poly block for {element_type:?} has non-monotonic offsets: {} follows {previous}",
-                    offset
-                )));
-            }
-            if offset > conn.len() {
-                return Err(Error::InvalidArgument(format!(
-                    "poly block for {element_type:?} ends element {index} at node {offset} but \
-                     only {} nodes were given",
+                    "poly block for {element_type:?} ends at node {previous} but {} nodes were \
+                     given",
                     conn.len()
                 )));
             }
-            previous = offset;
+            self.reject_out_of_range_nodes(conn.iter().copied())?;
         }
-        if previous != conn.len() {
-            return Err(Error::InvalidArgument(format!(
-                "poly block for {element_type:?} ends at node {previous} but {} nodes were given",
-                conn.len()
-            )));
-        }
-        self.reject_out_of_range_nodes(conn.iter().copied())?;
 
         self.0.add_poly_block(
             core_type,
@@ -364,40 +382,6 @@ impl UMesh {
 
     /// Component count of `name` on every block at `dimension`, or an error if
     /// they do not all agree.
-    ///
-    /// A transfer reads a field as one array by gluing the per-element-type
-    /// parts together, which only lines up if they share a trailing shape.
-    /// [`set_field`](Self::set_field) enforces that for fields the bindings
-    /// build, but a mesh read from a file can carry one that does not, and the
-    /// core panics on it.
-    pub(crate) fn uniform_field_components(
-        &self,
-        name: &str,
-        dimension: mf::Dimension,
-    ) -> Result<usize, Error> {
-        let mut components: Option<(usize, CoreElementType)> = None;
-        for element_type in self.0.element_types() {
-            if element_type.dimension() != dimension {
-                continue;
-            }
-            let array = self.field_array_of(name, *element_type)?;
-            let (_, n_components) = FieldComponents::of(array);
-            match components {
-                Some((expected, first)) if expected != n_components => {
-                    return Err(Error::InvalidArgument(format!(
-                        "field '{name}' has {expected} components on {first:?} and \
-                         {n_components} on {element_type:?}; it needs one shape across every \
-                         element type at dimension {} to be transferred",
-                        u8::from(dimension)
-                    )));
-                }
-                Some(_) => {}
-                None => components = Some((n_components, *element_type)),
-            }
-        }
-        Ok(components.map_or(0, |(n, _)| n))
-    }
-
     /// Zero-copy row-major view of field `name` on element type `element_type`.
     ///
     /// # Safety
@@ -501,10 +485,14 @@ impl UMesh {
 
 /// Splits a field array into `(n_elements, n_components)`, treating a field with
 /// no element axis as a single scalar per element type.
-struct FieldComponents;
+pub(crate) struct FieldComponents;
 
 impl FieldComponents {
-    fn of(array: &OwnedField) -> (usize, usize) {
+    pub(crate) fn of<A, D>(array: &nd::ArrayBase<A, D>) -> (usize, usize)
+    where
+        A: nd::Data,
+        D: nd::Dimension,
+    {
         if array.ndim() == 0 {
             (1, 1)
         } else {

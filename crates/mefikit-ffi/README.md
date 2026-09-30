@@ -196,6 +196,30 @@ element type the mesh already has, non-finite coordinates, an empty field name, 
 field whose blocks disagree on the component count, and a field size that
 overflows.
 
+### Turning the whole-mesh scans off
+
+Two of those checks walk every element rather than looking at one header: that
+coordinates are finite, and that connectivity stays inside the mesh. The copies
+mefikit needs anyway are not the expensive part — measured on hexahedral meshes,
+the scans add roughly 2.5x to the time it takes to hand a mesh over, and grow
+with the mesh where the copies stay proportional to the bytes copied.
+
+If your input is already trusted, `set_checks` drops just those two:
+
+```cpp
+mefikit::set_checks(mefikit::Checks::Fast);
+```
+
+or set `MEFIKIT_FFI_CHECKS=fast` before the process starts, which is the way to
+choose the level for a whole run. The default is `Checks::Full`, and an
+unrecognised value keeps it, so a typo cannot quietly trade away the errors the
+rest of the program is relying on. `mefikit::checks()` reads back the level in
+force. Everything else in the list above still runs in `Fast`: this changes when
+an error is returned, not whether the program crashes on a bad `apply_update`.
+
+A malformed mesh that `Fast` lets through is a promise you are making to mefikit,
+not a faster way of getting an error.
+
 ### When to prepare again
 
 An operator holds matrices sized by the two meshes it was built from, so

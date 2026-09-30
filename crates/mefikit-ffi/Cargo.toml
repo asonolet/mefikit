@@ -22,3 +22,13 @@ mefikit = { path = "../mefikit", features = ["io", "rayon"] }
 
 [build-dependencies]
 cxx-build = { workspace = true }
+
+# ref: https://bheisler.github.io/criterion.rs/book/getting_started.html#step-1---add-dependency-to-cargotoml
+[[bench]]
+name = "overhead"
+harness = false
+
+[dev-dependencies]
+criterion = "0.8.2"
+mefikit = { path = "../mefikit", features = ["io", "rayon"] }
+ndarray = { workspace = true }

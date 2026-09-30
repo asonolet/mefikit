@@ -1029,6 +1029,7 @@ dependencies = [
 name = "mefikit-ffi"
 version = "0.4.1"
 dependencies = [
+ "criterion",
  "cxx",
  "cxx-build",
  "mefikit",

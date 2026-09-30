@@ -14,6 +14,7 @@
 //! assert_eq!(mesh.n_nodes(), 4);
 //! ```
 
+pub mod checks;
 pub mod error;
 pub mod ffi;
 pub mod mesh;
@@ -21,4 +22,4 @@ pub mod transfer;
 pub mod types;
 
 pub use error::Error;
-pub use ffi::{TransferOperator, UMesh, bridge, transfer_field};
+pub use ffi::{TransferOperator, UMesh, bridge, checks, set_checks, transfer_field};

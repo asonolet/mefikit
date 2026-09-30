@@ -749,6 +749,35 @@ void test_malformed_meshes_are_rejected() {
 
 } // namespace
 
+// Checks is process-wide, so this test puts the level back before returning: a
+// Fast left behind would silence the malformed-mesh checks the next test relies
+// on.
+void test_check_level_is_readable_and_settable() {
+  const auto before = mefikit::checks();
+
+  mefikit::set_checks(mefikit::Checks::Fast);
+  CHECK(mefikit::checks() == mefikit::Checks::Fast);
+
+  mefikit::set_checks(mefikit::Checks::Full);
+  CHECK(mefikit::checks() == mefikit::Checks::Full);
+
+  // Everything outside the whole-mesh scans is still checked in Fast, so a bad
+  // field name keeps being an error rather than becoming a wrong answer.
+  auto mesh = cmesh(2);
+  const auto blocks =
+      std::vector<mefikit::FieldBlock>{mefikit::FieldBlock{mefikit::ElementType::QUAD4, 1, 0, 4}};
+  bool threw = false;
+  try {
+    mesh->set_field("", slice_of(blocks), slice_of(std::vector<double>{1, 2, 3, 4}));
+  } catch (const rust::Error &) {
+    threw = true;
+  }
+  CHECK(threw);
+
+  mefikit::set_checks(before);
+  CHECK(mefikit::checks() == before);
+}
+
 int main() {
   test_topology();
   test_empty_mesh();
@@ -765,6 +794,7 @@ int main() {
   test_transfers_that_cannot_work_are_reported();
   test_malformed_meshes_are_rejected();
   test_med_transfer_of_a_uniform_field();
+  test_check_level_is_readable_and_settable();
 
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
