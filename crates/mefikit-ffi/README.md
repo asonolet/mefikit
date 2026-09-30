@@ -117,7 +117,7 @@ Everything lives in namespace `mefikit`.
 | `void write(path) const` | same formats, chosen by extension |
 | `void add_regular_block(element_type, conn, n_elements)` | fixed node count, row-major `(n_elements, num_nodes)` |
 | `void add_poly_block(element_type, conn, offsets)` | `PGON` / `PHED` / `SPLINE`; flat node list plus cumulative end offsets |
-| `void validate_structure() const` | cheap consistency check, worth calling on hand-built meshes |
+| `void validate_structure() const` | the only check for non-finite coordinates and out-of-range connectivity |
 | `n_nodes()`, `n_elements()`, `n_elements_of(et)`, `space_dimension()` | counts |
 | `is_empty()`, `topological_dimension()`, `element_types()` | shape |
 | `set_field(name, blocks, values)` | one block per element type |
@@ -190,35 +190,29 @@ that reaches C++ aborts the process, so `prepare` returns an error instead for
 each of them: mismatched space dimensions, an empty source or target, `k` below
 one, a non-positive or non-finite exponent, and — for `conservative_p0` and
 `constant_piecewise` — cells that do not fill their space dimension. The same
-applies to the input side: a node index the mesh does not have, a poly offset
-table that does not describe the connectivity it came with, a second block of an
-element type the mesh already has, non-finite coordinates, an empty field name, a
-field whose blocks disagree on the component count, and a field size that
-overflows.
+applies to the input side: a second block of an element type the mesh already
+has, an empty field name, a field whose blocks disagree on the component count,
+and a field size that overflows.
 
-### Turning the whole-mesh scans off
+The two checks that walk every element — that coordinates are finite, and that
+connectivity stays inside the mesh — are **not** done here. They belong to
+mefikit itself, which already has them in `validate_structure`, but does not yet
+run them when a block is added, and the bindings do not reimplement it. So
+`from_coords` accepts a non-finite coordinate and `add_regular_block` /
+`add_poly_block` accept out-of-range indices and a malformed poly offset table.
 
-Two of those checks walk every element rather than looking at one header: that
-coordinates are finite, and that connectivity stays inside the mesh. The copies
-mefikit needs anyway are not the expensive part — measured on hexahedral meshes,
-the scans add roughly 2.5x to the time it takes to hand a mesh over, and grow
-with the mesh where the copies stay proportional to the bytes copied.
-
-If your input is already trusted, `set_checks` drops just those two:
+Call `validate_structure()` on a mesh you built by hand. It is the one call that
+reports all three, and it is worth its cost exactly once, after the mesh is
+complete:
 
 ```cpp
-mefikit::set_checks(mefikit::Checks::Fast);
+mefikit::UMesh mesh = mefikit::UMesh::from_coords(coords, n_nodes, 2);
+mesh.add_regular_block(mefikit::ElementType::QUAD4, conn, n_elements);
+// ... other blocks and fields ...
+mesh.validate_structure();  // throws mefikit::Error on the first problem
 ```
 
-or set `MEFIKIT_FFI_CHECKS=fast` before the process starts, which is the way to
-choose the level for a whole run. The default is `Checks::Full`, and an
-unrecognised value keeps it, so a typo cannot quietly trade away the errors the
-rest of the program is relying on. `mefikit::checks()` reads back the level in
-force. Everything else in the list above still runs in `Fast`: this changes when
-an error is returned, not whether the program crashes on a bad `apply_update`.
-
-A malformed mesh that `Fast` lets through is a promise you are making to mefikit,
-not a faster way of getting an error.
+A mesh read from a file with `read()` needs no such call: the reader produced it.
 
 ### When to prepare again
 

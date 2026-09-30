@@ -649,9 +649,11 @@ void test_transfers_that_cannot_work_are_reported() {
 
 }
 
-// The core keeps the first block when a second of the same type is added, and
-// indexes nodes with the connectivity it is given, so both have to be checked
-// where the bindings can see what went wrong.
+// The core keeps the first block when a second of the same type is added, so
+// that one has to be rejected where the bindings can see what went wrong. The
+// checks that read the data -- connectivity indices, poly offsets, coordinate
+// values -- belong to the core and are not run when a block is added, so
+// `validate_structure` is what reports them.
 void test_malformed_meshes_are_rejected() {
   auto mesh = mixed_mesh();
 
@@ -666,15 +668,18 @@ void test_malformed_meshes_are_rejected() {
   }
   CHECK(threw);
 
-  // Offsets that do not describe the connectivity handed over.
+  // Offsets that do not describe the connectivity handed over. Each is stored as
+  // given, so a fresh mesh is needed per case: the bad block stays on it.
   const std::vector<std::pair<std::string, std::vector<std::size_t>>> bad_offsets{
       {"backwards", {5, 3}}, {"empty element", {0, 3}}, {"short", {2}}};
   for (const auto &[label, offsets] : bad_offsets) {
+    auto off = mixed_mesh();
+    off->add_poly_block(mefikit::ElementType::PGON,
+                        slice_of(std::vector<std::size_t>{0, 1, 2, 3}),
+                        slice_of(offsets));
     threw = false;
     try {
-      mesh->add_poly_block(mefikit::ElementType::PGON,
-                           slice_of(std::vector<std::size_t>{0, 1, 2, 3}),
-                           slice_of(offsets));
+      off->validate_structure();
     } catch (const rust::Error &) {
       threw = true;
     }
@@ -684,28 +689,31 @@ void test_malformed_meshes_are_rejected() {
   // A node index the mesh does not have.
   auto bare = mefikit::UMesh::from_coords(
       slice_of(std::vector<double>{0.0, 0.0, 1.0, 0.0, 1.0, 1.0}), 3, 2);
+  bare->add_regular_block(mefikit::ElementType::TRI3,
+                          slice_of(std::vector<std::size_t>{0, 1, 99}), 1);
   threw = false;
   try {
-    bare->add_regular_block(mefikit::ElementType::TRI3,
-                            slice_of(std::vector<std::size_t>{0, 1, 99}), 1);
+    bare->validate_structure();
   } catch (const rust::Error &e) {
     threw = true;
     CHECK(std::string(e.what()).find("node 99") != std::string::npos);
   }
   CHECK(threw);
 
-  // Coordinates that are not finite, and a space mefikit does not work in.
+  // Coordinates that are not finite.
+  auto nan_mesh = mefikit::UMesh::from_coords(
+      slice_of(std::vector<double>{0.0, 0.0, 0.0, std::nan(""), 0.0, 0.0}), 3, 2);
   threw = false;
   try {
-    auto nan_mesh = mefikit::UMesh::from_coords(
-        slice_of(std::vector<double>{0.0, 0.0, 0.0, std::nan(""), 0.0, 0.0}), 3, 2);
-    (void)nan_mesh;
+    nan_mesh->validate_structure();
   } catch (const rust::Error &e) {
     threw = true;
     CHECK(std::string(e.what()).find("not finite") != std::string::npos);
   }
   CHECK(threw);
 
+  // A space mefikit does not work in is a property of the call, not of the
+  // data, so that one is still rejected by from_coords itself.
   threw = false;
   try {
     auto flat = mefikit::UMesh::from_coords(slice_of(std::vector<double>{0.0}), 1, 0);
@@ -749,35 +757,6 @@ void test_malformed_meshes_are_rejected() {
 
 } // namespace
 
-// Checks is process-wide, so this test puts the level back before returning: a
-// Fast left behind would silence the malformed-mesh checks the next test relies
-// on.
-void test_check_level_is_readable_and_settable() {
-  const auto before = mefikit::checks();
-
-  mefikit::set_checks(mefikit::Checks::Fast);
-  CHECK(mefikit::checks() == mefikit::Checks::Fast);
-
-  mefikit::set_checks(mefikit::Checks::Full);
-  CHECK(mefikit::checks() == mefikit::Checks::Full);
-
-  // Everything outside the whole-mesh scans is still checked in Fast, so a bad
-  // field name keeps being an error rather than becoming a wrong answer.
-  auto mesh = cmesh(2);
-  const auto blocks =
-      std::vector<mefikit::FieldBlock>{mefikit::FieldBlock{mefikit::ElementType::QUAD4, 1, 0, 4}};
-  bool threw = false;
-  try {
-    mesh->set_field("", slice_of(blocks), slice_of(std::vector<double>{1, 2, 3, 4}));
-  } catch (const rust::Error &) {
-    threw = true;
-  }
-  CHECK(threw);
-
-  mefikit::set_checks(before);
-  CHECK(mefikit::checks() == before);
-}
-
 int main() {
   test_topology();
   test_empty_mesh();
@@ -794,7 +773,6 @@ int main() {
   test_transfers_that_cannot_work_are_reported();
   test_malformed_meshes_are_rejected();
   test_med_transfer_of_a_uniform_field();
-  test_check_level_is_readable_and_settable();
 
   std::printf("%d checks, %d failures\n", checks, failures);
   return failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;

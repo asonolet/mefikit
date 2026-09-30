@@ -559,46 +559,58 @@ fn an_element_type_may_only_have_one_block() {
 /// given nodes make it read a different number of elements than the caller
 /// intended, which then shows up much later as a transfer of the wrong size or
 /// as a panic.
+///
+/// That check belongs to the core and is not run when a block is added, so
+/// `add_poly_block` stores the block as given and `validate_structure` is what
+/// reports the problem. The entry point still rejects a regularity mismatch,
+/// because that is about which method was called rather than about the data.
 #[test]
 fn poly_offsets_must_describe_the_nodes_they_are_given() {
+    // Offsets that overrun the connectivity.
     let mut mesh = mixed_mesh();
-    // Offsets that go backwards.
-    let err = mesh
-        .add_poly_block(
-            ElementType::PGON,
-            slice(&[0usize, 1, 2, 3]),
-            slice(&[5usize, 3]),
-        )
-        .unwrap_err();
+    mesh.add_poly_block(
+        ElementType::PGON,
+        slice(&[0usize, 1, 2, 3]),
+        slice(&[5usize, 3]),
+    )
+    .unwrap();
+    let err = expect_error(mesh.validate_structure());
     assert!(
-        matches!(&err, Error::InvalidArgument(m) if m.contains("only 4 nodes were given")),
+        matches!(&err, Error::InvalidArgument(m) if m.contains("exceeds data length")),
         "unexpected error: {err}"
     );
+
     // Two elements that start at the same offset, so the first is empty.
-    let err = mesh
-        .add_poly_block(
-            ElementType::PGON,
-            slice(&[0usize, 1, 2, 3]),
-            slice(&[0usize, 3]),
-        )
-        .unwrap_err();
+    let mut mesh = mixed_mesh();
+    mesh.add_poly_block(
+        ElementType::PGON,
+        slice(&[0usize, 1, 2, 3]),
+        slice(&[0usize, 3]),
+    )
+    .unwrap();
+    let err = expect_error(mesh.validate_structure());
     assert!(
         matches!(&err, Error::InvalidArgument(m) if m.contains("empty element at index 0")),
         "unexpected error: {err}"
     );
+
     // The last offset does not reach the end of the connectivity.
-    let err = mesh
-        .add_poly_block(
-            ElementType::PGON,
-            slice(&[0usize, 1, 2, 3]),
-            slice(&[2usize]),
-        )
-        .unwrap_err();
+    let mut mesh = mixed_mesh();
+    mesh.add_poly_block(
+        ElementType::PGON,
+        slice(&[0usize, 1, 2, 3]),
+        slice(&[2usize]),
+    )
+    .unwrap();
+    let err = expect_error(mesh.validate_structure());
     assert!(
-        matches!(&err, Error::InvalidArgument(m) if m.contains("ends at node 2")),
+        matches!(&err, Error::InvalidArgument(m) if m.contains("unreferenced node indices")),
         "unexpected error: {err}"
     );
-    // The poly entry point only takes variable-size elements.
+
+    // The poly entry point only takes variable-size elements, and that is still
+    // rejected at the call: it is a mistake about the method, not the data.
+    let mut mesh = mixed_mesh();
     let err = mesh
         .add_poly_block(
             ElementType::QUAD4,
@@ -611,36 +623,46 @@ fn poly_offsets_must_describe_the_nodes_they_are_given() {
         "unexpected error: {err}"
     );
     assert_eq!(mesh.n_elements(), 3);
+    // Nothing malformed was stored, so the mesh is still consistent.
+    mesh.validate_structure().unwrap();
 }
 
 /// The core indexes nodes with these numbers, so a bad one is a panic rather
-/// than a rejected mesh.
+/// than a rejected mesh. Checking it is the core's job, so the bindings store
+/// what they are given and let `validate_structure` report it.
 #[test]
 fn connectivity_may_only_reference_existing_nodes() {
     let mut mesh = UMesh::from_coords(slice(&[0.0, 0.0, 1.0, 0.0, 1.0, 1.0]), 3, 2).unwrap();
-    let err = mesh
-        .add_regular_block(ElementType::TRI3, slice(&[0usize, 1, 99]), 1)
-        .unwrap_err();
+    mesh.add_regular_block(ElementType::TRI3, slice(&[0usize, 1, 99]), 1)
+        .unwrap();
+    let err = expect_error(mesh.validate_structure());
     assert!(
-        matches!(&err, Error::InvalidArgument(m) if m.contains("node 99 but the mesh has 3 nodes")),
+        matches!(&err, Error::InvalidArgument(m) if m.contains("references node 99")
+            && m.contains("the mesh has 3 nodes")),
         "unexpected error: {err}"
     );
-    let err = mesh
-        .add_poly_block(
-            ElementType::PGON,
-            slice(&[0usize, 1, 2, 42]),
-            slice(&[4usize]),
-        )
-        .unwrap_err();
+
+    let mut mesh = UMesh::from_coords(slice(&[0.0, 0.0, 1.0, 0.0, 1.0, 1.0]), 3, 2).unwrap();
+    mesh.add_poly_block(
+        ElementType::PGON,
+        slice(&[0usize, 1, 2, 42]),
+        slice(&[4usize]),
+    )
+    .unwrap();
+    let err = expect_error(mesh.validate_structure());
     assert!(
-        matches!(&err, Error::InvalidArgument(m) if m.contains("node 42 but the mesh has 3 nodes")),
+        matches!(&err, Error::InvalidArgument(m) if m.contains("references node 42")
+            && m.contains("the mesh has 3 nodes")),
         "unexpected error: {err}"
     );
-    assert!(mesh.is_empty());
 }
 
 /// mefikit works in 1D, 2D and 3D space, and a transfer of non-finite
 /// coordinates produces meaningless weights rather than a diagnosable failure.
+///
+/// The dimension is a property of the call, so the bindings reject it there.
+/// Finiteness is a property of the data and its check belongs to the core, so
+/// `from_coords` accepts a NaN and `validate_structure` reports it.
 #[test]
 fn coordinates_must_be_finite_and_of_a_usable_dimension() {
     for space_dim in [0usize, 4] {
@@ -650,20 +672,14 @@ fn coordinates_must_be_finite_and_of_a_usable_dimension() {
             "unexpected error: {err}"
         );
     }
-    let err = expect_error(UMesh::from_coords(slice(&[0.0, 0.0, f64::NAN, 0.0]), 2, 2));
-    assert!(
-        matches!(&err, Error::InvalidArgument(m) if m.contains("is NaN, which is not finite")),
-        "unexpected error: {err}"
-    );
-    let err = expect_error(UMesh::from_coords(
-        slice(&[0.0, 0.0, f64::INFINITY, 0.0]),
-        2,
-        2,
-    ));
-    assert!(
-        matches!(&err, Error::InvalidArgument(m) if m.contains("is inf, which is not finite")),
-        "unexpected error: {err}"
-    );
+    for bad in [f64::NAN, f64::INFINITY] {
+        let mesh = UMesh::from_coords(slice(&[0.0, 0.0, bad, 0.0]), 2, 2).unwrap();
+        let err = expect_error(mesh.validate_structure());
+        assert!(
+            matches!(&err, Error::InvalidArgument(m) if m.contains("is not finite")),
+            "unexpected error: {err}"
+        );
+    }
 }
 
 /// A transfer reads a field as one array by gluing the per-element-type parts
