@@ -95,7 +95,6 @@ pub struct TransferOperator {
 /// Coordinates are not hashed: a mesh edited in place without changing its node
 /// or element counts is not detected, which is why the documentation insists the
 /// geometry stay fixed for the operator's lifetime.
-#[derive(Debug)]
 pub(crate) struct MeshShape {
     pub(crate) n_nodes: usize,
     /// Element count of every block, keyed by element type, so that moving a
@@ -350,7 +349,10 @@ pub mod bridge {
         /// row-major `(n_elements, n_components)` array.
         ///
         /// The returned slice points into the mesh: the mesh must outlive it, and
-        /// no method taking `&mut self` may run while it is alive.
+        /// no method taking `&mut self` may run while it is alive. cxx generates
+        /// this as a plain `const` method and cannot check that, so honouring it
+        /// is up to the caller. `unsafe` below is cxx's own requirement for
+        /// exposing an explicit lifetime to C++.
         unsafe fn field_values<'a>(
             self: &'a UMesh,
             name: &str,

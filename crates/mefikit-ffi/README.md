@@ -255,7 +255,9 @@ C++ caller can pass any value.
 
 `field_values` returns a slice pointing into the mesh's own storage. Keep the
 mesh alive for as long as you use it, and do not call a method taking `&mut self`
-in between — that is why the header marks it the way it does.
+in between. Nothing enforces that for you: cxx generates `field_values` as a
+plain `const` method with no borrow tracking, so upholding the lifetime is the
+caller's responsibility. The warning in the header is documentation only.
 
 `rust::Box` and `rust::Vec` own Rust memory and free it on destruction. Do not
 copy a `UMesh`; move it (`auto b = std::move(a);`).
