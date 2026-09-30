@@ -71,7 +71,7 @@ pub struct UMesh(pub(crate) mf::UMesh);
 ///
 /// The bookkeeping fields are not decoration. `mefikit`'s transfer panics — with
 /// an `assert!` — when the meshes handed to
-/// [`apply_update`](crate::transfer::TransferOperator::apply_update) are not
+/// [`apply_update`](crate::ffi::TransferOperator::apply_update) are not
 /// the ones it was built from, and a panic unwinding out of the library would
 /// abort the C++ process instead of raising a catchable `rust::Error`. Recording
 /// what was prepared lets [`crate::transfer`] check the preconditions itself and
@@ -95,7 +95,7 @@ pub struct TransferOperator {
 /// Coordinates are not hashed: a mesh edited in place without changing its node
 /// or element counts is not detected, which is why the documentation insists the
 /// geometry stay fixed for the operator's lifetime.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub(crate) struct MeshShape {
     pub(crate) n_nodes: usize,
     /// Element count of every block, keyed by element type, so that moving a
@@ -415,7 +415,7 @@ pub mod bridge {
     }
 }
 
-/// Sets how much of the input the bindings check. See [`Checks`].
+/// Sets how much of the input the bindings check. See [`bridge::Checks`].
 ///
 /// # Errors
 ///
@@ -426,7 +426,7 @@ pub fn set_checks(checks: bridge::Checks) -> Result<(), Error> {
     crate::checks::set(checks)
 }
 
-/// The level currently in force. See [`Checks`].
+/// The level currently in force. See [`bridge::Checks`].
 #[must_use]
 pub fn checks() -> bridge::Checks {
     crate::checks::get()

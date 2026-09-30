@@ -216,22 +216,20 @@ fn transfer(c: &mut Criterion) {
         let (tcoords, tconn, tn_elems) = hex_mesh_data(n);
         let mut tgt_coords = tcoords;
         // Half a cell along x, so the target overlaps up to eight source cells.
-        let nodes_x = n + 1;
         for node in 0..tgt_coords.len() / 3 {
             tgt_coords[3 * node] += shift;
         }
-        let _ = (nodes_x, tconn);
 
         let mut core_src = core_mesh(&coords, &conn, n_elems);
         core_src.update_field("f", constant_field(n_elems, 7.0).into_shared());
-        let core_tgt = core_mesh(&tgt_coords, &conn, tn_elems);
+        let core_tgt = core_mesh(&tgt_coords, &tconn, tn_elems);
         let core_method = mefikit::tools::transfer::TransferMethod::ConservativeP0;
 
         let mut ffi_src = ffi_mesh(&coords, &conn, n_elems);
         ffi_src
             .set_field_uniform("f", ElementType::HEX8, 1, &vec![7.0; n_elems])
             .unwrap();
-        let ffi_tgt = ffi_mesh(&tgt_coords, &conn, tn_elems);
+        let ffi_tgt = ffi_mesh(&tgt_coords, &tconn, tn_elems);
         let ffi_method = TransferMethod::conservative_p0();
 
         group.bench_with_input(BenchmarkId::new("core_build", n_elems), &n_elems, |b, _| {
@@ -259,10 +257,10 @@ fn transfer(c: &mut Criterion) {
         });
 
         let ffi_op = TransferOperator::prepare(&ffi_src, &ffi_tgt, &ffi_method).unwrap();
-        let mut ffi_out = ffi_mesh(&tgt_coords, &conn, tn_elems);
-        ffi_out
-            .set_field_uniform("f", ElementType::HEX8, 1, &vec![0.0; tn_elems])
-            .unwrap();
+        // No field, so that the target starts out in the same state as
+        // `core_out` and both sides create the written field on their first
+        // iteration.
+        let mut ffi_out = ffi_mesh(&tgt_coords, &tconn, tn_elems);
         group.bench_with_input(BenchmarkId::new("ffi_apply", n_elems), &n_elems, |b, _| {
             b.iter(|| {
                 ffi_op
@@ -292,7 +290,6 @@ fn field_read(c: &mut Criterion) {
     let n = 16;
     let (coords, conn, n_elems) = hex_mesh_data(n);
     let core = core_mesh(&coords, &conn, n_elems);
-    let field = constant_field(n_elems, 3.0);
 
     group.throughput(Throughput::Bytes((n_elems * 8) as u64));
     // The C++ path hands back a slice of mefikit's own storage, so this should
@@ -312,7 +309,6 @@ fn field_read(c: &mut Criterion) {
             std::hint::black_box(values);
         });
     });
-    let _ = field;
     group.finish();
 }
 

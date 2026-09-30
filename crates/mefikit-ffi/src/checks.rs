@@ -9,7 +9,7 @@
 //! Two of those checks walk the whole buffer, which for a million-node mesh is
 //! an extra pass over tens of megabytes. The copies mefikit needs anyway are not
 //! the expensive part, so a caller that already trusts its input can turn the
-//! scans off with [`set_checks`](crate::bridge::set_checks) or the
+//! scans off with [`set_checks`](crate::set_checks) or the
 //! `MEFIKIT_FFI_CHECKS` environment variable and keep everything else.
 //!
 //! Nothing in `Checks::Fast` is skipped that the core would catch for free.
@@ -50,7 +50,7 @@ const FULL: u8 = 2;
 ///
 /// The environment is consulted once, the first time a check asks, so setting
 /// the variable after startup has no effect; use
-/// [`set_checks`](crate::bridge::set_checks) to change it at runtime.
+/// [`set_checks`](crate::set_checks) to change it at runtime.
 #[must_use]
 pub(crate) fn heavy_checks() -> bool {
     match LEVEL.load(Ordering::Relaxed) {

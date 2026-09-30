@@ -47,7 +47,7 @@ impl UMesh {
     /// Adds a fixed-node-count block from a row-major
     /// `(n_elements, num_nodes(element_type))` connectivity table.
     ///
-    /// Every index refersing to a node the mesh has is checked only under
+    /// Every index referring to a node the mesh has is checked only under
     /// [`Checks::Full`](crate::bridge::Checks), because it costs a pass over the
     /// whole table.
     pub fn add_regular_block(
@@ -462,14 +462,7 @@ impl UMesh {
     }
 
     fn field_array(&self, name: &str, element_type: ElementType) -> Result<&OwnedField, Error> {
-        self.field_array_of(name, element_type.to_core()?)
-    }
-
-    fn field_array_of(
-        &self,
-        name: &str,
-        element_type: CoreElementType,
-    ) -> Result<&OwnedField, Error> {
+        let element_type = element_type.to_core()?;
         self.0
             .block(element_type)
             .ok_or_else(|| Error::InvalidArgument(format!("mesh has no {element_type:?} block")))?

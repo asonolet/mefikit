@@ -12,6 +12,8 @@ keywords = ["mesh", "cfd", "c++", "ffi", "hpc"]
 # `cdylib` is the artifact C++ links against; `lib` lets `cargo test -p mefikit-ffi`
 # link the rlib and run the Rust side of the test suite.
 crate-type = ["cdylib", "lib"]
+# The only benchmarks live in `benches/`, so skip building a second, empty
+# benchmark harness for the library target itself.
 bench = false
 
 [dependencies]
@@ -23,12 +25,11 @@ mefikit = { path = "../mefikit", features = ["io", "rayon"] }
 [build-dependencies]
 cxx-build = { workspace = true }
 
-# ref: https://bheisler.github.io/criterion.rs/book/getting_started.html#step-1---add-dependency-to-cargotoml
+# Criterion drives its own harness, so the bench target has to opt out of the
+# built-in one. The dependencies it needs are already listed above.
 [[bench]]
 name = "overhead"
 harness = false
 
 [dev-dependencies]
 criterion = "0.8.2"
-mefikit = { path = "../mefikit", features = ["io", "rayon"] }
-ndarray = { workspace = true }
