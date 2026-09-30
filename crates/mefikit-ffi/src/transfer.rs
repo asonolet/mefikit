@@ -5,6 +5,7 @@ use mefikit::tools::Transfer as _;
 
 use crate::ffi::bridge::{Dimension, FieldNature, TransferMethod};
 use crate::ffi::{Error, MeshShape, TransferOperator, UMesh};
+use crate::mesh::FieldComponents;
 
 impl TransferOperator {
     /// Precomputes the transfer from `src` to `tgt`.
@@ -88,9 +89,9 @@ impl TransferOperator {
             ))
         })?;
         // The core concatenates the field's per-element-type parts, which only
-        // lines up if they share a shape. `set_field` keeps that true for fields
-        // the bindings build, but not for one read from a file.
-        src.uniform_field_components(field_name, src_dim)?;
+        // lines up if they share a shape. The view just resolved is walked
+        // directly, rather than looking every block up again.
+        check_field_components(&field, field_name, src_dim)?;
         self.operator.apply_update(
             &mut tgt.0,
             tgt_field_name,
@@ -109,15 +110,48 @@ impl TransferOperator {
 
     /// Rejects a mesh whose shape changed since the operator was prepared.
     fn check_shape(&self, mesh: &UMesh, expected: &MeshShape, role: &str) -> Result<(), Error> {
-        let now = MeshShape::of(mesh);
-        if now == *expected {
+        if expected.matches(mesh) {
             return Ok(());
         }
+        let now = MeshShape::of(mesh);
         Err(Error::InvalidArgument(format!(
             "this operator was prepared for a {role} mesh with {expected}, but the {role} mesh \
              given here has {now}; prepare a new operator for it"
         )))
     }
+}
+
+/// Rejects a field whose per-element-type parts disagree on the component
+/// count.
+///
+/// The core reads a field as a single array, so ragged parts have to be caught
+/// before it panics. `set_field` keeps that from happening for fields the
+/// bindings build, but not for one read from a file.
+fn check_field_components(
+    field: &mf::FieldView<ndarray::IxDyn>,
+    name: &str,
+    dimension: mf::Dimension,
+) -> Result<(), Error> {
+    let mut components: Option<(usize, mf::ElementType)> = None;
+    for (element_type, array) in &field.0 {
+        if element_type.dimension() != dimension {
+            continue;
+        }
+        let (_, n_components) = FieldComponents::of(array);
+        match components {
+            Some((expected, first)) if expected != n_components => {
+                return Err(Error::InvalidArgument(format!(
+                    "source mesh field '{name}' has {expected} components on {first:?} and \
+                     {n_components} on {element_type:?}; it needs one shape across every \
+                     element type at dimension {} to be transferred",
+                    u8::from(dimension)
+                )));
+            }
+            Some(_) => {}
+            None => components = Some((n_components, *element_type)),
+        }
+    }
+    Ok(())
 }
 
 /// Prepares a transfer and applies it in one call.
