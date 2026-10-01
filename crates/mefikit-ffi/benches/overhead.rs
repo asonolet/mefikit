@@ -12,8 +12,24 @@ use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_m
 use mefikit::mesh::{ElementType as CoreElementType, FieldOwnedD, UMesh as CoreUMesh};
 use mefikit::tools::transfer::{Transfer, TransferOperator as CoreOperator};
 
-use mefikit_ffi::bridge::{ElementType, FieldBlock, FieldNature, TransferMethod};
+use cxx::kind::Trivial;
+use cxx::vector::VectorElement;
+use cxx::{CxxVector, ExternType, UniquePtr};
+use mefikit_ffi as ffi;
+use mefikit_ffi::bridge::{ElementType, FieldNature, TransferMethod};
 use mefikit_ffi::{TransferOperator, UMesh};
+
+/// The bridge takes `&CxxVector<T>` where C++ passes a `const std::vector<T>&`,
+/// and cxx has no `From<Vec<T>>` for it, so Rust callers build one by hand.
+fn vector<T: VectorElement + ExternType<Kind = Trivial> + Copy>(
+    items: &[T],
+) -> UniquePtr<CxxVector<T>> {
+    let mut owned = CxxVector::<T>::new();
+    for item in items {
+        owned.pin_mut().push(*item);
+    }
+    owned
+}
 
 /// Structured `n^3` HEX8 mesh, built once and shared by every benchmark.
 fn hex_mesh_data(n: usize) -> (Vec<f64>, Vec<usize>, usize) {
@@ -51,7 +67,7 @@ fn hex_mesh_data(n: usize) -> (Vec<f64>, Vec<usize>, usize) {
 }
 
 fn ffi_coords(coords: &[f64]) -> Box<UMesh> {
-    UMesh::from_coords(coords, coords.len() / 3, 3).unwrap()
+    UMesh::from_coords(&vector(coords), coords.len() / 3, 3).unwrap()
 }
 
 fn core_coords(coords: &[f64]) -> CoreUMesh {
@@ -61,7 +77,7 @@ fn core_coords(coords: &[f64]) -> CoreUMesh {
 
 fn ffi_mesh(coords: &[f64], conn: &[usize], n_elems: usize) -> Box<UMesh> {
     let mut mesh = ffi_coords(coords);
-    mesh.add_regular_block(ElementType::HEX8, conn, n_elems)
+    mesh.add_regular_block(ElementType::HEX8, &vector(conn), n_elems)
         .unwrap();
     mesh
 }
@@ -109,7 +125,7 @@ fn build_mesh(c: &mut Criterion) {
             BenchmarkId::new("ffi_from_coords", n_nodes),
             &n_nodes,
             |b, &n_nodes| {
-                b.iter(|| UMesh::from_coords(&coords, n_nodes, 3).unwrap());
+                b.iter(|| UMesh::from_coords(&vector(&coords), n_nodes, 3).unwrap());
             },
         );
 
@@ -132,7 +148,7 @@ fn build_mesh(c: &mut Criterion) {
             |b, &ne| {
                 b.iter(|| {
                     let mut mesh = ffi_coords(&coords);
-                    mesh.add_regular_block(ElementType::HEX8, &conn, ne)
+                    mesh.add_regular_block(ElementType::HEX8, &vector(&conn), ne)
                         .unwrap();
                     std::hint::black_box(mesh);
                 });
@@ -150,12 +166,7 @@ fn set_field(c: &mut Criterion) {
     for n in [8, 16] {
         let (coords, conn, n_elems) = hex_mesh_data(n);
         let values = vec![1.0; n_elems];
-        let blocks = [FieldBlock {
-            element_type: ElementType::HEX8,
-            n_components: 1,
-            offset: 0,
-            len: n_elems,
-        }];
+        let types = vector(&[ElementType::HEX8.repr]);
 
         group.throughput(Throughput::Bytes((n_elems * 8) as u64));
         group.bench_with_input(BenchmarkId::new("core", n_elems), &n_elems, |b, _| {
@@ -171,7 +182,7 @@ fn set_field(c: &mut Criterion) {
             b.iter_batched(
                 || ffi_mesh(&coords, &conn, n_elems),
                 |mut mesh| {
-                    mesh.set_field("f", &blocks, &values).unwrap();
+                    ffi::set_field(&mut mesh, "f", &types, 1, &vector(&values)).unwrap();
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -204,7 +215,7 @@ fn transfer(c: &mut Criterion) {
 
         let mut ffi_src = ffi_mesh(&coords, &conn, n_elems);
         ffi_src
-            .set_field_uniform("f", ElementType::HEX8, 1, &vec![7.0; n_elems])
+            .set_field_uniform("f", ElementType::HEX8, 1, &vector(&vec![7.0; n_elems]))
             .unwrap();
         let ffi_tgt = ffi_mesh(&tgt_coords, &tconn, tn_elems);
         let ffi_method = TransferMethod::conservative_p0();
@@ -277,7 +288,7 @@ fn field_read(c: &mut Criterion) {
     });
     let mut with_field = ffi_mesh(&coords, &conn, n_elems);
     with_field
-        .set_field_uniform("f", ElementType::HEX8, 1, &vec![3.0; n_elems])
+        .set_field_uniform("f", ElementType::HEX8, 1, &vector(&vec![3.0; n_elems]))
         .unwrap();
     group.bench_function("ffi_slice_present", |b| {
         b.iter(|| {

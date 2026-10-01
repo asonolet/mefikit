@@ -19,6 +19,7 @@ use mefikit::prelude as mf;
 
 // Free functions declared in the bridge are resolved in this module, so the
 // crate-root re-export has to be visible here rather than only in `lib`.
+pub use crate::mesh::set_field;
 pub use crate::transfer::transfer_field;
 
 /// Anything that can go wrong in the C++ API, surfaced as a `rust::Error` C++
@@ -223,18 +224,6 @@ pub mod bridge {
         weighting: DistanceWeighting,
     }
 
-    /// One element type's contribution to [`set_field`](UMesh::set_field).
-    ///
-    /// `values[offset..offset + len]` must hold `n_elements * n_components`
-    /// values in row-major order.
-    #[derive(Copy, Clone, Debug)]
-    struct FieldBlock {
-        element_type: ElementType,
-        n_components: usize,
-        offset: usize,
-        len: usize,
-    }
-
     /// Shape of a field carried by one element type.
     #[derive(Copy, Clone, Debug)]
     struct FieldInfo {
@@ -255,14 +244,18 @@ pub mod bridge {
         /// This is the constructor, spelled `from_coords` rather than `new`
         /// because `new` is a C++ keyword and cannot name a member function.
         #[Self = "UMesh"]
-        fn from_coords(coords: &[f64], n_nodes: usize, space_dim: usize) -> Result<Box<UMesh>>;
+        fn from_coords(
+            coords: &CxxVector<f64>,
+            n_nodes: usize,
+            space_dim: usize,
+        ) -> Result<Box<UMesh>>;
 
         /// Adds a fixed-node-count block. `conn` is row-major
         /// `(n_elements, num_nodes(et))`; each element type may appear once.
         fn add_regular_block(
             self: &mut UMesh,
             element_type: ElementType,
-            conn: &[usize],
+            conn: &CxxVector<usize>,
             n_elements: usize,
         ) -> Result<()>;
 
@@ -273,8 +266,8 @@ pub mod bridge {
         fn add_poly_block(
             self: &mut UMesh,
             element_type: ElementType,
-            conn: &[usize],
-            offsets: &[usize],
+            conn: &CxxVector<usize>,
+            offsets: &CxxVector<usize>,
         ) -> Result<()>;
 
         /// Checks the mesh is internally consistent (connectivity in range, field
@@ -297,14 +290,24 @@ pub mod bridge {
         /// Element types present, in ascending order.
         fn element_types(self: &UMesh) -> Vec<ElementType>;
 
-        /// Sets the field `name` from one block per element type. Every block must
-        /// belong to the same dimension, and that set of element types must match
-        /// the mesh's blocks at that dimension exactly.
+        /// Sets the field `name` over several element types at once.
+        ///
+        /// `element_types` names one element type per block, as cxx's
+        /// `ElementType` discriminants, and the blocks must exactly cover the
+        /// mesh's element types at a single dimension. `values` holds those
+        /// blocks back to back in the same order, each
+        /// `n_elements(et) * n_components` long in row-major order.
+        ///
+        /// This is a free function rather than a method because cxx cannot put a
+        /// `std::vector` of a shared enum behind a method parameter; C++ callers
+        /// should prefer the `mefikit::set_field` wrapper in `<mefikit/mefikit.hpp>`,
+        /// which takes one `std::vector<double>` per element type.
         fn set_field(
-            self: &mut UMesh,
+            mesh: &mut UMesh,
             name: &str,
-            blocks: &[FieldBlock],
-            values: &[f64],
+            element_types: &CxxVector<u8>,
+            n_components: usize,
+            values: &CxxVector<f64>,
         ) -> Result<()>;
 
         /// Convenience for the common case of a single-block mesh: fills the
@@ -315,7 +318,7 @@ pub mod bridge {
             name: &str,
             element_type: ElementType,
             n_components: usize,
-            values: &[f64],
+            values: &CxxVector<f64>,
         ) -> Result<()>;
 
         /// Shape of field `name` on element type `element_type`.

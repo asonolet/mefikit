@@ -4,15 +4,32 @@
 //! users will; these cover the pieces whose edge cases are awkward to reach from
 //! C++ (field-shape validation, unknown discriminants, poly offset bookkeeping).
 
+use cxx::kind::Trivial;
+use cxx::vector::VectorElement;
+use cxx::{CxxVector, ExternType, UniquePtr};
 use mefikit_ffi::Error;
 use mefikit_ffi::bridge::{
-    Dimension, DistanceWeighting, ElementType, FieldBlock, FieldNature, PointLocation,
-    TransferMethod, TransferMethodKind,
+    Dimension, DistanceWeighting, ElementType, FieldNature, PointLocation, TransferMethod,
+    TransferMethodKind,
 };
-use mefikit_ffi::{UMesh, transfer_field};
+use mefikit_ffi::{UMesh, set_field, transfer_field};
 
-fn slice<T>(v: &[T]) -> &[T] {
-    v
+/// The bridge takes `&CxxVector<T>` where C++ passes a `const std::vector<T>&`,
+/// and cxx has no `From<Vec<T>>` for it, so Rust callers build one by hand.
+/// The returned pointer derefs to the vector the methods expect.
+fn vector<T: VectorElement + ExternType<Kind = Trivial> + Copy>(
+    items: &[T],
+) -> UniquePtr<CxxVector<T>> {
+    let mut owned = CxxVector::<T>::new();
+    for item in items {
+        owned.pin_mut().push(*item);
+    }
+    owned
+}
+
+/// The element type codes `set_field` takes, one per block.
+fn codes(types: &[ElementType]) -> UniquePtr<CxxVector<u8>> {
+    vector(&types.iter().map(|t| t.repr).collect::<Vec<_>>())
 }
 
 /// `Result::unwrap_err` needs a `Debug` on the success type, and the cxx shared
@@ -40,8 +57,8 @@ fn quad_mesh() -> Box<UMesh> {
             conn.extend_from_slice(&[base, base + 1, base + 4, base + 3]);
         }
     }
-    let mut mesh = UMesh::from_coords(slice(&coords), 9, 2).unwrap();
-    mesh.add_regular_block(ElementType::QUAD4, slice(&conn), 4)
+    let mut mesh = UMesh::from_coords(&vector(&coords), 9, 2).unwrap();
+    mesh.add_regular_block(ElementType::QUAD4, &vector(&conn), 4)
         .unwrap();
     mesh
 }
@@ -51,10 +68,10 @@ fn mixed_mesh() -> Box<UMesh> {
         0.0, 0.0, 1.0, 0.0, 1.0, 1.0, // 0 1 2
         0.0, 1.0, 0.0, 2.0, 1.0, 2.0, // 3 4 5
     ];
-    let mut mesh = UMesh::from_coords(slice(&coords), 6, 2).unwrap();
-    mesh.add_regular_block(ElementType::QUAD4, slice(&[0usize, 1, 2, 3]), 1)
+    let mut mesh = UMesh::from_coords(&vector(&coords), 6, 2).unwrap();
+    mesh.add_regular_block(ElementType::QUAD4, &vector(&[0usize, 1, 2, 3]), 1)
         .unwrap();
-    mesh.add_regular_block(ElementType::TRI3, slice(&[2usize, 3, 4, 4, 5, 2]), 2)
+    mesh.add_regular_block(ElementType::TRI3, &vector(&[2usize, 3, 4, 4, 5, 2]), 2)
         .unwrap();
     mesh
 }
@@ -76,7 +93,7 @@ fn topology_reports_the_mesh_shape() {
 #[test]
 fn a_mesh_without_blocks_is_empty() {
     let coords = [0.0, 0.0, 1.0, 0.0];
-    let mesh = UMesh::from_coords(slice(&coords), 2, 2).unwrap();
+    let mesh = UMesh::from_coords(&vector(&coords), 2, 2).unwrap();
     assert!(mesh.is_empty());
     assert_eq!(mesh.topological_dimension(), Dimension::D0);
     assert_eq!(mesh.n_elements(), 0);
@@ -87,7 +104,7 @@ fn a_mesh_without_blocks_is_empty() {
 fn wrong_coordinate_count_is_rejected() {
     let coords = [0.0, 0.0, 1.0];
     assert!(matches!(
-        UMesh::from_coords(slice(&coords), 2, 2),
+        UMesh::from_coords(&vector(&coords), 2, 2),
         Err(Error::InvalidArgument(_))
     ));
 }
@@ -96,7 +113,7 @@ fn wrong_coordinate_count_is_rejected() {
 fn a_variable_node_count_element_needs_the_poly_entry_point() {
     let mut mesh = quad_mesh();
     let err = mesh
-        .add_regular_block(ElementType::PGON, slice(&[0usize, 1, 2, 3]), 1)
+        .add_regular_block(ElementType::PGON, &vector(&[0usize, 1, 2, 3]), 1)
         .unwrap_err();
     assert!(
         matches!(&err, Error::InvalidArgument(m) if m.contains("variable node count")),
@@ -104,8 +121,12 @@ fn a_variable_node_count_element_needs_the_poly_entry_point() {
     );
 
     // The poly entry point takes it, with cumulative end offsets.
-    mesh.add_poly_block(ElementType::PGON, slice(&[0usize, 1, 2]), slice(&[3usize]))
-        .unwrap();
+    mesh.add_poly_block(
+        ElementType::PGON,
+        &vector(&[0usize, 1, 2]),
+        &vector(&[3usize]),
+    )
+    .unwrap();
     mesh.validate_structure().unwrap();
     assert_eq!(mesh.n_elements_of(ElementType::PGON), 1);
 }
@@ -114,7 +135,7 @@ fn a_variable_node_count_element_needs_the_poly_entry_point() {
 fn fields_round_trip_through_the_uniform_shortcut() {
     let mut mesh = quad_mesh();
     let values = [1.0, 2.0, 3.0, 4.0];
-    mesh.set_field_uniform("T", ElementType::QUAD4, 1, slice(&values))
+    mesh.set_field_uniform("T", ElementType::QUAD4, 1, &vector(&values))
         .unwrap();
 
     let info = mesh.field_info("T", ElementType::QUAD4).unwrap();
@@ -132,65 +153,57 @@ fn fields_round_trip_through_the_uniform_shortcut() {
 #[test]
 fn a_field_must_match_the_mesh_block_layout() {
     let mut mesh = mixed_mesh();
-    let blocks = [
-        FieldBlock {
-            element_type: ElementType::QUAD4,
-            n_components: 1,
-            offset: 0,
-            len: 1,
-        },
-        FieldBlock {
-            element_type: ElementType::TRI3,
-            n_components: 1,
-            offset: 1,
-            len: 2,
-        },
-    ];
-    mesh.set_field("T", slice(&blocks), slice(&[1.0, 2.0, 3.0]))
-        .unwrap();
+    set_field(
+        &mut mesh,
+        "T",
+        &codes(&[ElementType::QUAD4, ElementType::TRI3]),
+        1,
+        &vector(&[1.0, 2.0, 3.0]),
+    )
+    .unwrap();
     // SAFETY: no method taking &mut self runs while the borrow is alive.
     let tri = unsafe { mesh.field_values("T", ElementType::TRI3) }.unwrap();
     assert_eq!(tri, [2.0, 3.0]);
 
     // Only one of the two blocks: the field would silently be half a field.
-    let err = mesh
-        .set_field("U", slice(&blocks[..1]), slice(&[1.0]))
-        .unwrap_err();
+    let err = set_field(
+        &mut mesh,
+        "U",
+        &codes(&[ElementType::QUAD4]),
+        1,
+        &vector(&[1.0]),
+    )
+    .unwrap_err();
     assert!(
         matches!(&err, Error::InvalidArgument(m) if m.contains("QUAD4") && m.contains("TRI3")),
         "unexpected error: {err}"
     );
 
-    // Declared shape does not match how many values were supplied: QUAD4 has one
-    // element, so it wants one value, not three.
-    let over = [
-        FieldBlock {
-            element_type: ElementType::QUAD4,
-            n_components: 1,
-            offset: 0,
-            len: 3,
-        },
-        FieldBlock {
-            element_type: ElementType::TRI3,
-            n_components: 1,
-            offset: 1,
-            len: 2,
-        },
-    ];
-    let err = mesh
-        .set_field("U", slice(&over), slice(&[1.0, 2.0, 3.0]))
-        .unwrap_err();
+    // Values left over: QUAD4 has one element and TRI3 two, so three is exact.
+    let err = set_field(
+        &mut mesh,
+        "U",
+        &codes(&[ElementType::QUAD4, ElementType::TRI3]),
+        1,
+        &vector(&[1.0, 2.0, 3.0, 4.0]),
+    )
+    .unwrap_err();
     assert!(
-        matches!(&err, Error::InvalidArgument(m) if m.contains("1 elements x 1 components")),
+        matches!(&err, Error::InvalidArgument(m) if m.contains("was given 4 values") && m.contains("hold 3")),
         "unexpected error: {err}"
     );
 
-    // A block range that runs off the end of `values`.
-    let err = mesh
-        .set_field("U", slice(&blocks), slice(&[1.0, 2.0]))
-        .unwrap_err();
+    // Values missing: the TRI3 block would run off the end of `values`.
+    let err = set_field(
+        &mut mesh,
+        "U",
+        &codes(&[ElementType::QUAD4, ElementType::TRI3]),
+        1,
+        &vector(&[1.0, 2.0]),
+    )
+    .unwrap_err();
     assert!(
-        matches!(&err, Error::InvalidArgument(m) if m.contains("values[1..3]")),
+        matches!(&err, Error::InvalidArgument(m) if m.contains("was given 2 values") && m.contains("hold 3")),
         "unexpected error: {err}"
     );
 }
@@ -200,13 +213,13 @@ fn the_uniform_shortcut_needs_a_single_block() {
     let mut mesh = mixed_mesh();
     let values = [1.0, 2.0, 3.0];
     assert!(matches!(
-        mesh.set_field_uniform("T", ElementType::QUAD4, 1, slice(&values)),
+        mesh.set_field_uniform("T", ElementType::QUAD4, 1, &vector(&values)),
         Err(Error::InvalidArgument(_))
     ));
     // A single-block mesh is fine.
     let mut single = quad_mesh();
     single
-        .set_field_uniform("T", ElementType::QUAD4, 1, slice(&[1.0, 2.0, 3.0, 4.0]))
+        .set_field_uniform("T", ElementType::QUAD4, 1, &vector(&[1.0, 2.0, 3.0, 4.0]))
         .unwrap();
     assert_eq!(single.field_names(), vec!["T".to_owned()]);
 }
@@ -232,7 +245,7 @@ fn an_unknown_element_type_from_cxx_is_an_error_not_a_panic() {
     // around an integer, so this has to be caught rather than matched.
     let bogus = ElementType { repr: 250 };
     let err = mesh
-        .add_regular_block(bogus, slice(&[0usize, 1, 2, 3]), 1)
+        .add_regular_block(bogus, &vector(&[0usize, 1, 2, 3]), 1)
         .unwrap_err();
     assert!(
         matches!(&err, Error::InvalidArgument(m) if m.contains("250")),
@@ -285,9 +298,9 @@ fn transfer_method_factories_leave_unused_parameters_zeroed() {
 #[test]
 fn a_prepared_operator_can_be_applied_to_several_fields() {
     let mut src = quad_mesh();
-    src.set_field_uniform("a", ElementType::QUAD4, 1, slice(&[1.0, 2.0, 3.0, 4.0]))
+    src.set_field_uniform("a", ElementType::QUAD4, 1, &vector(&[1.0, 2.0, 3.0, 4.0]))
         .unwrap();
-    src.set_field_uniform("b", ElementType::QUAD4, 1, slice(&[5.0, 6.0, 7.0, 8.0]))
+    src.set_field_uniform("b", ElementType::QUAD4, 1, &vector(&[5.0, 6.0, 7.0, 8.0]))
         .unwrap();
     let mut tgt = quad_mesh();
 
@@ -316,7 +329,7 @@ fn a_prepared_operator_can_be_applied_to_several_fields() {
 #[test]
 fn the_one_shot_transfer_agrees_with_the_prepared_one() {
     let mut src = quad_mesh();
-    src.set_field_uniform("T", ElementType::QUAD4, 1, slice(&[1.0, 2.0, 3.0, 4.0]))
+    src.set_field_uniform("T", ElementType::QUAD4, 1, &vector(&[1.0, 2.0, 3.0, 4.0]))
         .unwrap();
     let method = TransferMethod::conservative_p0();
 
@@ -396,9 +409,9 @@ fn a_uniform_field_survives_a_transfer_between_two_med_files() {
     // cannot depend on how the two meshes happen to be cut up.
     let uniform = vec![1.0; 2000];
     let negative = vec![-1.0; 2000];
-    src.set_field_uniform("u", ElementType::PHED, 1, slice(&uniform))
+    src.set_field_uniform("u", ElementType::PHED, 1, &vector(&uniform))
         .unwrap();
-    src.set_field_uniform("v", ElementType::PHED, 1, slice(&negative))
+    src.set_field_uniform("v", ElementType::PHED, 1, &vector(&negative))
         .unwrap();
 
     let methods = [
@@ -462,22 +475,14 @@ fn io_round_trips_through_a_file() {
     let path = path.to_str().unwrap();
 
     let mut mesh = mixed_mesh();
-    let blocks = [
-        FieldBlock {
-            element_type: ElementType::QUAD4,
-            n_components: 1,
-            offset: 0,
-            len: 1,
-        },
-        FieldBlock {
-            element_type: ElementType::TRI3,
-            n_components: 1,
-            offset: 1,
-            len: 2,
-        },
-    ];
-    mesh.set_field("T", slice(&blocks), slice(&[1.5, 2.5, 3.5]))
-        .unwrap();
+    set_field(
+        &mut mesh,
+        "T",
+        &codes(&[ElementType::QUAD4, ElementType::TRI3]),
+        1,
+        &vector(&[1.5, 2.5, 3.5]),
+    )
+    .unwrap();
     mesh.write(path).unwrap();
 
     let reloaded = UMesh::read(path).unwrap();
@@ -504,11 +509,11 @@ fn io_round_trips_through_a_file() {
 #[test]
 fn an_element_type_may_only_have_one_block() {
     let mut mesh = quad_mesh();
-    mesh.set_field_uniform("T", ElementType::QUAD4, 1, slice(&[1.0, 2.0, 3.0, 4.0]))
+    mesh.set_field_uniform("T", ElementType::QUAD4, 1, &vector(&[1.0, 2.0, 3.0, 4.0]))
         .unwrap();
 
     let err = mesh
-        .add_regular_block(ElementType::QUAD4, slice(&[8, 7, 6, 5]), 1)
+        .add_regular_block(ElementType::QUAD4, &vector(&[8, 7, 6, 5]), 1)
         .unwrap_err();
     assert!(
         matches!(&err, Error::InvalidArgument(m) if m.contains("already has a QUAD4 block")),
@@ -519,7 +524,7 @@ fn an_element_type_may_only_have_one_block() {
     // that is worth knowing before the duplicate check, since the type is
     // wrong for this call whichever way round it is reported.
     let err = mesh
-        .add_poly_block(ElementType::QUAD4, slice(&[0usize]), slice(&[1]))
+        .add_poly_block(ElementType::QUAD4, &vector(&[0usize]), &vector(&[1]))
         .unwrap_err();
     assert!(
         matches!(&err, Error::InvalidArgument(m) if m.contains("fixed node count")),
@@ -529,15 +534,15 @@ fn an_element_type_may_only_have_one_block() {
     let mut pgon = quad_mesh();
     pgon.add_poly_block(
         ElementType::PGON,
-        slice(&[0usize, 1, 2, 3]),
-        slice(&[4usize]),
+        &vector(&[0usize, 1, 2, 3]),
+        &vector(&[4usize]),
     )
     .unwrap();
     let err = pgon
         .add_poly_block(
             ElementType::PGON,
-            slice(&[3usize, 2, 1, 0]),
-            slice(&[4usize]),
+            &vector(&[3usize, 2, 1, 0]),
+            &vector(&[4usize]),
         )
         .unwrap_err();
     assert!(
@@ -570,8 +575,8 @@ fn poly_offsets_must_describe_the_nodes_they_are_given() {
     let mut mesh = mixed_mesh();
     mesh.add_poly_block(
         ElementType::PGON,
-        slice(&[0usize, 1, 2, 3]),
-        slice(&[5usize, 3]),
+        &vector(&[0usize, 1, 2, 3]),
+        &vector(&[5usize, 3]),
     )
     .unwrap();
     let err = expect_error(mesh.validate_structure());
@@ -584,8 +589,8 @@ fn poly_offsets_must_describe_the_nodes_they_are_given() {
     let mut mesh = mixed_mesh();
     mesh.add_poly_block(
         ElementType::PGON,
-        slice(&[0usize, 1, 2, 3]),
-        slice(&[0usize, 3]),
+        &vector(&[0usize, 1, 2, 3]),
+        &vector(&[0usize, 3]),
     )
     .unwrap();
     let err = expect_error(mesh.validate_structure());
@@ -598,8 +603,8 @@ fn poly_offsets_must_describe_the_nodes_they_are_given() {
     let mut mesh = mixed_mesh();
     mesh.add_poly_block(
         ElementType::PGON,
-        slice(&[0usize, 1, 2, 3]),
-        slice(&[2usize]),
+        &vector(&[0usize, 1, 2, 3]),
+        &vector(&[2usize]),
     )
     .unwrap();
     let err = expect_error(mesh.validate_structure());
@@ -614,8 +619,8 @@ fn poly_offsets_must_describe_the_nodes_they_are_given() {
     let err = mesh
         .add_poly_block(
             ElementType::QUAD4,
-            slice(&[0usize, 1, 2, 3]),
-            slice(&[4usize]),
+            &vector(&[0usize, 1, 2, 3]),
+            &vector(&[4usize]),
         )
         .unwrap_err();
     assert!(
@@ -632,8 +637,8 @@ fn poly_offsets_must_describe_the_nodes_they_are_given() {
 /// what they are given and let `validate_structure` report it.
 #[test]
 fn connectivity_may_only_reference_existing_nodes() {
-    let mut mesh = UMesh::from_coords(slice(&[0.0, 0.0, 1.0, 0.0, 1.0, 1.0]), 3, 2).unwrap();
-    mesh.add_regular_block(ElementType::TRI3, slice(&[0usize, 1, 99]), 1)
+    let mut mesh = UMesh::from_coords(&vector(&[0.0, 0.0, 1.0, 0.0, 1.0, 1.0]), 3, 2).unwrap();
+    mesh.add_regular_block(ElementType::TRI3, &vector(&[0usize, 1, 99]), 1)
         .unwrap();
     let err = expect_error(mesh.validate_structure());
     assert!(
@@ -642,11 +647,11 @@ fn connectivity_may_only_reference_existing_nodes() {
         "unexpected error: {err}"
     );
 
-    let mut mesh = UMesh::from_coords(slice(&[0.0, 0.0, 1.0, 0.0, 1.0, 1.0]), 3, 2).unwrap();
+    let mut mesh = UMesh::from_coords(&vector(&[0.0, 0.0, 1.0, 0.0, 1.0, 1.0]), 3, 2).unwrap();
     mesh.add_poly_block(
         ElementType::PGON,
-        slice(&[0usize, 1, 2, 42]),
-        slice(&[4usize]),
+        &vector(&[0usize, 1, 2, 42]),
+        &vector(&[4usize]),
     )
     .unwrap();
     let err = expect_error(mesh.validate_structure());
@@ -666,14 +671,14 @@ fn connectivity_may_only_reference_existing_nodes() {
 #[test]
 fn coordinates_must_be_finite_and_of_a_usable_dimension() {
     for space_dim in [0usize, 4] {
-        let err = expect_error(UMesh::from_coords(slice(&[0.0; 3]), 1, space_dim));
+        let err = expect_error(UMesh::from_coords(&vector(&[0.0; 3]), 1, space_dim));
         assert!(
             matches!(&err, Error::InvalidArgument(m) if m.contains("space_dim must be")),
             "unexpected error: {err}"
         );
     }
     for bad in [f64::NAN, f64::INFINITY] {
-        let mesh = UMesh::from_coords(slice(&[0.0, 0.0, bad, 0.0]), 2, 2).unwrap();
+        let mesh = UMesh::from_coords(&vector(&[0.0, 0.0, bad, 0.0]), 2, 2).unwrap();
         let err = expect_error(mesh.validate_structure());
         assert!(
             matches!(&err, Error::InvalidArgument(m) if m.contains("is not finite")),
@@ -682,46 +687,11 @@ fn coordinates_must_be_finite_and_of_a_usable_dimension() {
     }
 }
 
-/// A transfer reads a field as one array by gluing the per-element-type parts
-/// together, which only makes sense if they agree on the trailing dimensions.
-/// Two blocks of one field with different component counts used to get all the
-/// way into the core before it asserted on the shapes.
-#[test]
-fn a_field_has_one_shape_across_all_of_the_mesh_element_types() {
-    let mut mesh = mixed_mesh();
-    let blocks = [
-        FieldBlock {
-            element_type: ElementType::QUAD4,
-            n_components: 1,
-            offset: 0,
-            len: 1,
-        },
-        FieldBlock {
-            element_type: ElementType::TRI3,
-            n_components: 3,
-            offset: 1,
-            len: 6,
-        },
-    ];
-    let err = mesh
-        .set_field(
-            "T",
-            slice(&blocks),
-            slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0]),
-        )
-        .unwrap_err();
-    assert!(
-        matches!(&err, Error::InvalidArgument(m) if m.contains("1 components on the first block but 3 on TRI3")),
-        "unexpected error: {err}"
-    );
-    assert!(mesh.field_names().is_empty());
-}
-
 #[test]
 fn field_names_may_not_be_empty() {
     let mut mesh = quad_mesh();
     let err = mesh
-        .set_field_uniform("", ElementType::QUAD4, 1, slice(&[1.0]))
+        .set_field_uniform("", ElementType::QUAD4, 1, &vector(&[1.0]))
         .unwrap_err();
     assert!(
         matches!(&err, Error::InvalidArgument(m) if m.contains("may not be empty")),
@@ -732,23 +702,14 @@ fn field_names_may_not_be_empty() {
 #[test]
 fn a_field_block_may_not_be_listed_twice() {
     let mut mesh = quad_mesh();
-    let blocks = [
-        FieldBlock {
-            element_type: ElementType::QUAD4,
-            n_components: 1,
-            offset: 0,
-            len: 1,
-        },
-        FieldBlock {
-            element_type: ElementType::QUAD4,
-            n_components: 1,
-            offset: 0,
-            len: 1,
-        },
-    ];
-    let err = mesh
-        .set_field("T", slice(&blocks), slice(&[1.0, 2.0]))
-        .unwrap_err();
+    let err = set_field(
+        &mut mesh,
+        "T",
+        &codes(&[ElementType::QUAD4, ElementType::QUAD4]),
+        1,
+        &vector(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]),
+    )
+    .unwrap_err();
     assert!(
         matches!(&err, Error::InvalidArgument(m) if m.contains("lists QUAD4 more than once")),
         "unexpected error: {err}"
@@ -761,13 +722,14 @@ fn a_field_block_may_not_be_listed_twice() {
 #[test]
 fn an_impossible_field_size_is_reported_rather_than_wrapping() {
     let mut mesh = quad_mesh();
-    let blocks = [FieldBlock {
-        element_type: ElementType::QUAD4,
-        n_components: usize::MAX / 2 + 1,
-        offset: 0,
-        len: 0,
-    }];
-    let err = mesh.set_field("T", slice(&blocks), slice(&[])).unwrap_err();
+    let err = set_field(
+        &mut mesh,
+        "T",
+        &codes(&[ElementType::QUAD4]),
+        usize::MAX / 2 + 1,
+        &vector::<f64>(&[]),
+    )
+    .unwrap_err();
     assert!(
         matches!(&err, Error::InvalidArgument(m) if m.contains("which overflows")),
         "unexpected error: {err}"
@@ -782,16 +744,20 @@ fn hex_mesh() -> Box<UMesh> {
         0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, //
         0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0,
     ];
-    let mut mesh = UMesh::from_coords(slice(&coords), 8, 3).unwrap();
-    mesh.add_regular_block(ElementType::HEX8, slice(&[0usize, 1, 2, 3, 4, 5, 6, 7]), 1)
-        .unwrap();
+    let mut mesh = UMesh::from_coords(&vector(&coords), 8, 3).unwrap();
+    mesh.add_regular_block(
+        ElementType::HEX8,
+        &vector(&[0usize, 1, 2, 3, 4, 5, 6, 7]),
+        1,
+    )
+    .unwrap();
     mesh
 }
 
 fn quad_surface() -> Box<UMesh> {
     let coords = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0];
-    let mut mesh = UMesh::from_coords(slice(&coords), 3, 3).unwrap();
-    mesh.add_regular_block(ElementType::TRI3, slice(&[0usize, 1, 2]), 1)
+    let mut mesh = UMesh::from_coords(&vector(&coords), 3, 3).unwrap();
+    mesh.add_regular_block(ElementType::TRI3, &vector(&[0usize, 1, 2]), 1)
         .unwrap();
     mesh
 }
@@ -802,7 +768,7 @@ fn quad_surface() -> Box<UMesh> {
 #[test]
 fn a_transfer_that_mefikit_cannot_do_reports_the_reason() {
     let coords = [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
-    let bare = UMesh::from_coords(slice(&coords), 4, 2).unwrap();
+    let bare = UMesh::from_coords(&vector(&coords), 4, 2).unwrap();
     let a = quad_mesh();
     let b = quad_mesh();
 
@@ -889,8 +855,8 @@ fn a_transfer_that_mefikit_cannot_do_reports_the_reason() {
 /// A 1 x 1 grid of QUAD4 cells: same kinds as `quad_mesh`, half the size.
 fn coarse_quad_mesh() -> Box<UMesh> {
     let coords = [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
-    let mut mesh = UMesh::from_coords(slice(&coords), 4, 2).unwrap();
-    mesh.add_regular_block(ElementType::QUAD4, slice(&[0usize, 1, 2, 3]), 1)
+    let mut mesh = UMesh::from_coords(&vector(&coords), 4, 2).unwrap();
+    mesh.add_regular_block(ElementType::QUAD4, &vector(&[0usize, 1, 2, 3]), 1)
         .unwrap();
     mesh
 }
@@ -901,7 +867,7 @@ fn coarse_quad_mesh() -> Box<UMesh> {
 #[test]
 fn an_operator_refuses_meshes_it_was_not_prepared_for() {
     let mut src = quad_mesh();
-    src.set_field_uniform("T", ElementType::QUAD4, 1, slice(&[1.0, 2.0, 3.0, 4.0]))
+    src.set_field_uniform("T", ElementType::QUAD4, 1, &vector(&[1.0, 2.0, 3.0, 4.0]))
         .unwrap();
     let mut tgt = quad_mesh();
     let op = mefikit_ffi::TransferOperator::prepare(&src, &tgt, &TransferMethod::conservative_p0())
@@ -911,7 +877,7 @@ fn an_operator_refuses_meshes_it_was_not_prepared_for() {
     // longer line up with it.
     let mut other = coarse_quad_mesh();
     other
-        .set_field_uniform("T", ElementType::QUAD4, 1, slice(&[1.0]))
+        .set_field_uniform("T", ElementType::QUAD4, 1, &vector(&[1.0]))
         .unwrap();
     let err =
         expect_error(op.apply_update(&other, "T", &mut tgt, "T", 0.0, FieldNature::Intensive));
@@ -924,7 +890,7 @@ fn an_operator_refuses_meshes_it_was_not_prepared_for() {
     // A source in a different space is a different kind of mistake.
     let mut other_space = hex_mesh();
     other_space
-        .set_field_uniform("T", ElementType::HEX8, 1, slice(&[1.0]))
+        .set_field_uniform("T", ElementType::HEX8, 1, &vector(&[1.0]))
         .unwrap();
     let err = expect_error(op.apply_update(
         &other_space,
@@ -940,7 +906,7 @@ fn an_operator_refuses_meshes_it_was_not_prepared_for() {
     );
 
     // A target that gained a block since the operator was built.
-    tgt.add_regular_block(ElementType::TRI3, slice(&[0usize, 1, 4]), 1)
+    tgt.add_regular_block(ElementType::TRI3, &vector(&[0usize, 1, 4]), 1)
         .unwrap();
     let err = expect_error(op.apply_update(&src, "T", &mut tgt, "T", 0.0, FieldNature::Intensive));
     assert!(

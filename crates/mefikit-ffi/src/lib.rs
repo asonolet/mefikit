@@ -5,13 +5,11 @@
 //! [`mesh`] (the `UMesh` handle) and [`transfer`] (the `TransferOperator`
 //! handle). See `crates/mefikit-ffi/README.md` for how to build and link it.
 //!
-//! ```no_run
-//! use mefikit_ffi::ffi::{UMesh, bridge::ElementType};
-//!
-//! let coords = [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0];
-//! let mut mesh = UMesh::from_coords(&coords, 4, 2).unwrap();
-//! mesh.add_regular_block(ElementType::QUAD4.into(), &[0, 1, 2, 3], 1).unwrap();
-//! assert_eq!(mesh.n_nodes(), 4);
+//! ```ignore
+//! // C++: every array is a plain const std::vector reference.
+//! auto mesh = mefikit::UMesh::from_coords(coords, n_nodes, space_dim);
+//! mesh->add_regular_block(mefikit::ElementType::QUAD4, conn, n_elements);
+//! mesh->set_field_uniform("T", mefikit::ElementType::QUAD4, 1, values);
 //! ```
 
 pub mod error;
@@ -21,4 +19,4 @@ pub mod transfer;
 pub mod types;
 
 pub use error::Error;
-pub use ffi::{TransferOperator, UMesh, bridge, transfer_field};
+pub use ffi::{TransferOperator, UMesh, bridge, set_field, transfer_field};

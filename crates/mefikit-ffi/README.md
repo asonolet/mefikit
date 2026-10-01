@@ -120,7 +120,7 @@ Everything lives in namespace `mefikit`.
 | `void validate_structure() const` | the only check for non-finite coordinates and out-of-range connectivity |
 | `n_nodes()`, `n_elements()`, `n_elements_of(et)`, `space_dimension()` | counts |
 | `is_empty()`, `topological_dimension()`, `element_types()` | shape |
-| `set_field(name, blocks, values)` | one block per element type |
+| `set_field(mesh, name, n_components, {blocks})` | free function, one block per element type |
 | `set_field_uniform(name, et, n_components, values)` | single-block shortcut |
 | `field_info(name, et)`, `field_names()` | shapes and names |
 | `field_values(name, et)` | zero-copy `rust::Slice<const double>` |
@@ -140,18 +140,25 @@ A mefikit field is stored per topological dimension, not per element type: a
 the blocks you pass to be exactly the mesh's element types at one dimension.
 
 ```cpp
-std::vector<mefikit::FieldBlock> blocks{
-    {mefikit::ElementType::QUAD4, /*n_components*/ 1, /*offset*/ 0, /*len*/ 4},
-    {mefikit::ElementType::TRI3,  /*n_components*/ 1, /*offset*/ 4, /*len*/ 2},
-};
-std::vector<double> values{/* 6 values */};
-mesh->set_field("T", rust::Slice<const mefikit::FieldBlock>(blocks.data(), blocks.size()),
-                rust::Slice<const double>(values.data(), values.size()));
+mefikit::set_field(*mesh, "T", /*n_components*/ 1, {
+    {mefikit::ElementType::QUAD4, {/* 4 values */}},
+    {mefikit::ElementType::TRI3,  {/* 2 values */}},
+});
 ```
 
-Anything that does not match — a missing block, the wrong number of values, a
-zero-component block — is reported rather than silently accepted. For the common
-single-block case `set_field_uniform` does the same with one argument fewer.
+The mesh already knows how many elements each block holds, so you supply only the
+values; `n_components` is a single scalar shared by every block. A block for a
+type the mesh does not have, a missing block, or the wrong number of values is
+reported rather than silently accepted. For the common single-block case
+`set_field_uniform` is the member function with one argument fewer:
+
+```cpp
+mesh->set_field_uniform("T", mefikit::ElementType::QUAD4, 1, values);
+```
+
+`set_field` is a free function because the mesh already owns its fields and
+nothing is added to it. It is a thin wrapper that casts the element types and
+concatenates the per-block values, so the C++ side never handles offsets.
 
 ### Transfers
 
@@ -232,7 +239,7 @@ Every fallible method throws a `rust::Error`, which derives from
 
 ```cpp
 try {
-  mesh->set_field("T", blocks, values);
+  mefikit::set_field(*mesh, "T", 1, {{mefikit::ElementType::QUAD4, values}});
 } catch (const rust::Error &e) {
   std::cerr << e.what() << "\n";
 }
