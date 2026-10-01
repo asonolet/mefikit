@@ -473,11 +473,12 @@ impl PyUMesh {
 
     /// Imprints this surface mesh with `mesh2` wherever the two coincide in 3D space.
     ///
-    /// Both meshes must be 2D meshes embedded in 3D space (TRI3, QUAD4 or PGON faces).
-    /// The two refined surfaces returned in the `SurfaceOverlay` result share the same
+    /// Both meshes must be 2D meshes embedded in 3D space (TRI3, QUAD4 or PGON faces). The
+    /// two refined surfaces returned in the `SurfaceOverlay` result share the same
     /// coordinates array, so intersection nodes exist once and both sides become mutually
-    /// conformal on the coincident areas. Areas not covered by the other surface are
-    /// copied verbatim. Raises `ValueError` when coplanar patches only partially overlap.
+    /// conformal on the coincident areas. Coincident regions must be piecewise planar within
+    /// `tol`; areas not covered by the other surface are copied verbatim. Raises
+    /// `ValueError` when a coincident region is not planar or a surface is invalid.
     #[pyo3(signature = (mesh2, tol=1e-9))]
     fn overlay_surfaces(&self, mesh2: &PyUMesh, tol: f64) -> PyResult<PySurfaceOverlay> {
         let out = self

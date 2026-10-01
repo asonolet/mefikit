@@ -9,12 +9,14 @@
 //!
 //! 1. Faces of each surface are clustered into maximal coplanar **patches** (faces touching
 //!    through a shared node and lying in the same plane).
-//! 2. Patches of the two surfaces are **paired** when they are coplanar and share the same
-//!    footprint (same total area and bounding box, checked against `tol`).
-//! 3. Each pair is processed independently: both sides are projected on a common planar
+//! 2. Patches of the two surfaces are **grouped** into regions: two patches belong to the same
+//!    region when they are coplanar within `tol` and their bounding boxes overlap. Grouping is
+//!    transitive, so a small patch lying strictly inside a larger face forms a single region
+//!    with it; footprints do not have to match.
+//! 3. Each region is processed independently: both sides are projected on a common planar
 //!    [`PlaneFrame`](crate::geometry::PlaneFrame), and the classic 2D overlay machinery is
 //!    applied — the intersections are computed once so that both sides share the resulting
-//!    node ids.
+//!    node ids. This is an *imprint*: each side keeps its whole footprint, only refined.
 //! 4. Pieces are reassembled into two refined meshes sharing the same coordinates array,
 //!    together with parent maps relating input faces to produced elements.
 //!
@@ -22,16 +24,36 @@
 //!
 //! - Both refined meshes tile their input footprints exactly (area preserving up to `tol`)
 //! - Intersection nodes are shared by both sides (single node id in the returned meshes)
-//! - Families of input faces propagate to their pieces, so groups survive the operation
-//! - Untouched faces are copied verbatim (type, connectivity and fields preserved)
+//! - Families of input faces propagate to their pieces
+//! - Untouched faces are copied verbatim (type and connectivity preserved; fields and groups
+//!   are **not** carried over, see below)
+//!
+//! # Output layout
+//!
+//! `refined1` and `refined2` share the very same coordinates array, laid out as
+//! `[skin1 nodes; skin2 nodes; added intersection nodes]`. Consequently:
+//!
+//! - `refined1` refers to node ids in `[0, n1 + n2)` where `n1 = skin1.coords().nrows()`
+//! - `refined2` mostly refers to node ids in `[n1, n1 + n2)` (its own nodes, offset by `n1`),
+//!   except on coincident areas where its nodes are welded onto first-surface nodes and the
+//!   ids are in `[0, n1)` instead
+//! - a node of an added intersection is placed on the best-fit plane of the region, i.e. on
+//!   the first surface's side of the region; the second surface therefore deviates from its
+//!   own geometry by at most the region deviation (`tol`)
+//!
+//! Fields and groups are not propagated: only element families are. Use the parent maps to
+//! rebuild them if needed.
 //!
 //! # Assumptions
 //!
 //! - Input surfaces are valid (non-self-intersecting) and first-order (TRI3, QUAD4, PGON);
 //!   lower dimensional elements are ignored
-//! - Coincident areas are piecewise planar; each matched pair of patches lies in a common
-//!   plane within `tol`
-//! - Matched patches share the same footprint: partial overlaps are rejected
+//! - Coincident areas are piecewise planar within `tol`; a region's two sides must lie in a
+//!   common plane (up to the region's characteristic length scaled tolerance)
+//!
+//! Non-planar (curved) areas are therefore *not* imprinted: faces must be coplanar with their
+//! counterpart within `tol`. Genuinely curved surfaces that share no common plane are copied
+//! verbatim on both sides.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -52,14 +74,17 @@ const PARALLEL_NORMAL_COS_EPS: f64 = 1e-8;
 /// Relative area threshold under which a face is flagged degenerate (w.r.t. its max edge
 /// length squared).
 const DEGENERATE_AREA_EPS: f64 = 1e-16;
-/// Slack factor applied to `tol` when comparing patch areas.
-const UNMATCHED_TOL_FACTOR: f64 = 10.0;
 
 /// Result of [`Overlayable::overlay_surfaces`].
 ///
 /// `refined1` and `refined2` hold the imprinted faces of the first and second input surface
-/// respectively. They **share the same coordinates array**: intersection nodes created on
-/// the coincident areas exist once and are referenced by both sides.
+/// respectively. They **share the same coordinates array**, laid out as
+/// `[skin1 nodes; skin2 nodes; added intersection nodes]`; intersection nodes created on the
+/// coincident areas exist once and are referenced by both sides.
+///
+/// As a consequence, `refined2`'s node ids are offset by `skin1.coords().nrows()` and the
+/// prefix of the shared coordinates array is unused by `refined2`. See the module
+/// documentation for the full layout.
 #[derive(Clone, Debug)]
 pub struct SurfaceOverlay {
     /// Refined faces of the first input surface.
@@ -92,19 +117,26 @@ pub enum SurfaceOverlayError {
         /// The offending face.
         face: ElementId,
     },
-    /// A matched pair of patches deviates from planarity by more than `tol`.
+    /// A region deviates from planarity by more than the allowed tolerance.
     NonPlanarRegion {
-        /// Index of the paired patch of the first surface (in patch order).
+        /// Ordinal of the region (in region order).
         region: usize,
         /// Measured maximum deviation to the fitted plane.
         deviation: f64,
         /// The tolerance used.
         tol: f64,
     },
-    /// A matched pair of patches does not share exactly the same footprint.
-    UnmatchedOverlap {
-        /// Index of the paired patch of the first surface (in patch order).
+    /// A face of a region could not be matched back to its parent, which indicates duplicated
+    /// or otherwise inconsistent connectivity.
+    UnmatchedParentRing {
+        /// Ordinal of the region (in region order).
         region: usize,
+    },
+    /// Two distinct input faces map to the same produced element, which indicates that the
+    /// input surface contains duplicated faces.
+    DuplicateParent {
+        /// The offending input face.
+        face: ElementId,
     },
 }
 
@@ -130,10 +162,15 @@ impl fmt::Display for SurfaceOverlayError {
                 "region {region} deviates from planarity by {deviation} which exceeds the \
                  tolerance {tol}; coincident surfaces must be piecewise planar"
             ),
-            Self::UnmatchedOverlap { region } => write!(
+            Self::UnmatchedParentRing { region } => write!(
                 f,
-                "patches of region {region} do not share exactly the same footprint; partial \
-                 overlaps are not supported"
+                "could not match an input face of region {region} back to its parent; the \
+                 input surface may contain a degenerate or duplicated connectivity"
+            ),
+            Self::DuplicateParent { face } => write!(
+                f,
+                "input face {face:?} was produced more than once; the input surface contains \
+                 duplicated faces"
             ),
         }
     }
@@ -171,48 +208,54 @@ pub fn overlay_surfaces(
     // Acceleration structure over the elements of skin2 for patch pairing queries.
     let bvh_skin2 = skin2.view().bvh3();
 
-    // Phase 2: patch pairing.
-    let mut used2: BTreeSet<usize> = BTreeSet::new();
-    let mut partners1: Vec<Option<usize>> = vec![None; patches1.len()];
-    for (i1, p1) in patches1.iter().enumerate() {
-        partners1[i1] =
-            find_partner_patch(i1, p1, &patches2, &face_patch2, &bvh_skin2, &mut used2, tol)?;
-    }
+    // Phase 2: group coincident patches into disjoint regions. A region is a maximal set of
+    // patches of the two surfaces lying in a common plane and overlapping; footprints are
+    // allowed to differ (a small patch may sit strictly inside a larger face).
+    let regions = group_regions(&patches1, &patches2, &face_patch2, &bvh_skin2, tol);
+    let covered1: BTreeSet<usize> = regions
+        .iter()
+        .flat_map(|r| r.patches1.iter().copied())
+        .collect();
+    let covered2: BTreeSet<usize> = regions
+        .iter()
+        .flat_map(|r| r.patches2.iter().copied())
+        .collect();
 
     // Global id layout: `[skin1 nodes; skin2 nodes; added intersection nodes]`.
     let n1 = skin1.coords().nrows();
     let n2 = skin2.coords().nrows();
     let added_base = n1 + n2;
 
-    // Phase 3: prepare then process the paired regions independently.
-    struct RegionJob<'a> {
-        region: usize,
-        idxs1: &'a [usize],
-        idxs2: &'a [usize],
-    }
-    let jobs: Vec<RegionJob<'_>> = partners1
+    // Phase 3: flatten the regions into face-index jobs and process them independently.
+    let jobs: Vec<(Vec<usize>, Vec<usize>)> = regions
         .iter()
-        .enumerate()
-        .filter_map(|(i1, partner)| {
-            partner.map(|i2| RegionJob {
-                region: i1,
-                idxs1: &patches1[i1].faces[..],
-                idxs2: &patches2[i2].faces[..],
-            })
+        .map(|r| {
+            let idxs1 = r
+                .patches1
+                .iter()
+                .flat_map(|&p| patches1[p].faces.iter().copied())
+                .collect();
+            let idxs2 = r
+                .patches2
+                .iter()
+                .flat_map(|&p| patches2[p].faces.iter().copied())
+                .collect();
+            (idxs1, idxs2)
         })
         .collect();
 
     #[cfg(feature = "rayon")]
     let outputs: Vec<Result<RegionOutput, SurfaceOverlayError>> = {
-        use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+        use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
         jobs.par_iter()
-            .map(|job| {
+            .enumerate()
+            .map(|(region, (idxs1, idxs2))| {
                 process_region(
-                    job.region,
+                    region,
                     &faces1[..],
-                    job.idxs1,
+                    idxs1,
                     &faces2[..],
-                    job.idxs2,
+                    idxs2,
                     n1,
                     added_base,
                     tol,
@@ -223,13 +266,14 @@ pub fn overlay_surfaces(
     #[cfg(not(feature = "rayon"))]
     let outputs: Vec<Result<RegionOutput, SurfaceOverlayError>> = jobs
         .iter()
-        .map(|job| {
+        .enumerate()
+        .map(|(region, (idxs1, idxs2))| {
             process_region(
-                job.region,
+                region,
                 &faces1[..],
-                job.idxs1,
+                idxs1,
                 &faces2[..],
-                job.idxs2,
+                idxs2,
                 n1,
                 added_base,
                 tol,
@@ -274,24 +318,23 @@ pub fn overlay_surfaces(
     let mut parents2: FxHashMap<ElementId, Vec<ElementId>> = FxHashMap::default();
 
     for out in &outputs {
-        emit_pieces(&mut refined1, skin1, &out.pieces1, &mut parents1);
-        emit_pieces(&mut refined2, skin2, &out.pieces2, &mut parents2);
+        emit_pieces(&mut refined1, skin1, &out.pieces1, &mut parents1)?;
+        emit_pieces(&mut refined2, skin2, &out.pieces2, &mut parents2)?;
     }
 
-    // Faces outside any matched pair are copied verbatim so that the refined meshes cover
-    // exactly their input footprints.
-    for (i1, partner) in partners1.iter().enumerate() {
-        if partner.is_none() {
-            for &fi in &patches1[i1].faces {
-                copy_verbatim(skin1, faces1[fi].id, 0, &mut refined1, &mut parents1);
+    // Faces outside any region are copied verbatim so that the refined meshes cover exactly
+    // their input footprints.
+    for (i1, p1) in patches1.iter().enumerate() {
+        if !covered1.contains(&i1) {
+            for &fi in &p1.faces {
+                copy_verbatim(skin1, faces1[fi].id, 0, &mut refined1, &mut parents1)?;
             }
         }
     }
-    let matched2: BTreeSet<usize> = partners1.iter().flatten().copied().collect();
     for (i2, p2) in patches2.iter().enumerate() {
-        if !matched2.contains(&i2) {
+        if !covered2.contains(&i2) {
             for &fi in &p2.faces {
-                copy_verbatim(skin2, faces2[fi].id, n1, &mut refined2, &mut parents2);
+                copy_verbatim(skin2, faces2[fi].id, n1, &mut refined2, &mut parents2)?;
             }
         }
     }
@@ -304,6 +347,118 @@ pub fn overlay_surfaces(
     })
 }
 
+/// A maximal set of patches of the two surfaces lying in a common plane and overlapping.
+///
+/// Patches are named by their index in their surface's patch list. Footprints are allowed to
+/// differ: a small patch may be strictly contained in a larger face, which is the typical
+/// "small part glued on a bigger face" configuration.
+struct Region {
+    patches1: Vec<usize>,
+    patches2: Vec<usize>,
+}
+
+/// Groups coincident patches of the two surfaces into disjoint regions.
+///
+/// A patch of the first surface is a candidate for a patch of the second surface when their
+/// normals are parallel, their planes coincide within `tol` and their bounding boxes overlap
+/// (padded by `tol`). Regions are the connected components of the resulting bipartite graph:
+/// a patch belongs to at most one region, and every patch of a region is imprinted with every
+/// patch of the other surface in that region.
+fn group_regions(
+    patches1: &[Patch],
+    patches2: &[Patch],
+    face_patch2: &FxHashMap<ElementId, usize>,
+    bvh_skin2: &SpIdx3,
+    tol: f64,
+) -> Vec<Region> {
+    let n1 = patches1.len();
+    // Union-find over `n1 + patches2.len()` nodes: `i1` for the first surface and `n1 + i2`
+    // for the second one.
+    let mut parent: Vec<usize> = (0..n1 + patches2.len()).collect();
+    fn root_compress(parent: &mut [usize], x: usize) -> usize {
+        let mut r = x;
+        while parent[r] != r {
+            r = parent[r];
+        }
+        let mut y = x;
+        while parent[y] != y {
+            let next = parent[y];
+            parent[y] = r;
+            y = next;
+        }
+        r
+    }
+
+    let pad = tol.max(f64::EPSILON);
+    for (i1, p1) in patches1.iter().enumerate() {
+        let min = [
+            p1.bounds[0][0] - pad,
+            p1.bounds[0][1] - pad,
+            p1.bounds[0][2] - pad,
+        ];
+        let max = [
+            p1.bounds[1][0] + pad,
+            p1.bounds[1][1] + pad,
+            p1.bounds[1][2] + pad,
+        ];
+        let mut seen: BTreeSet<usize> = BTreeSet::new();
+        for eid in bvh_skin2.in_bounds(min, max).iter() {
+            let Some(&i2) = face_patch2.get(&eid) else {
+                continue;
+            };
+            if !seen.insert(i2) {
+                continue;
+            }
+            if patches_are_coincident(p1, &patches2[i2], tol) {
+                let r1 = root_compress(&mut parent, i1);
+                let r2 = root_compress(&mut parent, n1 + i2);
+                if r1 != r2 {
+                    parent[r2] = r1;
+                }
+            }
+        }
+    }
+
+    let mut members1: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for i1 in 0..n1 {
+        let r = root_compress(&mut parent, i1);
+        members1.entry(r).or_default().push(i1);
+    }
+    let mut members2: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for i2 in 0..patches2.len() {
+        let r = root_compress(&mut parent, n1 + i2);
+        members2.entry(r).or_default().push(i2);
+    }
+
+    let mut roots: BTreeSet<usize> = BTreeSet::new();
+    roots.extend(members1.keys().copied());
+    roots.extend(members2.keys().copied());
+    let mut regions = Vec::new();
+    for r in roots {
+        let p1 = members1.get(&r).cloned().unwrap_or_default();
+        let p2 = members2.get(&r).cloned().unwrap_or_default();
+        // Components holding patches of a single surface are not regions: those patches are
+        // copied verbatim.
+        if p1.is_empty() || p2.is_empty() {
+            continue;
+        }
+        regions.push(Region {
+            patches1: p1,
+            patches2: p2,
+        });
+    }
+    regions
+}
+
+/// Returns `true` when two patches lie in a common plane within `tol` and their bounding
+/// boxes overlap (padded by `tol`). Footprints may differ.
+fn patches_are_coincident(p1: &Patch, p2: &Patch, tol: f64) -> bool {
+    let n1 = p1.frame.normal();
+    let n2 = p2.frame.normal();
+    let parallel = n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2] >= 1.0 - PARALLEL_NORMAL_COS_EPS;
+    parallel && plane_distance(p1, p2) <= tol && bboxes_overlap(p1.bounds, p2.bounds, tol)
+}
+
 /// A produced face piece, expressed in the global node id space.
 ///
 /// Rings of newly created intersection nodes use temporary ids `>= added_base`; they are
@@ -312,7 +467,6 @@ pub fn overlay_surfaces(
 struct Piece {
     et: ElementType,
     ring: Vec<usize>,
-    verbatim: bool,
 }
 
 /// Output of one matched region.
@@ -341,7 +495,6 @@ struct FaceData {
     /// Node ring in the surface coordinate space.
     ring: Vec<usize>,
     pts: Vec<[f64; 3]>,
-    area: f64,
     /// Unit Newell normal.
     normal: [f64; 3],
     bounds: [[f64; 3]; 2],
@@ -351,8 +504,6 @@ struct FaceData {
 struct Patch {
     faces: Vec<usize>,
     frame: PlaneFrame,
-    /// Total area, independent of the tessellation.
-    area: f64,
     bounds: [[f64; 3]; 2],
 }
 
@@ -406,7 +557,6 @@ fn collect_surface_faces(view: &UMeshView) -> Result<Vec<FaceData>, SurfaceOverl
             et,
             ring,
             pts,
-            area,
             normal,
             bounds,
         });
@@ -479,7 +629,6 @@ fn cluster_coplanar_patches(
         for &fi in members {
             face_patch.insert(faces[fi].id, patch_idx);
         }
-        let area: f64 = members.iter().map(|&fi| faces[fi].area).sum();
         let mut bounds = [[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]];
         let mut pts = Vec::new();
         for &fi in members {
@@ -496,7 +645,6 @@ fn cluster_coplanar_patches(
         patches.push(Patch {
             faces: members.clone(),
             frame,
-            area,
             bounds,
         });
     }
@@ -504,12 +652,17 @@ fn cluster_coplanar_patches(
 }
 
 /// Returns `true` when both faces lie in a common plane within `tol`.
+///
+/// Every vertex of `b` is checked against the plane of `a`, not just the first one, so a face
+/// that only touches the plane at a single vertex is not merged into the patch.
 fn faces_are_coplanar(a: &FaceData, b: &FaceData, tol: f64) -> bool {
     let dot = a.normal[0] * b.normal[0] + a.normal[1] * b.normal[1] + a.normal[2] * b.normal[2];
     if dot < 1.0 - PARALLEL_NORMAL_COS_EPS {
         return false;
     }
-    plane_offset(a.normal, a.pts[0], &b.pts[0]) <= tol
+    b.pts
+        .iter()
+        .all(|p| plane_offset(a.normal, a.pts[0], p) <= tol)
 }
 
 /// Absolute distance between the planes of two patches, evaluated at the origin of the
@@ -527,87 +680,6 @@ fn plane_offset(n: [f64; 3], o: [f64; 3], x: &[f64; 3]) -> f64 {
 /// Returns `true` when two bounding boxes overlap within `pad` on every axis.
 fn bboxes_overlap(a: [[f64; 3]; 2], b: [[f64; 3]; 2], pad: f64) -> bool {
     (0..3).all(|k| a[1][k] + pad >= b[0][k] && b[1][k] + pad >= a[0][k])
-}
-
-/// Searches the partner patch of `p1` among `patches2` and claims it in `used2`.
-///
-/// Candidate patches are found by querying the BVH of the second surface with the padded
-/// bounding box of `p1`, then filtered by coplanarity, characteristic length agreement and
-/// footprint overlap. Finding several admissible partners, or an already claimed partner,
-/// means partial overlap between patches of the same plane and is rejected.
-fn find_partner_patch(
-    i1: usize,
-    p1: &Patch,
-    patches2: &[Patch],
-    face_patch2: &FxHashMap<ElementId, usize>,
-    bvh_skin2: &SpIdx3,
-    used2: &mut BTreeSet<usize>,
-    tol: f64,
-) -> Result<Option<usize>, SurfaceOverlayError> {
-    if patches2.is_empty() {
-        return Ok(None);
-    }
-    let pad = tol.max(f64::EPSILON);
-    let min = [
-        p1.bounds[0][0] - pad,
-        p1.bounds[0][1] - pad,
-        p1.bounds[0][2] - pad,
-    ];
-    let max = [
-        p1.bounds[1][0] + pad,
-        p1.bounds[1][1] + pad,
-        p1.bounds[1][2] + pad,
-    ];
-
-    let mut candidates: BTreeSet<usize> = BTreeSet::new();
-    let mut any_overlap = false;
-    for eid in bvh_skin2.in_bounds(min, max).iter() {
-        if let Some(&i2) = face_patch2.get(&eid) {
-            if candidates.contains(&i2) {
-                continue;
-            }
-            let p2 = &patches2[i2];
-            let n1 = p1.frame.normal();
-            let n2 = p2.frame.normal();
-            let parallel =
-                n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2] >= 1.0 - PARALLEL_NORMAL_COS_EPS;
-            let coplanar = parallel && plane_distance(p1, p2) <= tol;
-            let overlapping = coplanar && bboxes_overlap(p1.bounds, p2.bounds, tol);
-            if !overlapping {
-                continue;
-            }
-            any_overlap = true;
-            // Area agreement rules out gross footprint mismatches; the definitive partial
-            // overlap detection happens through the multi-partner / multi-claim checks.
-            let amax = p1.area.max(p2.area).max(1.0);
-            let balanced =
-                (p1.area - p2.area).abs() <= UNMATCHED_TOL_FACTOR * tol.max(f64::EPSILON) * amax;
-            if balanced {
-                candidates.insert(i2);
-            }
-        }
-    }
-    match candidates.len() {
-        0 => {
-            if any_overlap {
-                // A coplanar overlapping patch exists but does not pair (unbalanced area or
-                // already claimed): partial overlap.
-                Err(SurfaceOverlayError::UnmatchedOverlap { region: i1 })
-            } else {
-                Ok(None)
-            }
-        }
-        1 => {
-            let i2 = *candidates.iter().next().expect("single candidate");
-            if used2.contains(&i2) {
-                Err(SurfaceOverlayError::UnmatchedOverlap { region: i1 })
-            } else {
-                used2.insert(i2);
-                Ok(Some(i2))
-            }
-        }
-        _ => Err(SurfaceOverlayError::UnmatchedOverlap { region: i1 }),
-    }
 }
 
 /// Builds the temporary projected mesh of the given faces.
@@ -681,15 +753,13 @@ fn build_projected_mesh(
 fn register_added(
     g: usize,
     shell: &UMesh,
-    shell_added_base: usize,
     frame: &PlaneFrame,
     added_index: &mut FxHashMap<usize, usize>,
     added_xyz: &mut Vec<[f64; 3]>,
     added_base: usize,
 ) -> usize {
     let local = *added_index.entry(g).or_insert_with(|| {
-        let row = g - shell_added_base;
-        let q = [shell.coords()[(row, 0)], shell.coords()[(row, 1)]];
+        let q = [shell.coords()[(g, 0)], shell.coords()[(g, 1)]];
         added_xyz.push(frame.deproject(&q));
         added_xyz.len() - 1
     });
@@ -723,15 +793,7 @@ fn translate_ring(
             } else if g < shell_added_base {
                 n1 + locals_b[g - na]
             } else {
-                register_added(
-                    g,
-                    shell,
-                    shell_added_base,
-                    frame,
-                    added_index,
-                    added_xyz,
-                    added_base,
-                )
+                register_added(g, shell, frame, added_index, added_xyz, added_base)
             }
         })
         .collect()
@@ -780,7 +842,7 @@ fn process_region(
     // Weld the second side onto the first so both share the node id space. The weld map
     // (merged-space B node -> A node) lets us predict the merged ring of every second-side
     // face, used later to identify produced pieces.
-    let (mesh_b, weld) = merge_on_reference_coords(mesh_b_raw, mesh_a.view());
+    let (mesh_b, weld) = merge_on_reference_coords(mesh_b_raw, mesh_a.view(), tol);
 
     let edges_a = mesh_a.descend(Some(Dimension::D2), Some(Dimension::D1));
     let edges_b = mesh_b.descend(Some(Dimension::D2), Some(Dimension::D1));
@@ -854,7 +916,8 @@ fn process_region(
     let mut collect = |parents: &[(ElementId, Vec<ElementId>)],
                        subject: &UMesh,
                        is_side1: bool,
-                       pieces_out: &mut Vec<(ElementId, Vec<Piece>)>| {
+                       pieces_out: &mut Vec<(ElementId, Vec<Piece>)>|
+     -> Result<(), SurfaceOverlayError> {
         for &(cell_id, ref piece_ids) in parents {
             let parent_cell = subject.element(cell_id);
             let parent_ring: Vec<usize> = parent_cell.connectivity().to_vec();
@@ -898,62 +961,77 @@ fn process_region(
                     &mut added_xyz,
                     added_base,
                 );
-                pieces.push(Piece { et, ring, verbatim });
+                pieces.push(Piece { et, ring });
             }
             let pos = if is_side1 {
-                pos_to_face1[&lookup_key]
+                pos_to_face1.get(&lookup_key)
             } else {
-                pos_to_face2[&lookup_key]
-            };
+                pos_to_face2.get(&lookup_key)
+            }
+            .ok_or(SurfaceOverlayError::UnmatchedParentRing { region })?;
             let face_id = if is_side1 {
-                faces1[pos].id
+                faces1[*pos].id
             } else {
-                faces2[pos].id
+                faces2[*pos].id
             };
             pieces_out.push((face_id, pieces));
         }
+        Ok(())
     };
 
-    collect(&parents_a, &mesh_a, true, &mut out.pieces1);
-    collect(&parents_b, &mesh_b, false, &mut out.pieces2);
+    collect(&parents_a, &mesh_a, true, &mut out.pieces1)?;
+    collect(&parents_b, &mesh_b, false, &mut out.pieces2)?;
     out.added = added_xyz;
     Ok(out)
 }
 
-/// Appends the pieces of one side to `refined`, propagating family and fields from the
-/// parent face in `skin`, and records the parent map entries.
+/// Appends the pieces of one side to `refined`, propagating the family from the parent face in
+/// `skin`, and records the parent map entries.
+///
+/// Returns an error if a face is emitted twice, which can only happen when the input surface
+/// contains duplicated faces.
 fn emit_pieces(
     refined: &mut UMesh,
     skin: &UMeshView,
     pieces: &[(ElementId, Vec<Piece>)],
     parents: &mut FxHashMap<ElementId, Vec<ElementId>>,
-) {
+) -> Result<(), SurfaceOverlayError> {
     for &(face_id, ref plist) in pieces {
         let cell = skin.element(face_id);
         let family = *cell.family;
         let mut ids = Vec::with_capacity(plist.len());
         for piece in plist {
-            // Mirroring the 2D overlay: only untouched faces carry the parent fields.
+            // Neither fields nor groups are propagated by the overlay; use the parent maps to
+            // rebuild them.
             let id = refined.add_element(piece.et, &piece.ring, Some(family));
             ids.push(id);
         }
-        parents.insert(face_id, ids);
+        if parents.insert(face_id, ids).is_some() {
+            return Err(SurfaceOverlayError::DuplicateParent { face: face_id });
+        }
     }
+    Ok(())
 }
 
-/// Copies an untouched face of `skin` verbatim into `refined` (its nodes shifted by
-/// `offset`) and records the parent map entry.
+/// Copies an untouched face of `skin` verbatim into `refined` (its nodes shifted by `offset`)
+/// and records the parent map entry.
+///
+/// Returns an error if a face is emitted twice, which can only happen when the input surface
+/// contains duplicated faces.
 fn copy_verbatim(
     skin: &UMeshView,
     face_id: ElementId,
     offset: usize,
     refined: &mut UMesh,
     parents: &mut FxHashMap<ElementId, Vec<ElementId>>,
-) {
+) -> Result<(), SurfaceOverlayError> {
     let cell = skin.element(face_id);
     let ring: Vec<usize> = cell.connectivity().iter().map(|g| g + offset).collect();
     let id = refined.add_element(cell.element_type(), &ring, Some(*cell.family));
-    parents.insert(face_id, vec![id]);
+    if parents.insert(face_id, vec![id]).is_some() {
+        return Err(SurfaceOverlayError::DuplicateParent { face: face_id });
+    }
+    Ok(())
 }
 
 /// Deduplicates the deprojected added intersection nodes against the input coordinates and
@@ -1001,15 +1079,18 @@ fn dedup_added_coords(
             .then_with(|| pa[2].total_cmp(&pb[2]))
     });
 
-    // Collapse each run of mutually close points onto the member of smallest original id:
-    // input nodes win over added ones thanks to the id layout.
+    // Collapse each run onto the member of smallest original id: input nodes win over added
+    // ones thanks to the id layout. A run is grown against its first (anchor) point rather
+    // than chained point-to-point, so a node farther than `tol` from the anchor is never
+    // absorbed by a sequence of closer neighbours.
     let mut final_gids = vec![usize::MAX; added.len()];
     let mut kept: Vec<[f64; 3]> = Vec::new();
     let mut next_new = n_base;
     let mut start = 0usize;
     while start < total {
+        let anchor = point_of(order[start]);
         let mut end = start + 1;
-        while end < total && close(&point_of(order[end - 1]), &point_of(order[end])) {
+        while end < total && close(&anchor, &point_of(order[end])) {
             end += 1;
         }
         let canonical = order[start..end].iter().copied().min().expect("non-empty");
@@ -1116,6 +1197,11 @@ mod tests {
                 s * u[2] + t * v[2],
             ]
         }
+    }
+
+    /// Doubly-curved map: no two distinct grid faces share a plane.
+    fn curved_plane() -> impl Fn(f64, f64) -> [f64; 3] {
+        |x, y| [x, y, 0.3 * (x * x + y * y)]
     }
 
     fn total_area(view: &UMeshView) -> f64 {
@@ -1235,7 +1321,8 @@ mod tests {
     }
 
     #[test]
-    fn partial_overlap_rejected() {
+    fn small_patch_inside_big_face_imprints_both_sides() {
+        // Unit square tiled by 4 faces on side 1, single [0, 2]^2 face on side 2.
         let skin1 = quad_surface(z_plane(), 2);
         let coords2 = nd::ArcArray2::from_shape_vec(
             (4, 3),
@@ -1245,11 +1332,55 @@ mod tests {
         let mut skin2 = UMesh::new(coords2);
         skin2.add_element(ElementType::QUAD4, &[0, 1, 2, 3], None);
 
-        let err = overlay_surfaces(&skin1.view(), &skin2.view(), TOL).unwrap_err();
-        assert!(matches!(
-            err,
-            SurfaceOverlayError::UnmatchedOverlap { region: 0 }
-        ));
+        let out = overlay_surfaces(&skin1.view(), &skin2.view(), TOL).expect("small patch");
+        // Side 1 is fully covered by side 2's face, so its mesh is left as is.
+        assert_eq!(out.refined1.num_elements_of_dim(Dimension::D2), 4);
+        // Side 2's big face is cut by side 1's outer boundary (and internal edges): the
+        // annular region plus the inner square sum back to the full footprint.
+        assert_eq!(out.refined2.num_elements_of_dim(Dimension::D2), 5);
+        assert_abs_diff_eq!(total_area(&out.refined1.view()), 1.0, epsilon = 1e-10);
+        assert_abs_diff_eq!(total_area(&out.refined2.view()), 4.0, epsilon = 1e-10);
+        assert_eq!(out.refined1.coords(), out.refined2.coords());
+    }
+
+    #[test]
+    fn cross_grid_imprint_shares_intersection_nodes() {
+        // Two non-nested tessellations of the same unit square: their edges cross at
+        // non-node points, so new shared intersection nodes must be created.
+        let skin1 = quad_surface(z_plane(), 2);
+        let skin2 = quad_surface(z_plane(), 3);
+        let out = overlay_surfaces(&skin1.view(), &skin2.view(), TOL).expect("cross grid");
+
+        assert_eq!(out.refined1.num_elements_of_dim(Dimension::D2), 16);
+        assert_eq!(out.refined2.num_elements_of_dim(Dimension::D2), 16);
+        assert_abs_diff_eq!(total_area(&out.refined1.view()), 1.0, epsilon = 1e-10);
+        assert_abs_diff_eq!(total_area(&out.refined2.view()), 1.0, epsilon = 1e-10);
+        // `[skin1 (9 nodes); skin2 (16 nodes); 4 edge crossings]`.
+        assert_eq!(out.refined1.coords().nrows(), 29);
+        assert_eq!(out.refined1.coords(), out.refined2.coords());
+    }
+
+    #[test]
+    fn curved_surfaces_are_left_untouched() {
+        let skin1 = quad_surface(curved_plane(), 2);
+        let skin2 = quad_surface(curved_plane(), 3);
+        let out = overlay_surfaces(&skin1.view(), &skin2.view(), TOL).expect("curved");
+
+        // The two tessellations share no common plane, so no region is imprinted and both
+        // surfaces are copied verbatim (area preserved, no shared intersection node).
+        assert_eq!(out.refined1.num_elements_of_dim(Dimension::D2), 4);
+        assert_eq!(out.refined2.num_elements_of_dim(Dimension::D2), 9);
+        assert_abs_diff_eq!(
+            total_area(&out.refined1.view()),
+            total_area(&skin1.view()),
+            epsilon = 1e-10
+        );
+        assert_abs_diff_eq!(
+            total_area(&out.refined2.view()),
+            total_area(&skin2.view()),
+            epsilon = 1e-10
+        );
+        assert_eq!(out.refined1.coords().nrows(), 9 + 16);
     }
 
     #[test]

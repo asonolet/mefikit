@@ -99,8 +99,7 @@ def _grid_surface(n, tri=False, transform=None):
         for i in range(n):
             quad = [nid(i, j), nid(i + 1, j), nid(i + 1, j + 1), nid(i, j + 1)]
             if tri:
-                cells.append(quad[:3])
-                cells.append([quad[0], quad[2], quad[3]])
+                cells.extend((quad[:3], [quad[0], quad[2], quad[3]]))
             else:
                 cells.append(quad)
     mesh = mf.UMesh(coords)
@@ -170,9 +169,19 @@ def test_overlay_surfaces_parents():
     assert len(pieces2) == len(set(pieces2)) == _num_cells(out.refined2)
 
 
-def test_overlay_surfaces_partial_overlap_raises():
-    with pytest.raises(ValueError):
-        _grid_surface(4).overlay_surfaces(_grid_surface(8))
+def test_overlay_surfaces_cross_grid_imprint():
+    # Two non-nested tessellations of the same unit square: edges cross at non-node
+    # points, so new shared intersection nodes must be created.
+    out = _grid_surface(2).overlay_surfaces(_grid_surface(3))
+    assert _num_cells(out.refined1) == 16
+    assert _num_cells(out.refined2) == 16
+    assert _area3d(out.refined1) == pytest.approx(1.0)
+    assert _area3d(out.refined2) == pytest.approx(1.0)
+    # [skin1 (9 nodes); skin2 (16 nodes); 4 edge crossings].
+    assert np.asarray(out.refined1.coords()).shape[0] == 29
+    assert np.array_equal(
+        np.asarray(out.refined1.coords()), np.asarray(out.refined2.coords())
+    )
 
 
 def test_overlay_surfaces_disjoint_verbatim():
@@ -180,4 +189,17 @@ def test_overlay_surfaces_disjoint_verbatim():
     out = _grid_surface(2).overlay_surfaces(far)
     assert _num_cells(out.refined1) == 4
     assert _num_cells(out.refined2) == 4
-    assert min(np.array(out.refined2.coords())[:, 0]) == pytest.approx(10.0)
+
+    # The two refined meshes share one coordinate array holding both surfaces; each mesh
+    # must only reference the nodes of its own input surface.
+    def used_x(mesh):
+        coords = np.asarray(mesh.coords())
+        nodes = {n for _, cell in _cells(mesh) for n in cell}
+        return coords[sorted(nodes), 0]
+
+    x1 = used_x(out.refined1)
+    x2 = used_x(out.refined2)
+    assert x1.min() == pytest.approx(0.0)
+    assert x1.max() == pytest.approx(1.0)
+    assert x2.min() == pytest.approx(10.0)
+    assert x2.max() == pytest.approx(11.0)

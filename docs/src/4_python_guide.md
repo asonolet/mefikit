@@ -120,6 +120,7 @@ in-place and return a new mesh only when the result displaced elements
 | extrude | `mesh.extrude(along)`, `extrude_parallel(...)`, `extrude_curv(...)` |
 | split / polygonize | `mesh.split()`, `mesh.polyze()` / `unpolyze()` |
 | boolean overlay | `mesh.overlay(mesh2, operation=None)` |
+| surface imprint in 3D | `mesh.overlay_surfaces(mesh2, tol=1e-9)` → `mf.SurfaceOverlay` |
 
 Field expressions (notably `mf.M` for the on-the-fly measure) can be evaluated
 without a stored field:
