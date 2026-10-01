@@ -6,15 +6,80 @@ use std::path::Path;
 use ndarray as nd;
 use ndarray::IxDyn;
 
+use cxx::CxxVector;
+
 use mefikit::mesh::ElementType as CoreElementType;
 use mefikit::prelude as mf;
 
-use crate::ffi::bridge::{Dimension, ElementType, FieldBlock, FieldInfo};
+use crate::ffi::bridge::{Dimension, ElementType, FieldInfo};
 use crate::ffi::{Error, UMesh};
 
 /// A field array as stored inside an owned `mefikit::UMesh`: contiguous and
 /// reference counted, which is what makes the zero-copy `field_values` possible.
 type OwnedField = nd::ArcArray<f64, IxDyn>;
+
+/// One element type's share of a field, located inside the single flat array a
+/// field is passed in. cxx cannot carry a shared struct inside a bridge-side
+/// vector, so the layout is recomputed here from the mesh instead of arriving
+/// from C++.
+#[derive(Copy, Clone)]
+struct Block {
+    element_type: ElementType,
+    offset: usize,
+    len: usize,
+}
+
+/// Sets field `name` on every element type of `mesh` at one dimension, from
+/// `values` laid out back to back in the order `element_types` gives.
+///
+/// `element_types` holds cxx's `ElementType` discriminants, because a bridge
+/// parameter can only be a `std::vector` of primitives. C++ callers should go
+/// through `mefikit::set_field` in `<mefikit/mefikit.hpp>`, which takes one
+/// `std::vector<double>` per element type and takes the discriminants itself.
+///
+/// # Errors
+///
+/// Rejects an empty name, a duplicated element type, element types spanning
+/// more than one dimension, a set that does not match the mesh's blocks at that
+/// dimension, `n_components` of 0, and a `values` array that is not exactly
+/// `n_elements * n_components` long per block.
+pub fn set_field(
+    mesh: &mut UMesh,
+    name: &str,
+    element_types: &CxxVector<u8>,
+    n_components: usize,
+    values: &CxxVector<f64>,
+) -> Result<(), Error> {
+    let values = values.as_slice();
+    let mut blocks = Vec::with_capacity(element_types.len());
+    let mut expected = 0;
+    for code in element_types.as_slice() {
+        let element_type = ElementType::from_code(*code)?;
+        let n_elements = mesh.n_elements_of(element_type);
+        let len = n_elements.checked_mul(n_components).ok_or_else(|| {
+            Error::InvalidArgument(format!(
+                "field '{name}' on {element_type:?} has {n_elements} elements x {n_components} \
+                 components, which overflows"
+            ))
+        })?;
+        blocks.push(Block {
+            element_type,
+            offset: expected,
+            len,
+        });
+        expected = expected.checked_add(len).ok_or_else(|| {
+            Error::InvalidArgument(format!("field '{name}' block range overflows"))
+        })?;
+    }
+    if expected != values.len() {
+        return Err(Error::InvalidArgument(format!(
+            "field '{name}' was given {} values but its {} blocks hold {expected}",
+            values.len(),
+            blocks.len()
+        )));
+    }
+    mesh.set_field_blocks(name, &blocks, n_components, values)
+}
 
 impl UMesh {
     /// Creates an empty mesh from a row-major `(n_nodes, space_dim)` array.
@@ -24,7 +89,7 @@ impl UMesh {
     /// that check belongs to the core and is not available to the bindings yet.
     /// Call [`validate_structure`](Self::validate_structure) to run it.
     pub fn from_coords(
-        coords: &[f64],
+        coords: &CxxVector<f64>,
         n_nodes: usize,
         space_dim: usize,
     ) -> Result<Box<Self>, Error> {
@@ -33,6 +98,7 @@ impl UMesh {
                 "space_dim must be 1, 2 or 3, got {space_dim}"
             )));
         }
+        let coords = coords.as_slice();
         let array = nd::Array2::from_shape_vec((n_nodes, space_dim), coords.to_vec())?;
         Ok(Box::new(Self(mf::UMesh::new(array.into_shared()))))
     }
@@ -46,7 +112,7 @@ impl UMesh {
     pub fn add_regular_block(
         &mut self,
         element_type: ElementType,
-        conn: &[usize],
+        conn: &CxxVector<usize>,
         n_elements: usize,
     ) -> Result<(), Error> {
         let core_type = element_type.to_core()?;
@@ -61,6 +127,7 @@ impl UMesh {
             )));
         }
         self.reject_duplicate_block(core_type)?;
+        let conn = conn.as_slice();
         let conn = nd::Array2::from_shape_vec((n_elements, nodes_per_element), conn.to_vec())?;
         self.0
             .add_regular_block(core_type, conn.into_shared(), None);
@@ -78,8 +145,8 @@ impl UMesh {
     pub fn add_poly_block(
         &mut self,
         element_type: ElementType,
-        conn: &[usize],
-        offsets: &[usize],
+        conn: &CxxVector<usize>,
+        offsets: &CxxVector<usize>,
     ) -> Result<(), Error> {
         let core_type = element_type.to_core()?;
         if core_type.regularity() != mf::Regularity::Poly {
@@ -89,12 +156,9 @@ impl UMesh {
         }
         self.reject_duplicate_block(core_type)?;
 
-        self.0.add_poly_block(
-            core_type,
-            nd::Array1::from(conn.to_vec()).into_shared(),
-            nd::Array1::from(offsets.to_vec()).into_shared(),
-            None,
-        );
+        let conn = nd::Array1::from(conn.as_slice().to_vec()).into_shared();
+        let offsets = nd::Array1::from(offsets.as_slice().to_vec()).into_shared();
+        self.0.add_poly_block(core_type, conn, offsets, None);
         Ok(())
     }
 
@@ -161,16 +225,18 @@ impl UMesh {
             .collect()
     }
 
-    /// Sets the field `name` from one block per element type.
+    /// Shared body of the two ways to set a field: one block per element type
+    /// at a single dimension, laid out back to back inside one flat `values`.
     ///
-    /// Every block must sit at the same topological dimension, must declare the
-    /// same number of components, and the set of element types supplied must be
-    /// exactly the mesh's blocks at that dimension — `mefikit` fields are
-    /// per-dimension, not per-element-type.
-    pub fn set_field(
+    /// The element types must be exactly the mesh's blocks at that dimension —
+    /// `mefikit` fields are per-dimension, not per-element-type — and `n_components`
+    /// is shared by all of them because a transfer concatenates the per-element-type
+    /// arrays along the element axis, which only works if they agree.
+    fn set_field_blocks(
         &mut self,
         name: &str,
-        blocks: &[FieldBlock],
+        blocks: &[Block],
+        n_components: usize,
         values: &[f64],
     ) -> Result<(), Error> {
         if name.is_empty() {
@@ -178,11 +244,17 @@ impl UMesh {
                 "a field name may not be empty".to_owned(),
             ));
         }
+        if n_components == 0 {
+            return Err(Error::InvalidArgument(format!(
+                "field '{name}' declares 0 components"
+            )));
+        }
         let first = blocks.first().ok_or_else(|| {
             Error::InvalidArgument("set_field needs at least one field block".to_owned())
         })?;
 
         let dimension = first.element_type.to_core()?.dimension();
+        let mut seen: BTreeSet<CoreElementType> = BTreeSet::new();
         for block in blocks {
             let element_type = block.element_type.to_core()?;
             if element_type.dimension() != dimension {
@@ -193,24 +265,6 @@ impl UMesh {
                     u8::from(dimension)
                 )));
             }
-        }
-
-        // A transfer concatenates the per-element-type arrays of a field along the
-        // element axis, which only works if they agree on the trailing dimensions.
-        // Catching a mismatch here keeps that failure from surfacing later as a
-        // panic from inside the core.
-        let n_components = first.n_components;
-        if let Some(block) = blocks.iter().find(|b| b.n_components != n_components) {
-            return Err(Error::InvalidArgument(format!(
-                "field '{name}' declares {n_components} components on the first block but {} on \
-                 {:?}; one field has one shape across all of the mesh's element types at this \
-                 dimension",
-                block.n_components, block.element_type
-            )));
-        }
-        let mut seen: BTreeSet<CoreElementType> = BTreeSet::new();
-        for block in blocks {
-            let element_type = block.element_type.to_core()?;
             if !seen.insert(element_type) {
                 return Err(Error::InvalidArgument(format!(
                     "field '{name}' lists {element_type:?} more than once"
@@ -238,27 +292,19 @@ impl UMesh {
         let mut map: BTreeMap<CoreElementType, OwnedField> = BTreeMap::new();
         for block in blocks {
             let element_type = block.element_type.to_core()?;
-            if block.n_components == 0 {
-                return Err(Error::InvalidArgument(format!(
-                    "field '{name}' on {element_type:?} declares 0 components"
-                )));
-            }
             let n_elements = self.n_elements_of(block.element_type);
-            // `n_components` comes straight from C++ and `n_elements` can be large,
-            // so the product has to be computed with an overflow check: wrapping
-            // it would let a nonsense `len` pass validation.
-            let expected = n_elements.checked_mul(block.n_components).ok_or_else(|| {
+            let expected = n_elements.checked_mul(n_components).ok_or_else(|| {
                 Error::InvalidArgument(format!(
-                    "field '{name}' on {element_type:?} claims {} elements x {} components, \
-                     which overflows",
-                    n_elements, block.n_components
+                    "field '{name}' on {element_type:?} has {} elements x {n_components} \
+                     components, which overflows",
+                    n_elements
                 ))
             })?;
             if block.len != expected {
                 return Err(Error::InvalidArgument(format!(
-                    "field '{name}' on {element_type:?} supplies {} values but {} elements x {} \
+                    "field '{name}' on {element_type:?} holds {} values but {} elements x {} \
                      components were expected",
-                    block.len, n_elements, block.n_components
+                    block.len, n_elements, n_components
                 )));
             }
             let end = block.offset.checked_add(block.len).ok_or_else(|| {
@@ -272,7 +318,7 @@ impl UMesh {
                 ))
             })?;
 
-            let shape = IxDyn(&[n_elements, block.n_components]);
+            let shape = IxDyn(&[n_elements, n_components]);
             map.insert(
                 element_type,
                 nd::Array::from_shape_vec(shape, data.to_vec())?.into_shared(),
@@ -283,8 +329,8 @@ impl UMesh {
         Ok(())
     }
 
-    /// Convenience wrapper around [`set_field`](Self::set_field) for meshes with
-    /// a single block at the relevant dimension.
+    /// Convenience wrapper for the common case of a mesh with a single block at the
+    /// relevant dimension.
     ///
     /// `values` must hold exactly `n_elements * n_components` entries in
     /// row-major order; it is not reshaped to fit.
@@ -293,7 +339,7 @@ impl UMesh {
         name: &str,
         element_type: ElementType,
         n_components: usize,
-        values: &[f64],
+        values: &CxxVector<f64>,
     ) -> Result<(), Error> {
         let core_type = element_type.to_core()?;
         if self.0.block(core_type).is_none() {
@@ -315,13 +361,13 @@ impl UMesh {
             )));
         }
 
-        let block = FieldBlock {
+        let values = values.as_slice();
+        let block = Block {
             element_type,
-            n_components,
             offset: 0,
             len: values.len(),
         };
-        self.set_field(name, std::slice::from_ref(&block), values)
+        self.set_field_blocks(name, std::slice::from_ref(&block), n_components, values)
     }
 
     /// Shape of field `name` on element type `element_type`.

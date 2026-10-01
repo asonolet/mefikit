@@ -19,11 +19,47 @@
 // <cstddef> for std::size_t, used by the factories below. Not pulled in
 // reliably by cxx's header on its own.
 #include <cstddef>
+// <cstdint> for the std::uint8_t element type codes below.
+#include <cstdint>
+// <initializer_list> and <vector> for the block list `set_field` takes.
+#include <initializer_list>
+#include <vector>
 
 #include "rust/cxx.h"
 #include "mefikit-ffi/src/ffi.rs.h"
 
 namespace mefikit {
+
+// Sets the field `name` on every element type of `mesh` at one dimension, so
+// `blocks` must name exactly the mesh's element types at that dimension and
+// carry `n_elements * n_components` values each, row-major.
+//
+// cxx can only put primitives behind a bridge parameter, so the generated
+// `::mefikit::set_field` takes the element types as their raw discriminants and
+// every block's values in one flat array. This wrapper is what C++ should call
+// instead: it takes one `std::vector<double>` per element type and does the
+// flattening. C++ callers who only ever touch one element type can ignore this
+// and use `UMesh::set_field_uniform` directly.
+struct BlockSpec {
+  ElementType element_type;
+  std::vector<double> values;
+};
+
+// `n_components` is shared by all of `blocks`: a transfer concatenates the
+// per-element-type arrays along the element axis, which only works if they
+// agree, so mefikit fields have one shape across a dimension.
+inline void set_field(UMesh &mesh, const rust::Str &name,
+                      std::size_t n_components,
+                      std::initializer_list<BlockSpec> blocks) {
+  std::vector<std::uint8_t> element_types;
+  element_types.reserve(blocks.size());
+  std::vector<double> values;
+  for (const BlockSpec &block : blocks) {
+    element_types.push_back(static_cast<std::uint8_t>(block.element_type));
+    values.insert(values.end(), block.values.begin(), block.values.end());
+  }
+  ::mefikit::set_field(mesh, name, element_types, n_components, values);
+}
 
 // Factories for `TransferMethod`.
 //

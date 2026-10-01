@@ -82,6 +82,44 @@ mirrored_enum! {
     }
 }
 
+impl ElementType {
+    /// Rebuilds an element type from the raw discriminant cxx gives it, which is
+    /// how one travels inside a `std::vector<std::uint8_t>`.
+    ///
+    /// cxx can only put primitives in a bridge-side vector, so
+    /// [`set_field`](crate::mesh::set_field) receives a field's element types as
+    /// their discriminants rather than as `ElementType` values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::InvalidArgument`] if the discriminant is not one this
+    /// build of `mefikit` knows about.
+    pub fn from_code(code: u8) -> Result<Self, Error> {
+        match code {
+            code if code == Self::VERTEX.repr => Ok(Self::VERTEX),
+            code if code == Self::SEG2.repr => Ok(Self::SEG2),
+            code if code == Self::SEG3.repr => Ok(Self::SEG3),
+            code if code == Self::SEG4.repr => Ok(Self::SEG4),
+            code if code == Self::SPLINE.repr => Ok(Self::SPLINE),
+            code if code == Self::TRI3.repr => Ok(Self::TRI3),
+            code if code == Self::TRI6.repr => Ok(Self::TRI6),
+            code if code == Self::TRI7.repr => Ok(Self::TRI7),
+            code if code == Self::QUAD4.repr => Ok(Self::QUAD4),
+            code if code == Self::QUAD8.repr => Ok(Self::QUAD8),
+            code if code == Self::QUAD9.repr => Ok(Self::QUAD9),
+            code if code == Self::PGON.repr => Ok(Self::PGON),
+            code if code == Self::TET4.repr => Ok(Self::TET4),
+            code if code == Self::TET10.repr => Ok(Self::TET10),
+            code if code == Self::HEX8.repr => Ok(Self::HEX8),
+            code if code == Self::HEX21.repr => Ok(Self::HEX21),
+            code if code == Self::PHED.repr => Ok(Self::PHED),
+            code => Err(Error::InvalidArgument(format!(
+                "ElementType discriminant {code} is not known to this mefikit build"
+            ))),
+        }
+    }
+}
+
 mirrored_enum! {
     Dimension => CoreDimension,
     variants { D0 => D0, D1 => D1, D2 => D2, D3 => D3 }

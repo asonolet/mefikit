@@ -55,12 +55,6 @@ std::string show(const T &value) {
                                    show(mevikit_rhs_));                                 \
   } while (false)
 
-// cxx has no implicit std::vector -> Slice conversion, so spell it out once here.
-template <typename T>
-rust::Slice<const T> slice_of(const std::vector<T> &v) {
-  return rust::Slice<const T>(v.data(), v.size());
-}
-
 // Builds a structured 2D mesh of n x n QUAD4 cells over [0, 1]^2.
 rust::Box<mefikit::UMesh> cmesh(int n) {
   std::vector<double> coords;
@@ -85,8 +79,8 @@ rust::Box<mefikit::UMesh> cmesh(int n) {
     }
   }
 
-  auto mesh = mefikit::UMesh::from_coords(slice_of(coords), n_nodes, 2);
-  mesh->add_regular_block(mefikit::ElementType::QUAD4, slice_of(conn),
+  auto mesh = mefikit::UMesh::from_coords((coords), n_nodes, 2);
+  mesh->add_regular_block(mefikit::ElementType::QUAD4, (conn),
                           static_cast<std::size_t>(n) * n);
   return mesh;
 }
@@ -96,11 +90,11 @@ rust::Box<mefikit::UMesh> cmesh(int n) {
 rust::Box<mefikit::UMesh> mixed_mesh() {
   const std::vector<double> coords{0.0, 0.0, 1.0, 0.0, 1.0, 1.0,
                                    0.0, 1.0, 0.0, 2.0, 1.0, 2.0};
-  auto mesh = mefikit::UMesh::from_coords(slice_of(coords), 6, 2);
+  auto mesh = mefikit::UMesh::from_coords((coords), 6, 2);
   mesh->add_regular_block(mefikit::ElementType::QUAD4,
-                          slice_of(std::vector<std::size_t>{0, 1, 2, 3}), 1);
+                          (std::vector<std::size_t>{0, 1, 2, 3}), 1);
   mesh->add_regular_block(mefikit::ElementType::TRI3,
-                          slice_of(std::vector<std::size_t>{2, 3, 4, 4, 5, 2}), 2);
+                          (std::vector<std::size_t>{2, 3, 4, 4, 5, 2}), 2);
   mesh->validate_structure();
   return mesh;
 }
@@ -121,7 +115,7 @@ void test_topology() {
 
 void test_empty_mesh() {
   const std::vector<double> coords{0.0, 0.0, 1.0, 0.0};
-  auto mesh = mefikit::UMesh::from_coords(slice_of(coords), 2, 2);
+  auto mesh = mefikit::UMesh::from_coords((coords), 2, 2);
   CHECK(mesh->is_empty());
   CHECK_EQ(mesh->n_nodes(), 2u);
   CHECK_EQ(mesh->n_elements(), 0u);
@@ -130,11 +124,11 @@ void test_empty_mesh() {
 void test_poly_block() {
   const std::vector<double> coords{0.0, 0.0, 1.0, 0.0, 1.0, 1.0,
                                    2.0, 0.0, 1.5, 1.5, 0.5, 1.5};
-  auto mesh = mefikit::UMesh::from_coords(slice_of(coords), 6, 2);
+  auto mesh = mefikit::UMesh::from_coords((coords), 6, 2);
   // One triangle then one quadrilateral, described by cumulative end offsets.
   mesh->add_poly_block(mefikit::ElementType::PGON,
-                       slice_of(std::vector<std::size_t>{0, 1, 2, 2, 3, 4, 5}),
-                       slice_of(std::vector<std::size_t>{3, 7}));
+                       (std::vector<std::size_t>{0, 1, 2, 2, 3, 4, 5}),
+                       (std::vector<std::size_t>{3, 7}));
   mesh->validate_structure();
   CHECK_EQ(mesh->n_elements_of(mefikit::ElementType::PGON), 2u);
   CHECK(mesh->topological_dimension() == mefikit::Dimension::D2);
@@ -143,7 +137,7 @@ void test_poly_block() {
 void test_field_round_trip() {
   auto mesh = cmesh(2);
   const std::vector<double> values{1.0, 2.0, 3.0, 4.0};
-  mesh->set_field_uniform("T", mefikit::ElementType::QUAD4, 1, slice_of(values));
+  mesh->set_field_uniform("T", mefikit::ElementType::QUAD4, 1, (values));
 
   const auto info = mesh->field_info("T", mefikit::ElementType::QUAD4);
   CHECK_EQ(info.n_elements, 4u);
@@ -160,13 +154,12 @@ void test_field_round_trip() {
 
 void test_multi_block_field() {
   auto mesh = mixed_mesh();
-  // One QUAD4 value then two TRI3 values, laid out exactly as set_field expects.
-  const std::vector<mefikit::FieldBlock> blocks{
-      {mefikit::ElementType::QUAD4, 1, 0, 1},
-      {mefikit::ElementType::TRI3, 1, 1, 2},
-  };
-  const std::vector<double> values{1.0, 2.0, 3.0};
-  mesh->set_field("T", slice_of(blocks), slice_of(values));
+  // One value per QUAD4 element, then one per TRI3 element: the mesh says how
+  // many each block holds, so the caller only supplies the values.
+  mefikit::set_field(*mesh, "T", 1, {
+                             {mefikit::ElementType::QUAD4, {1.0}},
+                             {mefikit::ElementType::TRI3, {2.0, 3.0}},
+                         });
 
   CHECK_NEAR(mesh->field_values("T", mefikit::ElementType::QUAD4)[0], 1.0, 0.0);
   const auto tri = mesh->field_values("T", mefikit::ElementType::TRI3);
@@ -176,7 +169,8 @@ void test_multi_block_field() {
   // set_field_uniform is the single-block shortcut and must refuse this mesh.
   bool threw = false;
   try {
-    mesh->set_field_uniform("U", mefikit::ElementType::QUAD4, 1, slice_of(values));
+    mesh->set_field_uniform("U", mefikit::ElementType::QUAD4, 1,
+                            (std::vector<double>{1.0}));
   } catch (const rust::Error &) {
     threw = true;
   }
@@ -199,7 +193,7 @@ void test_errors_are_reported() {
   threw = false;
   try {
     mesh->add_regular_block(static_cast<mefikit::ElementType>(250),
-                            slice_of(std::vector<std::size_t>{0, 1, 2, 3}), 1);
+                            (std::vector<std::size_t>{0, 1, 2, 3}), 1);
   } catch (const rust::Error &) {
     threw = true;
   }
@@ -209,7 +203,7 @@ void test_errors_are_reported() {
   threw = false;
   try {
     mesh->set_field_uniform("T", mefikit::ElementType::QUAD4, 1,
-                            slice_of(std::vector<double>{1.0, 2.0}));
+                            (std::vector<double>{1.0, 2.0}));
   } catch (const rust::Error &) {
     threw = true;
   }
@@ -236,7 +230,7 @@ void test_transfer_identity() {
     for (std::size_t i = 0; i < src->n_elements_of(mefikit::ElementType::QUAD4); ++i) {
       values.push_back(static_cast<double>(i) * 1.5 - 4.0);
     }
-    src->set_field_uniform("T", mefikit::ElementType::QUAD4, 1, slice_of(values));
+    src->set_field_uniform("T", mefikit::ElementType::QUAD4, 1, (values));
 
     auto op = mefikit::TransferOperator::prepare(
         *src, *tgt, mefikit::constant_piecewise(mefikit::PointLocation::Centroid));
@@ -255,18 +249,18 @@ void test_transfer_finds_neighbour_cell() {
   // One source cell over [0, 2]^2 holding 7.0, split into two target cells whose
   // centroids both fall inside it, so a piecewise-constant transfer must give 7.0.
   const std::vector<double> src_coords{0.0, 0.0, 2.0, 0.0, 2.0, 2.0, 0.0, 2.0};
-  auto src = mefikit::UMesh::from_coords(slice_of(src_coords), 4, 2);
+  auto src = mefikit::UMesh::from_coords((src_coords), 4, 2);
   src->add_regular_block(mefikit::ElementType::QUAD4,
-                         slice_of(std::vector<std::size_t>{0, 1, 2, 3}), 1);
+                         (std::vector<std::size_t>{0, 1, 2, 3}), 1);
   src->set_field_uniform("T", mefikit::ElementType::QUAD4, 1,
-                         slice_of(std::vector<double>{7.0}));
+                         (std::vector<double>{7.0}));
 
   // A 2 x 1 grid: (0,0) (1,0) (2,0) (0,2) (1,2) (2,2).
   const std::vector<double> tgt_coords{0.0, 0.0, 1.0, 0.0, 2.0, 0.0,
                                        0.0, 2.0, 1.0, 2.0, 2.0, 2.0};
-  auto tgt = mefikit::UMesh::from_coords(slice_of(tgt_coords), 6, 2);
+  auto tgt = mefikit::UMesh::from_coords((tgt_coords), 6, 2);
   tgt->add_regular_block(mefikit::ElementType::QUAD4,
-                         slice_of(std::vector<std::size_t>{0, 1, 4, 3, 1, 2, 5, 4}), 2);
+                         (std::vector<std::size_t>{0, 1, 4, 3, 1, 2, 5, 4}), 2);
 
   mefikit::transfer_field(*src, "T", *tgt, "T",
                           mefikit::constant_piecewise(
@@ -286,8 +280,8 @@ void test_transfer_operator_is_reusable() {
     a.push_back(static_cast<double>(i));
     b.push_back(static_cast<double>(i) * 10.0);
   }
-  src->set_field_uniform("a", mefikit::ElementType::QUAD4, 1, slice_of(a));
-  src->set_field_uniform("b", mefikit::ElementType::QUAD4, 1, slice_of(b));
+  src->set_field_uniform("a", mefikit::ElementType::QUAD4, 1, (a));
+  src->set_field_uniform("b", mefikit::ElementType::QUAD4, 1, (b));
 
   auto tgt = cmesh(4);
   auto op = mefikit::TransferOperator::prepare(
@@ -316,14 +310,14 @@ void test_transfer_operator_is_reusable() {
 void test_default_value_fills_uncovered_cells() {
   auto src = cmesh(2);
   src->set_field_uniform("T", mefikit::ElementType::QUAD4, 1,
-                         slice_of(std::vector<double>{1.0, 2.0, 3.0, 4.0}));
+                         (std::vector<double>{1.0, 2.0, 3.0, 4.0}));
 
   // Target is shifted off the source, so nothing is covered: every cell must get
   // the default rather than a NaN.
   const std::vector<double> tgt_coords{5.0, 5.0, 6.0, 5.0, 6.0, 6.0, 5.0, 6.0};
-  auto tgt = mefikit::UMesh::from_coords(slice_of(tgt_coords), 4, 2);
+  auto tgt = mefikit::UMesh::from_coords((tgt_coords), 4, 2);
   tgt->add_regular_block(mefikit::ElementType::QUAD4,
-                         slice_of(std::vector<std::size_t>{0, 1, 2, 3}), 1);
+                         (std::vector<std::size_t>{0, 1, 2, 3}), 1);
 
   auto op = mefikit::TransferOperator::prepare(
       *src, *tgt, mefikit::conservative_p0());
@@ -335,12 +329,10 @@ void test_io_round_trip() {
   const std::string path = "mefikit_cpp_test_mesh.json";
   {
     auto mesh = mixed_mesh();
-    const std::vector<mefikit::FieldBlock> blocks{
-        {mefikit::ElementType::QUAD4, 1, 0, 1},
-        {mefikit::ElementType::TRI3, 1, 1, 2},
-    };
-    mesh->set_field("T", slice_of(blocks),
-                    slice_of(std::vector<double>{1.5, 2.5, 3.5}));
+    mefikit::set_field(*mesh, "T", 1, {
+                                       {mefikit::ElementType::QUAD4, {1.5}},
+                                       {mefikit::ElementType::TRI3, {2.5, 3.5}},
+                                   });
     mesh->write(path);
   }
 
@@ -399,8 +391,8 @@ void test_med_transfer_of_a_uniform_field() {
   const std::size_t n_src = src->n_elements_of(mefikit::ElementType::PHED);
   const std::vector<double> ones(n_src, 1.0);
   const std::vector<double> minus_ones(n_src, -1.0);
-  src->set_field_uniform("u", mefikit::ElementType::PHED, 1, slice_of(ones));
-  src->set_field_uniform("v", mefikit::ElementType::PHED, 1, slice_of(minus_ones));
+  src->set_field_uniform("u", mefikit::ElementType::PHED, 1, (ones));
+  src->set_field_uniform("v", mefikit::ElementType::PHED, 1, (minus_ones));
 
   // The meshes discretize the same unit cube, so no target cell is left without a
   // source cell to average, and none of them falls back to the default value.
@@ -503,10 +495,10 @@ rust::Box<mefikit::UMesh> two_cell_hex_mesh() {
   const std::vector<double> coords{0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 1, 0,
                                    1, 1, 0, 2, 1, 0, 0, 0, 1, 1, 0, 1,
                                    2, 0, 1, 1, 1, 1, 0, 1, 1, 2, 1, 1};
-  auto mesh = mefikit::UMesh::from_coords(slice_of(coords), 12, 3);
+  auto mesh = mefikit::UMesh::from_coords((coords), 12, 3);
   mesh->add_regular_block(
       mefikit::ElementType::HEX8,
-      slice_of(std::vector<std::size_t>{0, 1, 4, 3, 6, 7, 10, 9, 1, 2, 5, 4,
+      (std::vector<std::size_t>{0, 1, 4, 3, 6, 7, 10, 9, 1, 2, 5, 4,
                                         7, 8, 11, 10}),
       2);
   return mesh;
@@ -523,7 +515,7 @@ void test_transfers_that_cannot_work_are_reported() {
 
   // Coordinates but no elements at all: nothing to interpolate from.
   auto bare = mefikit::UMesh::from_coords(
-      slice_of(std::vector<double>{0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0}), 4, 2);
+      (std::vector<double>{0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0}), 4, 2);
 
   const std::vector<std::tuple<const char *, mefikit::UMesh *, mefikit::UMesh *,
                                mefikit::TransferMethod, const char *>>
@@ -558,19 +550,19 @@ void test_transfers_that_cannot_work_are_reported() {
   // Meshes in different spaces, and a source of cells that do not fill their
   // space: both are refused for the methods that integrate over cells.
   auto hex = mefikit::UMesh::from_coords(
-      slice_of(std::vector<double>{0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0,
+      (std::vector<double>{0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0,
                                    0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0,
                                    1.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0,
                                    1.0}),
       8, 3);
   hex->add_regular_block(mefikit::ElementType::HEX8,
-                         slice_of(std::vector<std::size_t>{0, 1, 2, 3, 4, 5, 6, 7}),
+                         (std::vector<std::size_t>{0, 1, 2, 3, 4, 5, 6, 7}),
                          1);
   auto surface = mefikit::UMesh::from_coords(
-      slice_of(std::vector<double>{0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0}),
+      (std::vector<double>{0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0}),
       3, 3);
   surface->add_regular_block(mefikit::ElementType::TRI3,
-                             slice_of(std::vector<std::size_t>{0, 1, 2}), 1);
+                             (std::vector<std::size_t>{0, 1, 2}), 1);
 
   const std::vector<std::pair<const char *, mefikit::TransferMethod>> cell_methods{
       {"conservative p0", p0},
@@ -606,7 +598,7 @@ void test_transfers_that_cannot_work_are_reported() {
 
   // A method that is defined on a lower-dimensional source still works.
   hex->set_field_uniform("T", mefikit::ElementType::HEX8, 1,
-                         slice_of(std::vector<double>{1.0}));
+                         (std::vector<double>{1.0}));
   auto op = mefikit::TransferOperator::prepare(*hex, *surface, id);
   op->apply_update(*hex, "T", *surface, "T", 0.0, mefikit::FieldNature::Intensive);
   CHECK_NEAR(surface->field_values("T", mefikit::ElementType::TRI3)[0], 1.0, 1e-12);
@@ -616,7 +608,7 @@ void test_transfers_that_cannot_work_are_reported() {
   // rather than read past the end of.
   auto two_cells = two_cell_hex_mesh();
   two_cells->set_field_uniform("T", mefikit::ElementType::HEX8, 1,
-                               slice_of(std::vector<double>{1.0, 1.0}));
+                               (std::vector<double>{1.0, 1.0}));
   threw = false;
   try {
     op->apply_update(*two_cells, "T", *surface, "T", 0.0,
@@ -631,12 +623,12 @@ void test_transfers_that_cannot_work_are_reported() {
   // shape: prepare again for a target that has since gained a block.
   auto src = cmesh(2);
   src->set_field_uniform("T", mefikit::ElementType::QUAD4, 1,
-                         slice_of(std::vector<double>{1.0, 2.0, 3.0, 4.0}));
+                         (std::vector<double>{1.0, 2.0, 3.0, 4.0}));
   auto tgt = cmesh(2);
   auto op2 = mefikit::TransferOperator::prepare(*src, *tgt, p0);
   op2->apply_update(*src, "T", *tgt, "T", 0.0, mefikit::FieldNature::Intensive);
   tgt->add_regular_block(mefikit::ElementType::TRI3,
-                         slice_of(std::vector<std::size_t>{0, 1, 4}), 1);
+                         (std::vector<std::size_t>{0, 1, 4}), 1);
   threw = false;
   try {
     op2->apply_update(*src, "T", *tgt, "T", 0.0, mefikit::FieldNature::Intensive);
@@ -660,7 +652,7 @@ void test_malformed_meshes_are_rejected() {
   bool threw = false;
   try {
     mesh->add_regular_block(mefikit::ElementType::QUAD4,
-                            slice_of(std::vector<std::size_t>{3, 2, 1, 0}), 1);
+                            (std::vector<std::size_t>{3, 2, 1, 0}), 1);
   } catch (const rust::Error &e) {
     threw = true;
     CHECK(std::string(e.what()).find("already has a QUAD4 block") !=
@@ -675,8 +667,8 @@ void test_malformed_meshes_are_rejected() {
   for (const auto &[label, offsets] : bad_offsets) {
     auto off = mixed_mesh();
     off->add_poly_block(mefikit::ElementType::PGON,
-                        slice_of(std::vector<std::size_t>{0, 1, 2, 3}),
-                        slice_of(offsets));
+                        (std::vector<std::size_t>{0, 1, 2, 3}),
+                        (offsets));
     threw = false;
     try {
       off->validate_structure();
@@ -688,9 +680,9 @@ void test_malformed_meshes_are_rejected() {
 
   // A node index the mesh does not have.
   auto bare = mefikit::UMesh::from_coords(
-      slice_of(std::vector<double>{0.0, 0.0, 1.0, 0.0, 1.0, 1.0}), 3, 2);
+      (std::vector<double>{0.0, 0.0, 1.0, 0.0, 1.0, 1.0}), 3, 2);
   bare->add_regular_block(mefikit::ElementType::TRI3,
-                          slice_of(std::vector<std::size_t>{0, 1, 99}), 1);
+                          (std::vector<std::size_t>{0, 1, 99}), 1);
   threw = false;
   try {
     bare->validate_structure();
@@ -702,7 +694,7 @@ void test_malformed_meshes_are_rejected() {
 
   // Coordinates that are not finite.
   auto nan_mesh = mefikit::UMesh::from_coords(
-      slice_of(std::vector<double>{0.0, 0.0, 0.0, std::nan(""), 0.0, 0.0}), 3, 2);
+      (std::vector<double>{0.0, 0.0, 0.0, std::nan(""), 0.0, 0.0}), 3, 2);
   threw = false;
   try {
     nan_mesh->validate_structure();
@@ -716,7 +708,7 @@ void test_malformed_meshes_are_rejected() {
   // data, so that one is still rejected by from_coords itself.
   threw = false;
   try {
-    auto flat = mefikit::UMesh::from_coords(slice_of(std::vector<double>{0.0}), 1, 0);
+    auto flat = mefikit::UMesh::from_coords((std::vector<double>{0.0}), 1, 0);
     (void)flat;
   } catch (const rust::Error &e) {
     threw = true;
@@ -724,18 +716,19 @@ void test_malformed_meshes_are_rejected() {
   }
   CHECK(threw);
 
-  // One field, one shape: a transfer reads it as a single array.
-  const std::vector<mefikit::FieldBlock> ragged{
-      mefikit::FieldBlock{mefikit::ElementType::QUAD4, 1, 0, 1},
-      mefikit::FieldBlock{mefikit::ElementType::TRI3, 3, 1, 6},
-  };
+  // One field, one shape. n_components is a single scalar, so a block cannot
+  // disagree with the others -- but the value count still has to match the mesh.
+  // (On mixed_mesh, so QUAD4 holds one value and TRI3 holds two.)
+  auto mixed = mixed_mesh();
   threw = false;
   try {
-    mesh->set_field("T", slice_of(ragged),
-                    slice_of(std::vector<double>{1, 2, 3, 4, 5, 6, 7}));
+    mefikit::set_field(*mixed, "T", 1, {
+                                        {mefikit::ElementType::QUAD4, {1.0}},
+                                        {mefikit::ElementType::TRI3, {2.0, 3.0, 4.0}},
+                                    });
   } catch (const rust::Error &e) {
     threw = true;
-    CHECK(std::string(e.what()).find("1 components on the first block but 3") !=
+    CHECK(std::string(e.what()).find("was given 4 values but its 2 blocks hold 3") !=
           std::string::npos);
   }
   CHECK(threw);
@@ -747,7 +740,7 @@ void test_malformed_meshes_are_rejected() {
   threw = false;
   try {
     single->set_field_uniform("", mefikit::ElementType::QUAD4, 1,
-                               slice_of(std::vector<double>{1.0}));
+                               (std::vector<double>{1.0}));
   } catch (const rust::Error &e) {
     threw = true;
     CHECK(std::string(e.what()).find("may not be empty") != std::string::npos);
