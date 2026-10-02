@@ -27,6 +27,7 @@ from .mefipy import (
     build_cmesh,
     concat,
     sel,
+    stitch,
     transfer,
 )
 
@@ -76,5 +77,6 @@ __all__ = (
     "concat",
     "data",
     "sel",
+    "stitch",
     "transfer",
 )
