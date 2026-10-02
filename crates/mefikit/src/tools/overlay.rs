@@ -21,9 +21,14 @@
 //!
 //! Surface meshes embedded in 3D space are handled by [`Overlayable::overlay_surfaces`], see
 //! the `surface` submodule.
+//!
+//! Assembling several 3D volume meshes into a single conforming polyhedral mesh is handled by
+//! [`stitch`], see the `stitch` submodule.
 
+mod stitch;
 mod surface;
 
+pub use stitch::{StitchError, stitch};
 pub use surface::{SurfaceOverlay, SurfaceOverlayError, overlay_surfaces};
 
 use rustc_hash::FxHashMap;

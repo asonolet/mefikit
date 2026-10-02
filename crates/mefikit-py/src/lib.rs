@@ -56,7 +56,7 @@ mod mefipy {
     use super::pygroups::{PyGroupRef, PyGroupsMapping};
 
     #[pymodule_export]
-    use super::pytransform::{PyTransform, aggregate, concat};
+    use super::pytransform::{PyTransform, aggregate, concat, stitch};
 
     #[pymodule_export]
     use super::select::{PySelection, PySelectionResult};

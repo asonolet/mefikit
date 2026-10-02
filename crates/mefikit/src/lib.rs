@@ -211,7 +211,7 @@ mod io;
 /// |----------------------------|-------------|
 /// | `renumber_cells()`         | In-place reordering of cells. Out-of-place because of Poly |
 /// | `compute_descend()`          | Returns a new mesh composed of subentities depending on codim |
-/// | `conformize(mesh)`         | Cleans internal inconsistencies, requires deep topology rewrite |
+/// | `stitch(meshes, tol)`      | Makes several volume meshes conformal at their common boundaries |
 /// | `split_by(mesh_a, mesh_b)` | Cuts mesh A using B's topology, creates new elements |
 /// | `fuse_meshes(a, b)`        | Boolean union with topological merging, produces a new mesh |
 /// | `intersect_meshes(a, b)`   | Keeps overlapping parts of two meshes, new geometry required |

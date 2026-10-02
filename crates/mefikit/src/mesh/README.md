@@ -179,7 +179,7 @@ reallocation of connectivity tables or geometry arrays.
 | `zip_coords()`               | Mutates coods to remove useless coords |
 | `renumber_cells()`         | In-place reordering of cells. Out-of-place because of Poly |
 | `build_descend()`          | Returns a new mesh composed of subentities depending on codim |
-| `conformize(mesh)`         | Cleans internal inconsistencies, requires deep topology rewrite |
+| `stitch(meshes, tol)`      | Makes several volume meshes conformal at their common boundaries |
 | `split_by(mesh_a, mesh_b)` | Cuts mesh A using B's topology, creates new elements |
 | `fuse_meshes(a, b)`        | Boolean union with topological merging, produces a new mesh |
 | `intersect_meshes(a, b)`   | Keeps overlapping parts of two meshes, new geometry required |
@@ -215,10 +215,14 @@ Splits mesh A into sub-elements along the boundaries defined by mesh B.
 - UMesh B acts as a "cutter"
 - Preserves A’s domain while increasing resolution/conformity
 
-### `conformize(mesh: UMeshView) -> UMesh`
-Cleans and re-meshes a single mesh to make it internally **conforming**.
-- Merges internal duplicates
-- Optionally splits internal faces to improve element consistency
+### `stitch(meshes: &[UMeshView], tol: f64) -> UMesh`
+Joins two or more **volume** meshes that share part of their boundary into a
+single **conforming** polyhedral mesh.
+- Refines the coincident boundary faces of every mesh so they become mutually
+  conformal, and shares the interface nodes
+- Returns one `PHED` mesh: families are relabeled per input mesh, fields and
+  groups are dropped
+- Imprint only: overlapping volumes are not detected
 
 
 ## 📚 Related Modules

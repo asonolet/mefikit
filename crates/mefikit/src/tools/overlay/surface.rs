@@ -70,7 +70,7 @@ use crate::tools::Descendable;
 use crate::tools::spatial_index::{SpIdx3, SpatiallyIndexable};
 
 /// Cosine threshold above which two normals are considered parallel.
-const PARALLEL_NORMAL_COS_EPS: f64 = 1e-8;
+pub(super) const PARALLEL_NORMAL_COS_EPS: f64 = 1e-8;
 /// Relative area threshold under which a face is flagged degenerate (w.r.t. its max edge
 /// length squared).
 const DEGENERATE_AREA_EPS: f64 = 1e-16;
@@ -489,26 +489,28 @@ impl RegionOutput {
 }
 
 /// Per-face geometric data collected once per surface.
-struct FaceData {
-    id: ElementId,
-    et: ElementType,
+pub(super) struct FaceData {
+    pub(super) id: ElementId,
+    pub(super) et: ElementType,
     /// Node ring in the surface coordinate space.
-    ring: Vec<usize>,
-    pts: Vec<[f64; 3]>,
+    pub(super) ring: Vec<usize>,
+    pub(super) pts: Vec<[f64; 3]>,
     /// Unit Newell normal.
-    normal: [f64; 3],
-    bounds: [[f64; 3]; 2],
+    pub(super) normal: [f64; 3],
+    pub(super) bounds: [[f64; 3]; 2],
 }
 
 /// A maximal coplanar group of faces of one surface.
-struct Patch {
-    faces: Vec<usize>,
-    frame: PlaneFrame,
-    bounds: [[f64; 3]; 2],
+pub(super) struct Patch {
+    pub(super) faces: Vec<usize>,
+    pub(super) frame: PlaneFrame,
+    pub(super) bounds: [[f64; 3]; 2],
 }
 
 /// Collects the D2 faces of `view`, rejecting unsupported or degenerate ones.
-fn collect_surface_faces(view: &UMeshView) -> Result<Vec<FaceData>, SurfaceOverlayError> {
+pub(super) fn collect_surface_faces(
+    view: &UMeshView,
+) -> Result<Vec<FaceData>, SurfaceOverlayError> {
     let mut faces = Vec::new();
     for cell in view.elements_of_dim(Dimension::D2) {
         let et = cell.element_type();
@@ -567,7 +569,7 @@ fn collect_surface_faces(view: &UMeshView) -> Result<Vec<FaceData>, SurfaceOverl
 /// Clusters faces sharing an edge and lying in the same plane into maximal patches.
 ///
 /// Returns the patches together with a map assigning every face to its patch index.
-fn cluster_coplanar_patches(
+pub(super) fn cluster_coplanar_patches(
     faces: &[FaceData],
     tol: f64,
 ) -> (Vec<Patch>, FxHashMap<ElementId, usize>) {
@@ -667,7 +669,7 @@ fn faces_are_coplanar(a: &FaceData, b: &FaceData, tol: f64) -> bool {
 
 /// Absolute distance between the planes of two patches, evaluated at the origin of the
 /// second patch frame. Meaningful only when both normals are parallel.
-fn plane_distance(p1: &Patch, p2: &Patch) -> f64 {
+pub(super) fn plane_distance(p1: &Patch, p2: &Patch) -> f64 {
     plane_offset(p1.frame.normal(), p1.frame.origin(), &p2.frame.origin())
 }
 
@@ -678,7 +680,7 @@ fn plane_offset(n: [f64; 3], o: [f64; 3], x: &[f64; 3]) -> f64 {
 }
 
 /// Returns `true` when two bounding boxes overlap within `pad` on every axis.
-fn bboxes_overlap(a: [[f64; 3]; 2], b: [[f64; 3]; 2], pad: f64) -> bool {
+pub(super) fn bboxes_overlap(a: [[f64; 3]; 2], b: [[f64; 3]; 2], pad: f64) -> bool {
     (0..3).all(|k| a[1][k] + pad >= b[0][k] && b[1][k] + pad >= a[0][k])
 }
 
