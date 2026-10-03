@@ -37,10 +37,12 @@
 //! - Overlapping volumes are not detected: the result may contain overlapping cells.
 
 use std::collections::BTreeMap;
+use std::collections::hash_map::Entry;
 use std::fmt;
 
 use ndarray as nd;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxBuildHasher, FxHashMap};
+use smallvec::SmallVec;
 
 use super::surface::{
     FaceData, PARALLEL_NORMAL_COS_EPS, Patch, bboxes_overlap, cluster_coplanar_patches,
@@ -170,24 +172,40 @@ impl From<super::surface::SurfaceOverlayError> for StitchError {
 /// Maps each parent cell id to the ids of the pieces it was split into.
 type ParentMap = Vec<(ElementId, Vec<ElementId>)>;
 
+/// Number of nodes a face ring holds inline, chosen to cover every `TET4` and `HEX8` face.
+const RING_INLINE: usize = 8;
+
+/// Number of 2D points a projected face ring holds inline, matching [`RING_INLINE`].
+const PTS_INLINE: usize = 8;
+
 /// Child face rings in 3D, indexed by the input face (a [`FaceData`] index) they refine.
 type ChildrenByFace = Vec<(usize, Vec<Vec<[f64; 3]>>)>;
 
-/// A projected 2D face of a region: input face index, CCW ring and bounding box.
-type ProjectedFace = (usize, Vec<[f64; 2]>, [[f64; 2]; 2]);
+/// A projected 2D face of a region: input face index, CCW polygon and bounding box.
+type ProjectedFace = (usize, Polygon<2>, [[f64; 2]; 2]);
 
 /// One boundary face of one input mesh.
 struct SkinFace {
     /// Ordinal of the owning mesh.
     mesh: usize,
     /// Oriented node ring (global coordinates), as it appears in its cell.
-    ring: Vec<usize>,
+    ring: SmallVec<[usize; RING_INLINE]>,
+}
+
+/// How many cells use a given face, and the mesh and oriented ring of the first of them.
+struct FaceUse {
+    count: u32,
+    mesh: usize,
+    ring: SmallVec<[usize; RING_INLINE]>,
 }
 
 /// Splits a polyhedral connectivity (faces separated by [`usize::MAX`]) into face rings.
-fn split_phed(conn: &[usize]) -> Vec<Vec<usize>> {
+///
+/// Rings of at most [`RING_INLINE`] nodes, which covers every face of a `TET4` or `HEX8` cell,
+/// are held inline so that walking the faces of a volume mesh allocates nothing.
+fn split_phed(conn: &[usize]) -> Vec<SmallVec<[usize; RING_INLINE]>> {
     let mut faces = Vec::new();
-    let mut cur = Vec::new();
+    let mut cur: SmallVec<[usize; RING_INLINE]> = SmallVec::new();
     for &n in conn {
         if n == usize::MAX {
             if !cur.is_empty() {
@@ -474,18 +492,21 @@ fn process_region(
     }
 
     // Original faces of every group, in projected coordinates, for containment tests.
-    // Rings are forced counter-clockwise because `contains_stable` requires that convention.
+    // Rings are forced counter-clockwise because `contains_stable` requires that convention, and
+    // the `Polygon` is built once here instead of on every containment test.
     let mut per_group: BTreeMap<usize, Vec<ProjectedFace>> = BTreeMap::new();
     for &fi in idxs {
-        let mut ring: Vec<[f64; 2]> = faces[fi].pts.iter().map(|p| frame.project(p)).collect();
+        let mut ring: SmallVec<[[f64; 2]; PTS_INLINE]> =
+            faces[fi].pts.iter().map(|p| frame.project(p)).collect();
         if signed_area2(&ring) < 0.0 {
             ring.reverse();
         }
         let bb = bbox2(&ring);
-        per_group
-            .entry(face_mesh[fi])
-            .or_default()
-            .push((fi, ring, bb));
+        per_group.entry(face_mesh[fi]).or_default().push((
+            fi,
+            Polygon::unknown(ring.iter().copied()),
+            bb,
+        ));
     }
 
     let pad = tol.max(f64::EPSILON);
@@ -529,10 +550,9 @@ fn process_region(
             .get(&cell.id())
             .ok_or(StitchError::UnmatchedPiece { region })?;
         let contains = |candidates: &[ProjectedFace]| -> Option<usize> {
-            candidates.iter().find_map(|(fi, ring, bb)| {
-                (point_in_bbox(interior, *bb, pad)
-                    && Polygon::unknown(ring.iter().copied()).contains_stable(&interior))
-                .then_some(*fi)
+            candidates.iter().find_map(|(fi, poly, bb)| {
+                (point_in_bbox(interior, *bb, pad) && poly.contains_stable(&interior))
+                    .then_some(*fi)
             })
         };
         let parent = per_group
@@ -542,8 +562,12 @@ fn process_region(
             .ok_or(StitchError::UnmatchedPiece { region })?;
         // The piece is interface area as soon as two distinct meshes cover it. It need not be
         // covered by *every* mesh of the region: a block touching two others on different faces
-        // shares each part of its own face with only one of them.
-        let covering = per_group.values().filter(|c| contains(c).is_some()).count();
+        // shares each part of its own face with only one of them. The parent group is known to
+        // cover the piece, so only the other groups are tested.
+        let covering = 1 + per_group
+            .iter()
+            .filter(|(g, c)| **g != gid && contains(c).is_some())
+            .count();
         if covering >= 2 {
             shared_area += area;
         }
@@ -572,22 +596,15 @@ fn process_region(
 /// representative in the unique array.
 fn weld_points(points: &[[f64; 3]], tol: f64) -> (Vec<[f64; 3]>, Vec<usize>) {
     let n = points.len();
-    let mut order: Vec<usize> = (0..n).collect();
-    order.sort_unstable_by(|&a, &b| {
-        points[a][0]
-            .total_cmp(&points[b][0])
-            .then_with(|| points[a][1].total_cmp(&points[b][1]))
-            .then_with(|| points[a][2].total_cmp(&points[b][2]))
-    });
 
     let close = |a: &[f64; 3], b: &[f64; 3]| {
         (a[0] - b[0]).abs() <= tol && (a[1] - b[1]).abs() <= tol && (a[2] - b[2]).abs() <= tol
     };
 
     // Points are bucketed into a `tol`-sized grid and compared against the 27 neighbouring cells.
-    // Sorting alone is not enough: two points a rounding error apart in x can be separated in the
-    // sort order by a third point that is a whole cell away in y or z, so neither "compare with
-    // the first point of the run" nor "compare with the previous point" pairs them up.
+    // Bucketing is what makes this correct and cheap: two points within `tol` may be arbitrarily
+    // far apart in any global ordering, so a candidate that is skipped as "too far" along the
+    // other axes would otherwise never be paired.
     let cell_of = |p: &[f64; 3]| {
         [
             (p[0] / tol).floor() as i64,
@@ -598,14 +615,18 @@ fn weld_points(points: &[[f64; 3]], tol: f64) -> (Vec<[f64; 3]>, Vec<usize>) {
 
     let mut clusters: Vec<usize> = vec![usize::MAX; n];
     let mut canonical: Vec<usize> = Vec::new();
-    let mut grid: FxHashMap<[i64; 3], Vec<usize>> = FxHashMap::default();
-    for &i in &order {
+    // Buckets hold a single cluster almost always, so they are kept inline to spare one
+    // allocation per occupied cell.
+    let mut grid: FxHashMap<[i64; 3], SmallVec<[usize; 1]>> =
+        FxHashMap::with_capacity_and_hasher(n, FxBuildHasher);
+    for i in 0..n {
         let cell = cell_of(&points[i]);
         let mut hit: Option<usize> = None;
         'search: for dx in -1..=1 {
             for dy in -1..=1 {
                 for dz in -1..=1 {
-                    let Some(list) = grid.get(&[cell[0] + dx, cell[1] + dy, cell[2] + dz]) else {
+                    let neighbour = [cell[0] + dx, cell[1] + dy, cell[2] + dz];
+                    let Some(list) = grid.get(&neighbour) else {
                         continue;
                     };
                     for &cid in list {
@@ -698,8 +719,13 @@ pub fn stitch(meshes: &[UMeshView], tol: f64) -> Result<UMesh, StitchError> {
         .map_err(|e| StitchError::Internal(e.to_string()))?;
 
     // Phase 1: count volume faces and collect the boundary skin.
-    let mut face_count: FxHashMap<Vec<usize>, usize> = FxHashMap::default();
-    let mut face_first: FxHashMap<Vec<usize>, (usize, Vec<usize>)> = FxHashMap::default();
+    //
+    // One map keyed by the sorted node ids of the face holds both the number of cells using it
+    // and the mesh and oriented ring of the first of them, so that a face is hashed and walked
+    // once instead of once per map. A `TET4` or `HEX8` cell has six faces, which sizes it well.
+    let n_cells: usize = meshes.iter().map(|m| m.num_elements()).sum();
+    let mut face_uses: FxHashMap<SmallVec<[usize; RING_INLINE]>, FaceUse> =
+        FxHashMap::with_capacity_and_hasher(6 * n_cells, FxBuildHasher);
     let mut family_shifts: Vec<usize> = Vec::with_capacity(meshes.len());
     let mut fam_acc = 0usize;
     for (k, m) in meshes.iter().enumerate() {
@@ -709,13 +735,23 @@ pub fn stitch(meshes: &[UMeshView], tol: f64) -> Result<UMesh, StitchError> {
             max_fam = max_fam.max(*cell.family);
             let (_, conn) = cell.to_poly();
             for face in split_phed(&conn) {
-                let mut key: Vec<usize> = face.iter().map(|&g| g + shift).collect();
+                let mut key: SmallVec<[usize; RING_INLINE]> =
+                    face.iter().map(|&g| g + shift).collect();
                 key.sort_unstable();
-                *face_count.entry(key.clone()).or_insert(0) += 1;
-                face_first.entry(key).or_insert_with(|| {
-                    let ring: Vec<usize> = face.iter().map(|&g| g + shift).collect();
-                    (k, ring)
-                });
+                match face_uses.entry(key) {
+                    Entry::Occupied(mut slot) => slot.get_mut().count += 1,
+                    Entry::Vacant(slot) => {
+                        let mut ring = face;
+                        for g in &mut ring {
+                            *g += shift;
+                        }
+                        slot.insert(FaceUse {
+                            count: 1,
+                            mesh: k,
+                            ring,
+                        });
+                    }
+                }
             }
         }
         family_shifts.push(fam_acc);
@@ -724,22 +760,26 @@ pub fn stitch(meshes: &[UMeshView], tol: f64) -> Result<UMesh, StitchError> {
 
     let mut skin = UMesh::new(gcoords.to_shared());
     let mut skin_faces: Vec<SkinFace> = Vec::new();
-    let mut skin_index_by_key: FxHashMap<Vec<usize>, usize> = FxHashMap::default();
+    let mut skin_index_by_key: FxHashMap<SmallVec<[usize; RING_INLINE]>, usize> =
+        FxHashMap::with_capacity_and_hasher(face_uses.len(), FxBuildHasher);
     let mut eid_to_skin: FxHashMap<ElementId, usize> = FxHashMap::default();
 
-    let mut boundary_keys: Vec<Vec<usize>> = face_count
-        .iter()
-        .filter(|(_, c)| **c == 1)
-        .map(|(k, _)| k.clone())
+    // Boundary faces are the ones used by a single cell. Sorting them by node ids keeps the
+    // output independent of the hash map iteration order.
+    let mut boundary: Vec<(SmallVec<[usize; RING_INLINE]>, FaceUse)> = face_uses
+        .into_iter()
+        .filter(|(_, u)| u.count == 1)
         .collect();
-    boundary_keys.sort_unstable();
-    for key in boundary_keys {
-        let (mesh, ring) = face_first.remove(&key).expect("boundary face is tracked");
+    boundary.sort_unstable_by(|a, b| a.0.cmp(&b.0));
+    for (key, use_) in boundary {
         let si = skin_faces.len();
-        let eid = skin.add_element(face_etype(ring.len()), &ring, None);
+        let eid = skin.add_element(face_etype(use_.ring.len()), &use_.ring, None);
         eid_to_skin.insert(eid, si);
         skin_index_by_key.insert(key, si);
-        skin_faces.push(SkinFace { mesh, ring });
+        skin_faces.push(SkinFace {
+            mesh: use_.mesh,
+            ring: use_.ring,
+        });
     }
 
     if skin_faces.is_empty() {
@@ -811,10 +851,10 @@ pub fn stitch(meshes: &[UMeshView], tol: f64) -> Result<UMesh, StitchError> {
         for cell in m.elements_of_dim(Dimension::D3) {
             let (_, conn) = cell.to_poly();
             let faces_local = split_phed(&conn);
-            let mut rings: Vec<Vec<usize>> = Vec::new();
+            let mut rings: Vec<Vec<usize>> = Vec::with_capacity(faces_local.len());
             for face in &faces_local {
-                let gface: Vec<usize> = face.iter().map(|&g| g + shift).collect();
-                let mut key = gface.clone();
+                let mut key: SmallVec<[usize; RING_INLINE]> =
+                    face.iter().map(|&g| g + shift).collect();
                 key.sort_unstable();
                 let si = skin_index_by_key.get(&key).copied();
                 let children = si.and_then(|si| face_children[si].as_ref());
@@ -836,7 +876,7 @@ pub fn stitch(meshes: &[UMeshView], tol: f64) -> Result<UMesh, StitchError> {
                         }
                     }
                     _ => {
-                        rings.push(gface.iter().map(|&g| id_of[g]).collect());
+                        rings.push(face.iter().map(|&g| id_of[g + shift]).collect());
                     }
                 }
             }
@@ -963,10 +1003,10 @@ mod tests {
         for cell in mesh.elements_of_dim(Dimension::D3) {
             let (_, conn) = cell.to_poly();
             for ring in split_phed(&conn) {
-                let mut key = ring.clone();
+                let mut key = ring.to_vec();
                 key.sort_unstable();
-                let entry = table.entry(key.clone()).or_default();
-                entry.0 = ring;
+                let entry = table.entry(key).or_default();
+                entry.0 = ring.to_vec();
                 entry.1.push(cell.id().index());
             }
         }
@@ -1188,7 +1228,7 @@ mod tests {
                     .iter()
                     .all(|&g| (mesh.coords()[(g, axis)] - value).abs() <= tol)
                 {
-                    let mut key = face;
+                    let mut key = face.to_vec();
                     key.sort_unstable();
                     *counts.entry(key).or_default() += 1;
                 }

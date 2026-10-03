@@ -118,3 +118,7 @@ todo = "0.3.0"
 [[bench]]
 name = "surface_overlay"
 harness = false
+
+[[bench]]
+name = "stitch"
+harness = false
