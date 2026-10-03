@@ -540,7 +540,11 @@ fn process_region(
             .map(Vec::as_slice)
             .and_then(&contains)
             .ok_or(StitchError::UnmatchedPiece { region })?;
-        if per_group.values().all(|c| contains(c).is_some()) {
+        // The piece is interface area as soon as two distinct meshes cover it. It need not be
+        // covered by *every* mesh of the region: a block touching two others on different faces
+        // shares each part of its own face with only one of them.
+        let covering = per_group.values().filter(|c| contains(c).is_some()).count();
+        if covering >= 2 {
             shared_area += area;
         }
 
@@ -1819,5 +1823,68 @@ mod tests {
         // A's single top quad is split 4x2 by B, so it becomes a PHED with 4 + 8 + 4 nodes.
         assert_eq!(rep.cells, 9);
         assert_eq!(rep.interface_faces, 8);
+    }
+
+    #[test]
+    fn test_stitch_third_block_touching_both_others_with_partial_overlap() {
+        // A plate under a wider, refined block, with a third block butting against both of them
+        // along x. The contact patch on x = 0 therefore carries three meshes, and each part of it
+        // is covered by the third block and one of the two others only.
+        let a = box_mesh(&[0.0, 2.0], &[0.0, 2.0], &[0.0, 1.0]);
+        let b = box_mesh(&[0.0, 1.0, 2.2], &[0.0, 1.0, 2.5], &[1.0, 2.0]);
+        let c = box_mesh(&[-1.0, -0.5, 0.0], &[0.0, 2.0], &[0.0, 2.0]);
+        let views = vec![a.view(), b.view(), c.view()];
+        let out = stitch(&views, 1e-9).unwrap();
+
+        let rep = check_result(&out, &[&a, &b, &c], 1e-9);
+
+        // 1 + 4 + 2 input cells, none of them split since C's faces already match B's lines.
+        assert_eq!(rep.cells, 7);
+        assert!((rep.interface_area - 8.0).abs() < 1e-12);
+        assert_eq!(rep.by_pair.get(&(0, 1)), Some(&4.0));
+        assert_eq!(rep.by_pair.get(&(0, 2)), Some(&2.0));
+        assert_eq!(rep.by_pair.get(&(1, 2)), Some(&2.0));
+    }
+
+    #[test]
+    fn test_stitch_three_blocks_where_the_third_touches_both_others() {
+        // A and B stack along z while C touches them both along x, so the interface region of
+        // C carries three meshes and no part of it is covered by all of them at once.
+        let a = box_mesh(&[0.0, 2.0], &[0.0, 2.0], &[0.0, 1.0]);
+        let b = box_mesh(&[0.0, 2.0], &[0.0, 2.0], &[1.0, 2.0]);
+        let c = box_mesh(&[2.0, 3.0], &[0.0, 2.0], &[0.0, 2.0]);
+        let views = vec![a.view(), b.view(), c.view()];
+        let out = stitch(&views, 1e-9).unwrap();
+
+        let rep = check_result(&out, &[&a, &b, &c], 1e-9);
+
+        assert_eq!(rep.cells, 3);
+        assert_eq!(rep.interface_faces, 3);
+        // A|B on z = 1, A|C on x = 2 over z 0..1, B|C on x = 2 over z 1..2.
+        assert!((rep.interface_area - 8.0).abs() < 1e-12);
+        assert!((rep.volume - 12.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_stitch_three_blocks_where_the_third_is_imprinted_on_both() {
+        // Same assembly, but C is refined along y and z, so both of its faces have to imprint
+        // their lines into the faces of A and B.
+        let a = box_mesh(&[0.0, 2.0], &[0.0, 2.0], &[0.0, 1.0]);
+        let b = box_mesh(&[0.0, 2.0], &[0.0, 2.0], &[1.0, 2.0]);
+        let c = box_mesh(&[2.0, 3.0], &[0.0, 1.0, 2.0], &[0.0, 1.0, 2.0]);
+        let views = vec![a.view(), b.view(), c.view()];
+        let out = stitch(&views, 1e-9).unwrap();
+
+        let rep = check_result(&out, &[&a, &b, &c], 1e-9);
+
+        // C is refined 2x2, so the total cell count and volume are those of the three inputs.
+        assert_eq!(rep.cells, 6);
+        // One face for A|B, then A's and B's x = 2 faces are each split in 2 by C's y = 1 line.
+        assert_eq!(rep.interface_faces, 5);
+        assert!((rep.interface_area - 8.0).abs() < 1e-12);
+        assert_eq!(rep.by_pair.get(&(0, 1)), Some(&4.0));
+        assert_eq!(rep.by_pair.get(&(0, 2)), Some(&2.0));
+        assert_eq!(rep.by_pair.get(&(1, 2)), Some(&2.0));
+        assert!((rep.volume - 12.0).abs() < 1e-12);
     }
 }

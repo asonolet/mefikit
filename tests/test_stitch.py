@@ -74,9 +74,12 @@ def _interface_area(mesh):
     for ring, users in faces.values():
         if len(users) != 2 or families[users[0]] == families[users[1]]:
             continue
-        pts = coords[ring][:, :2]
-        x, y = pts[:, 0], pts[:, 1]
-        total += 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+        # Newell's method: half the norm of the normal is the area of a planar polygon whatever
+        # its orientation, unlike a shoelace on two chosen axes.
+        pts = coords[ring]
+        total += 0.5 * np.linalg.norm(
+            np.sum(np.cross(pts, np.roll(pts, -1, axis=0)), axis=0)
+        )
     return total
 
 
@@ -317,3 +320,40 @@ def test_stitch_offsets_a_hex_block_in_plane():
     assert set(counts.values()) == {2}
     assert _interface_area(out) == pytest.approx(4.0)
     assert _families(out)["PHED"].tolist() == [0, 0, 1, 1, 1]
+
+
+def test_stitch_third_block_touching_both_others_in_another_direction():
+    # A and B stack along z while C touches them both along x: the interface region of C carries
+    # three meshes, and no part of it is covered by all of them at once.
+    a = _box([0.0, 2.0], [0.0, 2.0], [0.0, 1.0])
+    b = _box([0.0, 2.0], [0.0, 2.0], [1.0, 2.0])
+    c = _box([2.0, 3.0], [0.0, 2.0], [0.0, 2.0])
+    out = mf.stitch([a, b, c])
+
+    assert len(list(_blocks(out))) == 3
+    assert _interface_area(out) == pytest.approx(8.0)
+    # A|B on z = 1 is untouched, while C shares its x = 2 face with each of its two neighbours.
+    for axis, value in ((2, 1.0), (0, 2.0)):
+        counts = _faces_on_plane(out, axis, value)
+        assert set(counts.values()) == {2}
+    assert len(_faces_on_plane(out, 0, 2.0)) == 2
+    assert _families(out)["PHED"].tolist() == [0, 1, 2]
+
+
+def test_stitch_third_block_imprinted_on_both_others():
+    # Same assembly, but C is refined along y and z, so it has to imprint its lines into the
+    # x = 2 faces of both A and B.
+    a = _box([0.0, 2.0], [0.0, 2.0], [0.0, 1.0])
+    b = _box([0.0, 2.0], [0.0, 2.0], [1.0, 2.0])
+    c = _box([2.0, 3.0], [0.0, 1.0, 2.0], [0.0, 1.0, 2.0])
+    out = mf.stitch([a, b, c])
+
+    assert len(list(_blocks(out))) == 6
+    assert _interface_area(out) == pytest.approx(8.0)
+    # A|C and B|C are each split in 2 by C's y = 1 line, so four quads meet the neighbours of C.
+    assert len(_faces_on_plane(out, 0, 2.0)) == 4
+    assert set(_faces_on_plane(out, 0, 2.0).values()) == {2}
+    # On z = 1, the A|B interface is still a single face; the two others are interior to C.
+    assert set(_faces_on_plane(out, 2, 1.0).values()) == {2}
+    assert len(_faces_on_plane(out, 2, 1.0)) == 3
+    assert _families(out)["PHED"].tolist() == [0, 1, 2, 2, 2, 2]
