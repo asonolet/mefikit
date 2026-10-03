@@ -389,3 +389,69 @@ unpolyzed.to_pyvista().plot(show_edges=True)
 
 
 ![png](topological_tools_files/topological_tools_32_1.png)
+
+
+## Stitch
+
+Meshes are often modeled as separate blocks that were meshed independently, so their nodes do not
+match on the boundaries they share and they cannot be used as a single mesh. `mf.stitch` makes them
+conformal: the faces of each block are split to match the faces of its neighbours.
+
+Here a plate made of a single hexahedron sits below a block of four hexahedra. The plate's top
+face is one square while the block's bottom is four squares, so they do not match.
+
+
+```python
+plate = mf.build_cmesh([0.0, 2.0], [0.0, 2.0], [0.0, 1.0])
+block = mf.build_cmesh([0.0, 1.0, 2.0], [0.0, 1.0, 2.0], [1.0, 2.0])
+
+stitched = mf.stitch([plate, block])
+
+print(list(stitched.blocks()))
+print(f"{stitched.num_elements()=}")
+```
+
+    ['PHED']
+    stitched.num_elements()=5
+
+
+
+```python
+plotter = pv.Plotter(shape=(1, 2), window_size=(1100, 500))
+
+plotter.subplot(0, 0)
+plotter.add_text("Before", font_size=14)
+plotter.add_mesh(
+    plate.to_pyvista(),
+    color="cornflowerblue",
+    opacity=0.55,
+    show_edges=True,
+    edge_color="white",
+)
+plotter.add_mesh(
+    block.to_pyvista(),
+    color="lightsalmon",
+    opacity=0.55,
+    show_edges=True,
+    edge_color="white",
+)
+plotter.add_text("1 face vs 4 faces", position="lower_left", font_size=9)
+plotter.camera_position = "iso"
+
+plotter.subplot(0, 1)
+plotter.add_text("After", font_size=14)
+plotter.add_mesh(
+    stitched.to_pyvista(),
+    color="lightseagreen",
+    show_edges=True,
+    edge_color="white",
+)
+plotter.add_text("4 shared faces", position="lower_left", font_size=9)
+plotter.camera_position = "iso"
+
+plotter.show()
+```
+
+
+
+![png](topological_tools_files/topological_tools_35_0.png)

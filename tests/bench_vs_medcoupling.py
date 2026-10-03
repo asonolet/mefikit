@@ -11,6 +11,7 @@ Covered operations
 * merge-nodes : collapse coincident nodes on a duplicated-interface structured stack
 * descend     : build the (dim-1) descending mesh (faces) of a hexa grid
 * overlay     : 2D overlay/imprint of a fine grid with an embedded coarse grid
+* stitch      : conform 2 stacked HEX8 layers sharing one matching interface
 
 Each step is timed with the median of ``N_ITER`` runs; medcoupling meshes are built
 from the very same mefikit meshes via ``UMesh.to_mc()`` so both sides operate on the
@@ -42,6 +43,9 @@ NPOLY = 16  # poly remap target, 16^3 source
 MERGE_N = 24  # 2 stacked 24x24 HEX8 layers with a duplicated interface
 DESCEND_N = 24  # 24^3 hexa grid -> faces
 OVERLAY_N = 32  # 32x32 grid overlayed by an embedded 8x8 block
+STITCH_N = 24  # 24x24x1 HEX8 layers, stacked
+STITCH_NZ = 2  # number of stacked layers -> one shared interface
+STITCH_TOL = 1e-9
 
 RTOL = 1e-9
 ATOL = 1e-9
@@ -77,6 +81,20 @@ def mc_field(mmesh: mc.MEDCouplingUMesh, vals: np.ndarray, nature: int, name="T"
 def used_nodes(mesh: mf.UMesh) -> int:
     ids = np.concatenate([np.asarray(b) for b in mesh.blocks().values()])
     return int(np.unique(ids).size)
+
+
+def used_nodes_any(mesh: mf.UMesh) -> int:
+    """`used_nodes` for meshes that may hold `PHED` blocks.
+
+    A `PHED` block is a (connectivity, offsets) pair: only the connectivity holds node ids, and
+    it separates faces with `usize::MAX`, which is not a node.
+    """
+    flat = [
+        np.asarray(block[0] if isinstance(block, tuple) else block).ravel()
+        for block in mesh.blocks().values()
+    ]
+    ids = np.concatenate(flat)
+    return int(np.unique(ids[ids != np.iinfo(np.uint64).max]).size)
 
 
 def area_2d(mesh: mf.UMesh) -> float:
@@ -139,6 +157,53 @@ def dump_merged_mesh(n: int) -> mf.UMesh:
     mesh = mf.UMesh(coords)
     mesh.add_regular_block("HEX8", np.ascontiguousarray(np.array(conn), np.uintp))
     return mesh
+
+
+def hex_slabs(n: int, nz: int):
+    """`nz` stacked n x n x 1 HEX8 slabs whose interfaces are duplicated (no shared nodes).
+
+    Returns the list of separate slabs, which is what ``mefikit.stitch`` consumes, and a single
+    HEX8 mesh holding the very same cells, which is what MEDCoupling consumes.
+    """
+    g = np.linspace(0.0, 1.0, n + 1)
+    px, py = np.meshgrid(g, g, indexing="ij")
+    xy = np.c_[px.ravel(), py.ravel()]
+    s = n + 1
+    face = lambda i, j, l: [
+        l * s * s + i * s + j,
+        l * s * s + (i + 1) * s + j,
+        l * s * s + (i + 1) * s + j + 1,
+        l * s * s + i * s + j + 1,
+    ]
+    hexa = [[*face(i, j, 0), *face(i, j, 1)] for i in range(n) for j in range(n)]
+
+    slabs = []
+    for k in range(nz):
+        coords = np.ascontiguousarray(
+            np.vstack(
+                [
+                    np.c_[xy, np.full(xy.shape[0], k / nz)],
+                    np.c_[xy, np.full(xy.shape[0], (k + 1) / nz)],
+                ]
+            ),
+            np.float64,
+        )
+        mesh = mf.UMesh(coords)
+        mesh.add_regular_block("HEX8", np.ascontiguousarray(np.array(hexa), np.uintp))
+        slabs.append(mesh)
+
+    # Same cells, one mesh: the layers occupy consecutive node planes, so the interface between
+    # two layers holds two identical node sets that MEDCoupling has to merge.
+    coords = np.ascontiguousarray(
+        np.vstack([np.c_[xy, np.full(xy.shape[0], k / nz)] for k in range(2 * nz)]),
+        np.float64,
+    )
+    conn = np.ascontiguousarray(
+        np.vstack([np.array(hexa) + 2 * k * s * s for k in range(nz)]), np.uintp
+    )
+    whole = mf.UMesh(coords)
+    whole.add_regular_block("HEX8", conn)
+    return slabs, whole
 
 
 # --- remap timing + validation ---------------------------------------------
@@ -329,6 +394,58 @@ def bench_overlay():
     )
 
 
+def bench_stitch():
+    """Returns (mf_stitch, mc_conformize3D, checks).
+
+    MEDCoupling only conforms *matching* patches: ``conformize3D`` merges the nodes lying on the
+    interfaces of an already conforming multi-volume mesh and performs no geometric imprinting
+    at all. The case below therefore keeps the interface exactly matching, which is the most
+    favourable input MEDCoupling can be given -- mefikit additionally refines and welds.
+    """
+    n, nz = STITCH_N, STITCH_NZ
+    slabs, whole = hex_slabs(n, nz)
+
+    def mc_conform():
+        # `conformize3D` is defined for polyhedra only, so the conversion is part of the work.
+        mesh = mc_mesh(whole, 3)
+        mesh.convertAllToPoly()
+        mesh.conformize3D(STITCH_TOL)
+
+    t_mf = median_time(lambda: mf.stitch(slabs, STITCH_TOL))
+    t_mc = median_time(mc_conform)
+
+    out = mf.stitch(slabs, STITCH_TOL)
+    mesh = mc_mesh(whole, 3)
+    mesh.convertAllToPoly()
+    mesh.conformize3D(STITCH_TOL)
+
+    n_cells = nz * n * n
+    vol_mf = float(sum(np.asarray(v).sum() for v in out.measure().values()))
+    vol_mc = float(np.asarray(mesh.getMeasureField(True).getArray().getValues()).sum())
+    nodes_mf = used_nodes_any(out)
+    return (
+        t_mf,
+        t_mc,
+        {
+            f"cells == {n_cells} (both)": (
+                (out.num_elements() == n_cells)
+                and (mesh.getNumberOfCells() == n_cells),
+                (out.num_elements(), mesh.getNumberOfCells()),
+            ),
+            "volume == 1 (both)": (
+                (abs(vol_mf - 1.0) < ATOL) and (abs(vol_mc - 1.0) < ATOL),
+                (round(vol_mf, 10), round(vol_mc, 10)),
+            ),
+            # mefikit welds the duplicated interface nodes away; MEDCoupling keeps the whole
+            # coordinate array, so only mefikit is checked here.
+            f"mefi used nodes == {3 * (n + 1) ** 2}": (
+                nodes_mf == 3 * (n + 1) ** 2,
+                nodes_mf,
+            ),
+        },
+    )
+
+
 # --- main -------------------------------------------------------------------
 def row(case, step, mf_t, mc_t):
     ratio = mc_t / mf_t if mf_t > 0 else float("inf")
@@ -347,7 +464,11 @@ def main():
     print("=" * 70)
     print(f"workloads: remap-2d {N2D}^2, remap-3d {N3D}^3, remap-3d-poly {NPOLY}^3,")
     print(f"           merge-nodes {MERGE_N}x{MERGE_N}x2 (duplicated interface),")
-    print(f"           descend {DESCEND_N}^3, overlay {OVERLAY_N}^2 (+ embedded 8x8)")
+    print(f"           descend {DESCEND_N}^3, overlay {OVERLAY_N}^2 (+ embedded 8x8),")
+    print(
+        f"           stitch {STITCH_N}x{STITCH_N}x{STITCH_NZ} HEX8 layers "
+        f"({STITCH_N * STITCH_N * STITCH_NZ} cells, matching interface)"
+    )
     print(f"iterations: {N_ITER} per step (medians)")
     print()
     print(
@@ -371,7 +492,11 @@ def main():
     row("merge-nodes", "merge", b, p)
     checks_all["merge-nodes"] = checks
 
-    for name, fn in [("descend", bench_descend), ("overlay", bench_overlay)]:
+    for name, fn in [
+        ("descend", bench_descend),
+        ("overlay", bench_overlay),
+        ("stitch", bench_stitch),
+    ]:
         a, b, checks = fn()
         row(name, "run", a, b)
         checks_all[name] = checks

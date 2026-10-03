@@ -169,6 +169,27 @@ pub fn concat<'py>(a: PyRef<'py, PyUMesh>, b: PyRef<'py, PyUMesh>) -> PyResult<P
         .map(Into::into)
 }
 
+/// Stitches two or more volume meshes into a single conforming polyhedral mesh.
+///
+/// The meshes must be 3D volume meshes (`TET4`, `HEX8` or `PHED` cells) lying in
+/// the same coordinate space. Boundary faces that two or more meshes have in
+/// common (within `tol`) are refined so that they become mutually conformal, and
+/// the resulting interface nodes are shared. The result is a single `PHED` mesh
+/// with a shared coordinates array: families are relabeled per input mesh, while
+/// fields and groups are dropped.
+///
+/// Raises `ValueError` if fewer than two meshes are given, if a mesh is not a
+/// 3D volume mesh, if a coincident region is not planar within `tol`, or if a
+/// quadratic cell is encountered.
+#[pyfunction]
+#[pyo3(signature = (meshes, tol=1e-9))]
+pub fn stitch(meshes: Vec<PyRef<'_, PyUMesh>>, tol: f64) -> PyResult<PyUMesh> {
+    let views: Vec<mf::UMeshView> = meshes.iter().map(|m| m.inner.view()).collect();
+    mf::stitch(&views, tol)
+        .map_err(|e| map_err(e.to_string()))
+        .map(Into::into)
+}
+
 /// Helper used by `PyUMesh.transform`: accepts either a `Transform` or a raw
 /// 4x4 homogeneous numpy matrix.
 pub fn extract_transform(arg: &Bound<'_, PyAny>) -> PyResult<mf::Transform> {

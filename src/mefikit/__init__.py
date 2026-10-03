@@ -17,6 +17,7 @@ from .mefipy import (
     OverlayOperation,
     Selection,
     SelectionResult,
+    SurfaceOverlay,
     Transform,
     UMesh,
     X,
@@ -26,6 +27,7 @@ from .mefipy import (
     build_cmesh,
     concat,
     sel,
+    stitch,
     transfer,
 )
 
@@ -64,6 +66,7 @@ __all__ = (
     "OverlayOperation",
     "Selection",
     "SelectionResult",
+    "SurfaceOverlay",
     "Transform",
     "UMesh",
     "X",
@@ -74,5 +77,6 @@ __all__ = (
     "concat",
     "data",
     "sel",
+    "stitch",
     "transfer",
 )
