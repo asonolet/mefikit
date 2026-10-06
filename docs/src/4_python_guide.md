@@ -120,6 +120,28 @@ in-place and return a new mesh only when the result displaced elements
 | extrude | `mesh.extrude(along)`, `extrude_parallel(...)`, `extrude_curv(...)` |
 | split / polygonize | `mesh.split()`, `mesh.polyze()` / `unpolyze()` |
 | boolean overlay | `mesh.overlay(mesh2, operation=None)` |
+| surface imprint in 3D | `mesh.overlay_surfaces(mesh2, tol=1e-9)` → `mf.SurfaceOverlay` |
+| join meshes as-is | `mf.aggregate(meshes)`, `mf.concat(a, b)` |
+| stitch volumes at shared boundaries | `mf.stitch(meshes, tol=1e-9)` → `UMesh` |
+
+`mf.stitch` makes two or more volume meshes (`TET4`, `HEX8` or `PHED`) conformal
+wherever their boundaries coincide, so that they can be used as a single mesh:
+
+```python
+import mefikit as mf
+
+plate = mf.build_cmesh([0, 2], [0, 2], [0, 1])  # one HEX8
+block = mf.build_cmesh([0, 1, 2], [0, 1, 2], [1, 2])  # four HEX8
+stitched = mf.stitch([plate, block])  # one PHED mesh, 5 cells
+
+# The interface on z = 1 is now shared: every face there belongs to two cells.
+coords = stitched.coords()
+```
+
+The result is a single polyhedral mesh: interface nodes exist once, families are
+relabeled per input mesh, and fields and groups are dropped. Coincident interfaces
+must be piecewise planar within `tol`. This is an *imprint only* operation:
+overlapping volumes are not detected, so the output may contain overlapping cells.
 
 Field expressions (notably `mf.M` for the on-the-fly measure) can be evaluated
 without a stored field:

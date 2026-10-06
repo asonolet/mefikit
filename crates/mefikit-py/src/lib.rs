@@ -44,7 +44,7 @@ mod mefipy {
     use super::transfer;
 
     #[pymodule_export]
-    use super::pyumesh::{PyOverlayOperation, PyUMesh};
+    use super::pyumesh::{PyOverlayOperation, PySurfaceOverlay, PyUMesh};
 
     #[pymodule_export]
     use super::pyfield::PyField;
@@ -56,7 +56,9 @@ mod mefipy {
     use super::pygroups::{PyGroupRef, PyGroupsMapping};
 
     #[pymodule_export]
-    use super::pytransform::{PyTransform, aggregate, concat};
+    use super::pytransform::{
+        PyConformanceReport, PyTransform, aggregate, concat, conformize, is_conform, stitch,
+    };
 
     #[pymodule_export]
     use super::select::{PySelection, PySelectionResult};

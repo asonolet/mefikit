@@ -4,6 +4,7 @@ from . import data as data
 from . import io
 from .mefipy import (
     C,
+    ConformanceReport,
     Field,
     FieldRef,
     FieldsMapping,
@@ -17,6 +18,7 @@ from .mefipy import (
     OverlayOperation,
     Selection,
     SelectionResult,
+    SurfaceOverlay,
     Transform,
     UMesh,
     X,
@@ -25,7 +27,10 @@ from .mefipy import (
     aggregate,
     build_cmesh,
     concat,
+    conformize,
+    is_conform,
     sel,
+    stitch,
     transfer,
 )
 
@@ -46,6 +51,7 @@ del io
 
 __all__ = (
     "C",
+    "ConformanceReport",
     "ConservativeP0",
     "ConstantPiecewise",
     "DistanceWeighting",
@@ -64,6 +70,7 @@ __all__ = (
     "OverlayOperation",
     "Selection",
     "SelectionResult",
+    "SurfaceOverlay",
     "Transform",
     "UMesh",
     "X",
@@ -72,7 +79,10 @@ __all__ = (
     "aggregate",
     "build_cmesh",
     "concat",
+    "conformize",
     "data",
+    "is_conform",
     "sel",
+    "stitch",
     "transfer",
 )

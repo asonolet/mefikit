@@ -18,6 +18,21 @@
 //! Note: The implementation of these operations is not trivial. The main difficulty is to
 //! manage non conformities and numerical precision issues. The implementation should be robust
 //! and handle these issues gracefully.
+//!
+//! Surface meshes embedded in 3D space are handled by [`Overlayable::overlay_surfaces`], see
+//! the `surface` submodule.
+//!
+//! Assembling several 3D volume meshes into a single conforming polyhedral mesh is handled by
+//! [`stitch`], and conformizing one mesh with itself (plus the [`is_conform`] diagnostic), by
+//! [`conformize`]; see the `stitch` submodule.
+
+mod stitch;
+mod surface;
+
+pub use stitch::{
+    ConformanceIssue, ConformanceReport, StitchError, conformize, is_conform, stitch,
+};
+pub use surface::{SurfaceOverlay, SurfaceOverlayError, overlay_surfaces};
 
 use rustc_hash::FxHashMap;
 
@@ -30,11 +45,15 @@ use crate::element_traits::cut::{
 };
 use crate::element_traits::{Cutable, SortedVecKey};
 use crate::geometry::{Intersection, Intersections, PointId, Polygon, Segment};
-use crate::mesh::{Dimension, Element, ElementLike, ElementType, UMesh, UMeshView};
+use crate::mesh::{Dimension, Element, ElementId, ElementLike, ElementType, UMesh, UMeshView};
 use crate::prelude::ElementGeo;
 use crate::tools::duplicates_from;
 use crate::tools::spatial_index::SpIdx2;
 use crate::tools::{Descendable, spatial_index::SpatiallyIndexable};
+
+/// Node coincidence tolerance used when merging two 2D meshes onto shared coordinates. Kept
+/// tight because the 2D overlay assumes the inputs already share a coordinate space.
+const WELD_EPS: f64 = 1e-12;
 
 /// Merges `subject` onto `reference` in a single coordinate space.
 ///
@@ -42,11 +61,24 @@ use crate::tools::{Descendable, spatial_index::SpatiallyIndexable};
 /// are remapped so that subject nodes coinciding with a reference node point to that reference
 /// node id. The two meshes therefore share the same node ids in the merged space.
 ///
+/// Returns the merged mesh together with the weld map: subject node id (in the merged space) ->
+/// reference node id it was welded onto. Subject nodes without a coincident reference node are
+/// absent from the map.
+///
+/// `eps` is the node coincidence tolerance, expressed in the coordinate space of the two meshes
+/// (which must already share that space, e.g. after projection). Note that widening `eps` past
+/// half the smallest distance between two nodes of a single element produces degenerate
+/// elements.
+///
 /// NOTE: must be called before computing intersections because the merged coords indexing is used
 /// to resolve intersection node ids.
-fn merge_on_reference_coords(subject: UMesh, reference: UMeshView) -> UMesh {
+fn merge_on_reference_coords(
+    subject: UMesh,
+    reference: UMeshView,
+    eps: f64,
+) -> (UMesh, FxHashMap<usize, usize>) {
     // reference node id -> coincident subject node ids
-    let ref_to_subject_nodes = duplicates_from(&subject.view(), &reference.clone(), 1e-12);
+    let ref_to_subject_nodes = duplicates_from(&subject.view(), &reference.clone(), eps);
     let shift = reference.coords().nrows();
     // In the merged mesh, subject node `n` lives at `n + shift`. When it coincides with reference
     // node `r`, re-point it to `r` so both meshes share the node id.
@@ -65,7 +97,7 @@ fn merge_on_reference_coords(subject: UMesh, reference: UMeshView) -> UMesh {
         co.replace(&merged_to_ref_nodes);
         merged.element_blocks.insert(et, new_block);
     }
-    merged
+    (merged, merged_to_ref_nodes)
 }
 
 /// Boolean-like operation to perform on two 2D meshes.
@@ -97,6 +129,30 @@ pub trait Overlayable {
     /// - Input meshes are valid (non-self-intersecting)
     /// - Coordinates are in the same plane
     fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh;
+
+    /// Imprints two surface meshes embedded in 3D space onto each other wherever they
+    /// coincide.
+    ///
+    /// Both surfaces are refined with each other's interface edges so that they become
+    /// mutually conformal on the coincident areas; the two refined meshes share the same
+    /// coordinates array. Areas of a surface not covered by the other are copied verbatim.
+    ///
+    /// `tol` drives the geometric tolerances (region planarity, node coincidence) as well as
+    /// the node welding of the two surfaces during the pairwise cuts.
+    ///
+    /// # Guarantees
+    /// - Output meshes tile their input footprints exactly (area preserving up to `tol`)
+    /// - Intersection nodes are shared by both sides
+    /// - Families propagate to the produced faces
+    ///
+    /// # Assumptions
+    /// - Input surfaces are valid, first-order (TRI3, QUAD4, PGON), and piecewise planar;
+    ///   matched regions lie in a common plane within `tol`
+    fn overlay_surfaces(
+        &self,
+        other: &UMeshView,
+        tol: f64,
+    ) -> Result<SurfaceOverlay, SurfaceOverlayError>;
 }
 
 impl Overlayable for UMesh {
@@ -111,13 +167,21 @@ impl Overlayable for UMesh {
             }
         }
     }
+
+    fn overlay_surfaces(
+        &self,
+        other: &UMeshView,
+        tol: f64,
+    ) -> Result<SurfaceOverlay, SurfaceOverlayError> {
+        surface::overlay_surfaces(&self.view(), other, tol)
+    }
 }
 
 /// Computes the geometric intersection (overlay) of two 2D meshes.
 ///
 /// Refines `mesh1`'s cells with the edges of `mesh2`.
 fn intersect_2d2d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
-    let mesh2 = merge_on_reference_coords(mesh2, mesh1.view());
+    let (mesh2, _) = merge_on_reference_coords(mesh2, mesh1.view(), WELD_EPS);
     cut_2d_with_edges(
         mesh1,
         mesh2.descend(Some(Dimension::D2), Some(Dimension::D1)),
@@ -142,6 +206,7 @@ fn cut_2d_with_edges(mesh1: &UMesh, cutting_edges: UMesh) -> UMesh {
         &cutting_edges.view(),
         &cutting_bvh,
         &seg_intersections,
+        None,
     );
     cutted_mesh
 }
@@ -157,7 +222,7 @@ fn cut_2d_with_edges(mesh1: &UMesh, cutting_edges: UMesh) -> UMesh {
 /// - Input meshes are valid (non-self-intersecting)
 /// - Coordinates are in the same plane
 pub fn intersect_2d1d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
-    let mesh2 = merge_on_reference_coords(mesh2, mesh1.view());
+    let (mesh2, _) = merge_on_reference_coords(mesh2, mesh1.view(), WELD_EPS);
     cut_2d_with_edges(mesh1, mesh2)
 }
 
@@ -165,7 +230,7 @@ pub fn intersect_2d1d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
 /// `keep` predicate returns `true`. The predicate receives `true` when the piece lies inside
 /// `cutter`.
 fn cut_and_classify(subject: &UMesh, cutter: UMesh, keep: impl Fn(bool) -> bool) -> UMesh {
-    let cutter = merge_on_reference_coords(cutter, subject.view());
+    let (cutter, _) = merge_on_reference_coords(cutter, subject.view(), WELD_EPS);
 
     let subject_edges = subject.descend(Some(Dimension::D2), Some(Dimension::D1));
     let cutter_edges = cutter.descend(Some(Dimension::D2), Some(Dimension::D1));
@@ -195,7 +260,7 @@ fn cut_both(
     keep1: impl Fn(bool) -> bool,
     keep2: impl Fn(bool) -> bool,
 ) -> UMesh {
-    let mesh2 = merge_on_reference_coords(mesh2, mesh1.view());
+    let (mesh2, _) = merge_on_reference_coords(mesh2, mesh1.view(), WELD_EPS);
 
     let m1_edges = mesh1.descend(Some(Dimension::D2), Some(Dimension::D1));
     let m2_edges = mesh2.descend(Some(Dimension::D2), Some(Dimension::D1));
@@ -250,13 +315,23 @@ fn compute_overlay(
 
 /// Cut the D2 cells of `subject` with `cutting_edges` and append all the resulting pieces to
 /// `out`.
+///
+/// If `parents` is provided, it is filled with one `(subject cell id, emitted element ids)`
+/// entry per subject cell, in subject iteration order. Emitted ids refer to elements appended to
+/// `out`: a single verbatim copy when the cell was untouched, otherwise its cut pieces.
 fn cut_cells_all(
     out: &mut UMesh,
     subject: &UMesh,
     cutting_edges: &UMeshView,
     cutting_bvh: &SpIdx2,
     seg_intersections: &SortedSegIntersections,
+    parents: Option<&mut Vec<(ElementId, Vec<ElementId>)>>,
 ) {
+    let mut dropped_parents = Vec::new();
+    let parents: &mut Vec<(ElementId, Vec<ElementId>)> = match parents {
+        Some(p) => p,
+        None => &mut dropped_parents,
+    };
     for cell in subject.elements_of_dim(Dimension::D2) {
         let [bmin, bmax] = cell.bounds2();
         let candidates = cutting_bvh.in_bounds(bmin, bmax);
@@ -267,14 +342,18 @@ fn cut_cells_all(
             &candidates,
         );
 
+        let mut piece_ids: Vec<ElementId> = Vec::new();
         // If the cell was cut, I add new polys from the cut
         if let Some(polys) = reconstructed {
             for new_cell in polys {
-                out.add_element(ElementType::PGON, &new_cell, Some(*cell.family));
+                let id = out.add_element(ElementType::PGON, &new_cell, Some(*cell.family));
+                piece_ids.push(id);
             }
         } else {
-            out.add_element(cell.element_type(), cell.connectivity(), Some(*cell.family));
+            let id = out.add_element(cell.element_type(), cell.connectivity(), Some(*cell.family));
+            piece_ids.push(id);
         }
+        parents.push((cell.id(), piece_ids));
     }
 }
 
