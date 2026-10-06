@@ -51,7 +51,7 @@ use super::surface::{
 use super::{compute_overlay, cut_cells_all, merge_on_reference_coords};
 use crate::element_traits::ElementTopo;
 use crate::geometry::{PlaneFrame, Polygon, newell_normal3};
-use crate::mesh::{Dimension, ElementId, ElementLike, ElementType, UMesh, UMeshView};
+use crate::mesh::{Dimension, ElementId, ElementIds, ElementLike, ElementType, UMesh, UMeshView};
 use crate::tools::Descendable;
 use crate::tools::spatial_index::{SpIdx3, SpatiallyIndexable};
 
@@ -192,10 +192,13 @@ struct SkinFace {
     ring: SmallVec<[usize; RING_INLINE]>,
 }
 
-/// How many cells use a given face, and the mesh and oriented ring of the first of them.
+/// The cells using a given face, plus the mesh and oriented ring of the first of them.
 struct FaceUse {
-    count: u32,
+    /// Every cell using the face, in insertion order; two cells for an interior interface.
+    cells: SmallVec<[ElementId; 2]>,
+    /// Ordinal of the mesh the first cell belongs to.
     mesh: usize,
+    /// Oriented node ring of the first cell, in global node ids.
     ring: SmallVec<[usize; RING_INLINE]>,
 }
 
@@ -660,12 +663,50 @@ fn weld_points(points: &[[f64; 3]], tol: f64) -> (Vec<[f64; 3]>, Vec<usize>) {
     (canonical.iter().map(|&i| points[i]).collect(), clusters)
 }
 
-fn point3(coords: &nd::Array2<f64>, i: usize) -> [f64; 3] {
+fn point3<S: nd::Data<Elem = f64>>(coords: &nd::ArrayBase<S, nd::Ix2>, i: usize) -> [f64; 3] {
     [coords[(i, 0)], coords[(i, 1)], coords[(i, 2)]]
 }
 
 fn dot3(a: &[f64; 3], b: &[f64; 3]) -> f64 {
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+}
+
+/// Whether `et` is one of the cell types [`stitch`] and [`conformize`] accept.
+fn supported_cell_type(et: ElementType) -> bool {
+    matches!(
+        et,
+        ElementType::TET4 | ElementType::HEX8 | ElementType::PHED
+    )
+}
+
+/// Checks that `mesh` (mesh number `k` of the operation) can be stitched: embedded in 3D space
+/// and made only of supported volume cells.
+///
+/// Shared by [`stitch`] and [`conformize`]; [`is_conform`] reports the same conditions as
+/// issues of the report instead of raising them.
+fn check_volume_mesh(mesh: &UMeshView, k: usize) -> Result<(), StitchError> {
+    if mesh.space_dimension() != 3 {
+        return Err(StitchError::InvalidSpaceDimension {
+            mesh: k,
+            found: mesh.space_dimension(),
+        });
+    }
+    for e in mesh.elements() {
+        let et = e.element_type();
+        if et.dimension() != Dimension::D3 {
+            return Err(StitchError::NonVolumeElement {
+                mesh: k,
+                element_type: et,
+            });
+        }
+        if !supported_cell_type(et) {
+            return Err(StitchError::UnsupportedElementType {
+                mesh: k,
+                element_type: et,
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Stitches `meshes` into a single conforming polyhedral mesh.
@@ -686,30 +727,7 @@ pub fn stitch(meshes: &[UMeshView], tol: f64) -> Result<UMesh, StitchError> {
     let mut node_offset: Vec<usize> = Vec::with_capacity(meshes.len());
     let mut acc = 0usize;
     for (k, m) in meshes.iter().enumerate() {
-        if m.space_dimension() != 3 {
-            return Err(StitchError::InvalidSpaceDimension {
-                mesh: k,
-                found: m.space_dimension(),
-            });
-        }
-        for e in m.elements() {
-            let et = e.element_type();
-            if et.dimension() != Dimension::D3 {
-                return Err(StitchError::NonVolumeElement {
-                    mesh: k,
-                    element_type: et,
-                });
-            }
-            if !matches!(
-                et,
-                ElementType::TET4 | ElementType::HEX8 | ElementType::PHED
-            ) {
-                return Err(StitchError::UnsupportedElementType {
-                    mesh: k,
-                    element_type: et,
-                });
-            }
-        }
+        check_volume_mesh(m, k)?;
         node_offset.push(acc);
         acc += m.coords().nrows();
         coords_views.push(m.coords());
@@ -719,40 +737,15 @@ pub fn stitch(meshes: &[UMeshView], tol: f64) -> Result<UMesh, StitchError> {
         .map_err(|e| StitchError::Internal(e.to_string()))?;
 
     // Phase 1: count volume faces and collect the boundary skin.
-    //
-    // One map keyed by the sorted node ids of the face holds both the number of cells using it
-    // and the mesh and oriented ring of the first of them, so that a face is hashed and walked
-    // once instead of once per map. A `TET4` or `HEX8` cell has six faces, which sizes it well.
-    let n_cells: usize = meshes.iter().map(|m| m.num_elements()).sum();
-    let mut face_uses: FxHashMap<SmallVec<[usize; RING_INLINE]>, FaceUse> =
-        FxHashMap::with_capacity_and_hasher(6 * n_cells, FxBuildHasher);
+    let face_uses = count_face_uses(meshes, &node_offset);
+
+    // The family labels of the output are those of each mesh, shifted past the previous ones.
     let mut family_shifts: Vec<usize> = Vec::with_capacity(meshes.len());
     let mut fam_acc = 0usize;
-    for (k, m) in meshes.iter().enumerate() {
-        let shift = node_offset[k];
+    for m in meshes {
         let mut max_fam = 0usize;
         for cell in m.elements_of_dim(Dimension::D3) {
             max_fam = max_fam.max(*cell.family);
-            let (_, conn) = cell.to_poly();
-            for face in split_phed(&conn) {
-                let mut key: SmallVec<[usize; RING_INLINE]> =
-                    face.iter().map(|&g| g + shift).collect();
-                key.sort_unstable();
-                match face_uses.entry(key) {
-                    Entry::Occupied(mut slot) => slot.get_mut().count += 1,
-                    Entry::Vacant(slot) => {
-                        let mut ring = face;
-                        for g in &mut ring {
-                            *g += shift;
-                        }
-                        slot.insert(FaceUse {
-                            count: 1,
-                            mesh: k,
-                            ring,
-                        });
-                    }
-                }
-            }
         }
         family_shifts.push(fam_acc);
         fam_acc += max_fam + 1;
@@ -768,7 +761,7 @@ pub fn stitch(meshes: &[UMeshView], tol: f64) -> Result<UMesh, StitchError> {
     // output independent of the hash map iteration order.
     let mut boundary: Vec<(SmallVec<[usize; RING_INLINE]>, FaceUse)> = face_uses
         .into_iter()
-        .filter(|(_, u)| u.count == 1)
+        .filter(|(_, u)| u.cells.len() == 1)
         .collect();
     boundary.sort_unstable_by(|a, b| a.0.cmp(&b.0));
     for (key, use_) in boundary {
@@ -917,6 +910,503 @@ fn polyze_all(
         }
     }
     Ok(out)
+}
+
+// ------------------------------------------------------------------------------------------
+// `conformize` and `is_conform`: `stitch` applied to a single mesh, and the diagnostic that
+// tells whether the mesh needs it.
+// ------------------------------------------------------------------------------------------
+
+/// Why a mesh is not conformal, and where.
+///
+/// Every variant carries the cells involved, and the coordinates of the place where the problem
+/// is centred, so that a report can be turned into a selection.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConformanceIssue {
+    /// Two nodes are within `tol` of each other, but the cells that use them meet only through
+    /// those two nodes: they should have been welded into one.
+    ///
+    /// This is the block-on-block case, which [`conformize`] repairs by making the interface
+    /// conformal.
+    MergedNodes {
+        /// Centroid of the two nodes.
+        center: [f64; 3],
+        /// The two nodes, `node_a` first.
+        nodes: [usize; 2],
+        /// Cells using `node_a`.
+        cells_a: Vec<ElementId>,
+        /// Cells using `node_b`.
+        cells_b: Vec<ElementId>,
+    },
+    /// Two or more cells share a face, which leaves the domain ill-defined.
+    OverlappingFaces {
+        /// Centroid of the shared face.
+        center: [f64; 3],
+        /// The cells sharing the face, more than two.
+        cells: Vec<ElementId>,
+    },
+    /// The mesh is not embedded in 3D space, so its volume cannot be checked.
+    InvalidSpaceDimension {
+        /// The spatial dimension that was found.
+        found: usize,
+    },
+    /// The mesh holds a cell that [`conformize`] cannot handle.
+    UnsupportedCells {
+        /// The offending cells. More than one entry is reported.
+        cells: Vec<ElementId>,
+    },
+    /// The mesh has no volume cell at all.
+    NoVolumeCells,
+}
+
+/// Formats element ids as `HEX8#3, TRI3#0`, for issue messages.
+fn fmt_cells(cells: &[ElementId]) -> String {
+    cells
+        .iter()
+        .map(|id| format!("{:?}#{}", id.element_type(), id.index()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+impl fmt::Display for ConformanceIssue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MergedNodes {
+                center,
+                nodes,
+                cells_a,
+                cells_b,
+            } => write!(
+                f,
+                "cells {} and {} meet through the separate nodes {} and {} although those nodes \
+                 are at the same location {center:?}; the interface between them is not conformal",
+                fmt_cells(cells_a),
+                fmt_cells(cells_b),
+                nodes[0],
+                nodes[1],
+            ),
+            Self::OverlappingFaces { center, cells } => write!(
+                f,
+                "cells {} all share the same face, whose centroid is {center:?}; a face can be \
+                 shared by at most two cells",
+                fmt_cells(cells),
+            ),
+            Self::InvalidSpaceDimension { found } => write!(
+                f,
+                "the mesh must be embedded in 3d space, found spatial dimension {found}",
+            ),
+            Self::UnsupportedCells { cells } => write!(
+                f,
+                "the mesh holds cells that cannot be conformized: {}",
+                fmt_cells(cells),
+            ),
+            Self::NoVolumeCells => write!(f, "the mesh holds no volume cell"),
+        }
+    }
+}
+
+/// The outcome of [`is_conform`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConformanceReport {
+    /// The problems found, ordered from the most structural to the most numerical.
+    pub issues: Vec<ConformanceIssue>,
+    /// The total number of problems found, which may be larger than `issues.len()`.
+    pub n_issues: usize,
+    /// Whether `issues` was capped, in which case it does not list everything.
+    pub truncated: bool,
+}
+
+impl ConformanceReport {
+    /// Whether the mesh is conformal.
+    pub fn is_conform(&self) -> bool {
+        self.n_issues == 0
+    }
+}
+
+/// Ranks an issue so that the report is deterministic and the most structural problems come
+/// first: an input that cannot be conformized at all is more useful to report than a couple of
+/// duplicated nodes.
+fn issue_rank(issue: &ConformanceIssue) -> u8 {
+    match issue {
+        ConformanceIssue::NoVolumeCells
+        | ConformanceIssue::InvalidSpaceDimension { .. }
+        | ConformanceIssue::UnsupportedCells { .. } => 0,
+        ConformanceIssue::OverlappingFaces { .. } => 1,
+        ConformanceIssue::MergedNodes { .. } => 2,
+    }
+}
+
+/// A duplicated node pair found by [`is_conform`]: the midpoint of the pair, the nodes, and the
+/// cells using each of them.
+struct NodeDuplicate {
+    center: [f64; 3],
+    nodes: [usize; 2],
+    cells_a: Vec<ElementId>,
+    cells_b: Vec<ElementId>,
+}
+
+/// Checks whether `mesh` is internally conformal and, when it is not, reports why and where.
+///
+/// Three kinds of defect are reported:
+///
+/// - a face shared by more than two cells, which leaves the domain ill-defined;
+/// - two nodes within `tol` of each other that are used by cells which are not already linked
+///   by a chain of conformal faces. Those cells meet through those two nodes where they should
+///   meet through a shared, conformal interface; [`conformize`] welds the pair away;
+/// - input that [`conformize`] would reject (not embedded in 3D, no volume cell, unsupported
+///   cell type), reported as a single self-explanatory issue rather than an error, since the
+///   missing conformance is then a consequence of the input being unsupported. Such an issue is
+///   always included, even when `max_issues` is `Some(0)`.
+///
+/// Interfaces that overlap without sharing any coincident node are *not* detected: recognizing
+/// them costs the geometric imprinting that [`conformize`] performs, so [`is_conform`] only
+/// reports what is cheap to know beforehand. Similarly, duplicate nodes within one part are not
+/// reported, because [`conformize`] leaves them alone.
+///
+/// `max_issues` caps the length of the report so that a large mesh cannot produce an unbounded
+/// one; `None` keeps everything. [`ConformanceReport::n_issues`] always holds the true total.
+///
+/// The mesh is only read. See [`conformize`] for the corresponding operation.
+pub fn is_conform(
+    mesh: &UMeshView,
+    tol: f64,
+    max_issues: Option<usize>,
+) -> Result<ConformanceReport, StitchError> {
+    if !(tol.is_finite() && tol >= 0.0) {
+        return Err(StitchError::InvalidTolerance { tol });
+    }
+    let cap = max_issues.unwrap_or(usize::MAX);
+
+    // An input that `conformize` would reject is reported as-is: the missing conformance is a
+    // consequence of the input being unsupported, not a separate defect.
+    if mesh.space_dimension() != 3 {
+        return Ok(single_issue(ConformanceIssue::InvalidSpaceDimension {
+            found: mesh.space_dimension(),
+        }));
+    }
+    if mesh.elements_of_dim(Dimension::D3).count() == 0 {
+        return Ok(single_issue(ConformanceIssue::NoVolumeCells));
+    }
+    let unsupported: Vec<ElementId> = mesh
+        .elements()
+        .filter(|e| {
+            let et = e.element_type();
+            et.dimension() != Dimension::D3 || !supported_cell_type(et)
+        })
+        .map(|e| e.id())
+        .take(cap.max(1))
+        .collect();
+    if !unsupported.is_empty() {
+        return Ok(single_issue(ConformanceIssue::UnsupportedCells {
+            cells: unsupported,
+        }));
+    }
+
+    let (uses, part_of) = count_volume_faces(mesh);
+
+    let mut issues: Vec<ConformanceIssue> = Vec::new();
+    let mut n_issues = 0usize;
+
+    // A face used by more than two cells cannot be reconciled by refining: report it first, as
+    // it hides whatever happens on that face.
+    let mut overlapping: Vec<&FaceUse> = uses.values().filter(|u| u.cells.len() > 2).collect();
+    overlapping.sort_by_key(|u| u.cells[0]);
+    for u in overlapping {
+        n_issues += 1;
+        if issues.len() < cap {
+            issues.push(ConformanceIssue::OverlappingFaces {
+                center: ring_centroid(&mesh.coords(), &u.ring),
+                cells: u.cells.to_vec(),
+            });
+        }
+    }
+
+    // Nodes that are within `tol` of each other are candidates for welding. A candidate pair is
+    // only a defect when its two cells are not already linked by a chain of conformal faces: the
+    // nodes legitimately shared by neighbouring cells are not duplicates.
+    let clusters = weld_clusters(mesh, tol);
+    let mut cells_using: FxHashMap<usize, Vec<ElementId>> =
+        FxHashMap::with_capacity_and_hasher(mesh.coords().nrows(), FxBuildHasher);
+    for cell in mesh.elements_of_dim(Dimension::D3) {
+        let id = cell.id();
+        for &n in cell.connectivity().iter() {
+            cells_using.entry(n).or_default().push(id);
+        }
+    }
+    let coords = mesh.coords();
+    let mut duplicates: Vec<NodeDuplicate> = Vec::new();
+    for members in clusters {
+        let Some((a, rest)) = members.split_first() else {
+            continue;
+        };
+        let cells_a = cells_using.get(a).cloned().unwrap_or_default();
+        for &b in rest {
+            let cells_b = cells_using.get(&b).cloned().unwrap_or_default();
+            if cells_a.is_empty() || cells_b.is_empty() {
+                continue;
+            }
+            if same_part(&part_of, &cells_a, &cells_b) {
+                continue;
+            }
+            duplicates.push(NodeDuplicate {
+                center: [
+                    (coords[(*a, 0)] + coords[(b, 0)]) / 2.0,
+                    (coords[(*a, 1)] + coords[(b, 1)]) / 2.0,
+                    (coords[(*a, 2)] + coords[(b, 2)]) / 2.0,
+                ],
+                nodes: [*a, b],
+                cells_a: cells_a.clone(),
+                cells_b,
+            });
+        }
+    }
+    duplicates.sort_by(|x, y| {
+        x.center[0]
+            .total_cmp(&y.center[0])
+            .then_with(|| x.center[1].total_cmp(&y.center[1]))
+            .then_with(|| x.center[2].total_cmp(&y.center[2]))
+            .then_with(|| x.nodes.cmp(&y.nodes))
+    });
+    for dup in duplicates {
+        n_issues += 1;
+        if issues.len() < cap {
+            issues.push(ConformanceIssue::MergedNodes {
+                center: dup.center,
+                nodes: dup.nodes,
+                cells_a: dup.cells_a,
+                cells_b: dup.cells_b,
+            });
+        }
+    }
+
+    issues.sort_by_key(issue_rank);
+    Ok(ConformanceReport {
+        truncated: n_issues > issues.len(),
+        issues,
+        n_issues,
+    })
+}
+
+/// A report holding a single, self-explanatory issue.
+fn single_issue(issue: ConformanceIssue) -> ConformanceReport {
+    ConformanceReport {
+        issues: vec![issue],
+        n_issues: 1,
+        truncated: false,
+    }
+}
+
+/// Tells whether any cell of `cells_a` and any cell of `cells_b` belong to the same part, i.e.
+/// are linked by a chain of conformal faces.
+fn same_part(part_of: &FxHashMap<ElementId, usize>, a: &[ElementId], b: &[ElementId]) -> bool {
+    a.iter()
+        .filter_map(|c| part_of.get(c))
+        .any(|pa| b.iter().filter_map(|c| part_of.get(c)).any(|pb| pa == pb))
+}
+
+/// Uses of every face, keyed by the sorted (global) node ids of the face.
+type FaceMap = FxHashMap<SmallVec<[usize; RING_INLINE]>, FaceUse>;
+
+/// The part of every cell, as computed by [`count_volume_faces`].
+type PartMap = FxHashMap<ElementId, usize>;
+
+/// Counts the uses of every face of every volume cell of `meshes`, one map entry per face.
+///
+/// Node ids are shifted by `node_offset[k]` so that the faces of distinct meshes stay distinct,
+/// which makes the map the shared face index of the whole operation: [`stitch`] takes the
+/// boundary from it (a face used once), [`count_volume_faces`] the interfaces (a face used
+/// twice) and [`is_conform`] the defects (a face used more than twice). A `TET4` or `HEX8` cell
+/// has six faces, which sizes the map well.
+fn count_face_uses(meshes: &[UMeshView], node_offset: &[usize]) -> FaceMap {
+    let n_cells: usize = meshes.iter().map(|m| m.num_elements()).sum();
+    let mut uses: FaceMap = FxHashMap::with_capacity_and_hasher(6 * n_cells, FxBuildHasher);
+    for (k, m) in meshes.iter().enumerate() {
+        let shift = node_offset[k];
+        for cell in m.elements_of_dim(Dimension::D3) {
+            let id = cell.id();
+            let (_, conn) = cell.to_poly();
+            for face in split_phed(&conn) {
+                let mut key: SmallVec<[usize; RING_INLINE]> =
+                    face.iter().map(|&g| g + shift).collect();
+                key.sort_unstable();
+                match uses.entry(key) {
+                    Entry::Occupied(mut slot) => slot.get_mut().cells.push(id),
+                    Entry::Vacant(slot) => {
+                        let mut ring = face;
+                        for g in &mut ring {
+                            *g += shift;
+                        }
+                        slot.insert(FaceUse {
+                            cells: smallvec::smallvec![id],
+                            mesh: k,
+                            ring,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    uses
+}
+
+/// Counts the faces of every volume cell of `mesh`, returning the uses of each face together with
+/// the part of every cell.
+///
+/// A part is a group of cells linked by a chain of conformal faces, i.e. what is left of the mesh
+/// once every interface that still has to be conformized is cut. [`conformize`] stitches the
+/// parts, and [`is_conform`] compares nodes across them. Cells sharing no face with any other
+/// cell form a part of their own.
+fn count_volume_faces(mesh: &UMeshView) -> (FaceMap, PartMap) {
+    let n_cells = mesh.elements_of_dim(Dimension::D3).count();
+    let uses = count_face_uses(std::slice::from_ref(mesh), &[0]);
+
+    // Cells sharing a face are in the same part. Union-find over those pairs, keyed by the
+    // first cell of the pair so that each edge is inserted once.
+    let mut parent: FxHashMap<ElementId, ElementId> =
+        FxHashMap::with_capacity_and_hasher(n_cells, FxBuildHasher);
+    fn find(parent: &mut FxHashMap<ElementId, ElementId>, x: ElementId) -> ElementId {
+        let mut root = x;
+        while let Some(&p) = parent.get(&root) {
+            if p == root {
+                break;
+            }
+            root = p;
+        }
+        let mut y = x;
+        while let Some(&p) = parent.get(&y) {
+            if p == root {
+                break;
+            }
+            parent.insert(y, root);
+            y = p;
+        }
+        root
+    }
+    let mut edges: Vec<(ElementId, ElementId)> = Vec::new();
+    for u in uses.values() {
+        if let [a, b] = u.cells.as_slice() {
+            edges.push((*a, *b));
+        }
+    }
+    edges.sort_unstable();
+    for (a, b) in edges {
+        parent.entry(a).or_insert(a);
+        parent.entry(b).or_insert(b);
+        let ra = find(&mut parent, a);
+        let rb = find(&mut parent, b);
+        if ra != rb {
+            parent.insert(rb, ra);
+        }
+    }
+
+    let mut part_of: FxHashMap<ElementId, usize> =
+        FxHashMap::with_capacity_and_hasher(n_cells, FxBuildHasher);
+    let mut part_of_root: FxHashMap<ElementId, usize> =
+        FxHashMap::with_capacity_and_hasher(n_cells, FxBuildHasher);
+    let mut next_part = 0usize;
+    // Walking the cells in order keeps the part numbering independent of the hash iteration
+    // order, which would otherwise leak into the family labels of the result. A cell that shares
+    // no face with any other cell is its own part, so every volume cell gets an entry.
+    for cell in mesh.elements_of_dim(Dimension::D3) {
+        let id = cell.id();
+        let root = if parent.contains_key(&id) {
+            find(&mut parent, id)
+        } else {
+            id
+        };
+        let part = match part_of_root.get(&root) {
+            Some(&p) => p,
+            None => {
+                part_of_root.insert(root, next_part);
+                next_part += 1;
+                next_part - 1
+            }
+        };
+        part_of.insert(id, part);
+    }
+    (uses, part_of)
+}
+
+/// Groups the nodes of `mesh` that are within `tol` of each other.
+///
+/// Returns one list of node ids per cluster of more than one node, in increasing order. The
+/// clusters are the very ones [`weld_points`] builds (this only regroups its per-point result),
+/// so [`is_conform`] reports exactly the node pairs that [`stitch`] welds together, and every
+/// member of a cluster lies within `tol` of its first node.
+fn weld_clusters(mesh: &UMeshView, tol: f64) -> Vec<Vec<usize>> {
+    let coords = mesh.coords();
+    let points: Vec<[f64; 3]> = (0..coords.nrows()).map(|i| point3(&coords, i)).collect();
+    let (_, cluster_of) = weld_points(&points, tol);
+    let mut groups: FxHashMap<usize, Vec<usize>> =
+        FxHashMap::with_capacity_and_hasher(points.len(), FxBuildHasher);
+    for (i, &c) in cluster_of.iter().enumerate() {
+        groups.entry(c).or_default().push(i);
+    }
+    let mut out: Vec<Vec<usize>> = groups.into_values().filter(|g| g.len() > 1).collect();
+    out.sort();
+    out
+}
+
+/// Centroid of a node ring.
+fn ring_centroid<S: nd::Data<Elem = f64>>(
+    coords: &nd::ArrayBase<S, nd::Ix2>,
+    ring: &[usize],
+) -> [f64; 3] {
+    let mut acc = [0.0; 3];
+    for &n in ring {
+        let p = point3(coords, n);
+        for k in 0..3 {
+            acc[k] += p[k];
+        }
+    }
+    let inv = 1.0 / ring.len().max(1) as f64;
+    [acc[0] * inv, acc[1] * inv, acc[2] * inv]
+}
+
+/// Conformizes a single 3D volume mesh, that is [`stitch`] applied to a mesh with itself.
+///
+/// The mesh is split into its *parts*: groups of cells linked by a chain of conforming faces.
+/// Two blocks that merely touch, each carrying its own copy of the interface nodes, are two
+/// parts, and are made conformal to each other exactly as [`stitch`] would do for two separate
+/// meshes. A mesh whose interfaces are already conformal has a single part and comes back
+/// unchanged, apart from the conversion of its cells to `PHED`.
+///
+/// Like [`stitch`], the result is a single `PHED` mesh whose families are relabeled (per part),
+/// with fields and groups dropped; interfaces are imprinted only, so overlapping volumes are not
+/// detected and faces shared by more than two cells are not repaired. See [`is_conform`] for the
+/// diagnostic and the module documentation for the algorithm, guarantees and limitations.
+pub fn conformize(mesh: &UMeshView, tol: f64) -> Result<UMesh, StitchError> {
+    if !(tol.is_finite() && tol >= 0.0) {
+        return Err(StitchError::InvalidTolerance { tol });
+    }
+    check_volume_mesh(mesh, 0)?;
+
+    let parts = parts_of(mesh);
+    if parts.len() < 2 {
+        // Nothing to conformize. The cell count drives the decision rather than the presence of
+        // a boundary, so that a mesh with no boundary face at all still takes the fast path.
+        return Ok(crate::tools::polyze::polyze(mesh));
+    }
+    let views: Vec<UMeshView> = parts.iter().map(UMesh::view).collect();
+    stitch(&views, tol)
+}
+
+/// Splits `mesh` into the parts [`conformize`] stitches, in a stable order.
+fn parts_of(mesh: &UMeshView) -> Vec<UMesh> {
+    let (_, part_of) = count_volume_faces(mesh);
+    if part_of.is_empty() {
+        // No volume cell at all: one empty part, which sends `conformize` down the fast path.
+        return vec![mesh.to_shared()];
+    }
+    let n_parts = part_of.values().copied().max().map_or(0, |m| m + 1);
+    let mut ids: Vec<ElementIds> = vec![ElementIds::new(); n_parts];
+    for cell in mesh.elements_of_dim(Dimension::D3) {
+        let p = part_of[&cell.id()];
+        ids[p].add(cell.element_type(), cell.index());
+    }
+    // `extract` exists on owned meshes only, so the parts are cut out of one shared copy.
+    let owned = mesh.to_shared();
+    ids.iter().map(|part| owned.extract(part, false)).collect()
 }
 
 #[cfg(test)]

@@ -3,7 +3,7 @@
 //! The fixtures are deliberately small so that a full run stays in the second range: the point
 //! is to compare revisions of the algorithm, not to measure the absolute throughput of a solver.
 
-use criterion::{BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use std::hint::black_box;
 
 use mefikit::mesh::{ElementLike, UMesh};
@@ -151,7 +151,5 @@ fn stitch_bench(c: &mut Criterion) {
     group.finish();
 }
 
-fn main() {
-    let mut c = Criterion::default();
-    stitch_bench(&mut c);
-}
+criterion_group!(benches, stitch_bench);
+criterion_main!(benches);

@@ -23,12 +23,15 @@
 //! the `surface` submodule.
 //!
 //! Assembling several 3D volume meshes into a single conforming polyhedral mesh is handled by
-//! [`stitch`], see the `stitch` submodule.
+//! [`stitch`], and conformizing one mesh with itself (plus the [`is_conform`] diagnostic), by
+//! [`conformize`]; see the `stitch` submodule.
 
 mod stitch;
 mod surface;
 
-pub use stitch::{StitchError, stitch};
+pub use stitch::{
+    ConformanceIssue, ConformanceReport, StitchError, conformize, is_conform, stitch,
+};
 pub use surface::{SurfaceOverlay, SurfaceOverlayError, overlay_surfaces};
 
 use rustc_hash::FxHashMap;
