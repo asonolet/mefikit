@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ec56dbda.js";
+            window.path_to_searchindex_js = "searchindex-8526df08.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-4506d0f5.js"></script>
@@ -300,9 +300,27 @@ in-place and return a new mesh only when the result displaced elements
 <tr><td>extrude</td><td><code>mesh.extrude(along)</code>, <code>extrude_parallel(...)</code>, <code>extrude_curv(...)</code></td></tr>
 <tr><td>split / polygonize</td><td><code>mesh.split()</code>, <code>mesh.polyze()</code> / <code>unpolyze()</code></td></tr>
 <tr><td>boolean overlay</td><td><code>mesh.overlay(mesh2, operation=None)</code></td></tr>
+<tr><td>surface imprint in 3D</td><td><code>mesh.overlay_surfaces(mesh2, tol=1e-9)</code> → <code>mf.SurfaceOverlay</code></td></tr>
+<tr><td>join meshes as-is</td><td><code>mf.aggregate(meshes)</code>, <code>mf.concat(a, b)</code></td></tr>
+<tr><td>stitch volumes at shared boundaries</td><td><code>mf.stitch(meshes, tol=1e-9)</code> → <code>UMesh</code></td></tr>
 </tbody>
 </table>
 </div>
+<p><code>mf.stitch</code> makes two or more volume meshes (<code>TET4</code>, <code>HEX8</code> or <code>PHED</code>) conformal
+wherever their boundaries coincide, so that they can be used as a single mesh:</p>
+<pre><code class="language-python">import mefikit as mf
+
+plate = mf.build_cmesh([0, 2], [0, 2], [0, 1])  # one HEX8
+block = mf.build_cmesh([0, 1, 2], [0, 1, 2], [1, 2])  # four HEX8
+stitched = mf.stitch([plate, block])  # one PHED mesh, 5 cells
+
+# The interface on z = 1 is now shared: every face there belongs to two cells.
+coords = stitched.coords()
+</code></pre>
+<p>The result is a single polyhedral mesh: interface nodes exist once, families are
+relabeled per input mesh, and fields and groups are dropped. Coincident interfaces
+must be piecewise planar within <code>tol</code>. This is an <em>imprint only</em> operation:
+overlapping volumes are not detected, so the output may contain overlapping cells.</p>
 <p>Field expressions (notably <code>mf.M</code> for the on-the-fly measure) can be evaluated
 without a stored field:</p>
 <ul>

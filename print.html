@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ec56dbda.js";
+            window.path_to_searchindex_js = "searchindex-8526df08.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-4506d0f5.js"></script>
@@ -642,9 +642,27 @@ in-place and return a new mesh only when the result displaced elements
 <tr><td>extrude</td><td><code>mesh.extrude(along)</code>, <code>extrude_parallel(...)</code>, <code>extrude_curv(...)</code></td></tr>
 <tr><td>split / polygonize</td><td><code>mesh.split()</code>, <code>mesh.polyze()</code> / <code>unpolyze()</code></td></tr>
 <tr><td>boolean overlay</td><td><code>mesh.overlay(mesh2, operation=None)</code></td></tr>
+<tr><td>surface imprint in 3D</td><td><code>mesh.overlay_surfaces(mesh2, tol=1e-9)</code> → <code>mf.SurfaceOverlay</code></td></tr>
+<tr><td>join meshes as-is</td><td><code>mf.aggregate(meshes)</code>, <code>mf.concat(a, b)</code></td></tr>
+<tr><td>stitch volumes at shared boundaries</td><td><code>mf.stitch(meshes, tol=1e-9)</code> → <code>UMesh</code></td></tr>
 </tbody>
 </table>
 </div>
+<p><code>mf.stitch</code> makes two or more volume meshes (<code>TET4</code>, <code>HEX8</code> or <code>PHED</code>) conformal
+wherever their boundaries coincide, so that they can be used as a single mesh:</p>
+<pre><code class="language-python">import mefikit as mf
+
+plate = mf.build_cmesh([0, 2], [0, 2], [0, 1])  # one HEX8
+block = mf.build_cmesh([0, 1, 2], [0, 1, 2], [1, 2])  # four HEX8
+stitched = mf.stitch([plate, block])  # one PHED mesh, 5 cells
+
+# The interface on z = 1 is now shared: every face there belongs to two cells.
+coords = stitched.coords()
+</code></pre>
+<p>The result is a single polyhedral mesh: interface nodes exist once, families are
+relabeled per input mesh, and fields and groups are dropped. Coincident interfaces
+must be piecewise planar within <code>tol</code>. This is an <em>imprint only</em> operation:
+overlapping volumes are not detected, so the output may contain overlapping cells.</p>
 <p>Field expressions (notably <code>mf.M</code> for the on-the-fly measure) can be evaluated
 without a stored field:</p>
 <ul>
@@ -1177,6 +1195,58 @@ unpolyzed.to_pyvista().plot(show_edges=True)
        [10, 11, 15, 14]], dtype=uint64)}
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_32_1.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_32_1.png" alt="png"></span></label></p>
+<h2 id="stitch"><a class="header" href="#stitch">Stitch</a></h2>
+<p>Meshes are often modeled as separate blocks that were meshed independently, so their nodes do not
+match on the boundaries they share and they cannot be used as a single mesh. <code>mf.stitch</code> makes them
+conformal: the faces of each block are split to match the faces of its neighbours.</p>
+<p>Here a plate made of a single hexahedron sits below a block of four hexahedra. The plate’s top
+face is one square while the block’s bottom is four squares, so they do not match.</p>
+<pre><code class="language-python">plate = mf.build_cmesh([0.0, 2.0], [0.0, 2.0], [0.0, 1.0])
+block = mf.build_cmesh([0.0, 1.0, 2.0], [0.0, 1.0, 2.0], [1.0, 2.0])
+
+stitched = mf.stitch([plate, block])
+
+print(list(stitched.blocks()))
+print(f"{stitched.num_elements()=}")
+</code></pre>
+<pre><code>['PHED']
+stitched.num_elements()=5
+</code></pre>
+<pre><code class="language-python">plotter = pv.Plotter(shape=(1, 2), window_size=(1100, 500))
+
+plotter.subplot(0, 0)
+plotter.add_text("Before", font_size=14)
+plotter.add_mesh(
+    plate.to_pyvista(),
+    color="cornflowerblue",
+    opacity=0.55,
+    show_edges=True,
+    edge_color="white",
+)
+plotter.add_mesh(
+    block.to_pyvista(),
+    color="lightsalmon",
+    opacity=0.55,
+    show_edges=True,
+    edge_color="white",
+)
+plotter.add_text("1 face vs 4 faces", position="lower_left", font_size=9)
+plotter.camera_position = "iso"
+
+plotter.subplot(0, 1)
+plotter.add_text("After", font_size=14)
+plotter.add_mesh(
+    stitched.to_pyvista(),
+    color="lightseagreen",
+    show_edges=True,
+    edge_color="white",
+)
+plotter.add_text("4 shared faces", position="lower_left", font_size=9)
+plotter.camera_position = "iso"
+
+plotter.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_35_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_35_0.png" alt="png"></span></label></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="geometrical-tools"><a class="header" href="#geometrical-tools">Geometrical tools</a></h1>
 <pre><code class="language-python">import numpy as np
