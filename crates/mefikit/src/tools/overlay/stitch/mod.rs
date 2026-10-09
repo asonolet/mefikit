@@ -545,7 +545,7 @@ fn process_region(
         let parent = per_group
             .get(&gid)
             .map(Vec::as_slice)
-            .and_then(&contains)
+            .and_then(contains)
             .ok_or(StitchError::UnmatchedPiece { region })?;
         // The piece is interface area as soon as two distinct meshes cover it. It need not be
         // covered by *every* mesh of the region: a block touching two others on different faces
