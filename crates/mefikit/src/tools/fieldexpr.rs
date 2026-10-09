@@ -15,10 +15,11 @@ use super::centroids::{centroids, x_center, y_center, z_center};
 use super::measure::measure;
 use super::normals::{normals, nx as normal_x, ny as normal_y, nz as normal_z};
 use crate::mesh::{Dimension, FieldArcD, FieldCowD, FieldOwnedD, UMesh, UMeshBase, UMeshView};
+use crate::tools::gradient::{Gradient, GradientOperator};
 use crate::tools::transfer::{FieldNature, Transfer, TransferOperator};
 
 /// Evaluates a field expression on the source mesh, inferring the source dimension.
-fn eval_source(source_mesh: &UMesh, source: FieldExpr) -> FieldOwnedD {
+pub(crate) fn eval_source(source_mesh: &UMesh, source: FieldExpr) -> FieldOwnedD {
     let src_view = source_mesh.view();
     source.evaluate(&src_view, None).to_owned()
 }
@@ -58,6 +59,46 @@ impl TransferOperator {
     ) -> FieldOwnedD {
         let source_values = eval_source(source_mesh, source);
         self.apply(&source_values.view(), nature, default)
+    }
+}
+
+impl GradientOperator {
+    /// Evaluates `source` on `source_mesh` and wraps the gradient as a field expression.
+    ///
+    /// `default` is used for target cells whose sparse row is empty. The result is a vector field
+    /// with the space dimension as trailing axis.
+    pub fn expr(
+        self: Arc<Self>,
+        source_mesh: &UMesh,
+        source: FieldExpr,
+        default: f64,
+    ) -> FieldExpr {
+        let tgt_dim = self.tgt_dim();
+        let source_values = eval_source(source_mesh, source);
+        FieldExpr::Gradient {
+            source_values,
+            op: self,
+            tgt_dim,
+            default,
+        }
+    }
+
+    /// Evaluates `source` on `source_mesh` and returns its gradient on the target cells immediately.
+    pub fn eval(&self, source_mesh: &UMesh, source: FieldExpr, default: f64) -> FieldOwnedD {
+        let source_values = eval_source(source_mesh, source);
+        self.apply(&source_values.view(), default)
+    }
+
+    /// Evaluates `source` on `source_mesh` and returns its gradient at the evaluation points,
+    /// as an `(n_points, d)` array.
+    pub fn eval_points(
+        &self,
+        source_mesh: &UMesh,
+        source: FieldExpr,
+        default: f64,
+    ) -> nd::Array2<f64> {
+        let source_values = eval_source(source_mesh, source);
+        self.apply_points(&source_values.view(), default)
     }
 }
 
@@ -112,6 +153,18 @@ pub enum FieldExpr {
         default: f64,
         /// Nature of the source field, forwarded to the transfer operator.
         nature: FieldNature,
+    },
+    /// A pre-evaluated field gradient: source values have been materialised on the source mesh and
+    /// the gradient operator will compute its gradient on the target cells at evaluation time.
+    Gradient {
+        /// Source (scalar) field values, pre-evaluated on the source mesh.
+        source_values: FieldOwnedD,
+        /// The gradient operator.
+        op: Arc<GradientOperator>,
+        /// Topological dimension of the target cells.
+        tgt_dim: Dimension,
+        /// Default value for target cells with an empty sparse row.
+        default: f64,
     },
 }
 
@@ -378,6 +431,9 @@ fn collect_dim_hints(
         FieldExpr::Transfer { tgt_dim, .. } => {
             field_dims.insert(*tgt_dim);
         }
+        FieldExpr::Gradient { tgt_dim, .. } => {
+            field_dims.insert(*tgt_dim);
+        }
     }
 }
 
@@ -556,6 +612,12 @@ impl Evaluable for FieldExpr {
                 default,
                 nature,
             } => op.apply(&source_values.view(), *nature, *default).into(),
+            FieldExpr::Gradient {
+                source_values,
+                op,
+                tgt_dim: _,
+                default,
+            } => op.apply(&source_values.view(), *default).into(),
         }
     }
 }

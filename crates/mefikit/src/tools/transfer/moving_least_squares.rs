@@ -4,13 +4,15 @@
 //! fitted through them by weighted least squares, the weights coming from [`DistanceWeighting`].
 //! The fit is evaluated at the target point, which yields `k` interpolation weights `w_i` such
 //! that the transferred value is `sum_i w_i f(x_i)`. The `k`-nearest-neighbours precompute (in the
-//! shared [`super::solver`] module) and the apply-time sparse product (in the shared
+//! shared meshless solver module) and the apply-time sparse product (in the shared
 //! [`super::operator::TransferOperator`]) are shared with the other transfer methods; this module
 //! owns the fitting itself and the method's validation.
 
 use super::operator::{TransferMethod, TransferOperator, point_interpolation, validated_dims};
-use super::solver::{DistanceWeighting, NeighbourScheme, solve_neighbours, source_centroids};
 use crate::mesh::UMeshView;
+use crate::tools::meshless::{
+    DistanceWeighting, NeighbourScheme, solve_neighbours, source_centroids,
+};
 
 /// Builds the moving least-squares operator over the `k` nearest source points of every target point.
 ///

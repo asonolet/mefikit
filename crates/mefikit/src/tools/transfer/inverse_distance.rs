@@ -7,11 +7,11 @@
 //! neighbours; a target point coinciding with a source point reproduces that source value exactly.
 //!
 //! The validation and the plumbing between the `k`-nearest-neighbours search (in the shared
-//! [`super::solver`] module) and the [`super::operator::TransferOperator`] live in this module.
+//! meshless solver module) and the [`super::operator::TransferOperator`] live in this module.
 
 use super::operator::{TransferMethod, TransferOperator, point_interpolation, validated_dims};
-use super::solver::{NeighbourScheme, solve_neighbours, source_centroids};
 use crate::mesh::UMeshView;
+use crate::tools::meshless::{NeighbourScheme, solve_neighbours, source_centroids};
 
 /// Builds the inverse-distance operator over the `k` nearest source points of every target point.
 ///

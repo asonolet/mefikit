@@ -19,7 +19,7 @@
 //! [`super::constant_piecewise`], [`super::conservative_p0`], [`super::inverse_distance`] and
 //! [`super::moving_least_squares`] submodules) builds its own coefficients and hands them to
 //! [`TransferOperator::build`]; the `k`-nearest-neighbours machinery shared by the two
-//! interpolation methods lives in the [`super::solver`] submodule, which never depends on this one.
+//! interpolation methods lives in the sibling `meshless` module, which never depends on this one.
 //! The mesh plumbing that turns raw `(indices, weights)` point data into [`RowSparse`] blocks
 //! ([`point_interpolation`], [`build_row_ptr`]) lives here next to the CSR data they assemble.
 
@@ -28,10 +28,11 @@ use std::collections::BTreeMap;
 use ndarray as nd;
 use ndarray::{Axis, concatenate};
 
-use super::solver::DistanceWeighting;
 use super::transfer_trait::{FieldNature, PointLocation, Transfer};
-use crate::element_traits::ElementGeo;
 use crate::mesh::{Dimension, ElementType, FieldOwnedD, FieldViewD, UMeshView};
+use crate::tools::meshless::{DistanceWeighting, target_centroids};
+
+pub(crate) use crate::tools::meshless::validated_dims;
 
 /// The four transfer methods sharing the [`TransferOperator`] machinery.
 ///
@@ -77,36 +78,6 @@ pub(crate) struct RowSparse {
     pub(crate) src_idx: Vec<usize>,
     /// Interpolation weight / overlap measure of each contribution.
     pub(crate) weights: Vec<f64>,
-}
-
-/// Validates the space dimension of a source/target mesh pair for a transfer and returns the
-/// common space dimension together with the two topological dimensions.
-///
-/// All transfer methods work on pairs of meshes living in the same 2D or 3D space, both non-empty.
-/// Returns the common space dimension and the topological dimensions of the source and target,
-/// which the callers compare against their own full-dimensionality requirements.
-pub(crate) fn validated_dims(
-    mesh_src: &UMeshView,
-    mesh_tgt: &UMeshView,
-    method: &str,
-) -> (Dimension, Dimension, usize) {
-    let src_space = mesh_src.space_dimension();
-    let tgt_space = mesh_tgt.space_dimension();
-    assert_eq!(
-        src_space, tgt_space,
-        "Source and target meshes should share the same space dimension, got source = {src_space}D and target = {tgt_space}D"
-    );
-    assert!(
-        (2..=3).contains(&src_space),
-        "{method} transfer is only supported in 2D and 3D space, got {src_space}D"
-    );
-    let src_dim = mesh_src
-        .topological_dimension()
-        .expect("Source mesh should not be empty");
-    let tgt_dim = mesh_tgt
-        .topological_dimension()
-        .expect("Target mesh should not be empty");
-    (src_dim, tgt_dim, src_space)
 }
 
 /// A unified sparse transfer operator, shared by all four transfer methods.
@@ -290,27 +261,10 @@ pub(crate) fn point_interpolation(
     solve: impl Fn(nd::ArrayView2<f64>) -> (nd::Array2<usize>, nd::Array2<f64>),
 ) -> Vec<(ElementType, RowSparse)> {
     let mut data = Vec::new();
-    for et in mesh_tgt.element_types() {
-        let tgt_coords = match space {
-            2 => {
-                let v: Vec<f64> = mesh_tgt
-                    .elements_of_type(*et)
-                    .flat_map(|e| e.centroid2().into_iter())
-                    .collect();
-                nd::Array2::from_shape_vec((mesh_tgt.block(*et).unwrap().len(), 2), v).unwrap()
-            }
-            3 => {
-                let v: Vec<f64> = mesh_tgt
-                    .elements_of_type(*et)
-                    .flat_map(|e| e.centroid3().into_iter())
-                    .collect();
-                nd::Array2::from_shape_vec((mesh_tgt.block(*et).unwrap().len(), 3), v).unwrap()
-            }
-            _ => unreachable!(),
-        };
+    for (et, tgt_coords) in target_centroids(mesh_tgt, space) {
         let (ind, wei) = solve(tgt_coords.view());
         data.push((
-            *et,
+            et,
             RowSparse {
                 target_measure: nd::Array1::ones(ind.nrows()),
                 row_ptr: build_row_ptr(&ind),
