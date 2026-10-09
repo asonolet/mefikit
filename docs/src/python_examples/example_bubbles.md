@@ -1,5 +1,7 @@
 # Bubbles example
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 
 ```python
 
@@ -8,13 +10,10 @@
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
 
 rng = np.random.default_rng(seed=123)
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 ```
 
 ## Setup
@@ -63,7 +62,7 @@ volumes.boundaries().to_pyvista().plot(opacity=0.4)
 
 
 
-![png](example_bubbles_files/example_bubbles_8_0.png)
+![png](example_bubbles_files/example_bubbles_9_0.png)
 
 
 
@@ -97,7 +96,7 @@ cracked.boundaries().to_pyvista().plot(opacity=0.4)
 
 
 
-![png](example_bubbles_files/example_bubbles_13_0.png)
+![png](example_bubbles_files/example_bubbles_14_0.png)
 
 
 
@@ -107,35 +106,19 @@ bubble_groups = inner_bubbles.connected_components()
 ```
 
 
-```python
-pv.global_theme.color_cycler = "default"
-pl = pv.Plotter()
-for c in bubble_groups:
-    compo = c.to_pyvista()
-    pl.add_mesh(compo)
-pl.add_mesh(volumes.boundaries(target_dim=1).to_pyvista())
-pl.show()
-pv.global_theme.color_cycler = None
-```
 
-
-
-![png](example_bubbles_files/example_bubbles_15_0.png)
+![png](example_bubbles_files/example_bubbles_16_0.png)
 
 
 
 
 ```python
 clip1 = mf.sel.bbox([-np.inf] * 3, [np.inf, ymax / 3.0, np.inf])
-pl = pv.Plotter()
-pl.add_mesh(volumes.select(clip1 & ~sphere_union).to_mesh().to_pyvista())
-pl.add_mesh(interface.to_pyvista(), opacity=0.4)
-pl.show()
 ```
 
 
 
-![png](example_bubbles_files/example_bubbles_16_0.png)
+![png](example_bubbles_files/example_bubbles_18_0.png)
 
 
 

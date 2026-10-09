@@ -1,5 +1,7 @@
 # Field transfers
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 This notebook shows how to remap fields between meshes with the
 `mf.transfer` operators: interpolation, extrapolation and conservative
 remapping, all sharing the same prepare / apply split.
@@ -7,12 +9,8 @@ remapping, all sharing the same prepare / apply split.
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 
 # Same mesh and selection context as the Fields notebook.
 x = np.logspace(-5, 0.0, 1000)
@@ -68,7 +66,7 @@ m_tgt.to_pyvista().plot(show_edges=True)
 
 
 
-![png](transfers_files/transfers_7_0.png)
+![png](transfers_files/transfers_8_0.png)
 
 
 
@@ -122,7 +120,7 @@ m_tgt.to_pyvista().plot(show_edges=True)
 
 
 
-![png](transfers_files/transfers_13_0.png)
+![png](transfers_files/transfers_14_0.png)
 
 
 
@@ -131,27 +129,6 @@ As you can see the projection gets a value everywhere, even outside the initial 
 Inside the domain the interpolation works like a charm.
 
 ### Transfer methods comparison
-
-
-```python
-def compare_src_tgt(m_src, m_tgt):
-    scale = (1.0 - 1e-2) / (1.1 + 0.05)
-
-    pt = pv.Plotter(shape=(1, 2))
-    pt.subplot(0, 0)
-    pt.add_text("Source")
-    pt.add_mesh(m_src.to_pyvista(), show_edges=True, clim=[0.0, 0.06])
-    pt.camera_position = "xy"
-    pt.camera.zoom(scale)
-    pt.subplot(0, 1)
-    pt.add_text("Target")
-    pt.add_mesh(
-        m_tgt.to_pyvista(), clim=[0.0, 0.06], below_color="pink", above_color="red"
-    )
-    pt.add_mesh(m_src.descend().to_pyvista(), show_edges=True, line_width=1)
-    pt.camera_position = "xy"
-    pt.show()
-```
 
 
 ```python
@@ -208,124 +185,77 @@ for T, label in zip(transfers, trasfers_labels):
 
 
 
-![png](transfers_files/transfers_17_0.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_1.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_2.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_3.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_4.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_5.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_6.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_7.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_8.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_9.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_10.png)
-
-
-
-
-```python
-import matplotlib.pyplot as plt
-
-chart_data = {
-    "Prepare": prepare_times,
-    "Apply": apply_times,
-}
-
-fig, ax = plt.subplots(figsize=(10, 5))
-
-res = ax.grouped_bar(chart_data, tick_labels=trasfers_labels, group_spacing=1)
-for container in res.bar_containers:
-    ax.bar_label(container, padding=3)
-
-# Add some text for labels, title, etc.
-ax.set_ylabel("Time (ms)")
-ax.set_title("Time per step")
-ax.legend(loc="upper left", ncols=3)
-fig.tight_layout()
-plt.show()
-```
-
-
-
 ![png](transfers_files/transfers_18_0.png)
 
 
 
+
+
+![png](transfers_files/transfers_18_1.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_2.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_3.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_4.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_5.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_6.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_7.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_8.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_9.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_10.png)
+
+
+
+
+
+![png](transfers_files/transfers_19_0.png)
+
+
+
 ## Transfer of 3D fields
-
-
-```python
-def compare_src_tgt_3d(m_src, m_tgt):
-    vmin = m_src.select(mf.sel.all()).min(mf.M) * 0.99
-    vmax = m_src.select(mf.sel.all()).max(mf.M) * 1.01
-    scale = (1.0 - 1e-2) / (1.1 + 0.05)
-
-    pt = pv.Plotter(shape=(1, 2))
-    pt.subplot(0, 0)
-    pt.add_text("Source")
-    pt.add_mesh(m_src.to_pyvista(), show_edges=True, clim=[vmin, vmax])
-    # pt.view_xy()
-    pt.camera.zoom(scale)
-
-    pt.subplot(0, 1)
-    pt.add_text("Target")
-    pt.add_mesh(
-        m_tgt.to_pyvista(), clim=[vmin, vmax], below_color="pink", above_color="red"
-    )
-    pt.add_mesh(m_src.descend(target_dim=1).to_pyvista(), show_edges=True, line_width=1)
-    # pt.view_xy()
-    pt.show()
-```
 
 
 ```python
@@ -382,60 +312,37 @@ for T, label in zip(transfers, trasfers_labels):
 
 
 
-![png](transfers_files/transfers_21_0.png)
-
-
-
-
-
-![png](transfers_files/transfers_21_1.png)
-
-
-
-
-
-![png](transfers_files/transfers_21_2.png)
-
-
-
-
-
-![png](transfers_files/transfers_21_3.png)
-
-
-
-
-
-![png](transfers_files/transfers_21_4.png)
-
-
-
-
-```python
-import matplotlib.pyplot as plt
-
-chart_data = {
-    "Prepare": prepare_times,
-    "Apply": apply_times,
-}
-
-fig, ax = plt.subplots(figsize=(10, 5))
-
-res = ax.grouped_bar(chart_data, tick_labels=trasfers_labels, group_spacing=1)
-for container in res.bar_containers:
-    ax.bar_label(container, padding=3)
-
-# Add some text for labels, title, etc.
-ax.set_ylabel("Time (ms)")
-ax.set_title("Time per step")
-ax.legend(loc="upper left", ncols=3)
-fig.tight_layout()
-plt.show()
-```
-
-
-
 ![png](transfers_files/transfers_22_0.png)
+
+
+
+
+
+![png](transfers_files/transfers_22_1.png)
+
+
+
+
+
+![png](transfers_files/transfers_22_2.png)
+
+
+
+
+
+![png](transfers_files/transfers_22_3.png)
+
+
+
+
+
+![png](transfers_files/transfers_22_4.png)
+
+
+
+
+
+![png](transfers_files/transfers_23_0.png)
 
 
 
@@ -466,7 +373,7 @@ coarse.to_pyvista().plot(show_edges=True)
 
 
 
-![png](transfers_files/transfers_25_0.png)
+![png](transfers_files/transfers_26_0.png)
 
 
 
@@ -478,7 +385,7 @@ fine.to_pyvista().plot(show_edges=True)
 
 
 
-![png](transfers_files/transfers_26_0.png)
+![png](transfers_files/transfers_27_0.png)
 
 
 
@@ -495,7 +402,7 @@ fine.to_pyvista().plot()
 
 
 
-![png](transfers_files/transfers_28_0.png)
+![png](transfers_files/transfers_29_0.png)
 
 
 
@@ -528,28 +435,8 @@ mf_apply = t2 - t1
 ```
 
 
-```python
-pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text("Source")
-pt.add_mesh(m_src.to_pyvista(), show_edges=True)
-pt.camera.zoom(0.99 / 1.15)
 
-pt.subplot(0, 1)
-pt.add_text("Target")
-pt.add_mesh(
-    m_src.descend(target_dim=1).to_pyvista(),
-    show_edges=True,
-    line_width=2,
-    color="black",
-)
-pt.add_mesh(m_tgt.to_pyvista(), show_edges=True)
-pt.show()
-```
-
-
-
-![png](transfers_files/transfers_32_0.png)
+![png](transfers_files/transfers_33_0.png)
 
 
 
@@ -581,29 +468,8 @@ assert np.allclose(mc_f, mf_f)
 ```
 
 
-```python
-chart_data = {
-    "Mefikit": [mf_prepare, mf_apply],
-    "Medcoupling": [mc_prepare, mc_apply],
-}
 
-fig, ax = plt.subplots(figsize=(10, 5))
-
-res = ax.grouped_bar(chart_data, tick_labels=["Prepare", "Apply"], group_spacing=1)
-for container in res.bar_containers:
-    ax.bar_label(container, padding=3)
-
-# Add some text for labels, title, etc.
-ax.set_ylabel("Time (s)")
-ax.set_title("Time per step")
-ax.legend(loc="upper right", ncols=3)
-fig.tight_layout()
-plt.show()
-```
-
-
-
-![png](transfers_files/transfers_35_0.png)
+![png](transfers_files/transfers_36_0.png)
 
 
 
@@ -630,21 +496,5 @@ m_tgt.fields["temp"] = trsf(rho * cp)
 > Cells covered by the source are transferred correctly and match `apply_update` exactly.
 
 
-```python
-pt = pv.Plotter()
 
-box = mf.sel.bbox([-np.inf] * 3, [0.9, np.inf, np.inf])
-pvm = m_tgt.select(box).to_mesh().to_pyvista()
-pvm.active_scalars_name = "temp"
-pt.add_mesh(pvm.shrink(0.8), show_edges=True)
-
-pvs = m_src.to_pyvista()
-pvs.active_scalars_name = "rhoCp"
-pt.add_mesh(pvs, style="wireframe", line_width=2)
-
-pt.show()
-```
-
-
-
-![png](transfers_files/transfers_39_0.png)
+![png](transfers_files/transfers_40_0.png)

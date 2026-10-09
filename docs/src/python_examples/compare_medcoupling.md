@@ -1,5 +1,7 @@
 # mefikit vs. medcoupling
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 A friendly, side-by-side look at two libraries that solve the same class of
 problems, in slightly different ways.
 
@@ -24,21 +26,15 @@ every value is cross-checked against the other library before we say one word
 about speed.
 
 
-
 ```python
 import os
 import time
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import medcoupling as mc
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 
 print("mefikit     :", mf.__file__)
 print("medcoupling :", mc.__file__)
@@ -46,8 +42,8 @@ print("medcoupling version:", mc.__version__)
 print("numpy       :", np.__version__)
 ```
 
-    mefikit     : /home/catA/as259691/Codes/mefikit/src/mefikit/__init__.py
-    medcoupling : /home/catA/as259691/Codes/mefikit/.venv/lib/python3.13/site-packages/medcoupling.py
+    mefikit     : /home/asonolet/Codes/mefikit/src/mefikit/__init__.py
+    medcoupling : /home/asonolet/Codes/mefikit/.venv/lib/python3.13/site-packages/medcoupling.py
     medcoupling version: V9_15_0
     numpy       : 2.5.2
 
@@ -146,49 +142,8 @@ print(
 
 
 
-```python
-def mc_to_pyvista(mmesh):
-    # Render a medcoupling mesh with pyvista, in-memory (no temp files).
-    vtk_type = {
-        mc.NORM_SEG2: pv.CellType.LINE,
-        mc.NORM_TRI3: pv.CellType.TRIANGLE,
-        mc.NORM_QUAD4: pv.CellType.QUAD,
-        mc.NORM_POLYGON: pv.CellType.POLYGON,
-        mc.NORM_HEXA8: pv.CellType.HEXAHEDRON,
-    }
-    n = mmesh.getNumberOfCells()
-    coords = mmesh.getCoords().toNumPyArray()
-    if coords.shape[1] == 2:
-        coords = np.c_[coords, np.zeros(len(coords))]
-    conn = mmesh.getNodalConnectivity().toNumPyArray()
-    off = mmesh.getNodalConnectivityIndex().toNumPyArray()
-    cells_arr = np.concatenate(
-        [
-            np.r_[off[i + 1] - off[i] - 1, conn[off[i] + 1 : off[i + 1]]]
-            for i in range(n)
-        ]
-    ).astype(np.int64)
-    cell_types = np.array(
-        [vtk_type[mmesh.getTypeOfCell(i)] for i in range(n)], np.uint8
-    )
-    return pv.UnstructuredGrid(cells_arr, cell_types, coords)
 
-
-pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text("mefikit - mf.build_cmesh(x, x)")
-pt.add_mesh(mf_mesh.to_pyvista(), show_edges=True)
-pt.camera_position = "xy"
-pt.subplot(0, 1)
-pt.add_text("medcoupling - MEDCouplingCMesh.buildUnstructured()")
-pt.add_mesh(mc_to_pyvista(mc_mesh), show_edges=True)
-pt.camera_position = "xy"
-pt.show()
-```
-
-
-
-![png](compare_medcoupling_files/compare_medcoupling_8_0.png)
+![png](compare_medcoupling_files/compare_medcoupling_9_0.png)
 
 
 
@@ -257,26 +212,8 @@ assert np.allclose(mf_T_vals, mc_T_vals, atol=1e-12)
 
 
 
-```python
-pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text("mefikit - mf.Field / select / eval")
-g1 = mf_mesh.to_pyvista()
-g1["T"] = mf_T_vals
-pt.add_mesh(g1, scalars="T", show_edges=True)
-pt.camera_position = "xy"
-pt.subplot(0, 1)
-pt.add_text("medcoupling - MEDCouplingFieldDouble")
-g2 = mc_to_pyvista(mc_mesh)
-g2["T"] = mc_T_vals
-pt.add_mesh(g2, scalars="T", show_edges=True)
-pt.camera_position = "xy"
-pt.show()
-```
 
-
-
-![png](compare_medcoupling_files/compare_medcoupling_13_0.png)
+![png](compare_medcoupling_files/compare_medcoupling_14_0.png)
 
 
 
@@ -311,22 +248,8 @@ print("identical face count: OK")
 
 
 
-```python
-pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text("descend() - faces in black")
-pt.add_mesh(m3.to_pyvista(), show_edges=True, opacity=0.35)
-pt.add_mesh(mf_faces.to_pyvista(), show_edges=True, color="black", line_width=2)
-pt.subplot(0, 1)
-pt.add_text("buildDescendingConnectivity()")
-pt.add_mesh(mc_to_pyvista(mc3), show_edges=True, opacity=0.35)
-pt.add_mesh(mc_to_pyvista(mc_faces), show_edges=True, color="black", line_width=2)
-pt.show()
-```
 
-
-
-![png](compare_medcoupling_files/compare_medcoupling_16_0.png)
+![png](compare_medcoupling_files/compare_medcoupling_17_0.png)
 
 
 
@@ -381,21 +304,8 @@ print("identical result: OK")
 
 
 
-```python
-pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text(f"cracked - {len(cracked.connected_components())} components")
-for compo in cracked.connected_components():
-    pt.add_mesh(compo.to_pyvista(), show_edges=True, opacity=0.6)
-pt.subplot(0, 1)
-pt.add_text("merge_nodes() - 1 component")
-pt.add_mesh(merged.to_pyvista(), show_edges=True)
-pt.show()
-```
 
-
-
-![png](compare_medcoupling_files/compare_medcoupling_19_0.png)
+![png](compare_medcoupling_files/compare_medcoupling_20_0.png)
 
 
 
@@ -432,24 +342,8 @@ print("identical (unit) area: OK")
 
 
 
-```python
-pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text("overlay(IMPRINT)")
-pt.add_mesh(g1.to_pyvista(), show_edges=True, opacity=0.25, color="grey")
-pt.add_mesh(imprint.to_pyvista().shrink(0.8), show_edges=True, line_width=2)
-pt.camera_position = "xy"
-pt.subplot(0, 1)
-pt.add_text("Intersect2DMeshes()")
-pt.add_mesh(mc_to_pyvista(g1m), show_edges=True, opacity=0.25, color="grey")
-pt.add_mesh(mc_to_pyvista(mc_imprint).shrink(0.8), show_edges=True, line_width=2)
-pt.camera_position = "xy"
-pt.show()
-```
 
-
-
-![png](compare_medcoupling_files/compare_medcoupling_22_0.png)
+![png](compare_medcoupling_files/compare_medcoupling_23_0.png)
 
 
 
@@ -503,31 +397,14 @@ print("transferred fields match: OK")
 ```
 
     max |mefikit - medcoupling| after P0P0: 3.552713678800501e-15
+
+
     transferred fields match: OK
 
 
 
-```python
-vmin, vmax = 0.5, 1.75
-pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text("Source")
-s_pv = src2.to_pyvista()
-s_pv["T"] = src2.fields["T"].numpy()
-pt.add_mesh(s_pv, scalars="T", clim=[vmin, vmax], show_edges=True)
-pt.camera_position = "xy"
-pt.subplot(0, 1)
-pt.add_text("Target (transferred)")
-t_pv = tgt2.to_pyvista()
-t_pv["T"] = mf_tgt_vals
-pt.add_mesh(t_pv, scalars="T", clim=[vmin, vmax], show_edges=True)
-pt.camera_position = "xy"
-pt.show()
-```
 
-
-
-![png](compare_medcoupling_files/compare_medcoupling_25_0.png)
+![png](compare_medcoupling_files/compare_medcoupling_26_0.png)
 
 
 
@@ -615,22 +492,8 @@ print("identical counts: OK")
 
 
 
-```python
-pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text("mefikit - boundaries() of mesh_36 (PHED)")
-pt.add_mesh(mf_bnd.to_pyvista(), color="grey", show_edges=True)
-pt.camera_position = "xy"
-pt.subplot(0, 1)
-pt.add_text("medcoupling - buildBoundaryMesh() (PHED)")
-pt.add_mesh(mc_to_pyvista(mc_bnd), color="grey", show_edges=True)
-pt.camera_position = "xy"
-pt.show()
-```
 
-
-
-![png](compare_medcoupling_files/compare_medcoupling_29_0.png)
+![png](compare_medcoupling_files/compare_medcoupling_30_0.png)
 
 
 
@@ -722,34 +585,27 @@ assert all(r[5] < 1e-9 for r in poly_res)
 print("transferred fields match at every size: OK")
 ```
 
-    poly n= 100 | mefikit    1.88 ms (prepare) /  0.00 ms (apply) | medcoupling     76.9 ms /  0.06 ms |   41x faster
+    poly n= 100 | mefikit    2.46 ms (prepare) /  0.00 ms (apply) | medcoupling    225.4 ms /  0.18 ms |   92x faster
                 | max |mefikit - medcoupling| on the transferred field: 5.88e-15
 
 
-    poly n= 200 | mefikit    4.18 ms (prepare) /  0.00 ms (apply) | medcoupling    275.7 ms /  0.10 ms |   66x faster
+    poly n= 200 | mefikit    8.10 ms (prepare) /  0.01 ms (apply) | medcoupling    741.6 ms /  0.34 ms |   92x faster
                 | max |mefikit - medcoupling| on the transferred field: 6.38e-15
 
 
-    poly n= 400 | mefikit   14.23 ms (prepare) /  0.01 ms (apply) | medcoupling   1082.1 ms /  0.21 ms |   76x faster
+    poly n= 400 | mefikit   64.11 ms (prepare) /  0.01 ms (apply) | medcoupling   3383.3 ms /  0.72 ms |   53x faster
                 | max |mefikit - medcoupling| on the transferred field: 7.22e-15
     transferred fields match at every size: OK
 
 
 
+
+![png](compare_medcoupling_files/compare_medcoupling_33_0.png)
+
+
+
+
 ```python
-ns = [r[0] for r in poly_res]
-fig, ax = plt.subplots(figsize=(8, 5))
-ax.loglog(ns, [r[1] for r in poly_res], "o-", label="mefikit prepare")
-ax.loglog(ns, [r[3] for r in poly_res], "s-", label="medcoupling prepare")
-ax.set_xlabel("polyhedral cells")
-ax.set_ylabel("prepare time (ms)")
-ax.set_title("P0/P0 remap prepare on real polyhedral meshes (mesh_36 -> mesh_27)")
-ax.grid(True, which="both", ls="--", alpha=0.4)
-ax.legend()
-fig.tight_layout()
-plt.show()
-
-
 r = poly_res[-1]
 print(
     f"At {r[0]} cells mefikit prepares the polyhedral remap {r[3] / r[1]:.0f} times faster "
@@ -757,13 +613,7 @@ print(
 )
 ```
 
-
-
-![png](compare_medcoupling_files/compare_medcoupling_32_0.png)
-
-
-
-    At 400 cells mefikit prepares the polyhedral remap 76 times faster than medcoupling, and the gap grows with the mesh size.
+    At 400 cells mefikit prepares the polyhedral remap 53 times faster than medcoupling, and the gap grows with the mesh size.
 
 
 ## Performance on common operations
@@ -1168,16 +1018,16 @@ assert all_ok, "a cross-check failed"
 
     case           step             mefikit ms   medcoup ms     mc/mf
     --------------------------------------------------------------
-    remap-2d       build/prepare         8.087       12.303      1.5x
-    remap-2d       transfer              0.033        0.239      7.1x
-    remap-3d       build/prepare        62.809      185.330      3.0x
-    remap-3d       transfer              0.018        0.533     29.8x
-    remap-3d-poly  build/prepare        66.601     1239.307     18.6x
-    remap-3d-poly  transfer              0.027        0.575     21.1x
-    merge-nodes    merge                 0.265        0.315      1.2x
-    descend        run                   7.693       16.065      2.1x
-    overlay        run                   1.356       10.385      7.7x
-    crack          crack                32.056      294.579      9.2x
+    remap-2d       build/prepare        60.613       81.537      1.3x
+    remap-2d       transfer              0.099        0.996     10.0x
+    remap-3d       build/prepare       523.958     1667.806      3.2x
+    remap-3d       transfer              0.045        2.039     44.9x
+    remap-3d-poly  build/prepare       541.489     8734.519     16.1x
+    remap-3d-poly  transfer              0.049        1.836     37.2x
+    merge-nodes    merge                 0.533        0.502      0.9x
+    descend        run                  12.829       24.541      1.9x
+    overlay        run                   2.030       17.744      8.7x
+    crack          crack                60.901      441.426      7.2x
 
     correctness cross-checks:
       [OK] remap-2d: intensive match (mf == mc)  7.752687380957468e-13
@@ -1196,84 +1046,20 @@ assert all_ok, "a cross-check failed"
 
 
 
-```python
-def twin_bars(labels, mf_vals, mc_vals, ylabel, title, rot=0):
-    x = np.arange(len(labels))
-    w = 0.36
-    fig, ax = plt.subplots(figsize=(10, 5))
-    b1 = ax.bar(x - w / 2, mf_vals, w, label="mefikit")
-    b2 = ax.bar(x + w / 2, mc_vals, w, label="medcoupling")
-    ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=rot, ha="right")
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.legend()
-    ax.bar_label(b1, fmt="%.1f", padding=1, fontsize=8)
-    ax.bar_label(b2, fmt="%.1f", padding=1, fontsize=8)
-    fig.tight_layout()
-    plt.show()
 
-
-# --- prepare / build: every operation has exactly one ---
-codes = ["remap-2d", "remap-3d", "remap-3d-poly"]
-singles = ["merge-nodes", "descend", "overlay", "crack"]
-labels = codes + singles
-twin_bars(
-    labels,
-    [bench[c]["mf_build"] for c in codes] + [bench[c]["mf"] for c in singles],
-    [bench[c]["mc_prepare"] for c in codes] + [bench[c]["mc"] for c in singles],
-    "time (ms)",
-    "Prepare / build time — all operations",
-    rot=25,
-)
-
-
-# --- transfer / apply: only the P0/P0 remaps have a separate apply step ---
-twin_bars(
-    codes,
-    [bench[c]["mf_apply"] for c in codes],
-    [bench[c]["mc_transfer"] for c in codes],
-    "time (ms)",
-    "Transfer / apply time — P0/P0 remaps",
-)
-```
-
-
-
-![png](compare_medcoupling_files/compare_medcoupling_38_0.png)
+![png](compare_medcoupling_files/compare_medcoupling_40_0.png)
 
 
 
 
 
-![png](compare_medcoupling_files/compare_medcoupling_38_1.png)
+![png](compare_medcoupling_files/compare_medcoupling_40_1.png)
 
 
 
 
-```python
-labels = [f"{c}\n{s}" for c, s, _, _ in rows]
-ratios = [mc_t / mf_t for _, _, mf_t, mc_t in rows]
 
-fig, ax = plt.subplots(figsize=(10, 6))
-colors = ["tab:blue" if r >= 1 else "tab:red" for r in ratios]
-yloc = np.arange(len(ratios))[::-1]
-ax.barh(yloc, ratios, color=colors)
-ax.axvline(1.0, color="white", ls="--", lw=1)
-ax.set_yticks(yloc)
-ax.set_yticklabels(labels)
-ax.set_xscale("log")
-ax.set_xlabel("medcoupling time / mefikit time  (>1 means mefikit is faster)")
-ax.set_title("How many times longer medcoupling takes than mefikit, per operation")
-for y, r in zip(yloc, ratios):
-    ax.text(r * 1.25, y, f" {r:.1f}x", va="center", ha="left", fontsize=8)
-fig.tight_layout()
-plt.show()
-```
-
-
-
-![png](compare_medcoupling_files/compare_medcoupling_39_0.png)
+![png](compare_medcoupling_files/compare_medcoupling_41_0.png)
 
 
 

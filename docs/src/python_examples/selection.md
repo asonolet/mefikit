@@ -1,14 +1,12 @@
 # Selection tool
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 ```
 
 ## Element selection expressions
@@ -139,7 +137,7 @@ volumes.to_pyvista().plot(show_edges=True)
 
 
 
-![png](selection_files/selection_11_0.png)
+![png](selection_files/selection_12_0.png)
 
 
 
@@ -150,7 +148,7 @@ volumes.select(clip).to_mesh().to_pyvista().plot()
 
 
 
-![png](selection_files/selection_12_0.png)
+![png](selection_files/selection_13_0.png)
 
 
 
@@ -161,7 +159,7 @@ volumes.select(sphere).to_mesh().to_pyvista().plot()
 
 
 
-![png](selection_files/selection_13_0.png)
+![png](selection_files/selection_14_0.png)
 
 
 
@@ -193,17 +191,8 @@ union = faces.select(circle1 | circle2).to_mesh()
 ```
 
 
-```python
-pt = pv.Plotter()
-pt.add_mesh(faces.descend().to_pyvista())
-pt.add_mesh(union.to_pyvista())
-pt.camera_position = "xy"
-pt.show()
-```
 
-
-
-![png](selection_files/selection_18_0.png)
+![png](selection_files/selection_19_0.png)
 
 
 
@@ -213,17 +202,8 @@ intersection = faces.select(circle1 & circle2).to_mesh()
 ```
 
 
-```python
-pt = pv.Plotter()
-pt.add_mesh(faces.descend().to_pyvista())
-pt.add_mesh(intersection.to_pyvista())
-pt.camera_position = "xy"
-pt.show()
-```
 
-
-
-![png](selection_files/selection_20_0.png)
+![png](selection_files/selection_21_0.png)
 
 
 
@@ -233,17 +213,8 @@ sym_diff = faces.select(circle1 ^ circle2).to_mesh()
 ```
 
 
-```python
-pt = pv.Plotter()
-pt.add_mesh(faces.descend().to_pyvista())
-pt.add_mesh(sym_diff.to_pyvista())
-pt.camera_position = "xy"
-pt.show()
-```
 
-
-
-![png](selection_files/selection_22_0.png)
+![png](selection_files/selection_23_0.png)
 
 
 
@@ -253,17 +224,8 @@ diff = faces.select(circle1 - circle2).to_mesh()
 ```
 
 
-```python
-pt = pv.Plotter()
-pt.add_mesh(faces.descend().to_pyvista())
-pt.add_mesh(diff.to_pyvista())
-pt.camera_position = "xy"
-pt.show()
-```
 
-
-
-![png](selection_files/selection_24_0.png)
+![png](selection_files/selection_25_0.png)
 
 
 
@@ -273,17 +235,8 @@ notsel = faces.select(~circle1).to_mesh()
 ```
 
 
-```python
-pt = pv.Plotter()
-pt.add_mesh(faces.descend().to_pyvista())
-pt.add_mesh(notsel.to_pyvista())
-pt.camera_position = "xy"
-pt.show()
-```
 
-
-
-![png](selection_files/selection_26_0.png)
+![png](selection_files/selection_27_0.png)
 
 
 
@@ -305,7 +258,7 @@ volumes.select(
 
 
 
-![png](selection_files/selection_29_0.png)
+![png](selection_files/selection_30_0.png)
 
 
 
@@ -417,7 +370,7 @@ tq.to_pyvista().plot()
 
 
 
-![png](selection_files/selection_43_0.png)
+![png](selection_files/selection_44_0.png)
 
 
 
@@ -482,7 +435,7 @@ volumes.groups["two_quarters"].to_mesh().to_pyvista().plot()
 
 
 
-![png](selection_files/selection_49_0.png)
+![png](selection_files/selection_50_0.png)
 
 
 

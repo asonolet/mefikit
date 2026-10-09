@@ -244,6 +244,12 @@ uv run make notebooks
 `uv` is used here because the notebooks need `jupyterlab`, `mefikit` and all its
 dependencies to run. As `uv` won't build `mefipy` you need to build it first.
 
+Cells whose sole purpose is to drive a figure (PyVista / matplotlib boilerplate)
+are tagged `hide-input`. The conversion strips their source from the generated
+markdown but keeps the rendered figure. When a cell mixes a demonstrated
+`mefikit` call with plotting code, keep the `mefikit` call visible and move the
+plotting calls into a separate `hide-input` cell.
+
 ### Contributing
 
 If you would like to contribute to the library, please fork the repository

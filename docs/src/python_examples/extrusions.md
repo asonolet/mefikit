@@ -1,14 +1,12 @@
 # Mesh extrusions
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 ```
 
 ## Building mesh with custom connectivity
@@ -52,7 +50,7 @@ mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 
 
 
-![png](extrusions_files/extrusions_5_0.png)
+![png](extrusions_files/extrusions_6_0.png)
 
 
 
@@ -72,7 +70,7 @@ extruded.to_pyvista(dim="all").plot(show_edges=True)
 
 
 
-![png](extrusions_files/extrusions_9_0.png)
+![png](extrusions_files/extrusions_10_0.png)
 
 
 
@@ -96,7 +94,7 @@ extruded_par.to_pyvista(dim="all").plot(show_edges=True)
 
 
 
-![png](extrusions_files/extrusions_12_0.png)
+![png](extrusions_files/extrusions_13_0.png)
 
 
 
@@ -121,4 +119,4 @@ extruded_curv.to_pyvista(dim="all").plot(show_edges=True)
 
 
 
-![png](extrusions_files/extrusions_15_0.png)
+![png](extrusions_files/extrusions_16_0.png)

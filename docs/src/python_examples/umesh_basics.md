@@ -1,14 +1,12 @@
 # UMesh basics
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 ```
 
 ## Building cartesian meshes
@@ -80,7 +78,7 @@ volumes.to_pyvista().plot(show_edges=True)
 
 
 
-![png](umesh_basics_files/umesh_basics_6_0.png)
+![png](umesh_basics_files/umesh_basics_7_0.png)
 
 
 
@@ -123,4 +121,4 @@ mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 
 
 
-![png](umesh_basics_files/umesh_basics_10_0.png)
+![png](umesh_basics_files/umesh_basics_11_0.png)

@@ -1,14 +1,12 @@
 # Fields
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 ```
 
 ## Field expressions
@@ -124,7 +122,7 @@ mesh2.to_pyvista().plot(show_edges=True)
 
 
 
-![png](fields_files/fields_16_0.png)
+![png](fields_files/fields_17_0.png)
 
 
 
@@ -144,7 +142,7 @@ mesh2.to_pyvista().plot()
 
 
 
-![png](fields_files/fields_19_0.png)
+![png](fields_files/fields_20_0.png)
 
 
 
@@ -154,15 +152,8 @@ mesh2.fields["toto"] = mf.X + mf.Y
 ```
 
 
-```python
-pvm = mesh2.to_pyvista()
-pvm.active_scalars_name = "toto"
-pvm.plot()
-```
 
-
-
-![png](fields_files/fields_21_0.png)
+![png](fields_files/fields_22_0.png)
 
 
 
@@ -288,15 +279,8 @@ mesh2.fields["Scratch"][sel2] = m  # assign this constant value to the whole reg
 ```
 
 
-```python
-pvm = mesh2.to_pyvista()
-pvm.active_scalars_name = "Scratch"
-pvm.plot()
-```
 
-
-
-![png](fields_files/fields_39_0.png)
+![png](fields_files/fields_40_0.png)
 
 
 
@@ -338,14 +322,11 @@ th = (m > lb) & (m <= hb)
 
 ```python
 m2sel = mesh2.select(th).to_mesh()
-pvm2: pv.UnstructuredGrid = m2sel.to_pyvista()
-pvm2.active_scalars_name = "Measure"
-pvm2.plot()
 ```
 
 
 
-![png](fields_files/fields_44_0.png)
+![png](fields_files/fields_46_0.png)
 
 
 
@@ -364,7 +345,7 @@ mesh2.select(th - r - c).to_mesh().to_pyvista().plot()
 
 
 
-![png](fields_files/fields_47_0.png)
+![png](fields_files/fields_49_0.png)
 
 
 
@@ -422,13 +403,5 @@ top = mesh2.select(mf.sel.group("top")).to_mesh()
 ```
 
 
-```python
-pt = pv.Plotter()
-pt.add_mesh(mesh2.descend(target_dim=1).to_pyvista())
-pt.add_mesh(top.to_pyvista(), show_edges=True)
-pt.show()
-```
 
-
-
-![png](fields_files/fields_56_0.png)
+![png](fields_files/fields_58_0.png)

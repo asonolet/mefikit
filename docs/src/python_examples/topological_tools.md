@@ -1,14 +1,12 @@
 # Topological tools
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 ```
 
 ## Submesh functionality
@@ -31,20 +29,11 @@ It can act on elements of dimension 1, 2 or 3.
 faces = volumes.descend()
 edges = faces.descend()
 vertex = edges.descend()
-
-plotter = pv.Plotter(shape=(1, 3))
-plotter.subplot(0, 0)
-plotter.add_mesh(faces.to_pyvista().shrink(0.8), show_edges=True)
-plotter.subplot(0, 1)
-plotter.add_mesh(edges.to_pyvista().shrink(0.8))
-plotter.subplot(0, 2)
-plotter.add_mesh(vertex.to_pyvista())
-plotter.show()
 ```
 
 
 
-![png](topological_tools_files/topological_tools_5_0.png)
+![png](topological_tools_files/topological_tools_7_0.png)
 
 
 
@@ -56,18 +45,11 @@ You might want to directly access either the node mesh or the edges mesh. You ca
 ```python
 edges = volumes.descend(target_dim=1)
 vertex = volumes.descend(target_dim=0)
-
-plotter = pv.Plotter(shape=(1, 2))
-plotter.subplot(0, 0)
-plotter.add_mesh(edges.to_pyvista().shrink(0.8))
-plotter.subplot(0, 1)
-plotter.add_mesh(vertex.to_pyvista())
-plotter.show()
 ```
 
 
 
-![png](topological_tools_files/topological_tools_7_0.png)
+![png](topological_tools_files/topological_tools_10_0.png)
 
 
 
@@ -80,20 +62,11 @@ As it is very common to compute boundaries on a mesh (for boundary conditions fo
 face_bounds = volumes.boundaries()
 edge_bounds = volumes.boundaries(target_dim=1)
 vertex_bounds = volumes.boundaries(target_dim=0)
-
-plotter = pv.Plotter(shape=(1, 3))
-plotter.subplot(0, 0)
-plotter.add_mesh(face_bounds.to_pyvista().shrink(0.8), show_edges=True)
-plotter.subplot(0, 1)
-plotter.add_mesh(edge_bounds.to_pyvista().shrink(0.8))
-plotter.subplot(0, 2)
-plotter.add_mesh(vertex_bounds.to_pyvista())
-plotter.show()
 ```
 
 
 
-![png](topological_tools_files/topological_tools_9_0.png)
+![png](topological_tools_files/topological_tools_13_0.png)
 
 
 
@@ -110,7 +83,7 @@ volumes.to_pyvista(dim="all").shrink(0.8).plot(show_edges=True)
 
 
 
-![png](topological_tools_files/topological_tools_11_0.png)
+![png](topological_tools_files/topological_tools_15_0.png)
 
 
 
@@ -124,7 +97,7 @@ volumes.to_pyvista(dim="all").shrink(0.8).plot(show_edges=True)
 
 
 
-![png](topological_tools_files/topological_tools_13_0.png)
+![png](topological_tools_files/topological_tools_17_0.png)
 
 
 
@@ -135,7 +108,7 @@ old_face_mesh.to_pyvista().shrink(0.8).plot(show_edges=True)
 
 
 
-![png](topological_tools_files/topological_tools_14_0.png)
+![png](topological_tools_files/topological_tools_18_0.png)
 
 
 
@@ -173,43 +146,8 @@ print(f"{len(compos_link_node)=}")
 
 
 
-```python
-edges = mesh.descend()
 
-shape = (3, 2)
-row_weights = [1.0, 0.5, 0.5]
-groups = [
-    (0, np.s_[:]),
-    (1, 0),
-    (2, 0),
-    (np.s_[1:], 1),
-]
-
-plotter = pv.Plotter(shape=shape, groups=groups, row_weights=row_weights)
-plotter.subplot(0, 0)
-plotter.add_text("Original mesh")
-plotter.add_mesh(mesh.to_pyvista(), show_edges=True)
-plotter.camera_position = "xy"
-
-for i, compo in enumerate(compos_link_edge):
-    plotter.subplot(i + 1, 0)
-    plotter.add_text(f"Compo linked by edge: n°{i}")
-    plotter.add_mesh(edges.to_pyvista())
-    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
-    plotter.camera_position = "xy"
-
-for i, compo in enumerate(compos_link_node):
-    plotter.subplot(i + 1, 1)
-    plotter.add_text(f"Compo linked by node: n°{i}")
-    plotter.add_mesh(edges.to_pyvista())
-    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
-    plotter.camera_position = "xy"
-plotter.show()
-```
-
-
-
-![png](topological_tools_files/topological_tools_18_0.png)
+![png](topological_tools_files/topological_tools_22_0.png)
 
 
 
@@ -240,48 +178,11 @@ compos_cracked = cracked.connected_components()
 assert len(compos_original) == 1
 
 n_compos = len(compos_cracked)
-
-shape = (3, n_compos + 1)
-groups = [
-    (0, 0),
-    (0, np.s_[1:]),
-    (np.s_[1:], 0),
-    (1, np.s_[1:]),
-    *((2, i + 1) for i in range(n_compos)),
-]
-row_weights = [1.0, 0.1, 1.0]
-col_weights = [1.5, *(0.5,) * n_compos]
-pv.set_jupyter_backend("static")
-plotter = pv.Plotter(
-    shape=shape, groups=groups, row_weights=row_weights, col_weights=col_weights
-)
-
-plotter.subplot(0, 0)
-plotter.add_text("Original mesh")
-plotter.add_mesh(volumes.to_pyvista(), show_edges=True)
-plotter.subplot(0, 1)
-plotter.add_text("Cut mesh used for the crack")
-plotter.add_mesh(faces.to_pyvista().shrink(0.8), show_edges=True)
-
-plotter.subplot(1, 0)
-plotter.add_text("Compo of original mesh")
-plotter.add_mesh(edges.to_pyvista())
-plotter.add_mesh(compos_original[0].to_pyvista(), show_edges=True)
-
-plotter.subplot(1, 1)
-plotter.add_text("Compos of cracked mesh")
-
-for i, compo in enumerate(compos_cracked):
-    plotter.subplot(2, i + 1)
-    plotter.add_mesh(edges.to_pyvista())
-    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
-    plotter.camera.zoom(2)
-plotter.show()
 ```
 
 
 
-![png](topological_tools_files/topological_tools_22_0.png)
+![png](topological_tools_files/topological_tools_27_0.png)
 
 
 
@@ -304,18 +205,8 @@ mesh_splitted = mesh.split()
 ```
 
 
-```python
-pt = pv.Plotter()
-pt.add_mesh(
-    mesh.to_pyvista().shrink(0.95), show_edges=True, edge_color="yellow", line_width=2
-)
-pt.add_mesh(mesh_splitted.to_pyvista(), style="wireframe", color="red", line_width=2)
-pt.show()
-```
 
-
-
-![png](topological_tools_files/topological_tools_26_0.png)
+![png](topological_tools_files/topological_tools_31_0.png)
 
 
 
@@ -364,7 +255,7 @@ mesh_polyzed.to_pyvista().plot(show_edges=True)
 
 
 
-![png](topological_tools_files/topological_tools_31_0.png)
+![png](topological_tools_files/topological_tools_36_0.png)
 
 
 
@@ -388,7 +279,7 @@ unpolyzed.to_pyvista().plot(show_edges=True)
 
 
 
-![png](topological_tools_files/topological_tools_32_1.png)
+![png](topological_tools_files/topological_tools_37_1.png)
 
 
 
@@ -417,45 +308,8 @@ print(f"{stitched.num_elements()=}")
 
 
 
-```python
-plotter = pv.Plotter(shape=(1, 2), window_size=(1100, 500))
 
-plotter.subplot(0, 0)
-plotter.add_text("Before", font_size=14)
-plotter.add_mesh(
-    plate.to_pyvista(),
-    color="cornflowerblue",
-    opacity=0.55,
-    show_edges=True,
-    edge_color="white",
-)
-plotter.add_mesh(
-    block.to_pyvista(),
-    color="lightsalmon",
-    opacity=0.55,
-    show_edges=True,
-    edge_color="white",
-)
-plotter.add_text("1 face vs 4 faces", position="lower_left", font_size=9)
-plotter.camera_position = "iso"
-
-plotter.subplot(0, 1)
-plotter.add_text("After", font_size=14)
-plotter.add_mesh(
-    stitched.to_pyvista(),
-    color="lightseagreen",
-    show_edges=True,
-    edge_color="white",
-)
-plotter.add_text("4 shared faces", position="lower_left", font_size=9)
-plotter.camera_position = "iso"
-
-plotter.show()
-```
-
-
-
-![png](topological_tools_files/topological_tools_35_0.png)
+![png](topological_tools_files/topological_tools_40_0.png)
 
 
 
@@ -482,4 +336,4 @@ stitched.to_pyvista().plot(show_edges=True)
 
 
 
-![png](topological_tools_files/topological_tools_37_0.png)
+![png](topological_tools_files/topological_tools_42_0.png)
