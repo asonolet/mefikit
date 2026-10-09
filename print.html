@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-8526df08.js";
+            window.path_to_searchindex_js = "searchindex-fc688380.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-4506d0f5.js"></script>
@@ -1247,6 +1247,21 @@ plotter.camera_position = "iso"
 plotter.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_35_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_35_0.png" alt="png"></span></label></p>
+<pre><code class="language-python">plate = mf.build_cmesh([0.0, 2.0], [0.0, 2.0], [0.0, 1.0])
+block = mf.build_cmesh([0.0, 1.0, 2.2], [0.0, 1.0, 1.5], [1.0, 2.0])
+other = mf.build_cmesh([0.0, 1.0, 1.9], [1.5, 2.0], [1.0, 2.0])
+
+stitched = mf.stitch([plate, block, other])
+
+print(list(stitched.blocks()))
+print(f"{stitched.num_elements()=}")
+</code></pre>
+<pre><code>['PHED']
+stitched.num_elements()=7
+</code></pre>
+<pre><code class="language-python">stitched.to_pyvista().plot(show_edges=True)
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/topological_tools_files/topological_tools_37_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/topological_tools_files/topological_tools_37_0.png" alt="png"></span></label></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="geometrical-tools"><a class="header" href="#geometrical-tools">Geometrical tools</a></h1>
 <pre><code class="language-python">import numpy as np
@@ -1389,6 +1404,62 @@ pt.show(cpos="xy")
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/geometric_tools_files/geometric_tools_15_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/geometric_tools_files/geometric_tools_15_0.png" alt="png"></span></label></p>
 <p>The ugly cell in the center in the difference and symmetric difference comes from the plotting of non convex cells in pyvista. It is just a known plotting bug (due to optimisation quirks).</p>
+<h2 id="surface-overlay"><a class="header" href="#surface-overlay">Surface overlay</a></h2>
+<p><code>overlay_surfaces</code> imprints two 2D surfaces (meshes embedded in 3D space) wherever they
+coincide. Both surfaces must be piecewise planar; here they are built in the plane <code>z = 0</code>
+and tilted onto a common plane with the same <code>Transform</code>.</p>
+<p>The two refined surfaces share their intersection nodes, so they become mutually
+conformal on the overlap. Parts not covered by the other surface are copied verbatim.</p>
+<pre><code class="language-python">def quad_surface(extent, n):
+    """Flat QUAD4 grid spanning extent=(xmin, xmax, ymin, ymax) in the plane z=0."""
+    x = np.linspace(extent[0], extent[1], n + 1)
+    y = np.linspace(extent[2], extent[3], n + 1)
+    flat = mf.build_cmesh(x, y)
+    coords = np.c_[flat.coords(), np.zeros(flat.coords().shape[0])]
+    mesh = mf.UMesh(coords)
+    mesh.add_regular_block("QUAD4", flat.blocks()["QUAD4"])
+    return mesh
+
+
+# Two quad surfaces with different sizes and discretizations on the same plane.
+surface1 = quad_surface((0.0, 2.0, 0.0, 2.0), n=4)
+surface2 = quad_surface((1.0, 2.8, 0.5, 1.9), n=5)
+
+# Tilt both onto the same plane of 3D space (out-of-place transforms).
+tilt = mf.Transform.rotation([1.0, 0.0, 0.0], -0.6) @ mf.Transform.rotation(
+    [0.0, 1.0, 0.0], 0.5
+)
+surface1 = surface1.transform(tilt)
+surface2 = surface2.transform(tilt)
+</code></pre>
+<pre><code class="language-python">overlay = surface1.overlay_surfaces(surface2)
+
+pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text("Surface 1")
+pt.add_mesh(surface1.to_pyvista(), show_edges=True)
+# pt.subplot(0, 1)
+# pt.add_text("Surface 2")
+pt.add_mesh(surface2.to_pyvista(), show_edges=True)
+pt.subplot(0, 1)
+pt.add_text("Both refined")
+pt.add_mesh(overlay.refined1.to_pyvista(), color="lightblue", show_edges=True)
+pt.add_mesh(overlay.refined2.to_pyvista(), style="wireframe", color="red", line_width=2)
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/geometric_tools_files/geometric_tools_20_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/geometric_tools_files/geometric_tools_20_0.png" alt="png"></span></label></p>
+<pre><code class="language-python"># The refined surfaces are mutually conformal: they share the very same nodes.
+assert np.array_equal(
+    np.asarray(overlay.refined1.coords()), np.asarray(overlay.refined2.coords())
+)
+
+# The parents maps relate each input face to the elements it produced.
+print("surface1:", len(overlay.parents1), "input faces")
+print("surface2:", len(overlay.parents2), "input faces")
+</code></pre>
+<pre><code>surface1: 16 input faces
+surface2: 25 input faces
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="geometric-transforms"><a class="header" href="#geometric-transforms">Geometric transforms</a></h1>
 <pre><code class="language-python">import numpy as np
@@ -2134,11 +2205,14 @@ mlsqt.apply_update(m_src, "Measure", m_tgt, tgt_field_name="Projection", def_val
 <p>Inside the domain the interpolation works like a charm.</p>
 <h3 id="transfer-methods-comparison"><a class="header" href="#transfer-methods-comparison">Transfer methods comparison</a></h3>
 <pre><code class="language-python">def compare_src_tgt(m_src, m_tgt):
+    scale = (1.0 - 1e-2) / (1.1 + 0.05)
+
     pt = pv.Plotter(shape=(1, 2))
     pt.subplot(0, 0)
     pt.add_text("Source")
     pt.add_mesh(m_src.to_pyvista(), show_edges=True, clim=[0.0, 0.06])
     pt.camera_position = "xy"
+    pt.camera.zoom(scale)
     pt.subplot(0, 1)
     pt.add_text("Target")
     pt.add_mesh(
@@ -2230,6 +2304,240 @@ fig.tight_layout()
 plt.show()
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_18_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_18_0.png" alt="png"></span></label></p>
+<h2 id="transfer-of-3d-fields"><a class="header" href="#transfer-of-3d-fields">Transfer of 3D fields</a></h2>
+<pre><code class="language-python">def compare_src_tgt_3d(m_src, m_tgt):
+    vmin = m_src.select(mf.sel.all()).min(mf.M) * 0.99
+    vmax = m_src.select(mf.sel.all()).max(mf.M) * 1.01
+    scale = (1.0 - 1e-2) / (1.1 + 0.05)
+
+    pt = pv.Plotter(shape=(1, 2))
+    pt.subplot(0, 0)
+    pt.add_text("Source")
+    pt.add_mesh(m_src.to_pyvista(), show_edges=True, clim=[vmin, vmax])
+    # pt.view_xy()
+    pt.camera.zoom(scale)
+
+    pt.subplot(0, 1)
+    pt.add_text("Target")
+    pt.add_mesh(
+        m_tgt.to_pyvista(), clim=[vmin, vmax], below_color="pink", above_color="red"
+    )
+    pt.add_mesh(m_src.descend(target_dim=1).to_pyvista(), show_edges=True, line_width=1)
+    # pt.view_xy()
+    pt.show()
+</code></pre>
+<pre><code class="language-python">import time
+
+transfers = (
+    mf.transfer.ConstantPiecewise,
+    # lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=5),
+    # mf.transfer.MovingLeastSquares,
+    # lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=20),
+    # mf.transfer.MovingLeastSquares,
+    # lambda src, tgt: mf.transfer.MovingLeastSquares(
+    #     src, tgt, weighting=mf.transfer.DistanceWeighting.Gaussian()
+    # ),
+    # lambda src, tgt: mf.transfer.MovingLeastSquares(
+    #     src, tgt, weighting=mf.transfer.DistanceWeighting.InverseDistance(1.0)
+    # ),
+    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=3),
+    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=5),
+    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=10),
+    mf.transfer.ConservativeP0,
+)
+trasfers_labels = (
+    "CPW",
+    "ID k3",
+    "ID k5",
+    "ID k10",
+    "ConservativeP0",
+)
+prepare_times = []
+apply_times = []
+
+for T, label in zip(transfers, trasfers_labels):
+    m_src = mf.build_cmesh(
+        np.logspace(-2.0, 0.0, 20), np.logspace(-2.0, 0.0, 20), np.linspace(0.0, 0.1, 3)
+    )
+    m_tgt = mf.build_cmesh(
+        np.linspace(-0.05, 1.1, 40),
+        np.linspace(-0.05, 1.1, 40),
+        np.linspace(0.0, 0.1, 3),
+    )
+    m_src.fields["Measure"] = mf.M
+    t0 = time.time()
+    tr = T(m_src, m_tgt)
+    t1 = time.time()
+    tr.apply_update(m_src, "Measure", m_tgt, label + " Transfered Measure")
+    t2 = time.time()
+
+    prepare_times.append((t1 - t0) * 1000.0)
+    apply_times.append((t2 - t1) * 1000.0)
+
+    compare_src_tgt_3d(m_src, m_tgt)
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_21_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_21_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_21_1.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_21_1.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_21_2.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_21_2.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_21_3.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_21_3.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_21_4.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_21_4.png" alt="png"></span></label></p>
+<pre><code class="language-python">import matplotlib.pyplot as plt
+
+chart_data = {
+    "Prepare": prepare_times,
+    "Apply": apply_times,
+}
+
+fig, ax = plt.subplots(figsize=(10, 5))
+
+res = ax.grouped_bar(chart_data, tick_labels=trasfers_labels, group_spacing=1)
+for container in res.bar_containers:
+    ax.bar_label(container, padding=3)
+
+# Add some text for labels, title, etc.
+ax.set_ylabel("Time (ms)")
+ax.set_title("Time per step")
+ax.legend(loc="upper left", ncols=3)
+fig.tight_layout()
+plt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_22_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_22_0.png" alt="png"></span></label></p>
+<h2 id="transfer-between-surfaces"><a class="header" href="#transfer-between-surfaces">Transfer between surfaces</a></h2>
+<p>Transfers do not apply to volumetric meshes only: they also work between surface
+meshes, i.e. 2D domains embedded in 3D space. Here <code>sin_mesh</code> builds such a surface
+by extruding a sine line along an increasing height. The cell <code>Measure</code> is remapped
+from a coarse surface to a finer one with the <code>InverseDistance</code> interpolation.</p>
+<pre><code class="language-python">def sin_mesh(n=20):
+    x = np.linspace(0.0, 1.0, n)
+    coords = np.c_[x, 0.1 * np.sin(x * 2.0 * np.pi)]
+    conn = np.c_[np.arange(0, n - 1, dtype=np.uint), np.arange(1, n, dtype=np.uint)]
+    res = mf.UMesh(coords)
+    res.add_regular_block("SEG2", conn)
+    return res.extrude(np.linspace(0.0, 1.0, n) ** 2)
+</code></pre>
+<pre><code class="language-python">coarse = sin_mesh(9)
+coarse.measure_update()
+coarse.to_pyvista().plot(show_edges=True)
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_25_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_25_0.png" alt="png"></span></label></p>
+<pre><code class="language-python">fine = sin_mesh(20)
+fine.to_pyvista().plot(show_edges=True)
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_26_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_26_0.png" alt="png"></span></label></p>
+<pre><code class="language-python">tr = mf.transfer.InverseDistance(coarse, fine)
+tr.apply_update(coarse, "Measure", fine)
+</code></pre>
+<pre><code class="language-python">fine.to_pyvista().plot()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_28_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_28_0.png" alt="png"></span></label></p>
+<h2 id="comparison-to-medcoupling"><a class="header" href="#comparison-to-medcoupling">Comparison to medcoupling</a></h2>
+<pre><code class="language-python">import medcoupling as mc
+from medcoupling import MEDCouplingRemapper
+</code></pre>
+<pre><code class="language-python">m_src = mf.build_cmesh(
+    np.logspace(-2.0, 0.0, 20), np.logspace(-2.0, 0.0, 20), np.linspace(0.0, 0.1, 5)
+)
+m_tgt = mf.build_cmesh(
+    np.linspace(-0.05, 1.1, 40), np.linspace(-0.05, 1.1, 40), np.linspace(0.0, 0.1, 3)
+)
+m_src.fields["Measure"] = mf.M
+
+t0 = time.time()
+tr = mf.transfer.ConservativeP0(m_src, m_tgt)
+t1 = time.time()
+tr.apply_update(m_src, "Measure", m_tgt)
+t2 = time.time()
+
+mf_prepare = t1 - t0
+mf_apply = t2 - t1
+</code></pre>
+<pre><code class="language-python">pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text("Source")
+pt.add_mesh(m_src.to_pyvista(), show_edges=True)
+pt.camera.zoom(0.99 / 1.15)
+
+pt.subplot(0, 1)
+pt.add_text("Target")
+pt.add_mesh(
+    m_src.descend(target_dim=1).to_pyvista(),
+    show_edges=True,
+    line_width=2,
+    color="black",
+)
+pt.add_mesh(m_tgt.to_pyvista(), show_edges=True)
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_32_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_32_0.png" alt="png"></span></label></p>
+<pre><code class="language-python">mc_src = m_src.to_mc()
+mc_tgt = m_tgt.to_mc()
+
+f_src = mc_src.getMeasureField(True)
+f_src.setNature(mc.IntensiveConservation)
+
+remap = MEDCouplingRemapper()
+t0 = time.time()
+remap.prepare(mc_src, mc_tgt, "P0P0")
+t1 = time.time()
+f_tgt = remap.transferField(f_src, 0.0)
+t2 = time.time()
+
+mc_prepare = t1 - t0
+mc_apply = t2 - t1
+</code></pre>
+<pre><code class="language-python"># Les champs produits sont identiques
+mf_f = m_tgt.fields["Measure"].numpy()
+mc_f = f_tgt.getArray().toNumPyArray()
+assert np.allclose(mc_f, mf_f)
+</code></pre>
+<pre><code class="language-python">chart_data = {
+    "Mefikit": [mf_prepare, mf_apply],
+    "Medcoupling": [mc_prepare, mc_apply],
+}
+
+fig, ax = plt.subplots(figsize=(10, 5))
+
+res = ax.grouped_bar(chart_data, tick_labels=["Prepare", "Apply"], group_spacing=1)
+for container in res.bar_containers:
+    ax.bar_label(container, padding=3)
+
+# Add some text for labels, title, etc.
+ax.set_ylabel("Time (s)")
+ax.set_title("Time per step")
+ax.legend(loc="upper right", ncols=3)
+fig.tight_layout()
+plt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_35_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_35_0.png" alt="png"></span></label></p>
+<h2 id="using-transfer-as-a-fieldexpressions"><a class="header" href="#using-transfer-as-a-fieldexpressions">Using transfer as a FieldExpressions</a></h2>
+<pre><code class="language-python">trsf = mf.transfer.ConservativeP0(m_src, m_tgt)
+rho = 3.0 * mf.X + mf.Y.square()
+cp = 10.0 * mf.M
+m_src.fields["rhoCp"] = rho * cp
+m_tgt.fields["temp"] = trsf(rho * cp)
+</code></pre>
+<blockquote>
+<p><strong>About the default value and the zeros</strong></p>
+<p>Target cells that are <strong>not covered</strong> by any source cell keep the transfer <code>def_val</code>, which defaults to <code>0.0</code>. With the log-pressure source <code>m_src</code> confined to ~[0.001, 0.1] above, most of the large <code>m_tgt</code> (up to 1.5) is outside the source, so most target cells are legitimately zero. The earlier cells set <code>def_val=np.nan</code> on purpose so that uncovered cells show up as <code>NaN</code> instead of <code>0.0</code>; use <code>def_val=np.nan</code> (or any other sentinel) the same way with <code>eval</code>/<code>__call__</code>:</p>
+<pre><code class="language-python">trsf = mf.transfer.ConservativeP0(m_src, m_tgt, def_val=np.nan)
+m_tgt.fields["temp"] = trsf(rho)   # uncovered cells -&gt; NaN, covered cells -&gt; rho
+</code></pre>
+<p>Cells covered by the source are transferred correctly and match <code>apply_update</code> exactly.</p>
+</blockquote>
+<pre><code class="language-python">pt = pv.Plotter()
+
+box = mf.sel.bbox([-np.inf] * 3, [0.9, np.inf, np.inf])
+pvm = m_tgt.select(box).to_mesh().to_pyvista()
+pvm.active_scalars_name = "temp"
+pt.add_mesh(pvm.shrink(0.8), show_edges=True)
+
+pvs = m_src.to_pyvista()
+pvs.active_scalars_name = "rhoCp"
+pt.add_mesh(pvs, style="wireframe", line_width=2)
+
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_39_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_39_0.png" alt="png"></span></label></p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bubbles-example"><a class="header" href="#bubbles-example">Bubbles example</a></h1>
 <pre><code class="language-python">
@@ -2364,14 +2672,13 @@ print("medcoupling :", mc.__file__)
 print("medcoupling version:", mc.__version__)
 print("numpy       :", np.__version__)
 </code></pre>
-<pre><code>mefikit     : /home/asonolet/Codes/mefikit/src/mefikit/__init__.py
-medcoupling : /home/asonolet/Codes/mefikit/.venv/lib/python3.13/site-packages/medcoupling.py
+<pre><code>mefikit     : /home/catA/as259691/Codes/mefikit/src/mefikit/__init__.py
+medcoupling : /home/catA/as259691/Codes/mefikit/.venv/lib/python3.13/site-packages/medcoupling.py
 medcoupling version: V9_15_0
 numpy       : 2.5.2
 </code></pre>
-<h3 id="a-couple-of-plumbing-helpers"><a class="header" href="#a-couple-of-plumbing-helpers">A couple of plumbing helpers</a></h3>
-<p>Nothing to learn here — two small utilities used to cross-check node counts
-and surface areas between the libraries below.</p>
+<h3 id="helpers"><a class="header" href="#helpers">Helpers</a></h3>
+<p>Small utilities :</p>
 <pre><code class="language-python">def used_nodes(mesh):
     ids = np.concatenate([np.asarray(b) for b in mesh.blocks().values()])
     return int(np.unique(ids).size)
@@ -2507,24 +2814,24 @@ mean T above : 1.8338461538461535
 mc_measure = mc_mesh.getMeasureField(True)
 mc_measure.setNature(mc.IntensiveConservation)
 
-centers = np.asarray(mc_mesh.computeCellCenterOfMass().toNumPyArray())
+centers = mc_mesh.computeCellCenterOfMass().toNumPyArray()
 mc_T_vals = 1.0 + centers[:, 0] ** 2 + 0.5 * centers[:, 1]
 
 mc_T = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-_arr = mc.DataArrayDouble(np.ascontiguousarray(mc_T_vals, np.float64))
+_arr = mc.DataArrayDouble(mc_T_vals)
 _arr.setName("T")
 mc_T.setArray(_arr)
 mc_T.setMesh(mc_mesh)
 mc_T.setNature(mc.IntensiveConservation)
 
-print("measure sum  :", float(mc_measure.getArray().toNumPyArray().sum()))
+print("measure sum  :", mc_measure.getArray().toNumPyArray().sum())
 </code></pre>
 <pre><code>measure sum  : 1.0
 </code></pre>
 <pre><code class="language-python"># identical numbers, whichever library computed them
-mf_T_vals = np.asarray(mf_mesh.fields["T"].numpy()).ravel()
+mf_T_vals = mf_mesh.fields["T"].numpy()
 mc_T_vals = mc_T.getArray().toNumPyArray()
-print("max |mf_T - mc_T|:", float(np.abs(mf_T_vals - mc_T_vals).max()))
+print("max |mf_T - mc_T|:", np.abs(mf_T_vals - mc_T_vals).max())
 assert np.allclose(mf_T_vals, mc_T_vals, atol=1e-12)
 </code></pre>
 <pre><code>max |mf_T - mc_T|: 1.3322676295501878e-15
@@ -2696,9 +3003,7 @@ tc = tgt2.to_mc()
 tc.setMeshDimension(2)
 
 f_src = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-_arr = mc.DataArrayDouble(
-    np.ascontiguousarray(np.asarray(src2.fields["T"].numpy()).ravel())
-)
+_arr = mc.DataArrayDouble(src2.fields["T"].numpy())
 _arr.setName("T")
 f_src.setArray(_arr)
 f_src.setMesh(sc)
@@ -2724,7 +3029,7 @@ pt = pv.Plotter(shape=(1, 2))
 pt.subplot(0, 0)
 pt.add_text("Source")
 s_pv = src2.to_pyvista()
-s_pv["T"] = np.asarray(src2.fields["T"].numpy()).ravel()
+s_pv["T"] = src2.fields["T"].numpy()
 pt.add_mesh(s_pv, scalars="T", clim=[vmin, vmax], show_edges=True)
 pt.camera_position = "xy"
 pt.subplot(0, 1)
@@ -2776,8 +3081,6 @@ print("cells above mean volume:", len(big))
 mefikit  mesh_27 : ['PHED'] 2000 cells
 medcoupl mesh_36 : 2000 cells, 12404 nodes
 medcoupl mesh_27 : 2000 cells
-
-
 volume(mesh_36): 0.99999999869571
 cells above mean volume: 898
 </code></pre>
@@ -2838,7 +3141,7 @@ on both sides) and check that the actual transferred fields coincide.</p>
 
 def mc_p0_field(mesh, vals):
     f = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-    a = mc.DataArrayDouble(np.ascontiguousarray(vals, np.float64))
+    a = mc.DataArrayDouble(vals)
     a.setName("T")
     f.setArray(a)
     f.setMesh(mesh)
@@ -2873,7 +3176,7 @@ for n in (100, 200, 400):
 
     c_src = poly_subset(data / "mesh_36.med", n, True)
     c_tgt = poly_subset(data / "mesh_27.med", n, True)
-    f_src = mc_p0_field(c_src, np.asarray(p_src.fields["T"].numpy()).ravel())
+    f_src = mc_p0_field(c_src, p_src.fields["T"].numpy())
 
     remap = mc.MEDCouplingRemapper()
     mc_prepare = median_ms(
@@ -2886,7 +3189,7 @@ for n in (100, 200, 400):
     )
 
     op.apply_update(p_src, "T", p_tgt, "T", def_val=0.0)
-    out_mf = np.asarray(p_tgt.fields["T"].numpy()).ravel()
+    out_mf = p_tgt.fields["T"].numpy()
     remap.prepare(c_src, c_tgt, "P0P0")
     out_mc = remap.transferField(f_src, 0.0).getArray().toNumPyArray()
 
@@ -2903,15 +3206,15 @@ for n in (100, 200, 400):
 assert all(r[5] &lt; 1e-9 for r in poly_res)
 print("transferred fields match at every size: OK")
 </code></pre>
-<pre><code>poly n= 100 | mefikit    2.59 ms (prepare) /  0.01 ms (apply) | medcoupling    153.5 ms /  0.20 ms |   59x faster
+<pre><code>poly n= 100 | mefikit    1.88 ms (prepare) /  0.00 ms (apply) | medcoupling     76.9 ms /  0.06 ms |   41x faster
             | max |mefikit - medcoupling| on the transferred field: 5.88e-15
 
 
-poly n= 200 | mefikit    7.14 ms (prepare) /  0.01 ms (apply) | medcoupling    568.9 ms /  0.38 ms |   80x faster
+poly n= 200 | mefikit    4.18 ms (prepare) /  0.00 ms (apply) | medcoupling    275.7 ms /  0.10 ms |   66x faster
             | max |mefikit - medcoupling| on the transferred field: 6.38e-15
 
 
-poly n= 400 | mefikit   23.26 ms (prepare) /  0.02 ms (apply) | medcoupling   2347.4 ms /  0.74 ms |  101x faster
+poly n= 400 | mefikit   14.23 ms (prepare) /  0.01 ms (apply) | medcoupling   1082.1 ms /  0.21 ms |   76x faster
             | max |mefikit - medcoupling| on the transferred field: 7.22e-15
 transferred fields match at every size: OK
 </code></pre>
@@ -2935,7 +3238,7 @@ print(
 )
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/compare_medcoupling_files/compare_medcoupling_32_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/compare_medcoupling_files/compare_medcoupling_32_0.png" alt="png"></span></label></p>
-<pre><code>At 400 cells mefikit prepares the polyhedral remap 101 times faster than medcoupling, and the gap grows with the mesh size.
+<pre><code>At 400 cells mefikit prepares the polyhedral remap 76 times faster than medcoupling, and the gap grows with the mesh size.
 </code></pre>
 <h2 id="performance-on-common-operations"><a class="header" href="#performance-on-common-operations">Performance on common operations</a></h2>
 <p>Now the same benchmark spirit on the structured meshes (quad / hexa) of daily
@@ -2977,7 +3280,7 @@ def mc_mesh(mesh, dim):
 
 def mc_field(mmesh, vals, nature, name="T"):
     f = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-    a = mc.DataArrayDouble(np.ascontiguousarray(vals.ravel()))
+    a = mc.DataArrayDouble(vals)
     a.setName(name)
     f.setArray(a)
     f.setMesh(mmesh)
@@ -3256,8 +3559,6 @@ merge-nodes done
 
 
 descend done
-
-
 overlay done
 
 
@@ -3324,16 +3625,16 @@ assert all_ok, "a cross-check failed"
 </code></pre>
 <pre><code>case           step             mefikit ms   medcoup ms     mc/mf
 --------------------------------------------------------------
-remap-2d       build/prepare        27.045       24.817      0.9x
-remap-2d       transfer              0.181        3.905     21.5x
-remap-3d       build/prepare       162.564      692.317      4.3x
-remap-3d       transfer              0.094        1.235     13.2x
-remap-3d-poly  build/prepare       356.550     8746.085     24.5x
-remap-3d-poly  transfer              0.099        2.171     22.0x
-merge-nodes    merge                 0.538        4.019      7.5x
-descend        run                  56.470      103.696      1.8x
-overlay        run                   2.071       68.392     33.0x
-crack          crack               235.632     1624.416      6.9x
+remap-2d       build/prepare         8.087       12.303      1.5x
+remap-2d       transfer              0.033        0.239      7.1x
+remap-3d       build/prepare        62.809      185.330      3.0x
+remap-3d       transfer              0.018        0.533     29.8x
+remap-3d-poly  build/prepare        66.601     1239.307     18.6x
+remap-3d-poly  transfer              0.027        0.575     21.1x
+merge-nodes    merge                 0.265        0.315      1.2x
+descend        run                   7.693       16.065      2.1x
+overlay        run                   1.356       10.385      7.7x
+crack          crack                32.056      294.579      9.2x
 
 correctness cross-checks:
   [OK] remap-2d: intensive match (mf == mc)  7.752687380957468e-13

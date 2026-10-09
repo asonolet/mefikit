@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8526df08.js";
+            window.path_to_searchindex_js = "../searchindex-fc688380.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-4506d0f5.js"></script>
@@ -315,6 +315,62 @@ pt.show(cpos="xy")
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="geometric_tools_files/geometric_tools_15_0.png" alt="png"><span class="img-wrapper"><img src="geometric_tools_files/geometric_tools_15_0.png" alt="png"></span></label></p>
 <p>The ugly cell in the center in the difference and symmetric difference comes from the plotting of non convex cells in pyvista. It is just a known plotting bug (due to optimisation quirks).</p>
+<h2 id="surface-overlay"><a class="header" href="#surface-overlay">Surface overlay</a></h2>
+<p><code>overlay_surfaces</code> imprints two 2D surfaces (meshes embedded in 3D space) wherever they
+coincide. Both surfaces must be piecewise planar; here they are built in the plane <code>z = 0</code>
+and tilted onto a common plane with the same <code>Transform</code>.</p>
+<p>The two refined surfaces share their intersection nodes, so they become mutually
+conformal on the overlap. Parts not covered by the other surface are copied verbatim.</p>
+<pre><code class="language-python">def quad_surface(extent, n):
+    """Flat QUAD4 grid spanning extent=(xmin, xmax, ymin, ymax) in the plane z=0."""
+    x = np.linspace(extent[0], extent[1], n + 1)
+    y = np.linspace(extent[2], extent[3], n + 1)
+    flat = mf.build_cmesh(x, y)
+    coords = np.c_[flat.coords(), np.zeros(flat.coords().shape[0])]
+    mesh = mf.UMesh(coords)
+    mesh.add_regular_block("QUAD4", flat.blocks()["QUAD4"])
+    return mesh
+
+
+# Two quad surfaces with different sizes and discretizations on the same plane.
+surface1 = quad_surface((0.0, 2.0, 0.0, 2.0), n=4)
+surface2 = quad_surface((1.0, 2.8, 0.5, 1.9), n=5)
+
+# Tilt both onto the same plane of 3D space (out-of-place transforms).
+tilt = mf.Transform.rotation([1.0, 0.0, 0.0], -0.6) @ mf.Transform.rotation(
+    [0.0, 1.0, 0.0], 0.5
+)
+surface1 = surface1.transform(tilt)
+surface2 = surface2.transform(tilt)
+</code></pre>
+<pre><code class="language-python">overlay = surface1.overlay_surfaces(surface2)
+
+pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text("Surface 1")
+pt.add_mesh(surface1.to_pyvista(), show_edges=True)
+# pt.subplot(0, 1)
+# pt.add_text("Surface 2")
+pt.add_mesh(surface2.to_pyvista(), show_edges=True)
+pt.subplot(0, 1)
+pt.add_text("Both refined")
+pt.add_mesh(overlay.refined1.to_pyvista(), color="lightblue", show_edges=True)
+pt.add_mesh(overlay.refined2.to_pyvista(), style="wireframe", color="red", line_width=2)
+pt.show()
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="geometric_tools_files/geometric_tools_20_0.png" alt="png"><span class="img-wrapper"><img src="geometric_tools_files/geometric_tools_20_0.png" alt="png"></span></label></p>
+<pre><code class="language-python"># The refined surfaces are mutually conformal: they share the very same nodes.
+assert np.array_equal(
+    np.asarray(overlay.refined1.coords()), np.asarray(overlay.refined2.coords())
+)
+
+# The parents maps relate each input face to the elements it produced.
+print("surface1:", len(overlay.parents1), "input faces")
+print("surface2:", len(overlay.parents2), "input faces")
+</code></pre>
+<pre><code>surface1: 16 input faces
+surface2: 25 input faces
+</code></pre>
 
                     </main>
 

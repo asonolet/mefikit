@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-8526df08.js";
+            window.path_to_searchindex_js = "../searchindex-fc688380.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-4506d0f5.js"></script>
@@ -212,14 +212,13 @@ print("medcoupling :", mc.__file__)
 print("medcoupling version:", mc.__version__)
 print("numpy       :", np.__version__)
 </code></pre>
-<pre><code>mefikit     : /home/asonolet/Codes/mefikit/src/mefikit/__init__.py
-medcoupling : /home/asonolet/Codes/mefikit/.venv/lib/python3.13/site-packages/medcoupling.py
+<pre><code>mefikit     : /home/catA/as259691/Codes/mefikit/src/mefikit/__init__.py
+medcoupling : /home/catA/as259691/Codes/mefikit/.venv/lib/python3.13/site-packages/medcoupling.py
 medcoupling version: V9_15_0
 numpy       : 2.5.2
 </code></pre>
-<h3 id="a-couple-of-plumbing-helpers"><a class="header" href="#a-couple-of-plumbing-helpers">A couple of plumbing helpers</a></h3>
-<p>Nothing to learn here — two small utilities used to cross-check node counts
-and surface areas between the libraries below.</p>
+<h3 id="helpers"><a class="header" href="#helpers">Helpers</a></h3>
+<p>Small utilities :</p>
 <pre><code class="language-python">def used_nodes(mesh):
     ids = np.concatenate([np.asarray(b) for b in mesh.blocks().values()])
     return int(np.unique(ids).size)
@@ -355,24 +354,24 @@ mean T above : 1.8338461538461535
 mc_measure = mc_mesh.getMeasureField(True)
 mc_measure.setNature(mc.IntensiveConservation)
 
-centers = np.asarray(mc_mesh.computeCellCenterOfMass().toNumPyArray())
+centers = mc_mesh.computeCellCenterOfMass().toNumPyArray()
 mc_T_vals = 1.0 + centers[:, 0] ** 2 + 0.5 * centers[:, 1]
 
 mc_T = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-_arr = mc.DataArrayDouble(np.ascontiguousarray(mc_T_vals, np.float64))
+_arr = mc.DataArrayDouble(mc_T_vals)
 _arr.setName("T")
 mc_T.setArray(_arr)
 mc_T.setMesh(mc_mesh)
 mc_T.setNature(mc.IntensiveConservation)
 
-print("measure sum  :", float(mc_measure.getArray().toNumPyArray().sum()))
+print("measure sum  :", mc_measure.getArray().toNumPyArray().sum())
 </code></pre>
 <pre><code>measure sum  : 1.0
 </code></pre>
 <pre><code class="language-python"># identical numbers, whichever library computed them
-mf_T_vals = np.asarray(mf_mesh.fields["T"].numpy()).ravel()
+mf_T_vals = mf_mesh.fields["T"].numpy()
 mc_T_vals = mc_T.getArray().toNumPyArray()
-print("max |mf_T - mc_T|:", float(np.abs(mf_T_vals - mc_T_vals).max()))
+print("max |mf_T - mc_T|:", np.abs(mf_T_vals - mc_T_vals).max())
 assert np.allclose(mf_T_vals, mc_T_vals, atol=1e-12)
 </code></pre>
 <pre><code>max |mf_T - mc_T|: 1.3322676295501878e-15
@@ -544,9 +543,7 @@ tc = tgt2.to_mc()
 tc.setMeshDimension(2)
 
 f_src = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-_arr = mc.DataArrayDouble(
-    np.ascontiguousarray(np.asarray(src2.fields["T"].numpy()).ravel())
-)
+_arr = mc.DataArrayDouble(src2.fields["T"].numpy())
 _arr.setName("T")
 f_src.setArray(_arr)
 f_src.setMesh(sc)
@@ -572,7 +569,7 @@ pt = pv.Plotter(shape=(1, 2))
 pt.subplot(0, 0)
 pt.add_text("Source")
 s_pv = src2.to_pyvista()
-s_pv["T"] = np.asarray(src2.fields["T"].numpy()).ravel()
+s_pv["T"] = src2.fields["T"].numpy()
 pt.add_mesh(s_pv, scalars="T", clim=[vmin, vmax], show_edges=True)
 pt.camera_position = "xy"
 pt.subplot(0, 1)
@@ -624,8 +621,6 @@ print("cells above mean volume:", len(big))
 mefikit  mesh_27 : ['PHED'] 2000 cells
 medcoupl mesh_36 : 2000 cells, 12404 nodes
 medcoupl mesh_27 : 2000 cells
-
-
 volume(mesh_36): 0.99999999869571
 cells above mean volume: 898
 </code></pre>
@@ -686,7 +681,7 @@ on both sides) and check that the actual transferred fields coincide.</p>
 
 def mc_p0_field(mesh, vals):
     f = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-    a = mc.DataArrayDouble(np.ascontiguousarray(vals, np.float64))
+    a = mc.DataArrayDouble(vals)
     a.setName("T")
     f.setArray(a)
     f.setMesh(mesh)
@@ -721,7 +716,7 @@ for n in (100, 200, 400):
 
     c_src = poly_subset(data / "mesh_36.med", n, True)
     c_tgt = poly_subset(data / "mesh_27.med", n, True)
-    f_src = mc_p0_field(c_src, np.asarray(p_src.fields["T"].numpy()).ravel())
+    f_src = mc_p0_field(c_src, p_src.fields["T"].numpy())
 
     remap = mc.MEDCouplingRemapper()
     mc_prepare = median_ms(
@@ -734,7 +729,7 @@ for n in (100, 200, 400):
     )
 
     op.apply_update(p_src, "T", p_tgt, "T", def_val=0.0)
-    out_mf = np.asarray(p_tgt.fields["T"].numpy()).ravel()
+    out_mf = p_tgt.fields["T"].numpy()
     remap.prepare(c_src, c_tgt, "P0P0")
     out_mc = remap.transferField(f_src, 0.0).getArray().toNumPyArray()
 
@@ -751,15 +746,15 @@ for n in (100, 200, 400):
 assert all(r[5] &lt; 1e-9 for r in poly_res)
 print("transferred fields match at every size: OK")
 </code></pre>
-<pre><code>poly n= 100 | mefikit    2.59 ms (prepare) /  0.01 ms (apply) | medcoupling    153.5 ms /  0.20 ms |   59x faster
+<pre><code>poly n= 100 | mefikit    1.88 ms (prepare) /  0.00 ms (apply) | medcoupling     76.9 ms /  0.06 ms |   41x faster
             | max |mefikit - medcoupling| on the transferred field: 5.88e-15
 
 
-poly n= 200 | mefikit    7.14 ms (prepare) /  0.01 ms (apply) | medcoupling    568.9 ms /  0.38 ms |   80x faster
+poly n= 200 | mefikit    4.18 ms (prepare) /  0.00 ms (apply) | medcoupling    275.7 ms /  0.10 ms |   66x faster
             | max |mefikit - medcoupling| on the transferred field: 6.38e-15
 
 
-poly n= 400 | mefikit   23.26 ms (prepare) /  0.02 ms (apply) | medcoupling   2347.4 ms /  0.74 ms |  101x faster
+poly n= 400 | mefikit   14.23 ms (prepare) /  0.01 ms (apply) | medcoupling   1082.1 ms /  0.21 ms |   76x faster
             | max |mefikit - medcoupling| on the transferred field: 7.22e-15
 transferred fields match at every size: OK
 </code></pre>
@@ -783,7 +778,7 @@ print(
 )
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="compare_medcoupling_files/compare_medcoupling_32_0.png" alt="png"><span class="img-wrapper"><img src="compare_medcoupling_files/compare_medcoupling_32_0.png" alt="png"></span></label></p>
-<pre><code>At 400 cells mefikit prepares the polyhedral remap 101 times faster than medcoupling, and the gap grows with the mesh size.
+<pre><code>At 400 cells mefikit prepares the polyhedral remap 76 times faster than medcoupling, and the gap grows with the mesh size.
 </code></pre>
 <h2 id="performance-on-common-operations"><a class="header" href="#performance-on-common-operations">Performance on common operations</a></h2>
 <p>Now the same benchmark spirit on the structured meshes (quad / hexa) of daily
@@ -825,7 +820,7 @@ def mc_mesh(mesh, dim):
 
 def mc_field(mmesh, vals, nature, name="T"):
     f = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-    a = mc.DataArrayDouble(np.ascontiguousarray(vals.ravel()))
+    a = mc.DataArrayDouble(vals)
     a.setName(name)
     f.setArray(a)
     f.setMesh(mmesh)
@@ -1104,8 +1099,6 @@ merge-nodes done
 
 
 descend done
-
-
 overlay done
 
 
@@ -1172,16 +1165,16 @@ assert all_ok, "a cross-check failed"
 </code></pre>
 <pre><code>case           step             mefikit ms   medcoup ms     mc/mf
 --------------------------------------------------------------
-remap-2d       build/prepare        27.045       24.817      0.9x
-remap-2d       transfer              0.181        3.905     21.5x
-remap-3d       build/prepare       162.564      692.317      4.3x
-remap-3d       transfer              0.094        1.235     13.2x
-remap-3d-poly  build/prepare       356.550     8746.085     24.5x
-remap-3d-poly  transfer              0.099        2.171     22.0x
-merge-nodes    merge                 0.538        4.019      7.5x
-descend        run                  56.470      103.696      1.8x
-overlay        run                   2.071       68.392     33.0x
-crack          crack               235.632     1624.416      6.9x
+remap-2d       build/prepare         8.087       12.303      1.5x
+remap-2d       transfer              0.033        0.239      7.1x
+remap-3d       build/prepare        62.809      185.330      3.0x
+remap-3d       transfer              0.018        0.533     29.8x
+remap-3d-poly  build/prepare        66.601     1239.307     18.6x
+remap-3d-poly  transfer              0.027        0.575     21.1x
+merge-nodes    merge                 0.265        0.315      1.2x
+descend        run                   7.693       16.065      2.1x
+overlay        run                   1.356       10.385      7.7x
+crack          crack                32.056      294.579      9.2x
 
 correctness cross-checks:
   [OK] remap-2d: intensive match (mf == mc)  7.752687380957468e-13
