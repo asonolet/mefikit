@@ -391,6 +391,7 @@ unpolyzed.to_pyvista().plot(show_edges=True)
 ![png](topological_tools_files/topological_tools_32_1.png)
 
 
+
 ## Stitch
 
 Meshes are often modeled as separate blocks that were meshed independently, so their nodes do not
@@ -455,3 +456,30 @@ plotter.show()
 
 
 ![png](topological_tools_files/topological_tools_35_0.png)
+
+
+
+
+```python
+plate = mf.build_cmesh([0.0, 2.0], [0.0, 2.0], [0.0, 1.0])
+block = mf.build_cmesh([0.0, 1.0, 2.2], [0.0, 1.0, 1.5], [1.0, 2.0])
+other = mf.build_cmesh([0.0, 1.0, 1.9], [1.5, 2.0], [1.0, 2.0])
+
+stitched = mf.stitch([plate, block, other])
+
+print(list(stitched.blocks()))
+print(f"{stitched.num_elements()=}")
+```
+
+    ['PHED']
+    stitched.num_elements()=7
+
+
+
+```python
+stitched.to_pyvista().plot(show_edges=True)
+```
+
+
+
+![png](topological_tools_files/topological_tools_37_0.png)

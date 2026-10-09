@@ -45,7 +45,9 @@ must_use_candidate = "allow"
 [profile.release]
 opt-level = 3
 codegen-units = 1
-lto = true
+lto = "thin"
+debug = false
+strip = true
 
 [profile.flame]
 inherits = "bench"
