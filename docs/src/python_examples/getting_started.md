@@ -106,7 +106,7 @@ mesh.to_pyvista().plot(scalars="T", show_edges=True)
 ```
 
 
-    Widget(value='<iframe src="http://localhost:42367/index.html?ui=P_0x7236419e7a10_0&reconnect=auto" class="pyvi…
+    Widget(value='<iframe src="http://localhost:35483/index.html?ui=P_0x7fef6b7c7a10_0&reconnect=auto" class="pyvi…
 
 
 ## The mental model in one glance
@@ -132,16 +132,34 @@ they return `None`.
 
 ## Where to go next
 
+**Mesh basics**
+
 | Goal | Page |
 |---|---|
 | understand what a `UMesh` contains | [UMesh basics](./umesh_basics.md) |
+| read / write `.med` and interchange | [Input/Output](./input_output.md) |
+
+**Building and transforming meshes**
+
+| Goal | Page |
+|---|---|
+| build meshes by sweeping | [Extrusions](./extrusions.md) |
+| translate, rotate and mirror a mesh | [Geometric transforms](./geometric_transforms.md) |
+| topology tools (descend, crack, ...) | [Topological tools](./topological_tools.md) |
+| geometry tools (overlay, merge, snap, ...) | [Geometric tools](./geometric_tools.md) |
+
+**Fields and selections**
+
+| Goal | Page |
+|---|---|
 | field expressions, `eval`, reductions | [Fields](./fields.md) |
 | spatial filters and groups | [Selection](./selection.md) |
 | move fields between meshes | [Field transfers](./transfers.md) |
-| topology tools (descend, crack, ...) | [Topological tools](./topological_tools.md) |
-| geometry tools (overlay, merge, snap, ...) | [Geometric tools](./geometric_tools.md) |
-| build meshes by sweeping / transforms | [Extrusions](./extrusions.md), [Geometric transforms](./geometric_transforms.md) |
-| read / write `.med` and interchange | [Input/Output](./input_output.md) |
+
+**Worked examples**
+
+| Goal | Page |
+|---|---|
 | a full use case end to end | [Bubbles](./example_bubbles.md) |
 | how mefikit compares to a mature library | [mefikit vs. medcoupling](./compare_medcoupling.md) |
 

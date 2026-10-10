@@ -1,12 +1,25 @@
 # Python guide
 
-This page is a compact reference for the Python API. The notebooks under
-[Python Examples](./python_examples/SUMMARY.md) show the same features in
-context; here they are gathered as tables.
+This page is a compact reference for the Python API. The notebooks grouped at
+the end of the book show the same features in context; here they are gathered
+as tables.
 
 Meshes are `UMesh` objects. Fields and element groups live in two dict-like
 mappings on the mesh, and selections are lazy views that only evaluate when
 queried.
+
+Some insights on how to use the current Python library:
+
+- Use autocompletion with the tool you like, type hints are provided! A missing
+  type hint is a bug, please report it.
+- Only high level whole mesh operations are supported through python. For finer
+  grain ops either reach me or implement it in rust consuming the `mefikit` rust
+  crate.
+- Use lazy expressions wherever possible, they are fast, reusable, expressive
+  and less error prone than manual indexing. They are inspired from `polars`, a
+  DataFrame python-rust lib.
+- Visualize with `pyvista`. It lacks type hints and the syntax may not feel
+  familiar but the overall experience is really better than anything else.
 
 ## The fields mapping
 
