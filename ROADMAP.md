@@ -90,6 +90,8 @@
 | Field interpolation       | ✔️    | ✔️          | `transfer`: ConstantPiecewise,                |
 |                           |       |             | MovingLeastSquares, InverseDistance,          |
 |                           |       |             | ConservativeP0 (2D/3D).                       |
+| Field gradient (MLS)      | ✔️    | ✔️          | `mf.Gradient` / `Gradient.at_points`; full-   |
+|                           |       |             | dimensional source only (2D space or 3D vol). |
 | Field reduction / stats   | ✔️    | ❌          |                                               |
 | Norms, extrema, threshold | ✔️    | ❌          | Partial: `fieldexpr` math functions +         |
 |                           |       |             | comparisons for field-based selections        |

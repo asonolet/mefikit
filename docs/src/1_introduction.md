@@ -32,6 +32,8 @@ development.
 - `topology` tools for analyzing mesh connectivity, computing descending meshes,
   neighbours, domain frontier, etc.
 - `geometry` tools for computing element measures, centroids, etc.
+- `transfer` operators for remapping fields between meshes, and meshless
+  field gradients (`mf.Gradient`).
 - `Selector` utilities for querying and filtering mesh elements
   based on geometric or topological criteria.
 
