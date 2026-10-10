@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-54ef5ae9.js";
+            window.path_to_searchindex_js = "searchindex-64d38436.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-86b4e9ed.js"></script>
+        <script src="toc-7bca2e67.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -183,6 +183,9 @@ associated scalar, vector, and tensor fields. Its goal is to provide a unified
 in-memory representation of meshes and fields, along with a set of robust,
 efficient tools that support numerical simulation workflows in research,
 engineering, and scientific computing.</p>
+<p>This book documents the <strong>Python API</strong>. The heavy lifting is done by the
+<code>mefikit</code> Rust crate, which the Python bindings wrap; the same crate can be used
+directly from Rust for performance-critical code.</p>
 <p><code>mefikit</code> focuses on three core principles:</p>
 <ol>
 <li><strong>A flexible mesh model</strong> capable of representing mixed-element unstructured
@@ -196,17 +199,17 @@ process large meshes.</li>
 development.</p>
 <h2 id="mefikit-provides"><a class="header" href="#mefikit-provides"><code>mefikit</code> provides</a></h2>
 <ul>
-<li><code>umesh</code> the unstructured mesh container supporting mixed element types,
+<li><code>UMesh</code>, the unstructured mesh container supporting mixed element types,
 fields, and groups.</li>
-<li><code>io</code> modules for reading and writing meshes in various formats
-(e.g., VTK, serde_json, serde_yaml).</li>
-<li><code>topology</code> tools for analyzing mesh connectivity, computing descending meshes,
-neighbours, domain frontier, etc.</li>
-<li><code>geometry</code> tools for computing element measures, centroids, etc.</li>
-<li><code>transfer</code> operators for remapping fields between meshes, and meshless
-field gradients (<code>mf.Gradient</code>).</li>
-<li><code>Selector</code> utilities for querying and filtering mesh elements
-based on geometric or topological criteria.</li>
+<li>I/O for reading and writing meshes in various formats (VTK, VTKHDF, CGNS,
+MED, JSON, YAML).</li>
+<li>topology tools for analyzing mesh connectivity, computing descending meshes,
+neighbours, domain boundaries, etc.</li>
+<li>geometry tools for computing element measures, centroids, overlays, etc.</li>
+<li>transfer operators for remapping fields between meshes, and meshless field
+gradients.</li>
+<li>selections (<code>mf.sel</code>) for querying and filtering mesh elements based on
+geometric or topological criteria.</li>
 </ul>
 <p><strong>Continue to <a href="./python_examples/getting_started.html">Getting Started</a>.</strong></p>
 

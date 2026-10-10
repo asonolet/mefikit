@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-54ef5ae9.js";
+            window.path_to_searchindex_js = "searchindex-64d38436.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-86b4e9ed.js"></script>
+        <script src="toc-7bca2e67.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -186,12 +186,11 @@ rules a mesh must follow to be considered valid.</p>
 </ul>
 <p>In <code>mefikit</code>, elements are <strong>ephemeral, zero-copy views</strong> constructed on the fly
 when iterating through a mesh block. They do not own memory; instead they refer
-to underlying index and coordinate buffers. This behavior mirrors VTK’s “cell
-iterator” pattern while improving cache locality and reducing overhead.</p>
-<p>It is only accessible through the rust API. The python bindings do not expose
-elements directly because python is only intended to be used for high-level
-scripting. Do not fear of going to the rust side for performance critical code,
-<code>mefikit</code> was designed to be simple to use for rust newcomers.</p>
+to underlying index and coordinate buffers. This mirrors VTK’s “cell iterator”
+pattern while improving cache locality and reducing overhead.</p>
+<p>Element iteration is a Rust-API detail. The Python bindings do not expose
+elements directly, because Python is meant for high-level scripting where you
+operate on whole meshes; the Rust API is where per-element work belongs.</p>
 <h2 id="topological-dimension"><a class="header" href="#topological-dimension">Topological Dimension</a></h2>
 <p>The <strong>topological dimension</strong> of an element is the dimension of the
 mathematical object it represents:</p>
@@ -272,7 +271,7 @@ MeshGems and various meshing libraries.</li>
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="2_format.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="element_conventions.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -286,7 +285,7 @@ MeshGems and various meshing libraries.</li>
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="2_format.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="element_conventions.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Element Conventions - Mefikit Book</title>
+        <title>API at a glance - Mefikit Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-54ef5ae9.js";
+            window.path_to_searchindex_js = "searchindex-64d38436.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-86b4e9ed.js"></script>
+        <script src="toc-7bca2e67.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -174,205 +174,312 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="element-conventions"><a class="header" href="#element-conventions">Element Conventions</a></h1>
-<p>This chapter defines the node ordering and face orientation conventions used
-throughout <code>mefikit</code>. These conventions follow the <strong>VTK</strong> convention for
-element node ordering and face definitions.</p>
-<p><strong>Note:</strong> TET10 uses MEDFile mid-side node numbering (deferred migration).</p>
-<h2 id="element-types"><a class="header" href="#element-types">Element types</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Type</th><th>Dim</th><th>Nodes</th><th>Regularity</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td>VERTEX</td><td>0D</td><td>1</td><td>Regular</td><td>Point</td></tr>
-<tr><td>SEG2</td><td>1D</td><td>2</td><td>Regular</td><td>Linear segment</td></tr>
-<tr><td>SEG3</td><td>1D</td><td>3</td><td>Regular</td><td>Quadratic segment</td></tr>
-<tr><td>SEG4</td><td>1D</td><td>4</td><td>Regular</td><td>Cubic segment</td></tr>
-<tr><td>TRI3</td><td>2D</td><td>3</td><td>Regular</td><td>Linear triangle</td></tr>
-<tr><td>TRI6</td><td>2D</td><td>6</td><td>Regular</td><td>Quadratic triangle</td></tr>
-<tr><td>TRI7</td><td>2D</td><td>7</td><td>Regular</td><td>Quadratic triangle + centroid</td></tr>
-<tr><td>QUAD4</td><td>2D</td><td>4</td><td>Regular</td><td>Linear quadrilateral</td></tr>
-<tr><td>QUAD8</td><td>2D</td><td>8</td><td>Regular</td><td>Quadratic quadrilateral (serendipity)</td></tr>
-<tr><td>QUAD9</td><td>2D</td><td>9</td><td>Regular</td><td>Biquadratic quadrilateral</td></tr>
-<tr><td>TET4</td><td>3D</td><td>4</td><td>Regular</td><td>Linear tetrahedron</td></tr>
-<tr><td>TET10</td><td>3D</td><td>10</td><td>Regular</td><td>Quadratic tetrahedron</td></tr>
-<tr><td>HEX8</td><td>3D</td><td>8</td><td>Regular</td><td>Linear hexahedron</td></tr>
-<tr><td>HEX21</td><td>3D</td><td>21</td><td>Regular</td><td>Tricubic hexahedron</td></tr>
-<tr><td>SPLINE</td><td>1D</td><td>var.</td><td>Poly</td><td>Polyline</td></tr>
-<tr><td>PGON</td><td>2D</td><td>var.</td><td>Poly</td><td>Polygon</td></tr>
-<tr><td>PHED</td><td>3D</td><td>var.</td><td>Poly</td><td>Polyhedron</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="poly-element-representation"><a class="header" href="#poly-element-representation">Poly element representation</a></h2>
-<p>Poly elements (SPLINE, PGON, PHED) store their connectivity as a flat array of
-node indices. <strong>Faces are delimited by <code>usize::MAX</code> sentinel values.</strong></p>
+                        <h1 id="api-at-a-glance"><a class="header" href="#api-at-a-glance">API at a glance</a></h1>
+<p>This page is a <strong>cheat sheet</strong>, not the specification. It gathers the Python
+API into lookup tables so you can find a name quickly. Behaviour is shown in
+context by the notebooks under <em>Examples</em>, and the authoritative signatures are
+the hand-written type stubs (<code>src/mefikit/*.pyi</code>) and your editor’s
+autocompletion. If something here disagrees with them, they win.</p>
+<p>Meshes are <code>UMesh</code> objects. Fields and element groups live in two dict-like
+mappings on the mesh, and selections are lazy views that only evaluate when
+queried.</p>
+<p>Some insights on how to use the current Python library:</p>
 <ul>
-<li>
-<p><strong>PGON</strong>: nodes form a single face, no sentinel needed.
-<code>[n0, n1, n2, n3]</code> — a 4-node polygon.</p>
-</li>
-<li>
-<p><strong>PHED</strong>: each face is a closed polygon (PGON), separated by sentinels.</p>
-<pre><code>[f0_n0, f0_n1, f0_n2, MAX, f1_n0, f1_n1, f1_n2, f1_n3, MAX, ...]
-</code></pre>
-<p>The last face has no trailing sentinel.</p>
-</li>
+<li>Use autocompletion with the tool you like, type hints are provided! A missing
+type hint is a bug, please report it.</li>
+<li>Only high level whole mesh operations are supported through python. For finer
+grain ops either reach me or implement it in rust consuming the <code>mefikit</code> rust
+crate.</li>
+<li>Use lazy expressions wherever possible, they are fast, reusable, expressive
+and less error prone than manual indexing. They are inspired from <code>polars</code>, a
+DataFrame python-rust lib.</li>
+<li>Visualize with <code>pyvista</code>. It lacks type hints and the syntax may not feel
+familiar but the overall experience is really better than anything else.</li>
 </ul>
-<h2 id="face-orientation-convention"><a class="header" href="#face-orientation-convention">Face orientation convention</a></h2>
-<p>All subentities (edges of 2D elements, faces of 3D elements) are defined with
-<strong>consistent counter-clockwise (CCW) winding when viewed from outside the
-element</strong>. This ensures that:</p>
+<h2 id="the-fields-mapping"><a class="header" href="#the-fields-mapping">The fields mapping</a></h2>
+<p><code>mesh.fields</code> behaves like a dict keyed by field name. Each entry returns a
+<code>FieldRef</code>, a handle to read, reduce, or write the stored values.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Call</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>list names</td><td><code>mesh.fields.keys()</code> / <code>items()</code> / <code>len()</code> / <code>name in mesh.fields</code></td><td>sorted, deterministic</td></tr>
+<tr><td>get a handle</td><td><code>ref = mesh.fields["T"]</code></td><td><code>KeyError</code> if missing</td></tr>
+<tr><td>create / replace</td><td><code>mesh.fields["T"] = value</code></td><td>see accepted values below</td></tr>
+<tr><td>delete</td><td><code>del mesh.fields["T"]</code></td><td>removes every instance</td></tr>
+<tr><td>rename</td><td><code>mesh.fields.rename("T", "T2")</code></td><td><code>KeyError</code> / <code>ValueError</code> on bad names</td></tr>
+<tr><td>bulk export</td><td><code>mesh.fields.to_dict()</code></td><td><code>{name: {etype: array}}</code>; <code>mesh.fields.values()</code> returns the <code>FieldRef</code> list</td></tr>
+<tr><td>per-etype values</td><td><code>ref.values()</code></td><td><code>{etype: array}</code></td></tr>
+<tr><td>single array</td><td><code>ref.numpy()</code></td><td>one array when the mesh has one element type</td></tr>
+<tr><td>metadata</td><td><code>ref.shape</code>, <code>ref.dimension()</code>, <code>len(ref)</code></td><td>component shape, mesh dimension, element count</td></tr>
+</tbody>
+</table>
+</div>
+<p>Accepted values for creation and writes:</p>
 <ul>
-<li>Each outward-facing normal follows the right-hand rule.</li>
-<li>Shared lower-dimensional entities are traversed in <strong>opposite directions</strong>
-by adjacent higher-dimensional elements.</li>
+<li>a <code>float</code> — broadcast to every row</li>
+<li>an <code>np.ndarray</code> — full column or per-block rows</li>
+<li>a dict <code>{etype: array}</code> — per element type</li>
+<li>an expression: <code>mf.Field("T") * 2</code> or another field object</li>
+<li>a string naming an existing field (e.g. <code>"T"</code>) — copies it</li>
 </ul>
-<p>The subentity definitions below are the canonical reference for node orderings.</p>
-<h2 id="2d-elements"><a class="header" href="#2d-elements">2D elements</a></h2>
-<h3 id="tri3--tri6--tri7--triangle"><a class="header" href="#tri3--tri6--tri7--triangle">TRI3 / TRI6 / TRI7 — Triangle</a></h3>
-<p>Nodes 0, 1, 2 are the three vertices. Edges follow CCW winding:</p>
-<pre><code>        2
-       / \
-      /   \
-     /     \
-    0-------1
-</code></pre>
+<p>Reductions over all elements carrying the field:
+<code>min()</code>, <code>max()</code>, <code>sum()</code>, <code>mean()</code>, <code>var(ddof=0)</code>, <code>std(ddof=0)</code>,
+<code>integral()</code> (measure-weighted).</p>
+<h3 id="partial-reads-and-writes"><a class="header" href="#partial-reads-and-writes">Partial reads and writes</a></h3>
+<p><code>ref[selector]</code> gathers the selected rows as <code>{etype: array}</code>; assigning
+through <code>ref[selector] = value</code> writes them. Selectors are:</p>
+<ul>
+<li>wildcards: <code>...</code>, <code>:</code> (full slice), or <code>None</code></li>
+<li>an ids dict: <code>{"QUAD4": [0, 3]}</code></li>
+<li>any selection expression: <code>mf.sel.rect(...)</code>, <code>mf.Field("T") &gt; 1.0</code>, …</li>
+</ul>
+<h2 id="the-groups-mapping"><a class="header" href="#the-groups-mapping">The groups mapping</a></h2>
+<p><code>mesh.groups</code> behaves like a dict keyed by group name. Each entry is a
+<code>GroupRef</code>.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Edge</th><th>Nodes</th><th>Description</th></tr>
+<tr><th>Operation</th><th>Call</th></tr>
 </thead>
 <tbody>
-<tr><td>0</td><td>[0, 1]</td><td>Edge 0→1</td></tr>
-<tr><td>1</td><td>[1, 2]</td><td>Edge 1→2</td></tr>
-<tr><td>2</td><td>[2, 0]</td><td>Edge 2→0</td></tr>
+<tr><td>create / replace</td><td><code>mesh.groups["wall"] = sel_expr</code> or <code>= {"QUAD4": [0, 1]}</code></td></tr>
+<tr><td>grow / shrink</td><td><code>ref.add(source)</code> / <code>ref.remove(source)</code></td></tr>
+<tr><td>element ids</td><td><code>ref.ids()</code> → <code>{etype: uint64 array}</code>, <code>len(ref)</code></td></tr>
+<tr><td>rename</td><td><code>mesh.groups.rename("old", "new")</code></td></tr>
+<tr><td>delete</td><td><code>del mesh.groups["wall"]</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>For <strong>TRI6/TRI7</strong>, mid-side nodes are placed as: node 3 on edge 01, node 4 on
-edge 12, node 5 on edge 20. TRI7 additionally has a centroid node (node 6).</p>
-<h3 id="quad4--quad8--quad9--quadrilateral"><a class="header" href="#quad4--quad8--quad9--quadrilateral">QUAD4 / QUAD8 / QUAD9 — Quadrilateral</a></h3>
-<p>Nodes 0–3 are the four vertices, numbered counter-clockwise:</p>
-<pre><code>    3-------2
-    |       |
-    |       |
-    0-------1
-</code></pre>
+<p>Groups feed back into selections through
+<code>mf.sel.group("wall")</code> and <code>mf.sel.exclude_group("wall")</code>.</p>
+<h2 id="selections"><a class="header" href="#selections">Selections</a></h2>
+<p>Selection factories live in the <code>mf.sel</code> module:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Edge</th><th>Nodes</th><th>Description</th></tr>
+<tr><th>Factory</th><th>Elements matched by</th></tr>
 </thead>
 <tbody>
-<tr><td>0</td><td>[0, 1]</td><td>Bottom</td></tr>
-<tr><td>1</td><td>[1, 2]</td><td>Right</td></tr>
-<tr><td>2</td><td>[2, 3]</td><td>Top</td></tr>
-<tr><td>3</td><td>[3, 0]</td><td>Left</td></tr>
+<tr><td><code>bbox(min, max)</code> / <code>sphere(center, r)</code></td><td>centroid position (3D)</td></tr>
+<tr><td><code>rect(min, max)</code> / <code>circle(center, r)</code></td><td>centroid position (2D); bounds are min-inclusive / max-exclusive</td></tr>
+<tr><td><code>nbbox</code> / <code>nsphere</code> / <code>nrect</code> / <code>ncircle(..., all)</code></td><td>node positions, with all/any semantics</td></tr>
+<tr><td><code>ids({"ETYPE": [...]})</code></td><td>explicit element ids</td></tr>
+<tr><td><code>types(["QUAD4", ...])</code></td><td>element types</td></tr>
+<tr><td><code>group(name)</code> / <code>exclude_group(name)</code></td><td>membership in a named group</td></tr>
+<tr><td><code>all()</code> — also <code>None</code>, <code>...</code>, <code>[:]</code> where a selector is expected</td><td>everything</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="3d-elements"><a class="header" href="#3d-elements">3D elements</a></h2>
-<h3 id="tet4--tetrahedron"><a class="header" href="#tet4--tetrahedron">TET4 — Tetrahedron</a></h3>
-<p>Nodes 0–3 are the four vertices. The tetrahedron is defined by its four
-triangular faces (VTK convention):</p>
-<pre><code>          3
-         /|\
-        / | \
-       /  |  \
-      /   |   \
-     /    |    \
-    2-----+-----1
-     \    |    /
-      \   |   /
-       \  |  /
-        \ | /
-         \|/
-          0
+<p>Selections compose with <code>&amp;</code>, <code>|</code>, <code>^</code>, <code>-</code>, <code>~</code>. Field thresholds produce
+selections too: <code>mf.Field("T") &gt; 1.0</code>.</p>
+<p>Two families of spatial selectors are available (showcased in the
+<a href="./python_examples/selection.html">selection</a> notebook):</p>
+<ul>
+<li>the <code>n*</code> variants (<code>nbbox</code>, <code>nrect</code>, <code>nsphere</code>, <code>ncircle</code>, <code>nids</code>) match
+<strong>node</strong> positions and take an <code>all=</code> flag (all vs. any node of the element
+must match);</li>
+<li><code>bbox</code>, <code>rect</code>, <code>sphere</code>, <code>circle</code>, <code>ids</code> match <strong>element centroids</strong>.</li>
+</ul>
+<h3 id="lazy-results"><a class="header" href="#lazy-results">Lazy results</a></h3>
+<p><code>mesh.select(expr)</code> does not build a mesh; it returns a lightweight
+<code>SelectionResult</code> that re-evaluates on every call:</p>
+<ul>
+<li><code>result.ids()</code> → <code>{etype: array}</code></li>
+<li><code>len(result)</code></li>
+<li>reductions with any field expression: <code>min/max/sum/mean(expr)</code>,
+<code>var/std(expr, ddof=0)</code>, <code>integral(expr)</code></li>
+<li><code>result.to_mesh(with_fields=True)</code> materializes a sub-mesh when needed</li>
+</ul>
+<pre><code class="language-python">hot = mesh.select(mf.Field("energy") &gt; 1e6)
+print(hot.mean("energy"))
+submesh = hot.to_mesh()
 </code></pre>
+<h2 id="mesh-modification"><a class="header" href="#mesh-modification">Mesh modification</a></h2>
+<p>Most topological tools return a new <code>UMesh</code>; the <code>*_update</code> variants operate
+in-place and return a new mesh only when the result displaced elements
+(otherwise <code>None</code>).</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Face</th><th>Nodes</th><th>Description</th></tr>
+<tr><th>Operation</th><th>Call</th></tr>
 </thead>
 <tbody>
-<tr><td>0</td><td>[0, 1, 3]</td><td>Opposite node 2</td></tr>
-<tr><td>1</td><td>[1, 2, 3]</td><td>Opposite node 0</td></tr>
-<tr><td>2</td><td>[2, 0, 3]</td><td>Opposite node 1</td></tr>
-<tr><td>3</td><td>[0, 2, 1]</td><td>Base (opposite node 3)</td></tr>
+<tr><td>build structured grid (SEG2/QUAD4/HEX8)</td><td><code>mf.build_cmesh(*axes)</code></td></tr>
+<tr><td>descending/finer connectivity</td><td><code>mesh.descend(src_dim, target_dim)</code> / <code>descend_update(...)</code></td></tr>
+<tr><td>boundaries of a dimension</td><td><code>mesh.boundaries(src_dim, target_dim)</code> / <code>boundaries_update(...)</code></td></tr>
+<tr><td>connected parts</td><td><code>mesh.connected_components(src_dim, link_dim, with_fields)</code></td></tr>
+<tr><td>crack / snap / merge nodes</td><td><code>mesh.crack(cut)</code>, <code>mesh.snap(ref, eps)</code>, <code>mesh.merge_nodes(eps)</code></td></tr>
+<tr><td>extrude</td><td><code>mesh.extrude(along)</code>, <code>extrude_parallel(...)</code>, <code>extrude_curv(...)</code></td></tr>
+<tr><td>split / polygonize</td><td><code>mesh.split()</code>, <code>mesh.polyze()</code> / <code>unpolyze()</code></td></tr>
+<tr><td>boolean overlay</td><td><code>mesh.overlay(mesh2, operation=None)</code></td></tr>
+<tr><td>surface imprint in 3D</td><td><code>mesh.overlay_surfaces(mesh2, tol=1e-9)</code> → <code>mf.SurfaceOverlay</code></td></tr>
+<tr><td>join meshes as-is</td><td><code>mf.aggregate(meshes)</code>, <code>mf.concat(a, b)</code></td></tr>
+<tr><td>stitch volumes at shared boundaries</td><td><code>mf.stitch(meshes, tol=1e-9)</code> → <code>UMesh</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>Each face lists the three nodes that do <strong>not</strong> include the opposite vertex,
-in CCW order when viewed from outside the element.</p>
-<p>For <strong>TET10</strong>, the vertex convention is: nodes 0–3 vertices, mid-side nodes
-4 (edge 01), 5 (edge 12), 6 (edge 02), 7 (edge 03), 8 (edge 13), 9 (edge 23).</p>
-<h3 id="hex8--hexahedron"><a class="header" href="#hex8--hexahedron">HEX8 — Hexahedron</a></h3>
-<p>Nodes 0–7 are the eight vertices of a unit cube, numbered following the
-<strong>VTK</strong> convention:</p>
-<pre><code>        7---------6
-       /|        /|
-      / |       / |
-     /  |      /  |
-    4---------5   |
-    |   3-----|---2
-    |  /      |  /
-    | /       | /
-    |/        |/
-    0---------1
+<p><code>mf.stitch</code> makes two or more volume meshes (<code>TET4</code>, <code>HEX8</code> or <code>PHED</code>) conformal
+wherever their boundaries coincide, so that they can be used as a single mesh:</p>
+<pre><code class="language-python">import mefikit as mf
+
+plate = mf.build_cmesh([0, 2], [0, 2], [0, 1])  # one HEX8
+block = mf.build_cmesh([0, 1, 2], [0, 1, 2], [1, 2])  # four HEX8
+stitched = mf.stitch([plate, block])  # one PHED mesh, 5 cells
+
+# The interface on z = 1 is now shared: every face there belongs to two cells.
+coords = stitched.coords()
 </code></pre>
-<p>Bottom face: nodes 0, 1, 2, 3 (CCW viewed from below).
-Top face: nodes 4, 5, 6, 7 (CCW viewed from above).
-Node 4 is directly above node 0, node 5 above node 1, etc.</p>
+<p>The result is a single polyhedral mesh: interface nodes exist once, families are
+relabeled per input mesh, and fields and groups are dropped. Coincident interfaces
+must be piecewise planar within <code>tol</code>. This is an <em>imprint only</em> operation:
+overlapping volumes are not detected, so the output may contain overlapping cells.</p>
+<h2 id="geometric-transforms"><a class="header" href="#geometric-transforms">Geometric transforms</a></h2>
+<p>Pure coordinate transformations, each returning a <strong>new</strong> <code>UMesh</code> (the source
+is left untouched):</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Face</th><th>Nodes</th><th>Description</th></tr>
+<tr><th>Operation</th><th>Call</th></tr>
 </thead>
 <tbody>
-<tr><td>0</td><td>[0, 3, 2, 1]</td><td>Bottom (z = 0)</td></tr>
-<tr><td>1</td><td>[4, 5, 6, 7]</td><td>Top (z = 1)</td></tr>
-<tr><td>2</td><td>[0, 1, 5, 4]</td><td>Front (y = 0)</td></tr>
-<tr><td>3</td><td>[2, 3, 7, 6]</td><td>Back (y = 1)</td></tr>
-<tr><td>4</td><td>[1, 2, 6, 5]</td><td>Right (x = 1)</td></tr>
-<tr><td>5</td><td>[3, 0, 4, 7]</td><td>Left (x = 0)</td></tr>
+<tr><td>translate by a vector</td><td><code>mesh.translate([x, y, z])</code></td></tr>
+<tr><td>scale per axis / uniformly</td><td><code>mesh.scale([sx, sy, sz])</code> / <code>mesh.scale_uniform(s)</code></td></tr>
+<tr><td>rotate around an axis through the origin</td><td><code>mesh.rotate(axis, angle)</code></td></tr>
+<tr><td>rotate around an axis through a point</td><td><code>mesh.rotate_about(center, axis, angle)</code></td></tr>
+<tr><td>mirror across a plane through the origin</td><td><code>mesh.mirror(normal)</code></td></tr>
+<tr><td>mirror across a plane through a point</td><td><code>mesh.mirror_about(point, normal)</code></td></tr>
+<tr><td>apply an arbitrary affine transform</td><td><code>mesh.transform(mf.Transform(matrix))</code></td></tr>
+<tr><td>repeat a shape with a step transform</td><td><code>mesh.duplicate(step, n)</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>All faces are wound CCW when viewed from outside the element.</p>
-<p><strong>Differences with MEDFile:</strong> MEDFile HEX8 has a different node numbering:
-MED node 0 is top-left-front, while VTK node 0 is bottom-left-front. The
-MED→VTK node permutation is <code>[4,5,6,7,0,1,2,3]</code> (self-inverse). Do not mix VTK
-and MEDFile conventions</p>
-<p>For <strong>HEX21</strong>, the vertex convention is: nodes 0–7 vertices, mid-side nodes
-8 (edge 01), 9 (edge 12), 10 (edge 23), 11 (edge 30), 12 (edge 45),
-13 (edge 56), 14 (edge 67), 15 (edge 74), 16 (edge 04), 17 (edge 15),
-18 (edge 26), 19 (edge 37).</p>
-<h2 id="phed--polyhedron"><a class="header" href="#phed--polyhedron">PHED — Polyhedron</a></h2>
-<p>A polyhedron is stored as a sequence of polygonal faces, each wound CCW when
-viewed from outside the element. Faces are delimited by <code>usize::MAX</code> sentinels
-in the flat connectivity array.</p>
-<p>The constraints for a valid PHED are:</p>
-<ol>
-<li><strong>Each face is a closed polygon</strong> — its nodes form a simple, non-self-intersecting loop.</li>
-<li><strong>Consistent orientation</strong> — every edge shared by exactly two faces is
-traversed in opposite directions by those two faces. Equivalently, the
-outward normal of every face follows the right-hand rule.</li>
-<li><strong>Closed surface</strong> — the collection of faces forms a topologically closed
-manifold (no dangling edges).</li>
-</ol>
+<p>Angles are in radian. <code>mf.Transform</code> also offers the <code>identity</code>, <code>translation</code>,
+<code>scaling</code>, <code>rotation</code>, <code>reflection</code> and <code>from_matrix</code> constructors; <code>transform</code>
+also accepts a plain 4x4 numpy array.</p>
+<p>Field expressions (notably <code>mf.M</code> for the on-the-fly measure) can be evaluated
+without a stored field:</p>
+<ul>
+<li><code>mesh.eval(expr, dim=None)</code> → <code>{etype: array}</code>, e.g. <code>mf.M</code> or <code>mf.Field("T") * 2</code></li>
+<li><code>mesh.eval_update(name, expr, dim=None)</code> stores the result in-place</li>
+<li><code>mesh.measure()</code> → per-type measures; <code>mesh.measure_update()</code> materializes a
+<code>"Measure"</code> field (usually unnecessary, prefer <code>mf.M</code>)</li>
+</ul>
+<h2 id="input--output"><a class="header" href="#input--output">Input / output</a></h2>
+<p><code>UMesh.read</code> and <code>UMesh.write</code> build a mesh from — or dump it to — a file, the
+format being selected by the file extension (<code>.json</code>, <code>.yaml</code>, <code>.vtk</code>, <code>.vtu</code>,
+<code>.vtkhdf</code>, <code>.cgns</code>, <code>.med</code>):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Call</th></tr>
+</thead>
+<tbody>
+<tr><td>read a mesh from disk</td><td><code>mf.UMesh.read(path)</code></td></tr>
+<tr><td>write a mesh to disk</td><td><code>mesh.write(path)</code></td></tr>
+<tr><td>in-memory PyVista object</td><td><code>mesh.to_pyvista(dim=None, with_fields=True)</code></td></tr>
+<tr><td>in-memory meshio object</td><td><code>mesh.to_meshio()</code></td></tr>
+<tr><td>in-memory medcoupling twin</td><td><code>mesh.to_mc(lev=None)</code> / <code>mf.UMesh.from_mc(mc_mesh)</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>to_pyvista</code> copies the mesh (and, by default, its fields) into a
+<code>pyvista.UnstructuredGrid</code>; <code>to_meshio</code> produces a <code>meshio.Mesh</code>; the
+medcoupling pair converts to / from a <code>MEDCouplingUMesh</code>. See the
+<a href="./python_examples/input_output.html">Input/Output</a> notebook and the <code>.med</code>
+round-trip in <a href="./python_examples/compare_medcoupling.html">mefikit vs. medcoupling</a>.</p>
+<h2 id="field-transfers"><a class="header" href="#field-transfers">Field transfers</a></h2>
+<p>Remapping a field from a <strong>source</strong> mesh onto a <strong>target</strong> mesh is done with
+the <code>mf.transfer</code> operators. All of them share the same prepare / apply split:
+construction builds the interpolation coefficients once, and applying the
+operator to any field is then a single fast sparse product:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operator</th><th>Kind</th><th>Conserves</th><th>Signature</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ConstantPiecewise</code></td><td>cell-based, point location</td><td>no</td><td><code>(src, tgt, def_val=0.0)</code></td></tr>
+<tr><td><code>InverseDistance</code></td><td>meshless, <code>k</code>-nearest</td><td>no</td><td><code>(src, tgt, k=4, exponent=2.0, def_val=0.0)</code></td></tr>
+<tr><td><code>MovingLeastSquares</code></td><td>meshless, local fit</td><td>no</td><td><code>(src, tgt, k=10, weighting=DistanceWeighting.Constant(), def_val=0.0)</code></td></tr>
+<tr><td><code>ConservativeP0</code></td><td>volumetric overlap</td><td><strong>yes</strong></td><td><code>(src, tgt, def_val=0.0)</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Weighting kernels for <code>MovingLeastSquares</code> come from
+<code>mf.transfer.DistanceWeighting</code>: <code>Constant()</code>, <code>InverseDistance(exponent)</code>
+and <code>Gaussian()</code>.</p>
+<p>Once built, every operator is used the same way:</p>
+<ul>
+<li><code>tr(expr, extensive=False)</code> → the transferred field, as a <code>Field</code> on <code>tgt</code></li>
+<li><code>tr.eval(expr, extensive=False)</code> → <code>{etype: array}</code></li>
+<li><code>tr.apply_update(src, name, tgt, tgt_field_name=None, def_val=0.0, extensive=False)</code>
+writes the result into a target field in place</li>
+</ul>
+<p><code>extensive=True</code> treats the field as extensive (mass, energy): <code>ConservativeP0</code>
+then keeps the raw measure-weighted sum, whereas intensive fields are
+normalized by the target cell measure. Cells uncovered by any source cell keep
+the transfer <code>def_val</code>. The <a href="./python_examples/transfers.html">Field transfers</a>
+notebook walks through each operator; the timing and correctness comparison
+with medcoupling is at the end of <a href="./python_examples/compare_medcoupling.html">mefikit vs.
+medcoupling</a>.</p>
+<h2 id="field-gradients"><a class="header" href="#field-gradients">Field gradients</a></h2>
+<p><code>mf.Gradient</code> differentiates a <strong>scalar</strong> field with a moving least-squares
+(MLS) fit over the <code>k</code> nearest source cell centres. Like the transfers it has a
+prepare / apply split: the geometric operator is built once and can be applied
+to any number of fields. The result is a <strong>vector field</strong> with one component
+per space direction (<code>d</code> = 2 or 3).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Evaluated at</th><th>Signature</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mf.Gradient(src)</code></td><td>the source mesh’s own cell centroids</td><td><code>(src, tgt=None, k=10, weighting=DistanceWeighting.Constant(), def_val=0.0)</code></td></tr>
+<tr><td><code>mf.Gradient(src, tgt)</code></td><td>the target mesh’s cell centroids</td><td>same</td></tr>
+<tr><td><code>mf.Gradient.at_points(src, points)</code></td><td>an explicit <code>(n, d)</code> point array</td><td><code>(src, points, k=10, weighting=..., def_val=0.0)</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>weighting</code> reuses the transfer kernels (<code>mf.DistanceWeighting</code>:
+<code>Constant()</code>, <code>InverseDistance(exponent)</code>, <code>CompactSupport(exponent)</code>,
+<code>Gaussian()</code>). A degree-1 fit reproduces affine fields exactly. The source
+domain must be <strong>full-dimensional</strong> (a 2D region in 2D, a 3D volume in 3D);
+on a lower-dimensional mesh embedded in a higher-dimensional space (a surface
+in 3D) the local system is rank-deficient and the gradient is zero.</p>
+<p>Usage mirrors the transfers:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Call</th><th>Result</th></tr>
+</thead>
+<tbody>
+<tr><td><code>grad(expr)</code></td><td>the gradient as a lazy vector <code>Field</code> on the target; index components with <code>grad(expr)[0]</code>, …</td></tr>
+<tr><td><code>grad.eval(expr)</code></td><td><code>{etype: array}</code>, shape <code>(n_tgt, d)</code></td></tr>
+<tr><td><code>grad.eval_points(expr)</code></td><td><code>(n_points, d)</code> array (point operators only)</td></tr>
+<tr><td><code>grad.apply_update(src, field_name, tgt, tgt_field_name=None, def_val=0.0)</code></td><td>writes the gradient into a target field in place</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-python">grad = mf.Gradient(src, tgt, k=12)
+tgt.fields["grad_T"] = grad("T")  # lazy vector field
+tgt.fields["dTdx"] = grad("T")[0]  # one component
+grad.apply_update(src, "T", tgt, "grad_T")  # in place
+</code></pre>
+<p>The <a href="./python_examples/gradient.html">Field gradients</a> notebook validates the
+operators against analytic gradients and compares the kernels.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="mesh_model.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="element_conventions.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="3_topology.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="python_examples/umesh_basics.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -382,11 +489,11 @@ manifold (no dangling edges).</li>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="mesh_model.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="element_conventions.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="3_topology.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="python_examples/umesh_basics.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

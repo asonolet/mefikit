@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Getting Started - Mefikit Book</title>
+        <title>Getting started - Mefikit Book</title>
 
 
         <!-- Custom HTML head -->
@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-54ef5ae9.js";
+            window.path_to_searchindex_js = "../searchindex-64d38436.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-86b4e9ed.js"></script>
+        <script src="../toc-7bca2e67.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -180,7 +180,7 @@
 zero to a mesh with a field, a selection and a figure — everything below runs
 as-is.</p>
 <p>The whole book is organized so that you can copy any code cell into your own
-script: the <a href="../4_python_guide.html">Python guide</a> gathers the API in reference
+script: the <a href="../reference.html">API at a glance</a> gathers the API in reference
 tables, and the examples build on top of it.</p>
 <h2 id="install"><a class="header" href="#install">Install</a></h2>
 <p>Mefikit is released on <a href="https://pypi.org/project/mefikit">PyPI</a>. The <code>[all]</code>
@@ -211,7 +211,7 @@ blocks : {'HEX8': (12, 8)}
 assign a <strong>field expression</strong> and mefikit evaluates it lazily, on demand —
 the expression is a tree, not a stored array. Geometry primitives exist ready
 to use: <code>mf.X</code>/<code>mf.Y</code>/<code>mf.Z</code> (node or cell centroids), <code>mf.M</code> (measure:
-length / area / volume), <code>mf.N</code> (normals).</p>
+length / area / volume), <code>mf.Normal</code> (normals).</p>
 <pre><code class="language-python">import numpy as np
 
 mesh = mf.build_cmesh(
@@ -250,8 +250,7 @@ bubble cells: 559
 ride along, so volume rendering and slicing work with no glue code.</p>
 <pre><code class="language-python">mesh.to_pyvista().plot(scalars="T", show_edges=True)
 </code></pre>
-<pre><code>Widget(value='&lt;iframe src="http://localhost:35483/index.html?ui=P_0x7fef6b7c7a10_0&amp;reconnect=auto" class="pyvi…
-</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="getting_started_files/getting_started_10_0.png" alt="png"><span class="img-wrapper"><img src="getting_started_files/getting_started_10_0.png" alt="png"></span></label></p>
 <h2 id="the-mental-model-in-one-glance"><a class="header" href="#the-mental-model-in-one-glance">The mental model in one glance</a></h2>
 <p>Three rules cover most of the API:</p>
 <ul>
@@ -323,14 +322,14 @@ they return <code>None</code>.</p>
 </tbody>
 </table>
 </div>
-<p>The <a href="../4_python_guide.html">Python guide</a> is the condensed API reference behind
+<p>The <a href="../reference.html">API at a glance</a> is the condensed API reference behind
 all of these examples.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../1_introduction.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../introduction.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -344,7 +343,7 @@ all of these examples.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../1_introduction.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../introduction.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

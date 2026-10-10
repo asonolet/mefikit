@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-54ef5ae9.js";
+            window.path_to_searchindex_js = "../searchindex-64d38436.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-86b4e9ed.js"></script>
+        <script src="../toc-7bca2e67.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -176,6 +176,14 @@
                     <main>
                         <h1 id="topological-tools"><a class="header" href="#topological-tools">Topological tools</a></h1>
 <p><em>Figures use PyVista; verbose plotting boilerplate is omitted.</em></p>
+<p>The tools below all rest on one idea: the <strong>subentities</strong> of an element —
+its faces, edges and vertices. <code>descend</code> decomposes every element into
+subentities; <code>boundaries</code> keeps only those on the outside (owned by a single
+element); and <code>connected_components</code> / <code>crack</code> relate elements that share a
+lower-dimensional subentity. Two elements are <strong>neighbours</strong> when they share
+such a subentity — two volumes sharing a face, two faces sharing an edge, and
+so on. Everything here assumes a topologically valid mesh (see
+<a href="../mesh_model.html">The mesh model</a>).</p>
 <pre><code class="language-python">import numpy as np
 
 import mefikit as mf

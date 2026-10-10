@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-54ef5ae9.js";
+            window.path_to_searchindex_js = "../searchindex-64d38436.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-86b4e9ed.js"></script>
+        <script src="../toc-7bca2e67.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -181,7 +181,7 @@
 import mefikit as mf
 </code></pre>
 <h2 id="field-expressions"><a class="header" href="#field-expressions">Field expressions</a></h2>
-<p>FieldExpr are composition of floats and mf.sel.field(“fieldname”) or custom fields. Available operations on fields include :</p>
+<p>FieldExpr are composition of floats and mf.Field(“fieldname”) or custom fields. Available operations on fields include :</p>
 <ul>
 <li>binary expresions <code>+ - / *</code></li>
 <li>unary expr <code>sin(), cos(), abs(), ln(), log10(), exp()</code></li>
@@ -217,7 +217,7 @@ toto.sqrt()
 toto.tan()
 toto.log10()
 </code></pre>
-<pre><code>&lt;Field at 0x7fe3d99ddfb0&gt;
+<pre><code>&lt;Field at 0x7aa6f97f9fb0&gt;
 </code></pre>
 <h3 id="vector-ops"><a class="header" href="#vector-ops">Vector ops</a></h3>
 <pre><code class="language-python">toto.dot(tata)
@@ -365,7 +365,7 @@ mesh2.eval(m2 - 4.0 * mf.M.square())
 </code></pre>
 <pre><code>{'HEX8': array([0., 0., 0., ..., 0., 0., 0.], shape=(4802,))}
 </code></pre>
-<h1 id="field-to-selection"><a class="header" href="#field-to-selection">Field to Selection</a></h1>
+<h2 id="field-to-selection"><a class="header" href="#field-to-selection">Field to selection</a></h2>
 <p>Field expressions can be converted to threshold selections expressions. The available comparisons are <code>&lt;, &lt;=, &gt;, &gt;=, ==</code> :</p>
 <pre><code class="language-python">maxM = mesh2.select(mf.sel.all()).max(mf.M)
 minM = mesh2.select(mf.sel.all()).min(mf.M)
