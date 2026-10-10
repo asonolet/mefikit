@@ -236,3 +236,43 @@ the transfer `def_val`. The [Field transfers](./python_examples/transfers.md)
 notebook walks through each operator; the timing and correctness comparison
 with medcoupling is at the end of [mefikit vs.
 medcoupling](./python_examples/compare_medcoupling.md).
+
+## Field gradients
+
+`mf.Gradient` differentiates a **scalar** field with a moving least-squares
+(MLS) fit over the `k` nearest source cell centres. Like the transfers it has a
+prepare / apply split: the geometric operator is built once and can be applied
+to any number of fields. The result is a **vector field** with one component
+per space direction (`d` = 2 or 3).
+
+| Constructor | Evaluated at | Signature |
+|---|---|---|
+| `mf.Gradient(src)` | the source mesh's own cell centroids | `(src, tgt=None, k=10, weighting=DistanceWeighting.Constant(), def_val=0.0)` |
+| `mf.Gradient(src, tgt)` | the target mesh's cell centroids | same |
+| `mf.Gradient.at_points(src, points)` | an explicit `(n, d)` point array | `(src, points, k=10, weighting=..., def_val=0.0)` |
+
+`weighting` reuses the transfer kernels (`mf.DistanceWeighting`:
+`Constant()`, `InverseDistance(exponent)`, `CompactSupport(exponent)`,
+`Gaussian()`). A degree-1 fit reproduces affine fields exactly. The source
+domain must be **full-dimensional** (a 2D region in 2D, a 3D volume in 3D);
+on a lower-dimensional mesh embedded in a higher-dimensional space (a surface
+in 3D) the local system is rank-deficient and the gradient is zero.
+
+Usage mirrors the transfers:
+
+| Call | Result |
+|---|---|
+| `grad(expr)` | the gradient as a lazy vector `Field` on the target; index components with `grad(expr)[0]`, … |
+| `grad.eval(expr)` | `{etype: array}`, shape `(n_tgt, d)` |
+| `grad.eval_points(expr)` | `(n_points, d)` array (point operators only) |
+| `grad.apply_update(src, field_name, tgt, tgt_field_name=None, def_val=0.0)` | writes the gradient into a target field in place |
+
+```python
+grad = mf.Gradient(src, tgt, k=12)
+tgt.fields["grad_T"] = grad("T")  # lazy vector field
+tgt.fields["dTdx"] = grad("T")[0]  # one component
+grad.apply_update(src, "T", tgt, "grad_T")  # in place
+```
+
+The [Field gradients](./python_examples/gradient.md) notebook validates the
+operators against analytic gradients and compares the kernels.

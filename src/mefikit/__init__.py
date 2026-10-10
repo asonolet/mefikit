@@ -5,6 +5,7 @@ from . import io
 from .mefipy import (
     C,
     ConformanceReport,
+    DistanceWeighting,
     Field,
     FieldRef,
     FieldsMapping,
@@ -28,6 +29,7 @@ from .mefipy import (
     build_cmesh,
     concat,
     conformize,
+    gradient,
     is_conform,
     sel,
     stitch,
@@ -38,7 +40,8 @@ ConstantPiecewise = transfer.ConstantPiecewise
 MovingLeastSquares = transfer.MovingLeastSquares
 InverseDistance = transfer.InverseDistance
 ConservativeP0 = transfer.ConservativeP0
-DistanceWeighting = transfer.DistanceWeighting
+
+Gradient = gradient.Gradient
 
 
 def has(name: str) -> bool:
@@ -58,6 +61,7 @@ __all__ = (
     "Field",
     "FieldRef",
     "FieldsMapping",
+    "Gradient",
     "GroupRef",
     "GroupsMapping",
     "InverseDistance",
@@ -81,6 +85,7 @@ __all__ = (
     "concat",
     "conformize",
     "data",
+    "gradient",
     "is_conform",
     "sel",
     "stitch",

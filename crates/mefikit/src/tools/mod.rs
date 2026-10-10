@@ -23,10 +23,14 @@ pub mod crack;
 pub mod extrude;
 /// Field expression evaluation and manipulation.
 pub mod fieldexpr;
+/// Gradient of a scalar field on meshes and point clouds.
+pub mod gradient;
 /// Structured grid generation utilities.
 pub mod grid;
 /// Geometric measurement utilities for meshes.
 pub mod measure;
+/// Shared meshless reconstruction machinery (kernels, k-NN solvers, point plumbing).
+pub mod meshless;
 /// Neighbor computation for mesh elements.
 pub mod neighbours;
 /// Surface normals for mesh cells.
@@ -53,6 +57,7 @@ pub use centroids::*;
 pub use connected_components::*;
 pub use crack::*;
 pub use extrude::*;
+pub use gradient::*;
 pub use grid::*;
 pub use measure::*;
 pub use neighbours::*;

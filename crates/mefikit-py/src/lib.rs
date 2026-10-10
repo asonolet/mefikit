@@ -4,6 +4,7 @@ mod element;
 mod element_ids;
 mod pyfield;
 mod pyfields;
+mod pygradient;
 mod pygroups;
 mod pytransfer;
 mod pytransform;
@@ -23,9 +24,14 @@ mod sel {
 mod transfer {
     #[pymodule_export]
     use super::pytransfer::{
-        PyConservativeP0, PyConstantPiecewise, PyDistanceWeighting, PyInverseDistance,
-        PyMovingLeastSquares,
+        PyConservativeP0, PyConstantPiecewise, PyInverseDistance, PyMovingLeastSquares,
     };
+}
+
+#[pymodule]
+mod gradient {
+    #[pymodule_export]
+    use super::pygradient::PyGradient;
 }
 
 /// A Python module implemented in Rust. The name of this function must match
@@ -42,6 +48,12 @@ mod mefipy {
 
     #[pymodule_export]
     use super::transfer;
+
+    #[pymodule_export]
+    use super::gradient;
+
+    #[pymodule_export]
+    use super::pytransfer::PyDistanceWeighting;
 
     #[pymodule_export]
     use super::pyumesh::{PyOverlayOperation, PySurfaceOverlay, PyUMesh};

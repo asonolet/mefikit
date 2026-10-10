@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use mefikit::prelude as mf;
 use mefikit::tools::Transfer;
+use mefikit::tools::meshless::DistanceWeighting;
 
 use crate::element::etype_to_str;
 use crate::pyfield::PyField;
@@ -64,17 +65,21 @@ fn transfer_eval<'py>(
 pub enum PyDistanceWeighting {
     Constant(),
     InverseDistance { exponent: f64 },
+    CompactSupport { exponent: f64 },
     Gaussian(),
 }
 
-impl From<PyDistanceWeighting> for mf::DistanceWeighting {
+impl From<PyDistanceWeighting> for DistanceWeighting {
     fn from(weighting: PyDistanceWeighting) -> Self {
         match weighting {
-            PyDistanceWeighting::Constant() => mf::DistanceWeighting::Constant,
+            PyDistanceWeighting::Constant() => DistanceWeighting::Constant,
             PyDistanceWeighting::InverseDistance { exponent } => {
-                mf::DistanceWeighting::InverseDistance { exponent }
+                DistanceWeighting::InverseDistance { exponent }
             }
-            PyDistanceWeighting::Gaussian() => mf::DistanceWeighting::Gaussian,
+            PyDistanceWeighting::CompactSupport { exponent } => {
+                DistanceWeighting::CompactSupport { exponent }
+            }
+            PyDistanceWeighting::Gaussian() => DistanceWeighting::Gaussian,
         }
     }
 }

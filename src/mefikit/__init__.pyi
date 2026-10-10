@@ -1,6 +1,6 @@
 from collections.abc import Iterator, Sequence
 from types import EllipsisType
-from typing import TypeAlias, final
+from typing import Callable, TypeAlias, final
 
 import medcoupling as mc
 import meshio as mio
@@ -9,8 +9,12 @@ import numpy.typing as npt
 import pyvista as pv
 
 from . import data as data
+from . import gradient as gradient
 from . import sel as sel
 from . import transfer as transfer
+from .gradient import (
+    Gradient as Gradient,
+)
 from .transfer import (
     ConservativeP0 as ConservativeP0,
 )
@@ -18,14 +22,17 @@ from .transfer import (
     ConstantPiecewise as ConstantPiecewise,
 )
 from .transfer import (
-    DistanceWeighting as DistanceWeighting,
-)
-from .transfer import (
     InverseDistance as InverseDistance,
 )
 from .transfer import (
     MovingLeastSquares as MovingLeastSquares,
 )
+
+class DistanceWeighting:
+    Constant: Callable[[], DistanceWeighting]
+    InverseDistance: Callable[[float], DistanceWeighting]
+    CompactSupport: Callable[[float], DistanceWeighting]
+    Gaussian: Callable[[], DistanceWeighting]
 
 # --- Helper type aliases ---
 

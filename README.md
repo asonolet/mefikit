@@ -129,6 +129,18 @@ close to the data, while remaining concise and expressive.
   op.apply_update(m_src, "temperature", m_tgt)
   ```
 
+- 📈 Field gradients
+  - `mf.Gradient` – Moving least-squares gradient of a scalar field, on the
+    source cells, a target mesh, or an arbitrary point cloud
+    (`mf.Gradient.at_points`)
+  - `mf.DistanceWeighting` – Shared weighting kernels (`Constant`,
+    `InverseDistance(exponent)`, `CompactSupport(exponent)`, `Gaussian`)
+
+  ```python
+  grad = mf.Gradient(m_src, m_tgt, k=12)
+  m_tgt.fields["grad_T"] = grad("temperature")  # lazy vector field
+  ```
+
 ### 🧠 Element traits & geometry (rust only)
 
 This element kit provides a nice way to implement new features on elements and

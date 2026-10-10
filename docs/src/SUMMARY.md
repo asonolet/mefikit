@@ -24,6 +24,7 @@
 - [Fields](./python_examples/fields.md)
 - [Selection](./python_examples/selection.md)
 - [Field transfers](./python_examples/transfers.md)
+- [Field gradients](./python_examples/gradient.md)
 
 # Worked examples
 

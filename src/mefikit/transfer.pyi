@@ -1,6 +1,4 @@
-from typing import Callable
-
-from . import Field, UMesh
+from . import DistanceWeighting, Field, UMesh
 
 class ConstantPiecewise:
     def __init__(
@@ -28,11 +26,6 @@ class ConstantPiecewise:
         def_val: float = ...,
         extensive: bool = ...,
     ) -> None: ...
-
-class DistanceWeighting:
-    Constant: Callable[[], DistanceWeighting]
-    InverseDistance: Callable[[float], DistanceWeighting]
-    Gaussian: Callable[[], DistanceWeighting]
 
 class MovingLeastSquares:
     def __init__(
