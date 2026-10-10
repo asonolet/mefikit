@@ -44,7 +44,7 @@ print(volumes.to_mc())
 print(volumes.to_pyvista())
 ```
 
-    UnstructuredGrid (0x7dcd539db520)
+    UnstructuredGrid (0x72835c75b520)
       N Cells:    16
       N Points:   50
       X Bounds:   0.000e+00, 1.000e+00
@@ -85,14 +85,16 @@ print(volumes.to_json())
 
 ## File read/write
 
-- On rust side, file I/O with the `read`/`write` methods, driven by the file extension:
-    - vtk (legacy binary vtk 2.0)
-    - yaml
-    - json
-    - vtkhdf / h5 / hdf5 (HDF5-based VTK)
-    - medfile
+`read`/`write` select the format from the file extension:
 
-The legacy vtk reader/writer only supports the old binary vtk 2.0 file format (no rust crate is doing better so far). The HDF5-based `.vtkhdf` reader/writer is the recommended option for a more modern and HPC friendly format. CGNS support is planned.
+- json
+- yaml / yml
+- vtk / vtu (legacy binary VTK 2.0)
+- vtkhdf (HDF5-based VTK)
+- cgns (HDF5-based CGNS)
+- med (medfile)
+
+The legacy vtk reader/writer only handles the old binary VTK 2.0 format; the HDF5-based `.vtkhdf` and `.cgns` formats are the recommended options for modern, HPC-friendly storage.
 
 
 ```python

@@ -11,6 +11,10 @@ in-memory representation of meshes and fields, along with a set of robust,
 efficient tools that support numerical simulation workflows in research,
 engineering, and scientific computing.
 
+This book documents the **Python API**. The heavy lifting is done by the
+`mefikit` Rust crate, which the Python bindings wrap; the same crate can be used
+directly from Rust for performance-critical code.
+
 `mefikit` focuses on three core principles:
 
 1. **A flexible mesh model** capable of representing mixed-element unstructured
@@ -25,16 +29,16 @@ development.
 
 ## `mefikit` provides
 
-- `umesh` the unstructured mesh container supporting mixed element types,
+- `UMesh`, the unstructured mesh container supporting mixed element types,
   fields, and groups.
-- `io` modules for reading and writing meshes in various formats
-  (e.g., VTK, serde_json, serde_yaml).
-- `topology` tools for analyzing mesh connectivity, computing descending meshes,
-  neighbours, domain frontier, etc.
-- `geometry` tools for computing element measures, centroids, etc.
-- `transfer` operators for remapping fields between meshes, and meshless
-  field gradients (`mf.Gradient`).
-- `Selector` utilities for querying and filtering mesh elements
-  based on geometric or topological criteria.
+- I/O for reading and writing meshes in various formats (VTK, VTKHDF, CGNS,
+  MED, JSON, YAML).
+- topology tools for analyzing mesh connectivity, computing descending meshes,
+  neighbours, domain boundaries, etc.
+- geometry tools for computing element measures, centroids, overlays, etc.
+- transfer operators for remapping fields between meshes, and meshless field
+  gradients.
+- selections (`mf.sel`) for querying and filtering mesh elements based on
+  geometric or topological criteria.
 
 **Continue to [Getting Started](./python_examples/getting_started.md).**

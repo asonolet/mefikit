@@ -1,11 +1,10 @@
 # Summary
 
-- [Introduction](./1_introduction.md)
-- [Getting Started](./python_examples/getting_started.md)
+- [Introduction](./introduction.md)
+- [Getting started](./python_examples/getting_started.md)
 - [The mesh model](./mesh_model.md)
-- [Element Conventions](./2_format.md)
-- [Topological basic ops](./3_topology.md)
-- [Python guide](./4_python_guide.md)
+- [Element conventions](./element_conventions.md)
+- [API at a glance](./reference.md)
 
 # Mesh basics
 

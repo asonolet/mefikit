@@ -2,6 +2,15 @@
 
 *Figures use PyVista; verbose plotting boilerplate is omitted.*
 
+The tools below all rest on one idea: the **subentities** of an element —
+its faces, edges and vertices. `descend` decomposes every element into
+subentities; `boundaries` keeps only those on the outside (owned by a single
+element); and `connected_components` / `crack` relate elements that share a
+lower-dimensional subentity. Two elements are **neighbours** when they share
+such a subentity — two volumes sharing a face, two faces sharing an edge, and
+so on. Everything here assumes a topologically valid mesh (see
+[The mesh model](../mesh_model.md)).
+
 
 ```python
 import numpy as np

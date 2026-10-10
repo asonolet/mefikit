@@ -13,13 +13,12 @@ An **element** is an abstract mesh entity specified by:
 
 In `mefikit`, elements are **ephemeral, zero-copy views** constructed on the fly
 when iterating through a mesh block. They do not own memory; instead they refer
-to underlying index and coordinate buffers. This behavior mirrors VTK's "cell
-iterator" pattern while improving cache locality and reducing overhead.
+to underlying index and coordinate buffers. This mirrors VTK's "cell iterator"
+pattern while improving cache locality and reducing overhead.
 
-It is only accessible through the rust API. The python bindings do not expose
-elements directly because python is only intended to be used for high-level
-scripting. Do not fear of going to the rust side for performance critical code,
-`mefikit` was designed to be simple to use for rust newcomers.
+Element iteration is a Rust-API detail. The Python bindings do not expose
+elements directly, because Python is meant for high-level scripting where you
+operate on whole meshes; the Rust API is where per-element work belongs.
 
 ## Topological Dimension
 

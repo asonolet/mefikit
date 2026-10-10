@@ -6,7 +6,7 @@ zero to a mesh with a field, a selection and a figure — everything below runs
 as-is.
 
 The whole book is organized so that you can copy any code cell into your own
-script: the [Python guide](../4_python_guide.md) gathers the API in reference
+script: the [API at a glance](../reference.md) gathers the API in reference
 tables, and the examples build on top of it.
 
 ## Install
@@ -50,7 +50,7 @@ Data is attached to a mesh through the dict-like `mesh.fields` mapping. You
 assign a **field expression** and mefikit evaluates it lazily, on demand —
 the expression is a tree, not a stored array. Geometry primitives exist ready
 to use: `mf.X`/`mf.Y`/`mf.Z` (node or cell centroids), `mf.M` (measure:
-length / area / volume), `mf.N` (normals).
+length / area / volume), `mf.Normal` (normals).
 
 
 ```python
@@ -106,7 +106,9 @@ mesh.to_pyvista().plot(scalars="T", show_edges=True)
 ```
 
 
-    Widget(value='<iframe src="http://localhost:35483/index.html?ui=P_0x7fef6b7c7a10_0&reconnect=auto" class="pyvi…
+
+![png](getting_started_files/getting_started_10_0.png)
+
 
 
 ## The mental model in one glance
@@ -163,5 +165,5 @@ they return `None`.
 | a full use case end to end | [Bubbles](./example_bubbles.md) |
 | how mefikit compares to a mature library | [mefikit vs. medcoupling](./compare_medcoupling.md) |
 
-The [Python guide](../4_python_guide.md) is the condensed API reference behind
+The [API at a glance](../reference.md) is the condensed API reference behind
 all of these examples.

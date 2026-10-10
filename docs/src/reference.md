@@ -1,8 +1,10 @@
-# Python guide
+# API at a glance
 
-This page is a compact reference for the Python API. The notebooks grouped at
-the end of the book show the same features in context; here they are gathered
-as tables.
+This page is a **cheat sheet**, not the specification. It gathers the Python
+API into lookup tables so you can find a name quickly. Behaviour is shown in
+context by the notebooks under *Examples*, and the authoritative signatures are
+the hand-written type stubs (`src/mefikit/*.pyi`) and your editor's
+autocompletion. If something here disagrees with them, they win.
 
 Meshes are `UMesh` objects. Fields and element groups live in two dict-like
 mappings on the mesh, and selections are lazy views that only evaluate when

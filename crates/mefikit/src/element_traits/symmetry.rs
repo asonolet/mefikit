@@ -1,3 +1,25 @@
+//! Connectivity equivalence between elements.
+//!
+//! There are different ways to represent the connectivity of an element. The
+//! following classes of equivalence are the definitions this module is meant to
+//! implement; **they are not implemented or exposed yet**, so nothing below
+//! should be relied upon.
+//!
+//! - **Exact representation equality**: two elements are equivalent if their
+//!   connectivity is exactly the same, including the order of the nodes.
+//! - **Rotational equivalence**: two elements are equivalent if their
+//!   connectivity can be made the same by rotating the order of the nodes. The
+//!   topological shape is strictly equivalent under all operations, preserving
+//!   the measure orientation.
+//! - **Chiral equivalence**: two elements are equivalent if their connectivity
+//!   can be made the same by reversing the order of the nodes and rotating the
+//!   nodes. This equivalence does not preserve the measure orientation (if it
+//!   is positive or negative).
+//! - **Node set equivalence**: two elements are equivalent if they have the
+//!   same set of nodes, regardless of the order. This equivalence is
+//!   theoretical only, as it does not preserve the shape of the element, but it
+//!   is very useful to detect duplicate elements in a mesh.
+
 use crate::mesh::ElementLike;
 use rustc_hash::FxHashSet as HashSet;
 

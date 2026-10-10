@@ -12,7 +12,7 @@ import mefikit as mf
 ## Field expressions
 
 
-FieldExpr are composition of floats and mf.sel.field("fieldname") or custom fields. Available operations on fields include :
+FieldExpr are composition of floats and mf.Field("fieldname") or custom fields. Available operations on fields include :
 - binary expresions `+ - / *`
 - unary expr `sin(), cos(), abs(), ln(), log10(), exp()`
 - primitives :
@@ -55,7 +55,7 @@ toto.log10()
 
 
 
-    <Field at 0x7fe3d99ddfb0>
+    <Field at 0x7aa6f97f9fb0>
 
 
 
@@ -317,7 +317,7 @@ mesh2.eval(m2 - 4.0 * mf.M.square())
 
 
 
-# Field to Selection
+## Field to selection
 
 Field expressions can be converted to threshold selections expressions. The available comparisons are `<, <=, >, >=, ==` :
 
