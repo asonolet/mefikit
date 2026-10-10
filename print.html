@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-944ac63a.js";
+            window.path_to_searchindex_js = "searchindex-54ef5ae9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-a8ffb3c6.js"></script>
+        <script src="toc-86b4e9ed.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -204,6 +204,8 @@ fields, and groups.</li>
 <li><code>topology</code> tools for analyzing mesh connectivity, computing descending meshes,
 neighbours, domain frontier, etc.</li>
 <li><code>geometry</code> tools for computing element measures, centroids, etc.</li>
+<li><code>transfer</code> operators for remapping fields between meshes, and meshless
+field gradients (<code>mf.Gradient</code>).</li>
 <li><code>Selector</code> utilities for querying and filtering mesh elements
 based on geometric or topological criteria.</li>
 </ul>
@@ -922,6 +924,51 @@ the transfer <code>def_val</code>. The <a href="#field-transfers-1">Field transf
 notebook walks through each operator; the timing and correctness comparison
 with medcoupling is at the end of <a href="#mefikit-vs-medcoupling">mefikit vs.
 medcoupling</a>.</p>
+<h2 id="field-gradients"><a class="header" href="#field-gradients">Field gradients</a></h2>
+<p><code>mf.Gradient</code> differentiates a <strong>scalar</strong> field with a moving least-squares
+(MLS) fit over the <code>k</code> nearest source cell centres. Like the transfers it has a
+prepare / apply split: the geometric operator is built once and can be applied
+to any number of fields. The result is a <strong>vector field</strong> with one component
+per space direction (<code>d</code> = 2 or 3).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Evaluated at</th><th>Signature</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mf.Gradient(src)</code></td><td>the source mesh’s own cell centroids</td><td><code>(src, tgt=None, k=10, weighting=DistanceWeighting.Constant(), def_val=0.0)</code></td></tr>
+<tr><td><code>mf.Gradient(src, tgt)</code></td><td>the target mesh’s cell centroids</td><td>same</td></tr>
+<tr><td><code>mf.Gradient.at_points(src, points)</code></td><td>an explicit <code>(n, d)</code> point array</td><td><code>(src, points, k=10, weighting=..., def_val=0.0)</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>weighting</code> reuses the transfer kernels (<code>mf.DistanceWeighting</code>:
+<code>Constant()</code>, <code>InverseDistance(exponent)</code>, <code>CompactSupport(exponent)</code>,
+<code>Gaussian()</code>). A degree-1 fit reproduces affine fields exactly. The source
+domain must be <strong>full-dimensional</strong> (a 2D region in 2D, a 3D volume in 3D);
+on a lower-dimensional mesh embedded in a higher-dimensional space (a surface
+in 3D) the local system is rank-deficient and the gradient is zero.</p>
+<p>Usage mirrors the transfers:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Call</th><th>Result</th></tr>
+</thead>
+<tbody>
+<tr><td><code>grad(expr)</code></td><td>the gradient as a lazy vector <code>Field</code> on the target; index components with <code>grad(expr)[0]</code>, …</td></tr>
+<tr><td><code>grad.eval(expr)</code></td><td><code>{etype: array}</code>, shape <code>(n_tgt, d)</code></td></tr>
+<tr><td><code>grad.eval_points(expr)</code></td><td><code>(n_points, d)</code> array (point operators only)</td></tr>
+<tr><td><code>grad.apply_update(src, field_name, tgt, tgt_field_name=None, def_val=0.0)</code></td><td>writes the gradient into a target field in place</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-python">grad = mf.Gradient(src, tgt, k=12)
+tgt.fields["grad_T"] = grad("T")  # lazy vector field
+tgt.fields["dTdx"] = grad("T")[0]  # one component
+grad.apply_update(src, "T", tgt, "grad_T")  # in place
+</code></pre>
+<p>The <a href="#field-gradients-1">Field gradients</a> notebook validates the
+operators against analytic gradients and compares the kernels.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="umesh-basics"><a class="header" href="#umesh-basics">UMesh basics</a></h1>
 <p><em>Figures use PyVista; verbose plotting boilerplate is omitted.</em></p>
@@ -2405,6 +2452,191 @@ m_tgt.fields["temp"] = trsf(rho)   # uncovered cells -&gt; NaN, covered cells -&
 <p>Cells covered by the source are transferred correctly and match <code>apply_update</code> exactly.</p>
 </blockquote>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/transfers_files/transfers_40_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/transfers_files/transfers_40_0.png" alt="png"></span></label></p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="field-gradients-1"><a class="header" href="#field-gradients-1">Field gradients</a></h1>
+<p><em>Figures use PyVista; verbose plotting boilerplate is omitted.</em></p>
+<p>A <strong>transfer</strong> copies a field from one mesh onto another; a <strong>gradient</strong>
+differentiates it. <code>mf.Gradient</code> reconstructs the gradient of a scalar field
+with a <strong>moving least-squares</strong> (MLS) fit over the <code>k</code> nearest source cell
+centres, using the same prepare / apply split as the
+<a href="#field-transfers-1">field transfers</a>: the geometric operator is built once and can
+then be applied to any number of scalar fields.</p>
+<p>Unlike a transfer, whose per-target weights are scalar, the gradient carries
+<code>d</code> weights per neighbour — one per space direction — so the result is a
+<strong>vector field</strong> with <code>d</code> trailing components. This page covers the three
+evaluation targets (the source cells, a target mesh, an arbitrary point cloud),
+validates them against analytic gradients, and compares the distance kernels.</p>
+<pre><code class="language-python">import numpy as np
+
+import mefikit as mf
+
+# A smooth, non-affine scalar field on the unit square grid:
+#     f(x, y) = sin(pi x) sin(pi y)
+n = 41
+src = mf.build_cmesh(np.linspace(0.0, 1.0, n), np.linspace(0.0, 1.0, n))
+src.fields["f"] = (mf.X * np.pi).sin() * (mf.Y * np.pi).sin()
+</code></pre>
+<h2 id="the-gradient-operator"><a class="header" href="#the-gradient-operator">The gradient operator</a></h2>
+<p><code>mf.Gradient(src, tgt=None, k=10, weighting=..., def_val=0.0)</code> builds the MLS
+operator. The evaluation points depend on how it is built:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Evaluated at</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mf.Gradient(src)</code></td><td>the source mesh’s own cell centroids</td></tr>
+<tr><td><code>mf.Gradient(src, tgt)</code></td><td>the target mesh’s cell centroids</td></tr>
+<tr><td><code>mf.Gradient.at_points(src, points)</code></td><td>an explicit <code>(n, d)</code> point array</td></tr>
+</tbody>
+</table>
+</div>
+<p><code>k</code> is the number of nearest source cells used in each local fit and
+<code>weighting</code> is one of the <code>mf.DistanceWeighting</code> kernels — <code>Constant</code>,
+<code>InverseDistance(exponent)</code>, <code>CompactSupport(exponent)</code> or <code>Gaussian</code> — shared
+with the transfer operators. A degree-1 fit reproduces affine fields exactly,
+which is the validation used below.</p>
+<h3 id="gradient-at-the-source-cells"><a class="header" href="#gradient-at-the-source-cells">Gradient at the source cells</a></h3>
+<p>With no target mesh the gradient is evaluated at the source cell centroids.
+<code>grad("f")</code> is a lazy vector <code>Field</code>; <code>grad.eval("f")</code> materialises it as
+<code>{etype: array}</code> of shape <code>(n_cells, d)</code>.</p>
+<pre><code class="language-python">grad = mf.Gradient(src, k=12)
+grad_f = np.asarray(grad.eval("f")["QUAD4"])
+grad_f.shape
+</code></pre>
+<pre><code>(1600, 2)
+</code></pre>
+<p>The analytic gradient of <code>f</code> is
+<code>grad f = (pi cos(pi x) sin(pi y), pi sin(pi x) cos(pi y))</code>. Sampling it at the
+cell centroids gives a reference to compare against:</p>
+<pre><code class="language-python">cx = np.asarray(src.eval(mf.X)["QUAD4"]).ravel()
+cy = np.asarray(src.eval(mf.Y)["QUAD4"]).ravel()
+exact = np.c_[
+    np.pi * np.cos(np.pi * cx) * np.sin(np.pi * cy),
+    np.pi * np.sin(np.pi * cx) * np.cos(np.pi * cy),
+]
+
+err = np.linalg.norm(grad_f - exact, axis=1)
+h = 1.0 / (n - 1)
+interior = (cx &gt; 2 * h) &amp; (cx &lt; 1 - 2 * h) &amp; (cy &gt; 2 * h) &amp; (cy &lt; 1 - 2 * h)
+print(f"max |grad f - exact| : {err.max():.3e}")
+print(f"interior max error   : {err[interior].max():.3e}")
+</code></pre>
+<pre><code>max |grad f - exact| : 2.844e-01
+interior max error   : 5.152e-02
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/gradient_files/gradient_9_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/gradient_files/gradient_9_0.png" alt="png"></span></label></p>
+<p>The reconstruction is accurate in the interior; accuracy drops near the
+boundary, where all <code>k</code> neighbours lie on one side of the cell.</p>
+<h3 id="gradient-on-a-target-mesh"><a class="header" href="#gradient-on-a-target-mesh">Gradient on a target mesh</a></h3>
+<p>Passing a second mesh moves the evaluation to its cell centroids — useful to
+compute a gradient on a coarser or differently-shaped mesh, or on the boundary
+of the source.</p>
+<pre><code class="language-python">tgt = mf.build_cmesh(np.linspace(0.05, 0.95, 15), np.linspace(0.05, 0.95, 15))
+grad_tgt = mf.Gradient(src, tgt, k=12)
+grad_tgt.eval("f")["QUAD4"].shape
+</code></pre>
+<pre><code>(196, 2)
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/gradient_files/gradient_13_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/gradient_files/gradient_13_0.png" alt="png"></span></label></p>
+<h3 id="gradient-at-arbitrary-points"><a class="header" href="#gradient-at-arbitrary-points">Gradient at arbitrary points</a></h3>
+<p><code>mf.Gradient.at_points</code> takes the evaluation points explicitly as an <code>(n, d)</code>
+array; <code>grad.eval_points("f")</code> then returns the <code>(n, d)</code> gradient directly.
+This is convenient to sample the gradient along a curve or at sparse probes.</p>
+<pre><code class="language-python">t = np.linspace(0.0, 1.0, 120)
+curve = np.c_[t, 0.5 + 0.3 * np.sin(2 * np.pi * t)]
+grad_pts = mf.Gradient.at_points(src, curve, k=12)
+grad_curve = grad_pts.eval_points("f")
+grad_curve.shape
+</code></pre>
+<pre><code>(120, 2)
+</code></pre>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="python_examples/gradient_files/gradient_16_0.png" alt="png"><span class="img-wrapper"><img src="python_examples/gradient_files/gradient_16_0.png" alt="png"></span></label></p>
+<h3 id="lazy-fields-components-and-in-place-results"><a class="header" href="#lazy-fields-components-and-in-place-results">Lazy fields, components and in-place results</a></h3>
+<p>Because <code>grad("f")</code> returns a lazy <code>Field</code>, it composes with the rest of the
+expression system: index the components with <code>[0]</code> / <code>[1]</code>, combine them into
+derived quantities, and store them. <code>apply_update</code> writes the gradient into a
+named target field in a single call.</p>
+<pre><code class="language-python">tgt.fields["dfdx"] = grad_tgt("f")[0]
+tgt.fields["dfdy"] = grad_tgt("f")[1]
+tgt.fields["grad_mag"] = (grad_tgt("f")[0].square() + grad_tgt("f")[1].square()).sqrt()
+
+grad_tgt.apply_update(src, "f", tgt, "grad_f")
+tgt.fields["grad_f"].numpy().shape
+</code></pre>
+<pre><code>(196, 2)
+</code></pre>
+<h3 id="kernels-and-neighbour-count"><a class="header" href="#kernels-and-neighbour-count">Kernels and neighbour count</a></h3>
+<p>The kernel only changes how the local least-squares weights decay with
+distance:</p>
+<ul>
+<li><code>Constant</code> — an unweighted affine fit;</li>
+<li><code>InverseDistance(exponent)</code> — weight <code>(h / r)**exponent</code>;</li>
+<li><code>CompactSupport(exponent)</code> — a compactly-supported power kernel;</li>
+<li><code>Gaussian</code> — a bell-shaped kernel.</li>
+</ul>
+<p>On a smooth field the kernel choice mostly changes the boundary. <code>k</code> balances
+locality against smoothness: a small <code>k</code> follows the field tightly and is the
+most accurate on smooth data, but is more sensitive to noise, while a large <code>k</code>
+averages over a wider stencil and smooths the reconstruction, at the cost of a
+larger error near the boundary.</p>
+<pre><code class="language-python">for name, weighting in {
+    "Constant": mf.DistanceWeighting.Constant(),
+    "InverseDistance(2)": mf.DistanceWeighting.InverseDistance(2.0),
+    "CompactSupport(2)": mf.DistanceWeighting.CompactSupport(2.0),
+    "Gaussian": mf.DistanceWeighting.Gaussian(),
+}.items():
+    vals = np.asarray(mf.Gradient(src, k=12, weighting=weighting).eval("f")["QUAD4"])
+    print(f"{name:18s} max |grad f - exact| = {np.abs(vals - exact).max():.3e}")
+</code></pre>
+<pre><code>Constant           max |grad f - exact| = 2.407e-01
+InverseDistance(2) max |grad f - exact| = 1.599e-01
+CompactSupport(2)  max |grad f - exact| = 1.424e-01
+Gaussian           max |grad f - exact| = 2.028e-01
+</code></pre>
+<pre><code class="language-python">for k in (4, 8, 16, 32):
+    vals = np.asarray(mf.Gradient(src, k=k).eval("f")["QUAD4"])
+    print(f"k = {k:2d}  max |grad f - exact| = {np.abs(vals - exact).max():.3e}")
+</code></pre>
+<pre><code>k =  4  max |grad f - exact| = 1.222e-01
+k =  8  max |grad f - exact| = 1.700e-01
+k = 16  max |grad f - exact| = 3.360e-01
+k = 32  max |grad f - exact| = 4.692e-01
+</code></pre>
+<h2 id="3d-gradients"><a class="header" href="#3d-gradients">3D gradients</a></h2>
+<p>The tool works in 3D space too; the gradient then has three components. On the
+linear field <code>f = 1 + 2x - 3y + 4z</code> the reconstruction is exact.</p>
+<pre><code class="language-python">mesh3d = mf.build_cmesh(
+    np.linspace(0.0, 1.0, 6), np.linspace(0.0, 1.0, 6), np.linspace(0.0, 1.0, 6)
+)
+mesh3d.fields["f"] = 1.0 + 2.0 * mf.X - 3.0 * mf.Y + 4.0 * mf.Z
+
+grad3d = mf.Gradient(mesh3d, k=8)
+vals3d = np.asarray(grad3d.eval("f")["HEX8"])
+print(vals3d.shape, np.abs(vals3d - np.array([2.0, -3.0, 4.0])).max())
+</code></pre>
+<pre><code>(125, 3) 4.973799150320701e-14
+</code></pre>
+<h2 id="scope-and-caveats"><a class="header" href="#scope-and-caveats">Scope and caveats</a></h2>
+<p>The MLS fit needs a <strong>full-dimensional</strong> neighbourhood: a 2D region for a 2D
+space, a 3D volume for a 3D space. A lower-dimensional mesh embedded in a
+higher-dimensional space — a surface in 3D, a line in 2D — has a rank-deficient
+local geometry, so the operator returns a <strong>zero</strong> gradient there instead of
+failing:</p>
+<pre><code class="language-python"># A planar quad mesh living in 3D: locally rank-deficient, gradient is zero.
+flat = mf.build_cmesh(np.linspace(0.0, 1.0, 6), np.linspace(0.0, 1.0, 6))
+planar = mf.UMesh(np.c_[flat.coords(), np.zeros(len(flat.coords()))])
+planar.add_regular_block("QUAD4", flat.blocks()["QUAD4"])
+planar.fields["f"] = 2.0 * mf.X - 3.0 * mf.Y
+
+vals = np.asarray(mf.Gradient(planar, k=8).eval("f")["QUAD4"])
+print(vals.shape, np.abs(vals).max())
+</code></pre>
+<pre><code>(25, 3) 0.0
+</code></pre>
+<p>Treat <code>mf.Gradient</code> as a meshless differential operator built on the same
+machinery as the <a href="#field-transfers-1">field transfers</a>: build it once, then reuse it
+for every scalar field and every time step.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bubbles-example"><a class="header" href="#bubbles-example">Bubbles example</a></h1>
 <p><em>Figures use PyVista; verbose plotting boilerplate is omitted.</em></p>

@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-944ac63a.js";
+            window.path_to_searchindex_js = "searchindex-54ef5ae9.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-a8ffb3c6.js"></script>
+        <script src="toc-86b4e9ed.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -423,6 +423,51 @@ the transfer <code>def_val</code>. The <a href="./python_examples/transfers.html
 notebook walks through each operator; the timing and correctness comparison
 with medcoupling is at the end of <a href="./python_examples/compare_medcoupling.html">mefikit vs.
 medcoupling</a>.</p>
+<h2 id="field-gradients"><a class="header" href="#field-gradients">Field gradients</a></h2>
+<p><code>mf.Gradient</code> differentiates a <strong>scalar</strong> field with a moving least-squares
+(MLS) fit over the <code>k</code> nearest source cell centres. Like the transfers it has a
+prepare / apply split: the geometric operator is built once and can be applied
+to any number of fields. The result is a <strong>vector field</strong> with one component
+per space direction (<code>d</code> = 2 or 3).</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Constructor</th><th>Evaluated at</th><th>Signature</th></tr>
+</thead>
+<tbody>
+<tr><td><code>mf.Gradient(src)</code></td><td>the source mesh’s own cell centroids</td><td><code>(src, tgt=None, k=10, weighting=DistanceWeighting.Constant(), def_val=0.0)</code></td></tr>
+<tr><td><code>mf.Gradient(src, tgt)</code></td><td>the target mesh’s cell centroids</td><td>same</td></tr>
+<tr><td><code>mf.Gradient.at_points(src, points)</code></td><td>an explicit <code>(n, d)</code> point array</td><td><code>(src, points, k=10, weighting=..., def_val=0.0)</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>weighting</code> reuses the transfer kernels (<code>mf.DistanceWeighting</code>:
+<code>Constant()</code>, <code>InverseDistance(exponent)</code>, <code>CompactSupport(exponent)</code>,
+<code>Gaussian()</code>). A degree-1 fit reproduces affine fields exactly. The source
+domain must be <strong>full-dimensional</strong> (a 2D region in 2D, a 3D volume in 3D);
+on a lower-dimensional mesh embedded in a higher-dimensional space (a surface
+in 3D) the local system is rank-deficient and the gradient is zero.</p>
+<p>Usage mirrors the transfers:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Call</th><th>Result</th></tr>
+</thead>
+<tbody>
+<tr><td><code>grad(expr)</code></td><td>the gradient as a lazy vector <code>Field</code> on the target; index components with <code>grad(expr)[0]</code>, …</td></tr>
+<tr><td><code>grad.eval(expr)</code></td><td><code>{etype: array}</code>, shape <code>(n_tgt, d)</code></td></tr>
+<tr><td><code>grad.eval_points(expr)</code></td><td><code>(n_points, d)</code> array (point operators only)</td></tr>
+<tr><td><code>grad.apply_update(src, field_name, tgt, tgt_field_name=None, def_val=0.0)</code></td><td>writes the gradient into a target field in place</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-python">grad = mf.Gradient(src, tgt, k=12)
+tgt.fields["grad_T"] = grad("T")  # lazy vector field
+tgt.fields["dTdx"] = grad("T")[0]  # one component
+grad.apply_update(src, "T", tgt, "grad_T")  # in place
+</code></pre>
+<p>The <a href="./python_examples/gradient.html">Field gradients</a> notebook validates the
+operators against analytic gradients and compares the kernels.</p>
 
                     </main>
 
