@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fc688380.js";
+            window.path_to_searchindex_js = "../searchindex-944ac63a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-4506d0f5.js"></script>
+        <script src="../toc-a8ffb3c6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,16 +175,17 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="bubbles-example"><a class="header" href="#bubbles-example">Bubbles example</a></h1>
-<pre><code class="language-python">
-</code></pre>
+<p><em>Figures use PyVista; verbose plotting boilerplate is omitted.</em></p>
+<p>A hexahedral box is seeded with spherical bubbles. This is a small end-to-end
+tour of the selection pipeline on a single mesh: tag regions with <strong>groups</strong>,
+extract them with <code>select</code>, <strong>crack</strong> them out of the matrix, split them into
+<strong>connected components</strong>, and measure volumes and positions with one-line
+reductions.</p>
 <pre><code class="language-python">import numpy as np
-import pyvista as pv
 
 import mefikit as mf
 
 rng = np.random.default_rng(seed=123)
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 </code></pre>
 <h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
 <pre><code class="language-python">xmax = 5.0
@@ -199,6 +200,11 @@ print(f"Number of elements : {nx * ny * ny:,}")
 </code></pre>
 <pre><code>Number of elements : 1,955,743
 </code></pre>
+<p>The box <code>xmax x ymax x ymax</code> is discretised with
+<code>nx x ny x ny</code> cells, fine enough to resolve the <code>nb = 15</code> spheres of radius
+<code>r</code> sitting inside it. Their centres are sampled in the interior so that every
+sphere stays fully inside the box; each one becomes a <code>mf.sel.sphere(...)</code>
+selection, and all of them are combined with <code>|</code> into a single union.</p>
 <pre><code class="language-python">xc = rng.uniform(r, xmax - r, nb)
 yc = rng.uniform(r, ymax - r, nb)
 zc = rng.uniform(r, ymax - r, nb)
@@ -211,10 +217,15 @@ for s in spheres[1:]:
 y = np.linspace(0.0, ymax, ny)
 volumes = mf.build_cmesh(x, y, y)
 </code></pre>
+<p>The background is a plain structured hexa grid. Let us look at
+its boundaries first.</p>
 <pre><code class="language-python">volumes.boundaries().to_pyvista().plot(opacity=0.4)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_8_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_8_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_10_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_10_0.png" alt="png"></span></label></p>
 <h2 id="selecting-bubbles"><a class="header" href="#selecting-bubbles">Selecting bubbles</a></h2>
+<p><code>mesh.select(...)</code> returns a <strong>lazy view</strong>: nothing is computed until you
+materialise it (<code>.to_mesh()</code>) or take a reduction. Storing a selection in
+<code>mesh.groups</code> lets you reuse it later by name.</p>
 <pre><code class="language-python"># `select` returns a lazy view: materialize it into a sub-mesh with `.to_mesh()`.
 inner_bubbles = volumes.select(sphere_union).to_mesh()
 interface = inner_bubbles.boundaries()
@@ -228,29 +239,33 @@ print(len(volumes.groups["bubbles"]), "elements tagged in group 'bubbles'")
 <pre><code>105990 elements tagged in group 'bubbles'
 </code></pre>
 <h2 id="cracking-and-connected-components"><a class="header" href="#cracking-and-connected-components">Cracking and connected components</a></h2>
+<p><code>crack</code> duplicates the nodes that sit on the bubble interfaces, so the bubbles
+become elements with their own nodes. Then <code>connected_components()</code> isolates
+each bubble.</p>
+<p>So far <code>crack</code> has duplicated the nodes that sit on the cell
+interfaces, so neighbouring elements no longer share their faces. The bubble
+fronts are now open surfaces wrapped around the matrix:</p>
 <pre><code class="language-python">cracked.boundaries().to_pyvista().plot(opacity=0.4)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_13_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_13_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_16_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_16_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">bubble_groups = inner_bubbles.connected_components()
 </code></pre>
-<pre><code class="language-python">pv.global_theme.color_cycler = "default"
-pl = pv.Plotter()
-for c in bubble_groups:
-    compo = c.to_pyvista()
-    pl.add_mesh(compo)
-pl.add_mesh(volumes.boundaries(target_dim=1).to_pyvista())
-pl.show()
-pv.global_theme.color_cycler = None
-</code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_15_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_15_0.png" alt="png"></span></label></p>
+<p><code>inner_bubbles.connected_components()</code> groups the cracked bubble
+mesh into its connected parts. Each component is one bubble (or a touching
+cluster); the plot colours them one by one on top of the box edges.</p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_19_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_19_0.png" alt="png"></span></label></p>
+<p>Selections compose. A clip is just a <code>mf.sel.bbox(...)</code>;
+intersecting it with <code>~sphere_union</code> selects the box elements that are
+<em>outside</em> the bubbles — the matrix stays crack-free where bubbles have been
+removed from the picture:</p>
 <pre><code class="language-python">clip1 = mf.sel.bbox([-np.inf] * 3, [np.inf, ymax / 3.0, np.inf])
-pl = pv.Plotter()
-pl.add_mesh(volumes.select(clip1 &amp; ~sphere_union).to_mesh().to_pyvista())
-pl.add_mesh(interface.to_pyvista(), opacity=0.4)
-pl.show()
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_16_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_16_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="example_bubbles_files/example_bubbles_22_0.png" alt="png"><span class="img-wrapper"><img src="example_bubbles_files/example_bubbles_22_0.png" alt="png"></span></label></p>
 <h2 id="computing-statistics"><a class="header" href="#computing-statistics">Computing statistics</a></h2>
+<p>Reductions evaluate lazily over a selection or a group. Bubble volumes are
+compared with the analytic result <code>4/3 pi r**3</code> for an ideal sphere, and
+<code>mean(mf.C)</code> (mean of the node centroids) gives the barycentre of the bubble
+mass:</p>
 <pre><code class="language-python">bubble_volumes = volumes.select("bubbles").sum(mf.M)
 print(nb * 4.0 / 3.0 * np.pi * r**3.0)
 bubble_volumes
@@ -263,6 +278,9 @@ bubble_volumes
 
 0.2793115007084435
 </code></pre>
+<p>The bubble volume returned by <code>sum(mf.M)</code> is close to
+<code>nb * 4/3 pi r**3</code>; the small gap is the staircase discretisation of spheres
+on a regular hexa grid.</p>
 <pre><code class="language-python">bubbles_mean_pos = volumes.select("bubbles").mean(mf.C)
 print(bubbles_mean_pos)
 </code></pre>

@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-fc688380.js";
+            window.path_to_searchindex_js = "searchindex-944ac63a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-4506d0f5.js"></script>
+        <script src="toc-a8ffb3c6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -206,99 +206,14 @@ neighbours, domain frontier, etc.</li>
 <li><code>Selector</code> utilities for querying and filtering mesh elements
 based on geometric or topological criteria.</li>
 </ul>
-<h2 id="definitions"><a class="header" href="#definitions">Definitions</a></h2>
-<h3 id="element"><a class="header" href="#element"><strong>Element</strong></a></h3>
-<p>An <strong>element</strong> is an abstract mesh entity specified by:</p>
-<ul>
-<li><strong>its type</strong> (e.g., triangle, hexahedron, polygon, polyhedron)</li>
-<li><strong>its connectivity</strong> (indices referencing the global coordinate array)</li>
-</ul>
-<p>In <code>mefikit</code>, elements are <strong>ephemeral, zero-copy views</strong> constructed on the fly
-when iterating through a mesh block. They do not own memory; instead they refer
-to underlying index and coordinate buffers. This behavior mirrors VTK’s “cell
-iterator” pattern while improving cache locality and reducing overhead.</p>
-<p>It is only accessible through the rust API. The python bindings do not expose
-elements directly because python is only intended to be used for high-level
-scripting. Do not fear of going to the rust side for performance critical code,
-<code>mefikit</code> was designed to be simple to use for rust newcommers.</p>
-<h3 id="topological-dimension"><a class="header" href="#topological-dimension"><strong>Topological Dimension</strong></a></h3>
-<p>The <strong>topological dimension</strong> of an element is the dimension of the
-mathematical object it represents:</p>
-<ul>
-<li>0D → vertices</li>
-<li>1D → edges / segments</li>
-<li>2D → faces</li>
-<li>3D → volumes</li>
-</ul>
-<p>This categorization is independent of the embedding space and is central for
-field association and mesh validity checks.</p>
-<h3 id="spatial-dimension"><a class="header" href="#spatial-dimension"><strong>Spatial Dimension</strong></a></h3>
-<p>The <strong>spatial dimension</strong> is the dimension of the coordinate system in which
-the mesh is embedded, typically <strong>2D or 3D</strong>. All element coordinates must be
-consistent with this spatial dimension. For example, one may have:</p>
-<ul>
-<li>2D elements in 2D (pure surface mesh)</li>
-<li>2D elements in 3D (surface embedded in 3D)</li>
-<li>3D volumetric elements in 3D</li>
-</ul>
-<p><code>mefikit</code> does not assume a fixed coordinate system beyond this requirement.</p>
-<h3 id="mesh"><a class="header" href="#mesh"><strong>Mesh</strong></a></h3>
-<p>A <strong>mesh</strong> in <code>mefikit</code> is a container that holds:</p>
-<ul>
-<li>the global node coordinate array,</li>
-<li>a set of <strong>blocks</strong>, each containing elements of a given type,</li>
-<li><strong>fields</strong> (scalar/vector/tensor) attached to elements of a given topological dimension,</li>
-<li><strong>groups</strong>, i.e., labeled subsets of elements for boundary conditions,
-materials, or post-processing.</li>
-</ul>
-<p>Properties:</p>
-<ul>
-<li>You may attach <strong>any number of fields or groups</strong>.</li>
-<li><strong>Groups</strong> may overlap arbitrarily.</li>
-<li>A <strong>field must cover all elements</strong> of its associated topological dimension
-(similar to Gmsh’s “node data” or “element data” consistency).</li>
-</ul>
-<p>If these constraints seem restrictive, <code>mefikit</code> encourages using <strong>multiple
-meshes</strong> (e.g., one per partition, or one per physical domain) to better match
-specialized workflows.</p>
-<h3 id="topologically-valid-mesh"><a class="header" href="#topologically-valid-mesh">Topologically Valid Mesh</a></h3>
-<p>A <strong>topologically valid mesh</strong> in <code>mefikit</code> satisfies the following conditions:</p>
-<ol>
-<li>
-<p><strong>No overlapping higher-dimensional elements</strong>
-Two 3D elements may share faces or edges, but they must not occupy the same
-region of space. (Duplicate faces in a hex-dominant mesh are allowed and
-interpreted in context.)</p>
-</li>
-<li>
-<p><strong>Lower-dimensional entities derive consistently from higher-dimensional ones</strong></p>
-<ul>
-<li>All edges must be edges of some face or volume.</li>
-<li>All faces must be boundaries of some volume.</li>
-<li>No “floating” or orphaned lower-dimension elements are allowed.
-This is consistent with the expectations of many finite-element and
-finite-volume codes.</li>
-</ul>
-</li>
-<li>
-<p><strong>Non-degenerate geometry</strong>
-Elements must not be geometrically degenerate:</p>
-<ul>
-<li>triangles must have non-zero area,</li>
-<li>tetrahedra must have non-zero volume,</li>
-<li>polygons must be well-defined and non-self-intersecting, etc.
-These checks are similar to the geometric validation steps performed by
-MeshGems and various meshing libraries.</li>
-</ul>
-</li>
-</ol>
+<p><strong>Continue to <a href="./python_examples/getting_started.html">Getting Started</a>.</strong></p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
 
-                            <a rel="next prefetch" href="2_format.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="python_examples/getting_started.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -309,7 +224,7 @@ MeshGems and various meshing libraries.</li>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
 
-                    <a rel="next prefetch" href="2_format.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="python_examples/getting_started.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

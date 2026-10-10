@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-fc688380.js";
+            window.path_to_searchindex_js = "../searchindex-944ac63a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-4506d0f5.js"></script>
+        <script src="../toc-a8ffb3c6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,18 +175,19 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="field-transfers"><a class="header" href="#field-transfers">Field transfers</a></h1>
+<p><em>Figures use PyVista; verbose plotting boilerplate is omitted.</em></p>
 <p>This notebook shows how to remap fields between meshes with the
 <code>mf.transfer</code> operators: interpolation, extrapolation and conservative
 remapping, all sharing the same prepare / apply split.</p>
+<p>The setup below is self-contained: a log-spaced box mesh carrying a <code>"Measure"</code>
+field (cell volumes) and an analytic expression <code>"4 * M2"</code>, plus a couple of
+spatial selections used to crop the source. If anything looks unfamiliar, the
+<a href="./fields.html">Fields</a> and
+<a href="./selection.html">Selection</a> notebooks cover their meaning.</p>
 <pre><code class="language-python">import numpy as np
-import pyvista as pv
 
 import mefikit as mf
 
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
-
-# Same mesh and selection context as the Fields notebook.
 x = np.logspace(-5, 0.0, 1000)
 mesh2 = mf.build_cmesh(x, x)
 
@@ -200,19 +201,50 @@ r = mf.sel.rect([0.25, 0.25], [0.7, 0.7])
 c = mf.sel.circle([0.875, 0.875], 0.05)
 </code></pre>
 <h2 id="transferring-fields"><a class="header" href="#transferring-fields">Transferring fields</a></h2>
-<p>The transfer function can be</p>
+<p>A transfer maps a field from a <strong>source</strong> mesh onto a <strong>target</strong> mesh. Every
+<code>mf.transfer</code> operator reduces to the same operation — each target cell is a
+weighted sum of source cells:</p>
+<pre><code>t_j = sum_i w_ji s_i
+</code></pre>
+<p>The weights are computed <strong>once</strong>, at construction time (the <em>prepare</em> step);
+applying the operator to any field is then a single, fast matrix-vector
+product. Reuse one operator for many fields, as long as the two meshes do not
+change.</p>
+<p>What differs between the four operators is only <em>how the weights are
+obtained</em>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operator</th><th>Kind</th><th>Sampling / support</th><th>Conserves the integral</th><th>Typical use</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ConstantPiecewise</code></td><td>cell-based</td><td>target cell center located in a source cell (centroid)</td><td>no</td><td>faithful piecewise-constant copy, coarsening</td></tr>
+<tr><td><code>InverseDistance</code></td><td>meshless</td><td><code>k</code> nearest source cell centers, weights <code>1 / r**exponent</code></td><td>no</td><td>cheap local fallback, unrelated point clouds</td></tr>
+<tr><td><code>MovingLeastSquares</code></td><td>meshless</td><td><code>k</code> nearest source cell centers, local fit with a distance kernel</td><td>no</td><td>smooth fields, trend reconstruction</td></tr>
+<tr><td><code>ConservativeP0</code></td><td>overlap</td><td>volumetric intersection with source cells</td><td><strong>yes</strong></td><td>keep mass / energy exact (ALE, coupling)</td></tr>
+</tbody>
+</table>
+</div>
+<p>Some shared rules:</p>
 <ul>
-<li>interpolation</li>
-<li>extrapolation</li>
-<li>conservative</li>
-<li>non-conservative</li>
-<li>using cells</li>
-<li>using cell centers and point clouds methods</li>
-<li>etc</li>
+<li><strong>Interpolation methods</strong> (<code>ConstantPiecewise</code>, <code>InverseDistance</code>,
+<code>MovingLeastSquares</code>) combine a few source cells per target cell and never
+conserve the integral.</li>
+<li><strong><code>ConservativeP0</code></strong> weights each contribution by the intersection measure.
+For <strong>intensive</strong> fields (temperature, density) it normalizes by the target
+cell measure afterwards — enough to behave like an interpolation — while
+<strong>extensive</strong> fields (mass, energy) keep the raw weighted sum. Pass
+<code>extensive=True</code> to treat a field as extensive.</li>
+<li>Target cells covered by <strong>no</strong> source cell keep the <strong>default value</strong>
+<code>def_val</code> (defaults to <code>0.0</code>; <code>np.nan</code> makes the uncovered cells explicit).</li>
+<li>All operators share one calling convention: build them with
+<code>tr = mf.transfer.Op(src, tgt, ...)</code>, then call <code>tr(expr)</code> (returns a field
+on <code>tgt</code>), <code>tr.eval(expr)</code> (returns per-type arrays), or
+<code>tr.apply_update(src, name, tgt, ...)</code> to write into a target field in
+place.</li>
 </ul>
-<p>They are many.</p>
 <h3 id="constantpiecewise-transfer"><a class="header" href="#constantpiecewise-transfer">ConstantPiecewise Transfer</a></h3>
-<p>The transfer is very simple. It is based on the cells of src_mesh and the cells center of the target mesh. It assigns to a cell from the target the value of the cell in which the center is located in. This is a point location based value assignment. By default the centroid (mean of cell nodes) is used because it is fast to comupute and is accurate with regular cells.</p>
+<p>The transfer is very simple. It is based on the cells of src_mesh and the cells center of the target mesh. It assigns to a cell from the target the value of the cell in which the center is located in. This is a point location based value assignment. By default the centroid (mean of cell nodes) is used because it is fast to compute and is accurate with regular cells.</p>
 <pre><code class="language-python">m_src = mesh2.select((m2 &gt; 4e-9) - r - c).to_mesh()
 m_tgt = mf.build_cmesh(np.linspace(0.0, 1.5, 20), np.linspace(0.0, 1.5, 20))
 
@@ -225,30 +257,42 @@ cpt.apply_update(m_src, "Measure", m_tgt, tgt_field_name="Projection", def_val=n
 </code></pre>
 <pre><code class="language-python">m_tgt.to_pyvista().plot(show_edges=True)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_7_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_7_0.png" alt="png"></span></label></p>
-<p>As you can see the <code>"Measure"</code> field from m_src was used to compute the <code>"Projection"</code> field on m_tgt. Both mesh are not completly overlapping but that is not an issue. Cells from m_tgt whose center is not in a cell from m_src take a default value <code>def_val</code>. Default is 0.0 but any floating point value, such as <code>np.nan</code> is accepted.</p>
-<p>This interpolation is good when coarseing a mesh and you do not need conservation. It might be useful in other circumstances I do not know of. It is quite fast but not that much because of the <code>is_in_cell</code> exact geometrical query.</p>
-<h3 id="movingmean-transfer"><a class="header" href="#movingmean-transfer">MovingMean Transfer</a></h3>
-<p>This Transfer is based on m_src cell center positions and m_tgt cell centers positions. It is a “meshless” operation as it does not care about connectivity. There are several options :</p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_8_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_8_0.png" alt="png"></span></label></p>
+<p>As you can see the <code>"Measure"</code> field from m_src was used to compute the
+<code>"Projection"</code> field on m_tgt. Both meshes are not completely overlapping but
+that is not an issue: cells from m_tgt whose center is not in a cell from m_src
+take a default value <code>def_val</code>. Default is <code>0.0</code>, but any floating point value,
+such as <code>np.nan</code>, is accepted.</p>
+<p>This interpolation is a good fit when coarsening a mesh and you do not need
+conservation. It is fast, though not as fast as the meshless methods, because
+of the <code>is_in_cell</code> exact geometrical query.</p>
+<h3 id="inversedistance-transfer"><a class="header" href="#inversedistance-transfer">InverseDistance Transfer</a></h3>
+<p>The meshless counterpart of the piecewise-constant copy: each target cell
+center samples its <code>k</code> nearest source cell centers and receives their weighted
+mean, with weights <code>w_i ~ 1 / r**exponent</code> (defaults: <code>k = 4</code>,
+<code>exponent = 2.0</code>). The weights are non-negative and normalized, so the value is
+a convex combination of the neighbours — it stays inside the source range,
+never overshoots, and is cheap to evaluate.</p>
+<p>Use it when <code>ConstantPiecewise</code> leaves holes (uncovered cells) or when the
+source and target meshes are unrelated point clouds. A higher <code>exponent</code>
+concentrates the weight on the closest neighbour; <code>k = 1</code> degenerates to exact
+nearest-neighbour sampling.</p>
+<h3 id="movingleastsquares-transfer"><a class="header" href="#movingleastsquares-transfer">MovingLeastSquares Transfer</a></h3>
+<p>The most flexible of the meshless methods: for each target cell center it
+fits a local least-squares polynomial through the <code>k</code> nearest source centers
+(default <code>k = 10</code>) and evaluates it at the target point. The neighbour weights
+are shaped by a distance kernel, one of the <code>mf.transfer.DistanceWeighting</code>
+choices:</p>
 <ul>
-<li>normal mean</li>
-<li>weighted mean</li>
+<li><code>Constant()</code> — a plain (linear) least-squares fit over the <code>k</code> neighbours;</li>
+<li><code>InverseDistance(exponent)</code> — neighbours weighted by <code>(h / r)**exponent</code>
+where <code>h</code> is the distance to the farthest selected neighbour;</li>
+<li><code>Gaussian()</code> — a gaussian kernel.</li>
 </ul>
-<p>Pros :</p>
-<ul>
-<li>it is extremly fast to compute</li>
-<li>it does not overshoot / undershoot</li>
-</ul>
-<p>Cons :</p>
-<ul>
-<li>It lacks precision</li>
-</ul>
-<h3 id="movingleastsquare-transfer"><a class="header" href="#movingleastsquare-transfer">MovingLeastSquare Transfer</a></h3>
-<p>This Transfer is based on m_src cell center positions and m_tgt cell centers positions. It is a “meshless” operation as it does not care about connectivity. There are several options :</p>
-<ul>
-<li>linear least square : the projection is the least square linear approx of the solution (can be an extrapolation)</li>
-<li>weighted least square : the projection is the weighted least square linear approx of the solution, there are several possibilities for the weighting function but it depends on the relative distance to the target interpolation point.</li>
-</ul>
+<p>It smooths the field and reconstructs trends, but it is the only method that
+can <strong>overshoot</strong> the source values and <strong>extrapolate</strong> outside the source
+domain. Watch the boundaries — using <code>def_val=np.nan</code> as target for the
+uncovered cells makes the extrapolated region visible.</p>
 <pre><code class="language-python">m_src = mesh2.select((m2 &gt; 4e-9) - r - c).to_mesh()
 m_tgt = mf.build_cmesh(np.linspace(0.0, 1.5, 20), np.linspace(0.0, 1.5, 20))
 
@@ -261,208 +305,36 @@ mlsqt.apply_update(m_src, "Measure", m_tgt, tgt_field_name="Projection", def_val
 </code></pre>
 <pre><code class="language-python">m_tgt.to_pyvista().plot(show_edges=True)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_13_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_13_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_14_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_14_0.png" alt="png"></span></label></p>
 <p>As you can see the projection gets a value everywhere, even outside the initial domain. This can lead to bad extrapolations, so it is to your responsability. Here as an example the extrapolated Measure can have negative values.</p>
 <p>Inside the domain the interpolation works like a charm.</p>
 <h3 id="transfer-methods-comparison"><a class="header" href="#transfer-methods-comparison">Transfer methods comparison</a></h3>
-<pre><code class="language-python">def compare_src_tgt(m_src, m_tgt):
-    scale = (1.0 - 1e-2) / (1.1 + 0.05)
-
-    pt = pv.Plotter(shape=(1, 2))
-    pt.subplot(0, 0)
-    pt.add_text("Source")
-    pt.add_mesh(m_src.to_pyvista(), show_edges=True, clim=[0.0, 0.06])
-    pt.camera_position = "xy"
-    pt.camera.zoom(scale)
-    pt.subplot(0, 1)
-    pt.add_text("Target")
-    pt.add_mesh(
-        m_tgt.to_pyvista(), clim=[0.0, 0.06], below_color="pink", above_color="red"
-    )
-    pt.add_mesh(m_src.descend().to_pyvista(), show_edges=True, line_width=1)
-    pt.camera_position = "xy"
-    pt.show()
-</code></pre>
-<pre><code class="language-python">import time
-
-transfers = (
-    mf.transfer.ConstantPiecewise,
-    lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=5),
-    mf.transfer.MovingLeastSquares,
-    lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=20),
-    mf.transfer.MovingLeastSquares,
-    lambda src, tgt: mf.transfer.MovingLeastSquares(
-        src, tgt, weighting=mf.transfer.DistanceWeighting.Gaussian()
-    ),
-    lambda src, tgt: mf.transfer.MovingLeastSquares(
-        src, tgt, weighting=mf.transfer.DistanceWeighting.InverseDistance(1.0)
-    ),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=3),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=5),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=10),
-    mf.transfer.ConservativeP0,
-)
-trasfers_labels = (
-    "CPW",
-    "MLS k5",
-    "MLS k10",
-    "MLS k20",
-    "MLS",
-    "MLS gaussian",
-    "MLS inv_dist",
-    "ID k3",
-    "ID k5",
-    "ID k10",
-    "ConservativeP0",
-)
-prepare_times = []
-apply_times = []
-
-for T, label in zip(transfers, trasfers_labels):
-    m_src = mf.build_cmesh(np.logspace(-2.0, 0.0, 20), np.logspace(-2.0, 0.0, 20))
-    m_tgt = mf.build_cmesh(np.linspace(-0.05, 1.1, 40), np.linspace(-0.05, 1.1, 40))
-    m_src.fields["Measure"] = mf.M
-    t0 = time.time()
-    tr = T(m_src, m_tgt)
-    t1 = time.time()
-    tr.apply_update(m_src, "Measure", m_tgt, label + " Transfered Measure")
-    t2 = time.time()
-
-    prepare_times.append((t1 - t0) * 1000.0)
-    apply_times.append((t2 - t1) * 1000.0)
-
-    compare_src_tgt(m_src, m_tgt)
-</code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_0.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_1.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_1.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_2.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_2.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_3.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_3.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_4.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_4.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_5.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_5.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_6.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_6.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_7.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_7.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_8.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_8.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_9.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_9.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_17_10.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_17_10.png" alt="png"></span></label></p>
-<pre><code class="language-python">import matplotlib.pyplot as plt
-
-chart_data = {
-    "Prepare": prepare_times,
-    "Apply": apply_times,
-}
-
-fig, ax = plt.subplots(figsize=(10, 5))
-
-res = ax.grouped_bar(chart_data, tick_labels=trasfers_labels, group_spacing=1)
-for container in res.bar_containers:
-    ax.bar_label(container, padding=3)
-
-# Add some text for labels, title, etc.
-ax.set_ylabel("Time (ms)")
-ax.set_title("Time per step")
-ax.legend(loc="upper left", ncols=3)
-fig.tight_layout()
-plt.show()
-</code></pre>
+<p>Which method to use? <code>ConstantPiecewise</code> (CPW) is local and cheap, <code>MovingLeastSquares</code> (MLS) smooths the field but can extrapolate outside the source, <code>InverseDistance</code> (ID) is a tunable local fallback, and <code>ConservativeP0</code> conserves the integral.</p>
+<p>Every method is timed on the same grid pair, split between the one-shot
+<strong>prepare</strong> (slow) and the repeated <strong>apply</strong> (fast). The timing loop is hidden
+for readability — it only fills the chart below.</p>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_1.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_1.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_2.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_2.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_3.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_3.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_4.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_4.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_5.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_5.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_6.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_6.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_7.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_7.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_8.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_8.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_9.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_9.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_18_10.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_18_10.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_19_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_19_0.png" alt="png"></span></label></p>
 <h2 id="transfer-of-3d-fields"><a class="header" href="#transfer-of-3d-fields">Transfer of 3D fields</a></h2>
-<pre><code class="language-python">def compare_src_tgt_3d(m_src, m_tgt):
-    vmin = m_src.select(mf.sel.all()).min(mf.M) * 0.99
-    vmax = m_src.select(mf.sel.all()).max(mf.M) * 1.01
-    scale = (1.0 - 1e-2) / (1.1 + 0.05)
-
-    pt = pv.Plotter(shape=(1, 2))
-    pt.subplot(0, 0)
-    pt.add_text("Source")
-    pt.add_mesh(m_src.to_pyvista(), show_edges=True, clim=[vmin, vmax])
-    # pt.view_xy()
-    pt.camera.zoom(scale)
-
-    pt.subplot(0, 1)
-    pt.add_text("Target")
-    pt.add_mesh(
-        m_tgt.to_pyvista(), clim=[vmin, vmax], below_color="pink", above_color="red"
-    )
-    pt.add_mesh(m_src.descend(target_dim=1).to_pyvista(), show_edges=True, line_width=1)
-    # pt.view_xy()
-    pt.show()
-</code></pre>
-<pre><code class="language-python">import time
-
-transfers = (
-    mf.transfer.ConstantPiecewise,
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=5),
-    # mf.transfer.MovingLeastSquares,
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=20),
-    # mf.transfer.MovingLeastSquares,
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(
-    #     src, tgt, weighting=mf.transfer.DistanceWeighting.Gaussian()
-    # ),
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(
-    #     src, tgt, weighting=mf.transfer.DistanceWeighting.InverseDistance(1.0)
-    # ),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=3),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=5),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=10),
-    mf.transfer.ConservativeP0,
-)
-trasfers_labels = (
-    "CPW",
-    "ID k3",
-    "ID k5",
-    "ID k10",
-    "ConservativeP0",
-)
-prepare_times = []
-apply_times = []
-
-for T, label in zip(transfers, trasfers_labels):
-    m_src = mf.build_cmesh(
-        np.logspace(-2.0, 0.0, 20), np.logspace(-2.0, 0.0, 20), np.linspace(0.0, 0.1, 3)
-    )
-    m_tgt = mf.build_cmesh(
-        np.linspace(-0.05, 1.1, 40),
-        np.linspace(-0.05, 1.1, 40),
-        np.linspace(0.0, 0.1, 3),
-    )
-    m_src.fields["Measure"] = mf.M
-    t0 = time.time()
-    tr = T(m_src, m_tgt)
-    t1 = time.time()
-    tr.apply_update(m_src, "Measure", m_tgt, label + " Transfered Measure")
-    t2 = time.time()
-
-    prepare_times.append((t1 - t0) * 1000.0)
-    apply_times.append((t2 - t1) * 1000.0)
-
-    compare_src_tgt_3d(m_src, m_tgt)
-</code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_21_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_21_0.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_21_1.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_21_1.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_21_2.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_21_2.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_21_3.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_21_3.png" alt="png"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_21_4.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_21_4.png" alt="png"></span></label></p>
-<pre><code class="language-python">import matplotlib.pyplot as plt
-
-chart_data = {
-    "Prepare": prepare_times,
-    "Apply": apply_times,
-}
-
-fig, ax = plt.subplots(figsize=(10, 5))
-
-res = ax.grouped_bar(chart_data, tick_labels=trasfers_labels, group_spacing=1)
-for container in res.bar_containers:
-    ax.bar_label(container, padding=3)
-
-# Add some text for labels, title, etc.
-ax.set_ylabel("Time (ms)")
-ax.set_title("Time per step")
-ax.legend(loc="upper left", ncols=3)
-fig.tight_layout()
-plt.show()
-</code></pre>
+<p>The same benchmark on a hexahedral grid pair — here <code>ConstantPiecewise</code>,
+<code>InverseDistance</code> and <code>ConservativeP0</code> are timed. The prepare / apply split is
+unchanged:</p>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_22_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_22_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_22_1.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_22_1.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_22_2.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_22_2.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_22_3.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_22_3.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_22_4.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_22_4.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_23_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_23_0.png" alt="png"></span></label></p>
 <h2 id="transfer-between-surfaces"><a class="header" href="#transfer-between-surfaces">Transfer between surfaces</a></h2>
 <p>Transfers do not apply to volumetric meshes only: they also work between surface
 meshes, i.e. 2D domains embedded in 3D space. Here <code>sin_mesh</code> builds such a surface
@@ -480,17 +352,17 @@ from a coarse surface to a finer one with the <code>InverseDistance</code> inter
 coarse.measure_update()
 coarse.to_pyvista().plot(show_edges=True)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_25_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_25_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_26_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_26_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">fine = sin_mesh(20)
 fine.to_pyvista().plot(show_edges=True)
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_26_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_26_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_27_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_27_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">tr = mf.transfer.InverseDistance(coarse, fine)
 tr.apply_update(coarse, "Measure", fine)
 </code></pre>
 <pre><code class="language-python">fine.to_pyvista().plot()
 </code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_28_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_28_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_29_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_29_0.png" alt="png"></span></label></p>
 <h2 id="comparison-to-medcoupling"><a class="header" href="#comparison-to-medcoupling">Comparison to medcoupling</a></h2>
 <pre><code class="language-python">import medcoupling as mc
 from medcoupling import MEDCouplingRemapper
@@ -512,24 +384,7 @@ t2 = time.time()
 mf_prepare = t1 - t0
 mf_apply = t2 - t1
 </code></pre>
-<pre><code class="language-python">pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text("Source")
-pt.add_mesh(m_src.to_pyvista(), show_edges=True)
-pt.camera.zoom(0.99 / 1.15)
-
-pt.subplot(0, 1)
-pt.add_text("Target")
-pt.add_mesh(
-    m_src.descend(target_dim=1).to_pyvista(),
-    show_edges=True,
-    line_width=2,
-    color="black",
-)
-pt.add_mesh(m_tgt.to_pyvista(), show_edges=True)
-pt.show()
-</code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_32_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_32_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_33_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_33_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">mc_src = m_src.to_mc()
 mc_tgt = m_tgt.to_mc()
 
@@ -546,30 +401,12 @@ t2 = time.time()
 mc_prepare = t1 - t0
 mc_apply = t2 - t1
 </code></pre>
-<pre><code class="language-python"># Les champs produits sont identiques
+<pre><code class="language-python"># Identical fields, whichever library computed them
 mf_f = m_tgt.fields["Measure"].numpy()
 mc_f = f_tgt.getArray().toNumPyArray()
 assert np.allclose(mc_f, mf_f)
 </code></pre>
-<pre><code class="language-python">chart_data = {
-    "Mefikit": [mf_prepare, mf_apply],
-    "Medcoupling": [mc_prepare, mc_apply],
-}
-
-fig, ax = plt.subplots(figsize=(10, 5))
-
-res = ax.grouped_bar(chart_data, tick_labels=["Prepare", "Apply"], group_spacing=1)
-for container in res.bar_containers:
-    ax.bar_label(container, padding=3)
-
-# Add some text for labels, title, etc.
-ax.set_ylabel("Time (s)")
-ax.set_title("Time per step")
-ax.legend(loc="upper right", ncols=3)
-fig.tight_layout()
-plt.show()
-</code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_35_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_35_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_36_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_36_0.png" alt="png"></span></label></p>
 <h2 id="using-transfer-as-a-fieldexpressions"><a class="header" href="#using-transfer-as-a-fieldexpressions">Using transfer as a FieldExpressions</a></h2>
 <pre><code class="language-python">trsf = mf.transfer.ConservativeP0(m_src, m_tgt)
 rho = 3.0 * mf.X + mf.Y.square()
@@ -585,26 +422,13 @@ m_tgt.fields["temp"] = trsf(rho)   # uncovered cells -&gt; NaN, covered cells -&
 </code></pre>
 <p>Cells covered by the source are transferred correctly and match <code>apply_update</code> exactly.</p>
 </blockquote>
-<pre><code class="language-python">pt = pv.Plotter()
-
-box = mf.sel.bbox([-np.inf] * 3, [0.9, np.inf, np.inf])
-pvm = m_tgt.select(box).to_mesh().to_pyvista()
-pvm.active_scalars_name = "temp"
-pt.add_mesh(pvm.shrink(0.8), show_edges=True)
-
-pvs = m_src.to_pyvista()
-pvs.active_scalars_name = "rhoCp"
-pt.add_mesh(pvs, style="wireframe", line_width=2)
-
-pt.show()
-</code></pre>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_39_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_39_0.png" alt="png"></span></label></p>
+<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_40_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_40_0.png" alt="png"></span></label></p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../python_examples/fields.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../python_examples/selection.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -618,7 +442,7 @@ pt.show()
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../python_examples/fields.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../python_examples/selection.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

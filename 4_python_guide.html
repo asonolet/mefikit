@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-fc688380.js";
+            window.path_to_searchindex_js = "searchindex-944ac63a.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-4506d0f5.js"></script>
+        <script src="toc-a8ffb3c6.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -175,12 +175,25 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="python-guide"><a class="header" href="#python-guide">Python guide</a></h1>
-<p>This page is a compact reference for the Python API. The notebooks under
-<a href="./python_examples/SUMMARY.html">Python Examples</a> show the same features in
-context; here they are gathered as tables.</p>
+<p>This page is a compact reference for the Python API. The notebooks grouped at
+the end of the book show the same features in context; here they are gathered
+as tables.</p>
 <p>Meshes are <code>UMesh</code> objects. Fields and element groups live in two dict-like
 mappings on the mesh, and selections are lazy views that only evaluate when
 queried.</p>
+<p>Some insights on how to use the current Python library:</p>
+<ul>
+<li>Use autocompletion with the tool you like, type hints are provided! A missing
+type hint is a bug, please report it.</li>
+<li>Only high level whole mesh operations are supported through python. For finer
+grain ops either reach me or implement it in rust consuming the <code>mefikit</code> rust
+crate.</li>
+<li>Use lazy expressions wherever possible, they are fast, reusable, expressive
+and less error prone than manual indexing. They are inspired from <code>polars</code>, a
+DataFrame python-rust lib.</li>
+<li>Visualize with <code>pyvista</code>. It lacks type hints and the syntax may not feel
+familiar but the overall experience is really better than anything else.</li>
+</ul>
 <h2 id="the-fields-mapping"><a class="header" href="#the-fields-mapping">The fields mapping</a></h2>
 <p><code>mesh.fields</code> behaves like a dict keyed by field name. Each entry returns a
 <code>FieldRef</code>, a handle to read, reduce, or write the stored values.</p>
@@ -321,6 +334,29 @@ coords = stitched.coords()
 relabeled per input mesh, and fields and groups are dropped. Coincident interfaces
 must be piecewise planar within <code>tol</code>. This is an <em>imprint only</em> operation:
 overlapping volumes are not detected, so the output may contain overlapping cells.</p>
+<h2 id="geometric-transforms"><a class="header" href="#geometric-transforms">Geometric transforms</a></h2>
+<p>Pure coordinate transformations, each returning a <strong>new</strong> <code>UMesh</code> (the source
+is left untouched):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Call</th></tr>
+</thead>
+<tbody>
+<tr><td>translate by a vector</td><td><code>mesh.translate([x, y, z])</code></td></tr>
+<tr><td>scale per axis / uniformly</td><td><code>mesh.scale([sx, sy, sz])</code> / <code>mesh.scale_uniform(s)</code></td></tr>
+<tr><td>rotate around an axis through the origin</td><td><code>mesh.rotate(axis, angle)</code></td></tr>
+<tr><td>rotate around an axis through a point</td><td><code>mesh.rotate_about(center, axis, angle)</code></td></tr>
+<tr><td>mirror across a plane through the origin</td><td><code>mesh.mirror(normal)</code></td></tr>
+<tr><td>mirror across a plane through a point</td><td><code>mesh.mirror_about(point, normal)</code></td></tr>
+<tr><td>apply an arbitrary affine transform</td><td><code>mesh.transform(mf.Transform(matrix))</code></td></tr>
+<tr><td>repeat a shape with a step transform</td><td><code>mesh.duplicate(step, n)</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Angles are in radian. <code>mf.Transform</code> also offers the <code>identity</code>, <code>translation</code>,
+<code>scaling</code>, <code>rotation</code>, <code>reflection</code> and <code>from_matrix</code> constructors; <code>transform</code>
+also accepts a plain 4x4 numpy array.</p>
 <p>Field expressions (notably <code>mf.M</code> for the on-the-fly measure) can be evaluated
 without a stored field:</p>
 <ul>
@@ -329,6 +365,64 @@ without a stored field:</p>
 <li><code>mesh.measure()</code> → per-type measures; <code>mesh.measure_update()</code> materializes a
 <code>"Measure"</code> field (usually unnecessary, prefer <code>mf.M</code>)</li>
 </ul>
+<h2 id="input--output"><a class="header" href="#input--output">Input / output</a></h2>
+<p><code>UMesh.read</code> and <code>UMesh.write</code> build a mesh from — or dump it to — a file, the
+format being selected by the file extension (<code>.json</code>, <code>.yaml</code>, <code>.vtk</code>, <code>.vtu</code>,
+<code>.vtkhdf</code>, <code>.cgns</code>, <code>.med</code>):</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Call</th></tr>
+</thead>
+<tbody>
+<tr><td>read a mesh from disk</td><td><code>mf.UMesh.read(path)</code></td></tr>
+<tr><td>write a mesh to disk</td><td><code>mesh.write(path)</code></td></tr>
+<tr><td>in-memory PyVista object</td><td><code>mesh.to_pyvista(dim=None, with_fields=True)</code></td></tr>
+<tr><td>in-memory meshio object</td><td><code>mesh.to_meshio()</code></td></tr>
+<tr><td>in-memory medcoupling twin</td><td><code>mesh.to_mc(lev=None)</code> / <code>mf.UMesh.from_mc(mc_mesh)</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>to_pyvista</code> copies the mesh (and, by default, its fields) into a
+<code>pyvista.UnstructuredGrid</code>; <code>to_meshio</code> produces a <code>meshio.Mesh</code>; the
+medcoupling pair converts to / from a <code>MEDCouplingUMesh</code>. See the
+<a href="./python_examples/input_output.html">Input/Output</a> notebook and the <code>.med</code>
+round-trip in <a href="./python_examples/compare_medcoupling.html">mefikit vs. medcoupling</a>.</p>
+<h2 id="field-transfers"><a class="header" href="#field-transfers">Field transfers</a></h2>
+<p>Remapping a field from a <strong>source</strong> mesh onto a <strong>target</strong> mesh is done with
+the <code>mf.transfer</code> operators. All of them share the same prepare / apply split:
+construction builds the interpolation coefficients once, and applying the
+operator to any field is then a single fast sparse product:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operator</th><th>Kind</th><th>Conserves</th><th>Signature</th></tr>
+</thead>
+<tbody>
+<tr><td><code>ConstantPiecewise</code></td><td>cell-based, point location</td><td>no</td><td><code>(src, tgt, def_val=0.0)</code></td></tr>
+<tr><td><code>InverseDistance</code></td><td>meshless, <code>k</code>-nearest</td><td>no</td><td><code>(src, tgt, k=4, exponent=2.0, def_val=0.0)</code></td></tr>
+<tr><td><code>MovingLeastSquares</code></td><td>meshless, local fit</td><td>no</td><td><code>(src, tgt, k=10, weighting=DistanceWeighting.Constant(), def_val=0.0)</code></td></tr>
+<tr><td><code>ConservativeP0</code></td><td>volumetric overlap</td><td><strong>yes</strong></td><td><code>(src, tgt, def_val=0.0)</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Weighting kernels for <code>MovingLeastSquares</code> come from
+<code>mf.transfer.DistanceWeighting</code>: <code>Constant()</code>, <code>InverseDistance(exponent)</code>
+and <code>Gaussian()</code>.</p>
+<p>Once built, every operator is used the same way:</p>
+<ul>
+<li><code>tr(expr, extensive=False)</code> → the transferred field, as a <code>Field</code> on <code>tgt</code></li>
+<li><code>tr.eval(expr, extensive=False)</code> → <code>{etype: array}</code></li>
+<li><code>tr.apply_update(src, name, tgt, tgt_field_name=None, def_val=0.0, extensive=False)</code>
+writes the result into a target field in place</li>
+</ul>
+<p><code>extensive=True</code> treats the field as extensive (mass, energy): <code>ConservativeP0</code>
+then keeps the raw measure-weighted sum, whereas intensive fields are
+normalized by the target cell measure. Cells uncovered by any source cell keep
+the transfer <code>def_val</code>. The <a href="./python_examples/transfers.html">Field transfers</a>
+notebook walks through each operator; the timing and correctness comparison
+with medcoupling is at the end of <a href="./python_examples/compare_medcoupling.html">mefikit vs.
+medcoupling</a>.</p>
 
                     </main>
 
@@ -338,7 +432,7 @@ without a stored field:</p>
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="python_examples/SUMMARY.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="python_examples/umesh_basics.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -352,7 +446,7 @@ without a stored field:</p>
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="python_examples/SUMMARY.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="python_examples/umesh_basics.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
