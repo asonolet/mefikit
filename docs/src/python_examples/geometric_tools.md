@@ -11,6 +11,10 @@ import mefikit as mf
 
 ## Snap points
 
+`mesh.snap(mesh2, eps)` moves the nodes of `mesh` so that they coincide with
+the nodes of `mesh2` that are within `eps`. Below, two staggered grids are
+offset by about one cell size:
+
 
 ```python
 x = np.linspace(0.0, 3.0, 10, endpoint=True)
@@ -42,6 +46,11 @@ snaped = mesh.snap(mesh2, eps=x[-1] / len(x))
 
 
 ## Merge nodes
+
+`merge_nodes()` collapses the duplicated nodes of a single mesh according to a
+tolerance. It is the natural counterpart of `crack`: the mesh below was built
+with a duplicated internal interface (hence many connected components), and the
+merge re-glues it into one piece:
 
 
 ```python
@@ -76,6 +85,10 @@ n_compos = len(compos_cracked)
 
 
 ## Overlay
+
+`overlay` computes the boolean combination of two 2D meshes. The two grids
+below are staggered by half a cell, and we apply the four classic operations
+plus the two ways to imprint one grid into the other:
 
 The intersection is valid in the following conditions :
 - mesh1 and mesh2 are valid (no self recovering),
@@ -127,6 +140,9 @@ labels = [
 The ugly cell in the center in the difference and symmetric difference comes from the plotting of non convex cells in pyvista. It is just a known plotting bug (due to optimisation quirks).
 
 ## Surface overlay
+
+`overlay_surfaces` is the 3D counterpart of `overlay`: it imprints two 2D
+surfaces (meshes embedded in 3D space) wherever they coincide.
 
 `overlay_surfaces` imprints two 2D surfaces (meshes embedded in 3D space) wherever they
 coincide. Both surfaces must be piecewise planar; here they are built in the plane `z = 0`

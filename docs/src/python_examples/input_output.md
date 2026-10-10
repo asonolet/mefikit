@@ -18,12 +18,8 @@ volumes = mf.build_cmesh(
 
 ## Memory exports
 
-- Through numpy arrays manipulations:
-    - medcoupling
-    - meshio
-    - pyvista
-- Through `string` translation to `Python`:
-    - json
+A `UMesh` can be handed to other libraries without ever touching the disk:
+
 
 
 ```python
@@ -48,7 +44,7 @@ print(volumes.to_mc())
 print(volumes.to_pyvista())
 ```
 
-    UnstructuredGrid (0x7adbb21e7520)
+    UnstructuredGrid (0x7dcd539db520)
       N Cells:    16
       N Points:   50
       X Bounds:   0.000e+00, 1.000e+00

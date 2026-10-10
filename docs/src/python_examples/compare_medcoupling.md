@@ -36,14 +36,10 @@ import numpy as np
 
 import mefikit as mf
 
-print("mefikit     :", mf.__file__)
-print("medcoupling :", mc.__file__)
 print("medcoupling version:", mc.__version__)
 print("numpy       :", np.__version__)
 ```
 
-    mefikit     : /home/asonolet/Codes/mefikit/src/mefikit/__init__.py
-    medcoupling : /home/asonolet/Codes/mefikit/.venv/lib/python3.13/site-packages/medcoupling.py
     medcoupling version: V9_15_0
     numpy       : 2.5.2
 
@@ -184,16 +180,13 @@ mc_measure = mc_mesh.getMeasureField(True)
 mc_measure.setNature(mc.IntensiveConservation)
 
 centers = mc_mesh.computeCellCenterOfMass().toNumPyArray()
-mc_T_vals = 1.0 + centers[:, 0] ** 2 + 0.5 * centers[:, 1]
+mc_T = mc_cell_field(
+    mc_mesh,
+    1.0 + centers[:, 0] ** 2 + 0.5 * centers[:, 1],
+    nature=mc.IntensiveConservation,
+)
 
-mc_T = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-_arr = mc.DataArrayDouble(mc_T_vals)
-_arr.setName("T")
-mc_T.setArray(_arr)
-mc_T.setMesh(mc_mesh)
-mc_T.setNature(mc.IntensiveConservation)
-
-print("measure sum  :", mc_measure.getArray().toNumPyArray().sum())
+print("measure sum  :", mc_measure_sum(mc_mesh))
 ```
 
     measure sum  : 1.0
@@ -233,8 +226,7 @@ m3 = mf.build_cmesh(*axes3)
 mc3 = medcoupling_cmesh(*axes3)
 
 mf_faces = m3.descend()
-mc_desc = mc3.buildDescendingConnectivity()
-mc_faces = mc_desc[0] if isinstance(mc_desc, tuple) else mc_desc
+mc_faces = mc_descend(mc3)
 
 print("faces (mefikit)    :", mf_faces.num_elements())
 print("faces (medcoupling):", mc_faces.getNumberOfCells())
@@ -270,8 +262,7 @@ physically compacts nodes. The *number of used nodes* is identical.
 volumes = mf.build_cmesh([0.0, 1.0], np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
 faces = volumes.descend()
 cracked = volumes.crack(faces)
-cracked_mc = cracked.to_mc()
-cracked_mc.setMeshDimension(3)
+cracked_mc = mc_twin(cracked, 3)
 
 merged = cracked.merge_nodes()
 merged_mc = cracked_mc.deepCopy()
@@ -323,13 +314,11 @@ g2 = mf.build_cmesh(np.linspace(0.25, 0.75, 5), np.linspace(0.25, 0.75, 5))
 
 imprint = g1.overlay(g2, mf.OverlayOperation.IMPRINT)
 
-g1m, g2m = g1.to_mc(), g2.to_mc()
-g1m.setMeshDimension(2)
-g2m.setMeshDimension(2)
+g1m, g2m = mc_twin(g1, 2), mc_twin(g2, 2)
 mc_imprint = mc.MEDCouplingUMesh.Intersect2DMeshes(g1m, g2m, 1e-12)[0]
 
 a_mf = area_2d(imprint)
-a_mc = float(np.asarray(mc_imprint.getMeasureField(True).getArray().getValues()).sum())
+a_mc = mc_measure_sum(mc_imprint)
 print("imprint area (mefikit)    :", a_mf)
 print("imprint area (medcoupling):", a_mc)
 assert abs(a_mf - 1.0) < 1e-9 and abs(a_mc - 1.0) < 1e-9
@@ -371,17 +360,8 @@ op.apply_update(src2, "T", tgt2, "T", def_val=0.0)
 mf_tgt_vals = tgt2.fields["T"].numpy()
 
 # --- medcoupling -------------------------------------------------------------
-sc = src2.to_mc()
-sc.setMeshDimension(2)
-tc = tgt2.to_mc()
-tc.setMeshDimension(2)
-
-f_src = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-_arr = mc.DataArrayDouble(src2.fields["T"].numpy())
-_arr.setName("T")
-f_src.setArray(_arr)
-f_src.setMesh(sc)
-f_src.setNature(mc.IntensiveConservation)
+sc, tc = mc_twin(src2, 2), mc_twin(tgt2, 2)
+f_src = mc_cell_field(sc, src2.fields["T"].numpy(), nature=mc.IntensiveConservation)
 
 remap = mc.MEDCouplingRemapper()
 remap.prepare(sc, tc, "P0P0")  # prepare once
@@ -397,8 +377,6 @@ print("transferred fields match: OK")
 ```
 
     max |mefikit - medcoupling| after P0P0: 3.552713678800501e-15
-
-
     transferred fields match: OK
 
 
@@ -466,8 +444,7 @@ mf_bnd = mf_src.boundaries()
 mf_desc = mf_src.descend()
 
 mc_bnd = mc_src.buildBoundaryMesh(True)
-mc_d = mc_src.buildDescendingConnectivity()
-mc_desc = mc_d[0] if isinstance(mc_d, tuple) else mc_d
+mc_desc = mc_descend(mc_src)
 
 print(
     "boundary faces (mefikit)     :",
@@ -504,74 +481,44 @@ once, apply many times is the name of the game for unsteady runs, so both
 sides are timed separately. We scan a few mesh sizes (always the same geometry
 on both sides) and check that the actual transferred fields coincide.
 
+The `poly_subset` / `median_ms` helpers used below are small bookkeeping
+utilities (isolating a sub-mesh, taking a median timing) — hidden here for
+readability.
 
 
 ```python
-def poly_subset(path, n, mc_side):
-    if mc_side:
-        m = mc.ReadMeshFromFile(str(path), 0)
-        m = m.buildPartOfMySelf(np.arange(n, dtype=np.int64).tolist())
-        m.mergeNodes(1e-12)
-        return m
-    m = mf.UMesh.read(str(path))
-    return m.select(mf.sel.ids({"PHED": np.arange(n)})).to_mesh()
-
-
-def mc_p0_field(mesh, vals):
-    f = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-    a = mc.DataArrayDouble(vals)
-    a.setName("T")
-    f.setArray(a)
-    f.setMesh(mesh)
-    f.setNature(mc.IntensiveConservation)
-    return f
-
-
-def median_ms(fn, n=3):
-    times = []
-    for _ in range(n):
-        t0 = time.perf_counter()
-        fn()
-        times.append(time.perf_counter() - t0)
-    return float(np.median(times) * 1e3)
-
-
-poly_res = []
-for n in (100, 200, 400):
+def bench_poly_once(n, data):
+    # Time one P0/P0 polyhedral remap size on both libraries; return the
+    # (prepare, apply) medians in ms plus the transferred-field difference.
     p_src = poly_subset(data / "mesh_36.med", n, False)
     p_tgt = poly_subset(data / "mesh_27.med", n, False)
     p_src.fields["T"] = 1.0 + 2.0 * mf.M
 
-    mf_prepare = median_ms(
-        lambda p_src=p_src, p_tgt=p_tgt: mf.transfer.ConservativeP0(p_src, p_tgt)
-    )
+    mf_prepare = median_ms(lambda: mf.transfer.ConservativeP0(p_src, p_tgt))
     op = mf.transfer.ConservativeP0(p_src, p_tgt)
-    mf_apply = median_ms(
-        lambda op=op, p_src=p_src, p_tgt=p_tgt: op.apply_update(
-            p_src, "T", p_tgt, "T", def_val=0.0
-        )
-    )
+    mf_apply = median_ms(lambda: op.apply_update(p_src, "T", p_tgt, "T", def_val=0.0))
 
     c_src = poly_subset(data / "mesh_36.med", n, True)
     c_tgt = poly_subset(data / "mesh_27.med", n, True)
-    f_src = mc_p0_field(c_src, p_src.fields["T"].numpy())
+    f_src = mc_cell_field(
+        c_src, p_src.fields["T"].numpy(), nature=mc.IntensiveConservation
+    )
 
     remap = mc.MEDCouplingRemapper()
-    mc_prepare = median_ms(
-        lambda remap=remap, c_src=c_src, c_tgt=c_tgt: remap.prepare(
-            c_src, c_tgt, "P0P0"
-        )
-    )
-    mc_apply = median_ms(
-        lambda remap=remap, f_src=f_src: remap.transferField(f_src, 0.0)
-    )
+    mc_prepare = median_ms(lambda: remap.prepare(c_src, c_tgt, "P0P0"))
+    mc_apply = median_ms(lambda: remap.transferField(f_src, 0.0))
 
     op.apply_update(p_src, "T", p_tgt, "T", def_val=0.0)
     out_mf = p_tgt.fields["T"].numpy()
     remap.prepare(c_src, c_tgt, "P0P0")
     out_mc = remap.transferField(f_src, 0.0).getArray().toNumPyArray()
-
     diff = float(np.abs(out_mf - out_mc).max())
+    return mf_prepare, mf_apply, mc_prepare, mc_apply, diff
+
+
+poly_res = []
+for n in (100, 200, 400):
+    mf_prepare, mf_apply, mc_prepare, mc_apply, diff = bench_poly_once(n, data)
     poly_res.append((n, mf_prepare, mf_apply, mc_prepare, mc_apply, diff))
     print(
         f"poly n={n:4d} | mefikit {mf_prepare:7.2f} ms (prepare) / {mf_apply:5.2f} ms (apply)"
@@ -585,22 +532,22 @@ assert all(r[5] < 1e-9 for r in poly_res)
 print("transferred fields match at every size: OK")
 ```
 
-    poly n= 100 | mefikit    2.46 ms (prepare) /  0.00 ms (apply) | medcoupling    225.4 ms /  0.18 ms |   92x faster
+    poly n= 100 | mefikit    3.18 ms (prepare) /  0.01 ms (apply) | medcoupling    191.1 ms /  0.20 ms |   60x faster
                 | max |mefikit - medcoupling| on the transferred field: 5.88e-15
 
 
-    poly n= 200 | mefikit    8.10 ms (prepare) /  0.01 ms (apply) | medcoupling    741.6 ms /  0.34 ms |   92x faster
+    poly n= 200 | mefikit   13.22 ms (prepare) /  0.01 ms (apply) | medcoupling    853.8 ms /  0.41 ms |   65x faster
                 | max |mefikit - medcoupling| on the transferred field: 6.38e-15
 
 
-    poly n= 400 | mefikit   64.11 ms (prepare) /  0.01 ms (apply) | medcoupling   3383.3 ms /  0.72 ms |   53x faster
+    poly n= 400 | mefikit   43.79 ms (prepare) /  0.02 ms (apply) | medcoupling   3338.4 ms /  0.78 ms |   76x faster
                 | max |mefikit - medcoupling| on the transferred field: 7.22e-15
     transferred fields match at every size: OK
 
 
 
 
-![png](compare_medcoupling_files/compare_medcoupling_33_0.png)
+![png](compare_medcoupling_files/compare_medcoupling_34_0.png)
 
 
 
@@ -613,7 +560,7 @@ print(
 )
 ```
 
-    At 400 cells mefikit prepares the polyhedral remap 53 times faster than medcoupling, and the gap grows with the mesh size.
+    At 400 cells mefikit prepares the polyhedral remap 76 times faster than medcoupling, and the gap grows with the mesh size.
 
 
 ## Performance on common operations
@@ -623,300 +570,10 @@ life. Timings are **medians of several runs** on this machine; tiny absolute
 values should be read with perspective. Both libraries always work on the
 *exact same geometry*: this is what fairness looks like.
 
-Workloads are the same ones used in mefikit's `tests/bench_vs_medcoupling.py`.
+The benchmark harness itself is hidden for readability. It mirrors mefikit's
+`tests/bench_vs_medcoupling.py`, where the full workload definitions live; the
+cells below only show how the runs are launched.
 
-
-
-```python
-N_ITER = 10
-MC_INTENSIVE = 37
-MC_EXTENSIVE = 35
-
-N2D = 96  # 96x96  = 9216 QUAD4 cells
-N3D = 16  # 16^3   = 4096 HEX8 cells
-NPOLY = 16  # poly remap target, 16^3 source
-MERGE_N = 24  # 2 stacked 24x24 HEX8 layers, duplicated interface
-DESCEND_N = 24  # 24^3 hexa grid -> faces
-OVERLAY_N = 32  # 32x32 grid overlayed by an embedded 8x8 block
-CRACK_N = 20  # 20^3 hexa grid, cracked along all its faces
-
-RTOL = 1e-9
-ATOL = 1e-9
-
-
-def median_time(fn, n=N_ITER):
-    # median wall time of fn over n runs, in milliseconds
-    times = []
-    for _ in range(n):
-        t0 = time.perf_counter()
-        fn()
-        times.append(time.perf_counter() - t0)
-    return float(np.median(times) * 1e3)
-
-
-def mc_mesh(mesh, dim):
-    m = mesh.to_mc()
-    m.setMeshDimension(dim)
-    return m
-
-
-def mc_field(mmesh, vals, nature, name="T"):
-    f = mc.MEDCouplingFieldDouble(mc.ON_CELLS, mc.ONE_TIME)
-    a = mc.DataArrayDouble(vals)
-    a.setName(name)
-    f.setArray(a)
-    f.setMesh(mmesh)
-    f.setNature(nature)
-    return f
-
-
-def field_2d(nx):
-    i, j = np.meshgrid(np.arange(nx), np.arange(nx), indexing="ij")
-    xc, yc = (i + 0.5) / nx, (j + 0.5) / nx
-    return (1.0 + 0.5 * np.sin(2 * np.pi * xc) * np.cos(np.pi * yc)).reshape(-1, 1)
-
-
-def field_3d(nx):
-    i, j, k = np.meshgrid(np.arange(nx), np.arange(nx), np.arange(nx), indexing="ij")
-    xc, yc, zc = (i + 0.5) / nx, (j + 0.5) / nx, (k + 0.5) / nx
-    return (
-        1.0 + 0.5 * np.sin(2 * np.pi * xc) * np.cos(np.pi * yc) * np.cos(np.pi * zc)
-    ).reshape(-1, 1)
-
-
-def dump_merged_mesh(nx):
-    # two stacked HEX8 layers; the shared interface is duplicated (2 node sets)
-    gx = np.linspace(0.0, 1.0, nx + 1)
-    px, py = np.meshgrid(gx, gx, indexing="ij")
-    z0 = np.c_[px.ravel(), py.ravel(), np.zeros((nx + 1) ** 2)]
-    z1 = np.c_[px.ravel(), py.ravel(), np.ones((nx + 1) ** 2)]
-    coords = np.ascontiguousarray(np.vstack([z0, z1, z1, z0 + 2.0]), np.float64)
-
-    def nid(i, j, layer):
-        return layer * (nx + 1) ** 2 + i * (nx + 1) + j
-
-    conn = []
-    for i in range(nx):
-        for j in range(nx):
-            conn += [
-                [
-                    nid(i, j, 0),
-                    nid(i + 1, j, 0),
-                    nid(i + 1, j + 1, 0),
-                    nid(i, j + 1, 0),
-                    nid(i, j, 1),
-                    nid(i + 1, j, 1),
-                    nid(i + 1, j + 1, 1),
-                    nid(i, j + 1, 1),
-                ],
-                [
-                    nid(i, j, 2),
-                    nid(i + 1, j, 2),
-                    nid(i + 1, j + 1, 2),
-                    nid(i, j + 1, 2),
-                    nid(i, j, 3),
-                    nid(i + 1, j, 3),
-                    nid(i + 1, j + 1, 3),
-                    nid(i, j + 1, 3),
-                ],
-            ]
-    mesh = mf.UMesh(coords)
-    mesh.add_regular_block("HEX8", np.ascontiguousarray(np.array(conn), np.uintp))
-    return mesh
-```
-
-
-```python
-def bench_remap(dim, n, build_iter, poly=False):
-    x = np.linspace(0.0, 1.0, n + 1)
-    axes = [x] * dim
-    shift = [0.5 / n] + [0.0] * (dim - 1)
-    et = "QUAD4" if dim == 2 else "HEX8"
-    vals = field_2d(n) if dim == 2 else field_3d(n)
-
-    src = mf.build_cmesh(*axes)
-    tgt = mf.build_cmesh(*[a + s for a, s in zip(axes, shift)])
-    if poly:
-        tgt = tgt.polyze()
-
-    sm = mc_mesh(src, dim)
-    tm = mc_mesh(mf.build_cmesh(*[a + s for a, s in zip(axes, shift)]), dim)
-    if poly:
-        tm.convertAllToPoly()
-
-    mf_build = median_time(lambda: mf.ConservativeP0(src, tgt), build_iter)
-
-    vt = mc.MEDCouplingRemapper()
-    mc_prepare = median_time(lambda: vt.prepare(sm, tm, "P0P0"), build_iter)
-
-    src.set_field("T", {et: np.ascontiguousarray(vals)})
-    op = mf.ConservativeP0(src, tgt)
-    mf_apply = median_time(lambda: op.apply_update(src, "T", tgt, "T", def_val=0.0))
-
-    field = mc_field(sm, vals, MC_INTENSIVE)
-    mc_transfer = median_time(lambda: vt.transferField(field, 0.0))
-
-    checks = {}
-
-    def read_mf():
-        parts = [np.asarray(v).ravel() for v in tgt.fields["T"].values().values()]
-        return np.concatenate(parts)
-
-    op.apply_update(src, "T", tgt, "T", def_val=0.0)
-    out_mf = read_mf()
-    out_mc = np.asarray(vt.transferField(field, 0.0).getArray().getValues())
-
-    if not poly:
-        diff = np.max(np.abs(out_mf - out_mc))
-        checks["intensive match (mf == mc)"] = (
-            np.allclose(out_mf, out_mc, rtol=RTOL, atol=ATOL),
-            diff,
-        )
-
-    vol = 1.0 / n**dim
-    mass_analytic = float(vals.sum() * vol)
-    cs = mf.build_cmesh(*axes)
-    ct = cs.polyze() if poly else mf.build_cmesh(*axes)
-    cs.set_field("T", {et: np.ascontiguousarray(vals)})
-    opc = mf.ConservativeP0(cs, ct)
-    opc.apply_update(cs, "T", ct, "T", def_val=0.0, extensive=True)
-    parts = [np.asarray(v).ravel() for v in ct.fields["T"].values().values()]
-    mass_mf = float(np.concatenate(parts).sum())
-    csm = mc_mesh(cs, dim)
-    ctm = mc_mesh(mf.build_cmesh(*axes), dim)
-    if poly:
-        ctm.convertAllToPoly()
-    mass_mc = float(
-        np.asarray(
-            vt.transferField(mc_field(csm, vals * vol, MC_EXTENSIVE), 0.0)
-            .getArray()
-            .getValues()
-        ).sum()
-    )
-    tol = max(1e-9, mass_analytic * 1e-9)
-    checks["mass (mf == analytic)"] = (
-        abs(mass_mf - mass_analytic) <= tol,
-        (round(mass_analytic, 10), round(mass_mf, 10)),
-    )
-    checks["mass (mc == mf)"] = (
-        abs(mass_mc - mass_mf) <= tol,
-        (round(mass_mf, 10), round(mass_mc, 10)),
-    )
-
-    return {
-        "mf_build": mf_build,
-        "mc_prepare": mc_prepare,
-        "mf_apply": mf_apply,
-        "mc_transfer": mc_transfer,
-        "checks": checks,
-    }
-
-
-def bench_merge():
-    mesh = dump_merged_mesh(MERGE_N)
-    mm = mesh.to_mc()
-    mf_t = median_time(lambda: mesh.merge_nodes(1e-12))
-    mc_t = median_time(lambda: mm.mergeNodes(1e-12))
-    used_after = used_nodes(mesh.merge_nodes(1e-12))
-    mc_ref = mc_mesh(mesh, 3)
-    mc_ref.mergeNodes(1e-12)
-    nodes_after = mc_ref.getNumberOfNodes()
-    return {
-        "mf": mf_t,
-        "mc": mc_t,
-        "checks": {
-            "used nodes == 1875": (used_after == 1875, used_after),
-            "mc nodes == mf": (nodes_after == used_after, (used_after, nodes_after)),
-        },
-    }
-
-
-def bench_descend():
-    n = DESCEND_N
-    axes = [np.linspace(0.0, 1.0, n + 1)] * 3
-    mesh = mf.build_cmesh(*axes)
-    mm = mc_mesh(mesh, 3)
-    mf_t = median_time(mesh.descend)
-    mc_t = median_time(mm.buildDescendingConnectivity)
-    f_mf = int(mesh.descend().blocks()["QUAD4"].shape[0])
-    f_mc = int(mm.buildDescendingConnectivity()[0].getNumberOfCells())
-    expected = 3 * n * n * (n + 1)
-    return {
-        "mf": mf_t,
-        "mc": mc_t,
-        "checks": {
-            "faces == 3 n^2 (n+1)": (
-                (f_mf == expected) and (f_mc == expected),
-                (expected, f_mf, f_mc),
-            )
-        },
-    }
-
-
-def bench_overlay():
-    n = OVERLAY_N
-    m1 = mf.build_cmesh(np.linspace(0.0, 1.0, n + 1), np.linspace(0.0, 1.0, n + 1))
-    m2 = mf.build_cmesh(np.linspace(0.2, 0.7, 9), np.linspace(0.2, 0.7, 9))
-    m1m = mc_mesh(m1, 2)
-    m2m = mc_mesh(m2, 2)
-    mf_t = median_time(lambda: m1.overlay(m2), 5)
-    mc_t = median_time(
-        lambda: mc.MEDCouplingUMesh.Intersect2DMeshes(m1m, m2m, 1e-12), 5
-    )
-    a_mf = area_2d(m1.overlay(m2))
-    a_mc = float(
-        np.asarray(
-            mc.MEDCouplingUMesh.Intersect2DMeshes(m1m, m2m, 1e-12)[0]
-            .getMeasureField(True)
-            .getArray()
-            .getValues()
-        ).sum()
-    )
-    return {
-        "mf": mf_t,
-        "mc": mc_t,
-        "checks": {
-            "area == 1 (both)": (
-                abs(a_mf - 1.0) < ATOL and abs(a_mc - 1.0) < ATOL,
-                (a_mf, a_mc),
-            )
-        },
-    }
-
-
-def bench_crack():
-    n = CRACK_N
-    axes = [np.linspace(0.0, 1.0, n + 1)] * 3
-    mesh = mf.build_cmesh(*axes)
-    faces = mesh.descend()
-
-    # medcoupling cracks an MEDFileUMesh along a group of M1 faces
-    vm = mc_mesh(mesh, 3)
-    fm = vm.buildDescendingConnectivity()[0]
-    fm.setName(vm.getName())
-    grp = mc.DataArrayInt(np.arange(fm.getNumberOfCells(), dtype=np.int64))
-    grp.setName("crack-line")
-    fmu = mc.MEDFileUMesh.New()
-    fmu.setMeshAtLevel(0, vm)
-    fmu.setMeshAtLevel(-1, fm)
-    fmu.setGroupsAtLevel(-1, [grp])
-
-    def run_mc():
-        box = fmu.deepCopy()
-        box.crackAlong("crack-line")
-        return box
-
-    mf_t = median_time(lambda: mesh.crack(faces))
-    mc_t = median_time(run_mc, n=3)
-
-    n_mf = used_nodes(mesh.crack(faces))
-    n_mc = run_mc().getNumberOfNodes()
-    return {
-        "mf": mf_t,
-        "mc": mc_t,
-        "checks": {"node count (mf == mc)": (n_mf == n_mc, (n_mf, n_mc))},
-    }
-```
 
 
 ```python
@@ -956,48 +613,23 @@ print("crack done")
 
 
 ```python
-rows = [
-    (
-        "remap-2d",
-        "build/prepare",
-        bench["remap-2d"]["mf_build"],
-        bench["remap-2d"]["mc_prepare"],
-    ),
-    (
-        "remap-2d",
-        "transfer",
-        bench["remap-2d"]["mf_apply"],
-        bench["remap-2d"]["mc_transfer"],
-    ),
-    (
-        "remap-3d",
-        "build/prepare",
-        bench["remap-3d"]["mf_build"],
-        bench["remap-3d"]["mc_prepare"],
-    ),
-    (
-        "remap-3d",
-        "transfer",
-        bench["remap-3d"]["mf_apply"],
-        bench["remap-3d"]["mc_transfer"],
-    ),
-    (
-        "remap-3d-poly",
-        "build/prepare",
-        bench["remap-3d-poly"]["mf_build"],
-        bench["remap-3d-poly"]["mc_prepare"],
-    ),
-    (
-        "remap-3d-poly",
-        "transfer",
-        bench["remap-3d-poly"]["mf_apply"],
-        bench["remap-3d-poly"]["mc_transfer"],
-    ),
-    ("merge-nodes", "merge", bench["merge-nodes"]["mf"], bench["merge-nodes"]["mc"]),
-    ("descend", "run", bench["descend"]["mf"], bench["descend"]["mc"]),
-    ("overlay", "run", bench["overlay"]["mf"], bench["overlay"]["mc"]),
-    ("crack", "crack", bench["crack"]["mf"], bench["crack"]["mc"]),
+def mf_mc(case, mf_key, mc_key):
+    return bench[case][mf_key], bench[case][mc_key]
+
+
+spec = [
+    ("remap-2d", "build/prepare", "mf_build", "mc_prepare"),
+    ("remap-2d", "transfer", "mf_apply", "mc_transfer"),
+    ("remap-3d", "build/prepare", "mf_build", "mc_prepare"),
+    ("remap-3d", "transfer", "mf_apply", "mc_transfer"),
+    ("remap-3d-poly", "build/prepare", "mf_build", "mc_prepare"),
+    ("remap-3d-poly", "transfer", "mf_apply", "mc_transfer"),
+    ("merge-nodes", "merge", "mf", "mc"),
+    ("descend", "run", "mf", "mc"),
+    ("overlay", "run", "mf", "mc"),
+    ("crack", "crack", "mf", "mc"),
 ]
+rows = [(case, step, *mf_mc(case, mk, ck)) for case, step, mk, ck in spec]
 
 print(
     f"{'case':<14s} {'step':<14s} {'mefikit ms':>12s} {'medcoup ms':>12s} {'mc/mf':>9s}"
@@ -1018,16 +650,16 @@ assert all_ok, "a cross-check failed"
 
     case           step             mefikit ms   medcoup ms     mc/mf
     --------------------------------------------------------------
-    remap-2d       build/prepare        60.613       81.537      1.3x
-    remap-2d       transfer              0.099        0.996     10.0x
-    remap-3d       build/prepare       523.958     1667.806      3.2x
-    remap-3d       transfer              0.045        2.039     44.9x
-    remap-3d-poly  build/prepare       541.489     8734.519     16.1x
-    remap-3d-poly  transfer              0.049        1.836     37.2x
-    merge-nodes    merge                 0.533        0.502      0.9x
-    descend        run                  12.829       24.541      1.9x
-    overlay        run                   2.030       17.744      8.7x
-    crack          crack                60.901      441.426      7.2x
+    remap-2d       build/prepare        35.108       40.813      1.2x
+    remap-2d       transfer              0.124        0.762      6.1x
+    remap-3d       build/prepare       260.281      865.010      3.3x
+    remap-3d       transfer              0.046        1.319     28.5x
+    remap-3d-poly  build/prepare       173.516     2844.467     16.4x
+    remap-3d-poly  transfer              0.049        2.027     41.6x
+    merge-nodes    merge                 0.599        0.531      0.9x
+    descend        run                  15.889       27.950      1.8x
+    overlay        run                   2.191       19.334      8.8x
+    crack          crack                73.527      525.266      7.1x
 
     correctness cross-checks:
       [OK] remap-2d: intensive match (mf == mc)  7.752687380957468e-13
@@ -1047,19 +679,19 @@ assert all_ok, "a cross-check failed"
 
 
 
-![png](compare_medcoupling_files/compare_medcoupling_40_0.png)
-
-
-
-
-
-![png](compare_medcoupling_files/compare_medcoupling_40_1.png)
-
-
-
-
-
 ![png](compare_medcoupling_files/compare_medcoupling_41_0.png)
+
+
+
+
+
+![png](compare_medcoupling_files/compare_medcoupling_41_1.png)
+
+
+
+
+
+![png](compare_medcoupling_files/compare_medcoupling_42_0.png)
 
 
 

@@ -9,7 +9,15 @@ import numpy as np
 import mefikit as mf
 ```
 
-## Submesh functionality
+## Descending connectivity
+
+Every topological tool here builds and returns a **new** mesh; the `*_update`
+variants turn them into in-place operations (below). `descend` computes the
+*descending connectivity* of a mesh: it decomposes each element into its
+boundary (cells into faces, faces into edges, edges into vertices) and returns
+a new mesh of the requested dimension.
+
+Start from the structured volumes built below:
 
 
 ```python
@@ -19,10 +27,10 @@ z = np.logspace(-0.5, 1, 4, endpoint=True)
 volumes = mf.build_cmesh(x, y, z)
 ```
 
-### Simple descending_mesh
+### Simple descending
 
-This functionality is able to compute the descending connectivity of the provided mesh.
-It can act on elements of dimension 1, 2 or 3.
+Chaining `.descend()` walks down one dimension at a time — volumes, faces,
+edges, vertices:
 
 
 ```python
@@ -39,7 +47,10 @@ vertex = edges.descend()
 
 ### Submesh in one go
 
-You might want to directly access either the node mesh or the edges mesh. You can ! And going into one step is ever faster than chaining multiple `.descend()` calls.
+`target_dim` jumps straight to the wanted dimension, without chaining:
+
+- `descend(target_dim=1)` returns the edges directly,
+- `descend(target_dim=0)` returns the vertices directly.
 
 
 ```python
@@ -55,7 +66,9 @@ vertex = volumes.descend(target_dim=0)
 
 ## Boundaries computation
 
-As it is very common to compute boundaries on a mesh (for boundary conditions for ex), there is a custom `boundaries` computation method.
+`boundaries` is the *closure* of a mesh: it keeps only the elements on the
+outside, not shared with any neighbour — exactly the ones you need for boundary
+conditions. It differs from `descend`, which returns *every* face of the mesh:
 
 
 ```python
@@ -72,7 +85,8 @@ vertex_bounds = volumes.boundaries(target_dim=0)
 
 ## Descend / boundaries update
 
-You can directly update the mesh inplace when computing the descending mesh or the boundaries mesh.
+Both operations come in an in-place flavour: `descend_update` / `boundaries_update`
+modify the mesh instead of returning a new one.
 
 
 ```python
@@ -114,6 +128,12 @@ old_face_mesh.to_pyvista().shrink(0.8).plot(show_edges=True)
 
 ## Connected components
 
+`connected_components()` splits a mesh into its connected parts. The `link_dim`
+argument decides what glues two elements together: sharing an edge (`link_dim=1`)
+or sharing a node (`link_dim=0`). Below, a small ribbon of QUAD4 cells is a
+single component when glued by edge, but falls apart as soon as only two cells
+touch at a corner:
+
 
 ```python
 x, y = np.meshgrid(np.linspace(0.0, 1.0, 5), np.linspace(0.0, 1.0, 5))
@@ -153,7 +173,11 @@ print(f"{len(compos_link_node)=}")
 
 ## Crack
 
-This feature is the contrary of the `merge_nodes` feature. It duplicates nodes such that the resulting mesh does not connect on the descending_mesh given.
+`crack` is the exact opposite of `merge_nodes`: it duplicates the nodes that
+sit on a given (descending) mesh, so that the result is *dis-connected* there —
+each element along the crack line gets its own copy of those nodes. Here the
+hexahedral stack is cracked along all its faces, growing from 1 to several
+connected components:
 
 
 ```python
@@ -188,8 +212,9 @@ n_compos = len(compos_cracked)
 
 ## Split
 
-This tool is usefull to split cells into smaller cells. It does not change the topology of the domain not the element type.
-Using it it gives you 2^n times the number of elements where n is the dimension of of the elements.
+`split` cuts every cell into `2^n` smaller cells of the *same element type*
+(`n` = topological dimension), keeping the domain and its topology unchanged.
+Each HEX8 of the mesh below becomes 8 sub-cells:
 
 
 ```python
@@ -212,7 +237,9 @@ mesh_splitted = mesh.split()
 
 ## Polyze
 
-This functionnality is useful to generate a poly mesh from a regular one. A poly mesh is a mesh of `PGON` 2d elements and `PHED` 3d elements.
+`polyze` re-emits a regular mesh as a *polyhedral* one: 2D cells become `PGON`
+and 3D cells `PHED`. `unpolyze` converts them back. Mesh-generation codes often
+output polyhedra, hence this round-trip:
 
 
 ```python

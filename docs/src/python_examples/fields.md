@@ -39,6 +39,8 @@ toto * 2.0
 
 ### Scalar unary ops
 
+
+```python
 toto.sin()
 toto.cos()
 toto.abs()
@@ -47,7 +49,15 @@ toto.ln()
 toto.square()
 toto.sqrt()
 toto.tan()
-toto.log10();
+toto.log10()
+```
+
+
+
+
+    <Field at 0x781001a6dfb0>
+
+
 
 ### Vector ops
 
@@ -73,7 +83,8 @@ ny = mf.Ny  # y compo of element normal
 nz = mf.Nz  # z compo of element normal
 ```
 
-### How does it work ?
+### How does it work?
+
 
 
 The operations build a binary operation tree structure. `Mefikit` knows how to interpret this binary tree to compute fields.
@@ -126,9 +137,9 @@ mesh2.to_pyvista().plot(show_edges=True)
 
 
 
-Fields attribute is dictionnary like: fields can be accessed, modified, added, defined through it using field expressions evaluation on the mesh.
+The `fields` attribute is dict-like: fields can be accessed, modified, added and defined through it, using field expressions evaluated on the mesh.
 
-Fields expressions are independent from the mesh and light, fields are evaluated field expressions stored alongside the mesh.
+Field expressions are independent from the mesh and light; fields are the evaluated expressions stored alongside the mesh.
 
 
 ```python
@@ -286,7 +297,10 @@ mesh2.fields["Scratch"][sel2] = m  # assign this constant value to the whole reg
 
 ## Direct field expression evaluation to numpy
 
-It is not really recommended not to use the .fields storing mecanism as it provides complete integration with mefikit, but it is nevertheless possible to evaluate an expression on a field and export it directly as a numpy array. The `eval` method does exaclty this.
+It is not recommended to bypass the `.fields` storage — it provides complete
+integration with mefikit — but it is nevertheless possible to evaluate an
+expression and export the result directly as a numpy array. The `eval` method
+does exactly this:
 
 
 ```python

@@ -2,6 +2,13 @@
 
 *Figures use PyVista; verbose plotting boilerplate is omitted.*
 
+`UMesh` is the unstructured-mesh type at the heart of mefikit: a flat
+**coordinates** array plus a set of **element blocks**, each storing the
+connectivity of one element type (`HEX8`, `QUAD4`, `SEG2`, `VERTEX`,
+polyhedra...). This notebook builds two meshes — the trivial way with
+`build_cmesh`, then from raw coordinates and explicit connectivity — to show
+what a `UMesh` actually contains.
+
 
 ```python
 import numpy as np
@@ -10,6 +17,11 @@ import mefikit as mf
 ```
 
 ## Building cartesian meshes
+
+`mf.build_cmesh(*axes)` builds a structured (cartesian) mesh in **one call**:
+it takes the node coordinates along each axis and generates the regular grid
+of cells. Here x has 2 nodes, y 3 and z 4, so the mesh holds
+`(2-1) x (3-1) x (4-1) = 6` HEX8 cells over `2 x 3 x 4 = 24` nodes.
 
 
 ```python
@@ -69,7 +81,12 @@ print(volumes)
     }
 
 
-The mesh is composed of a coordinates array, and several blocks.
+`print(volumes)` shows the two ingredients. The **coords**
+array lists every node with its coordinates (here 24 nodes, 3 values each).
+The **element_blocks** entry groups the connectivity of one element type; a
+`Regular` block stores it as a dense table where each row is one cell (6 HEX8
+cells x 8 node ids each). Fields, families and groups are empty in a freshly
+built mesh.
 
 
 ```python
@@ -83,6 +100,12 @@ volumes.to_pyvista().plot(show_edges=True)
 
 
 ## Building mesh with custom connectivity
+
+Sometimes blocks must be built by hand. `mf.UMesh(coords)` starts from a plain
+coordinates array, and `add_regular_block("TYPE", conn)` appends a block of a
+given element type from an explicit connectivity table. Here one mesh mixes
+three topologies: 9 isolated `VERTEX` nodes, a set of `SEG2` edges and one
+`QUAD4` face. `to_pyvista(dim="all")` renders every dimension at once.
 
 
 ```python

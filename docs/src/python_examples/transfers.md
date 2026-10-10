@@ -37,11 +37,11 @@ The transfer function can be
 - using cell centers and point clouds methods
 - etc
 
-They are many.
+There are many.
 
 ### ConstantPiecewise Transfer
 
-The transfer is very simple. It is based on the cells of src_mesh and the cells center of the target mesh. It assigns to a cell from the target the value of the cell in which the center is located in. This is a point location based value assignment. By default the centroid (mean of cell nodes) is used because it is fast to comupute and is accurate with regular cells.
+The transfer is very simple. It is based on the cells of src_mesh and the cells center of the target mesh. It assigns to a cell from the target the value of the cell in which the center is located in. This is a point location based value assignment. By default the centroid (mean of cell nodes) is used because it is fast to compute and is accurate with regular cells.
 
 
 ```python
@@ -70,9 +70,9 @@ m_tgt.to_pyvista().plot(show_edges=True)
 
 
 
-As you can see the `"Measure"` field from m_src was used to compute the `"Projection"` field on m_tgt. Both mesh are not completly overlapping but that is not an issue. Cells from m_tgt whose center is not in a cell from m_src take a default value `def_val`. Default is 0.0 but any floating point value, such as `np.nan` is accepted.
+As you can see the `"Measure"` field from m_src was used to compute the `"Projection"` field on m_tgt. Both meshes are not completely overlapping but that is not an issue. Cells from m_tgt whose center is not in a cell from m_src take a default value `def_val`. Default is 0.0 but any floating point value, such as `np.nan` is accepted.
 
-This interpolation is good when coarseing a mesh and you do not need conservation. It might be useful in other circumstances I do not know of. It is quite fast but not that much because of the `is_in_cell` exact geometrical query.
+This interpolation is good when coarsening a mesh and you do not need conservation. It is a good fit when coarsening a mesh and you do not need conservation. It is fast, though not as fast as the meshless methods, because of the `is_in_cell` exact geometrical query.
 
 ### MovingMean Transfer
 
@@ -83,7 +83,7 @@ This Transfer is based on m_src cell center positions and m_tgt cell centers pos
 
 Pros :
 
-- it is extremly fast to compute
+- it is extremely fast to compute
 - it does not overshoot / undershoot
 
 Cons :
@@ -130,58 +130,11 @@ Inside the domain the interpolation works like a charm.
 
 ### Transfer methods comparison
 
+Which method to use? `ConstantPiecewise` (CPW) is local and cheap, `MovingLeastSquares` (MLS) smooths the field but can extrapolate outside the source, `InverseDistance` (ID) is a tunable local fallback, and `ConservativeP0` conserves the integral.
 
-```python
-import time
-
-transfers = (
-    mf.transfer.ConstantPiecewise,
-    lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=5),
-    mf.transfer.MovingLeastSquares,
-    lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=20),
-    mf.transfer.MovingLeastSquares,
-    lambda src, tgt: mf.transfer.MovingLeastSquares(
-        src, tgt, weighting=mf.transfer.DistanceWeighting.Gaussian()
-    ),
-    lambda src, tgt: mf.transfer.MovingLeastSquares(
-        src, tgt, weighting=mf.transfer.DistanceWeighting.InverseDistance(1.0)
-    ),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=3),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=5),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=10),
-    mf.transfer.ConservativeP0,
-)
-trasfers_labels = (
-    "CPW",
-    "MLS k5",
-    "MLS k10",
-    "MLS k20",
-    "MLS",
-    "MLS gaussian",
-    "MLS inv_dist",
-    "ID k3",
-    "ID k5",
-    "ID k10",
-    "ConservativeP0",
-)
-prepare_times = []
-apply_times = []
-
-for T, label in zip(transfers, trasfers_labels):
-    m_src = mf.build_cmesh(np.logspace(-2.0, 0.0, 20), np.logspace(-2.0, 0.0, 20))
-    m_tgt = mf.build_cmesh(np.linspace(-0.05, 1.1, 40), np.linspace(-0.05, 1.1, 40))
-    m_src.fields["Measure"] = mf.M
-    t0 = time.time()
-    tr = T(m_src, m_tgt)
-    t1 = time.time()
-    tr.apply_update(m_src, "Measure", m_tgt, label + " Transfered Measure")
-    t2 = time.time()
-
-    prepare_times.append((t1 - t0) * 1000.0)
-    apply_times.append((t2 - t1) * 1000.0)
-
-    compare_src_tgt(m_src, m_tgt)
-```
+Every method is timed on the same grid pair, split between the one-shot
+**prepare** (slow) and the repeated **apply** (fast). The timing loop is hidden
+for readability — it only fills the chart below.
 
 
 
@@ -257,58 +210,9 @@ for T, label in zip(transfers, trasfers_labels):
 
 ## Transfer of 3D fields
 
-
-```python
-import time
-
-transfers = (
-    mf.transfer.ConstantPiecewise,
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=5),
-    # mf.transfer.MovingLeastSquares,
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=20),
-    # mf.transfer.MovingLeastSquares,
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(
-    #     src, tgt, weighting=mf.transfer.DistanceWeighting.Gaussian()
-    # ),
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(
-    #     src, tgt, weighting=mf.transfer.DistanceWeighting.InverseDistance(1.0)
-    # ),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=3),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=5),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=10),
-    mf.transfer.ConservativeP0,
-)
-trasfers_labels = (
-    "CPW",
-    "ID k3",
-    "ID k5",
-    "ID k10",
-    "ConservativeP0",
-)
-prepare_times = []
-apply_times = []
-
-for T, label in zip(transfers, trasfers_labels):
-    m_src = mf.build_cmesh(
-        np.logspace(-2.0, 0.0, 20), np.logspace(-2.0, 0.0, 20), np.linspace(0.0, 0.1, 3)
-    )
-    m_tgt = mf.build_cmesh(
-        np.linspace(-0.05, 1.1, 40),
-        np.linspace(-0.05, 1.1, 40),
-        np.linspace(0.0, 0.1, 3),
-    )
-    m_src.fields["Measure"] = mf.M
-    t0 = time.time()
-    tr = T(m_src, m_tgt)
-    t1 = time.time()
-    tr.apply_update(m_src, "Measure", m_tgt, label + " Transfered Measure")
-    t2 = time.time()
-
-    prepare_times.append((t1 - t0) * 1000.0)
-    apply_times.append((t2 - t1) * 1000.0)
-
-    compare_src_tgt_3d(m_src, m_tgt)
-```
+The same benchmark on a hexahedral grid pair — here `ConstantPiecewise`,
+`InverseDistance` and `ConservativeP0` are timed. The prepare / apply split is
+unchanged:
 
 
 
@@ -461,7 +365,7 @@ mc_apply = t2 - t1
 
 
 ```python
-# Les champs produits sont identiques
+# Identical fields, whichever library computed them
 mf_f = m_tgt.fields["Measure"].numpy()
 mc_f = f_tgt.getArray().toNumPyArray()
 assert np.allclose(mc_f, mf_f)
