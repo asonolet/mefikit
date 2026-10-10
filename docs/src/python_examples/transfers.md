@@ -6,13 +6,18 @@ This notebook shows how to remap fields between meshes with the
 `mf.transfer` operators: interpolation, extrapolation and conservative
 remapping, all sharing the same prepare / apply split.
 
+The setup below is self-contained: a log-spaced box mesh carrying a `"Measure"`
+field (cell volumes) and an analytic expression `"4 * M2"`, plus a couple of
+spatial selections used to crop the source. If anything looks unfamiliar, the
+[Fields](./fields.md) and
+[Selection](./selection.md) notebooks cover their meaning.
+
 
 ```python
 import numpy as np
 
 import mefikit as mf
 
-# Same mesh and selection context as the Fields notebook.
 x = np.logspace(-5, 0.0, 1000)
 mesh2 = mf.build_cmesh(x, x)
 
@@ -28,16 +33,44 @@ c = mf.sel.circle([0.875, 0.875], 0.05)
 
 ## Transferring fields
 
-The transfer function can be
-- interpolation
-- extrapolation
-- conservative
-- non-conservative
-- using cells
-- using cell centers and point clouds methods
-- etc
+A transfer maps a field from a **source** mesh onto a **target** mesh. Every
+`mf.transfer` operator reduces to the same operation — each target cell is a
+weighted sum of source cells:
 
-There are many.
+    t_j = sum_i w_ji s_i
+
+The weights are computed **once**, at construction time (the *prepare* step);
+applying the operator to any field is then a single, fast matrix-vector
+product. Reuse one operator for many fields, as long as the two meshes do not
+change.
+
+What differs between the four operators is only *how the weights are
+obtained*:
+
+| Operator | Kind | Sampling / support | Conserves the integral | Typical use |
+|---|---|---|---|---|
+| `ConstantPiecewise` | cell-based | target cell center located in a source cell (centroid) | no | faithful piecewise-constant copy, coarsening |
+| `InverseDistance` | meshless | `k` nearest source cell centers, weights `1 / r**exponent` | no | cheap local fallback, unrelated point clouds |
+| `MovingLeastSquares` | meshless | `k` nearest source cell centers, local fit with a distance kernel | no | smooth fields, trend reconstruction |
+| `ConservativeP0` | overlap | volumetric intersection with source cells | **yes** | keep mass / energy exact (ALE, coupling) |
+
+Some shared rules:
+
+- **Interpolation methods** (`ConstantPiecewise`, `InverseDistance`,
+  `MovingLeastSquares`) combine a few source cells per target cell and never
+  conserve the integral.
+- **`ConservativeP0`** weights each contribution by the intersection measure.
+  For **intensive** fields (temperature, density) it normalizes by the target
+  cell measure afterwards — enough to behave like an interpolation — while
+  **extensive** fields (mass, energy) keep the raw weighted sum. Pass
+  `extensive=True` to treat a field as extensive.
+- Target cells covered by **no** source cell keep the **default value**
+  `def_val` (defaults to `0.0`; `np.nan` makes the uncovered cells explicit).
+- All operators share one calling convention: build them with
+  `tr = mf.transfer.Op(src, tgt, ...)`, then call `tr(expr)` (returns a field
+  on `tgt`), `tr.eval(expr)` (returns per-type arrays), or
+  `tr.apply_update(src, name, tgt, ...)` to write into a target field in
+  place.
 
 ### ConstantPiecewise Transfer
 
@@ -70,32 +103,47 @@ m_tgt.to_pyvista().plot(show_edges=True)
 
 
 
-As you can see the `"Measure"` field from m_src was used to compute the `"Projection"` field on m_tgt. Both meshes are not completely overlapping but that is not an issue. Cells from m_tgt whose center is not in a cell from m_src take a default value `def_val`. Default is 0.0 but any floating point value, such as `np.nan` is accepted.
+As you can see the `"Measure"` field from m_src was used to compute the
+`"Projection"` field on m_tgt. Both meshes are not completely overlapping but
+that is not an issue: cells from m_tgt whose center is not in a cell from m_src
+take a default value `def_val`. Default is `0.0`, but any floating point value,
+such as `np.nan`, is accepted.
 
-This interpolation is good when coarsening a mesh and you do not need conservation. It is a good fit when coarsening a mesh and you do not need conservation. It is fast, though not as fast as the meshless methods, because of the `is_in_cell` exact geometrical query.
+This interpolation is a good fit when coarsening a mesh and you do not need
+conservation. It is fast, though not as fast as the meshless methods, because
+of the `is_in_cell` exact geometrical query.
 
-### MovingMean Transfer
+### InverseDistance Transfer
 
-This Transfer is based on m_src cell center positions and m_tgt cell centers positions. It is a "meshless" operation as it does not care about connectivity. There are several options :
+The meshless counterpart of the piecewise-constant copy: each target cell
+center samples its `k` nearest source cell centers and receives their weighted
+mean, with weights `w_i ~ 1 / r**exponent` (defaults: `k = 4`,
+`exponent = 2.0`). The weights are non-negative and normalized, so the value is
+a convex combination of the neighbours — it stays inside the source range,
+never overshoots, and is cheap to evaluate.
 
-- normal mean
-- weighted mean
+Use it when `ConstantPiecewise` leaves holes (uncovered cells) or when the
+source and target meshes are unrelated point clouds. A higher `exponent`
+concentrates the weight on the closest neighbour; `k = 1` degenerates to exact
+nearest-neighbour sampling.
 
-Pros :
+### MovingLeastSquares Transfer
 
-- it is extremely fast to compute
-- it does not overshoot / undershoot
+The most flexible of the meshless methods: for each target cell center it
+fits a local least-squares polynomial through the `k` nearest source centers
+(default `k = 10`) and evaluates it at the target point. The neighbour weights
+are shaped by a distance kernel, one of the `mf.transfer.DistanceWeighting`
+choices:
 
-Cons :
+- `Constant()` — a plain (linear) least-squares fit over the `k` neighbours;
+- `InverseDistance(exponent)` — neighbours weighted by `(h / r)**exponent`
+  where `h` is the distance to the farthest selected neighbour;
+- `Gaussian()` — a gaussian kernel.
 
-- It lacks precision
-
-### MovingLeastSquare Transfer
-
-This Transfer is based on m_src cell center positions and m_tgt cell centers positions. It is a "meshless" operation as it does not care about connectivity. There are several options :
-
-- linear least square : the projection is the least square linear approx of the solution (can be an extrapolation)
-- weighted least square : the projection is the weighted least square linear approx of the solution, there are several possibilities for the weighting function but it depends on the relative distance to the target interpolation point.
+It smooths the field and reconstructs trends, but it is the only method that
+can **overshoot** the source values and **extrapolate** outside the source
+domain. Watch the boundaries — using `def_val=np.nan` as target for the
+uncovered cells makes the extrapolated region visible.
 
 
 ```python

@@ -1,5 +1,6 @@
 # Summary
 
+- [Getting Started](./python_examples/getting_started.md)
 - [Introduction](./1_introduction.md)
 - [Element Conventions](./2_format.md)
 - [Topological basic ops](./3_topology.md)

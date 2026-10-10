@@ -25,6 +25,7 @@ jobs:
         run: |
           cd docs
           mdbook build
+          test -f book/searchindex.js
 
       - name: Deploy to gh-pages
         uses: peaceiris/actions-gh-pages@v4

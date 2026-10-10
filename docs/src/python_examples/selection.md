@@ -455,3 +455,9 @@ print(len(volumes.groups["two_quarters"]), "back to the original size")
     3089
     3087
     3089 back to the original size
+
+
+---
+
+> **Read next:** [Bubbles](./example_bubbles.md) applies selections and groups
+> end to end on a single mesh.
