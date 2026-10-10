@@ -3,3 +3,9 @@ authors = ["SONOLET Aymeric"]
 language = "en"
 src = "src"
 title = "Mefikit Book"
+
+[output.html.search]
+enable = true
+limit-results = 30
+teaser-word-count = 30
+heading-split-level = 2

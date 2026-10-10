@@ -1,14 +1,12 @@
 # Geometric transforms
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 
 coords = np.array(
     [
@@ -37,7 +35,7 @@ translated.to_pyvista().plot()
 
 
 
-![png](geometric_transforms_files/geometric_transforms_4_0.png)
+![png](geometric_transforms_files/geometric_transforms_5_0.png)
 
 
 
@@ -49,7 +47,7 @@ rotated.to_pyvista().plot()
 
 
 
-![png](geometric_transforms_files/geometric_transforms_5_0.png)
+![png](geometric_transforms_files/geometric_transforms_6_0.png)
 
 
 
@@ -61,7 +59,7 @@ mirrored.to_pyvista().plot()
 
 
 
-![png](geometric_transforms_files/geometric_transforms_6_0.png)
+![png](geometric_transforms_files/geometric_transforms_7_0.png)
 
 
 
@@ -73,7 +71,7 @@ scaled.to_pyvista().plot()
 
 
 
-![png](geometric_transforms_files/geometric_transforms_7_0.png)
+![png](geometric_transforms_files/geometric_transforms_8_0.png)
 
 
 
@@ -85,7 +83,7 @@ uniform.to_pyvista().plot()
 
 
 
-![png](geometric_transforms_files/geometric_transforms_8_0.png)
+![png](geometric_transforms_files/geometric_transforms_9_0.png)
 
 
 
@@ -158,7 +156,7 @@ column.to_pyvista().plot(show_edges=True)
 
 
 
-![png](geometric_transforms_files/geometric_transforms_18_0.png)
+![png](geometric_transforms_files/geometric_transforms_19_0.png)
 
 
 
@@ -179,13 +177,13 @@ three.to_pyvista().plot()
 
 
 
-![png](geometric_transforms_files/geometric_transforms_20_0.png)
+![png](geometric_transforms_files/geometric_transforms_21_0.png)
 
 
 
 
 
-![png](geometric_transforms_files/geometric_transforms_20_1.png)
+![png](geometric_transforms_files/geometric_transforms_21_1.png)
 
 
 
@@ -214,7 +212,7 @@ warped.to_pyvista().plot()
 
 
 
-![png](geometric_transforms_files/geometric_transforms_23_0.png)
+![png](geometric_transforms_files/geometric_transforms_24_0.png)
 
 
 

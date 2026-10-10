@@ -1,17 +1,19 @@
 # Geometrical tools
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 ```
 
 ## Snap points
+
+`mesh.snap(mesh2, eps)` moves the nodes of `mesh` so that they coincide with
+the nodes of `mesh2` that are within `eps`. Below, two staggered grids are
+offset by about one cell size:
 
 
 ```python
@@ -32,34 +34,23 @@ snaped = mesh.snap(mesh2, eps=x[-1] / len(x))
 ```
 
 
-```python
-pt = pv.Plotter()
-pt.add_mesh(mesh.to_pyvista(), show_edges=True)
-pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista(), color="red")
-pt.show(cpos="xy")
-```
-
-
-
-![png](geometric_tools_files/geometric_tools_6_0.png)
-
-
-
-
-```python
-pt = pv.Plotter()
-pt.add_mesh(snaped.to_pyvista(), show_edges=True)
-pt.add_mesh(mesh2.descend(target_dim=0).to_pyvista(), color="red")
-pt.show(cpos="xy")
-```
-
-
 
 ![png](geometric_tools_files/geometric_tools_7_0.png)
 
 
 
+
+
+![png](geometric_tools_files/geometric_tools_8_0.png)
+
+
+
 ## Merge nodes
+
+`merge_nodes()` collapses the duplicated nodes of a single mesh according to a
+tolerance. It is the natural counterpart of `crack`: the mesh below was built
+with a duplicated internal interface (hence many connected components), and the
+merge re-glues it into one piece:
 
 
 ```python
@@ -85,52 +76,19 @@ compos_cracked = cracked.connected_components()
 assert len(compos_merged) == 1
 
 n_compos = len(compos_cracked)
-
-shape = (3, n_compos + 1)
-groups = [
-    (0, np.s_[:-1]),  # cracked
-    (0, n_compos),  # merged
-    (1, np.s_[:-1]),  # cracked txt
-    (np.s_[1:], n_compos),  # merged compos
-    *((2, i) for i in range(n_compos)),  # cracked compos
-]
-row_weights = [1.0, 0.1, 1.0]
-col_weights = [*(0.5,) * n_compos, 1.5]
-pv.set_jupyter_backend("static")
-plotter = pv.Plotter(
-    shape=shape, groups=groups, row_weights=row_weights, col_weights=col_weights
-)
-
-plotter.subplot(0, n_compos)
-plotter.add_text("Merged mesh")
-plotter.add_mesh(merged.to_pyvista(), show_edges=True)
-plotter.subplot(0, 0)
-plotter.add_text("Cut mesh used for the crack")
-plotter.add_mesh(faces.to_pyvista().shrink(0.8), show_edges=True)
-
-plotter.subplot(1, n_compos)
-plotter.add_text("Compo of merged mesh")
-plotter.add_mesh(edges.to_pyvista())
-plotter.add_mesh(compos_merged[0].to_pyvista(), show_edges=True)
-
-plotter.subplot(1, 0)
-plotter.add_text("Compos of cracked mesh")
-
-for i, compo in enumerate(compos_cracked):
-    plotter.subplot(2, i)
-    plotter.add_mesh(edges.to_pyvista())
-    plotter.add_mesh(compo.to_pyvista(), show_edges=True)
-    plotter.camera.zoom(2)
-plotter.show()
 ```
 
 
 
-![png](geometric_tools_files/geometric_tools_11_0.png)
+![png](geometric_tools_files/geometric_tools_13_0.png)
 
 
 
 ## Overlay
+
+`overlay` computes the boolean combination of two 2D meshes. The two grids
+below are staggered by half a cell, and we apply the four classic operations
+plus the two ways to imprint one grid into the other:
 
 The intersection is valid in the following conditions :
 - mesh1 and mesh2 are valid (no self recovering),
@@ -174,28 +132,17 @@ labels = [
 ```
 
 
-```python
-pt = pv.Plotter(shape=(4, 2))
-for i in range(4):
-    for j in range(2):
-        m = meshes[i][j]
-        t = labels[i][j]
-        pt.subplot(i, j)
-        pt.add_text(t)
-        pt.add_mesh(m.to_pyvista(), show_edges=True)
-        pt.camera_position = "xy"
-pt.show(cpos="xy")
-```
 
-
-
-![png](geometric_tools_files/geometric_tools_15_0.png)
+![png](geometric_tools_files/geometric_tools_17_0.png)
 
 
 
 The ugly cell in the center in the difference and symmetric difference comes from the plotting of non convex cells in pyvista. It is just a known plotting bug (due to optimisation quirks).
 
 ## Surface overlay
+
+`overlay_surfaces` is the 3D counterpart of `overlay`: it imprints two 2D
+surfaces (meshes embedded in 3D space) wherever they coincide.
 
 `overlay_surfaces` imprints two 2D surfaces (meshes embedded in 3D space) wherever they
 coincide. Both surfaces must be piecewise planar; here they are built in the plane `z = 0`
@@ -232,24 +179,11 @@ surface2 = surface2.transform(tilt)
 
 ```python
 overlay = surface1.overlay_surfaces(surface2)
-
-pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text("Surface 1")
-pt.add_mesh(surface1.to_pyvista(), show_edges=True)
-# pt.subplot(0, 1)
-# pt.add_text("Surface 2")
-pt.add_mesh(surface2.to_pyvista(), show_edges=True)
-pt.subplot(0, 1)
-pt.add_text("Both refined")
-pt.add_mesh(overlay.refined1.to_pyvista(), color="lightblue", show_edges=True)
-pt.add_mesh(overlay.refined2.to_pyvista(), style="wireframe", color="red", line_width=2)
-pt.show()
 ```
 
 
 
-![png](geometric_tools_files/geometric_tools_20_0.png)
+![png](geometric_tools_files/geometric_tools_23_0.png)
 
 
 

@@ -1,20 +1,23 @@
 # Field transfers
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 This notebook shows how to remap fields between meshes with the
 `mf.transfer` operators: interpolation, extrapolation and conservative
 remapping, all sharing the same prepare / apply split.
 
+The setup below is self-contained: a log-spaced box mesh carrying a `"Measure"`
+field (cell volumes) and an analytic expression `"4 * M2"`, plus a couple of
+spatial selections used to crop the source. If anything looks unfamiliar, the
+[Fields](./fields.md) and
+[Selection](./selection.md) notebooks cover their meaning.
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
 
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
-
-# Same mesh and selection context as the Fields notebook.
 x = np.logspace(-5, 0.0, 1000)
 mesh2 = mf.build_cmesh(x, x)
 
@@ -30,20 +33,48 @@ c = mf.sel.circle([0.875, 0.875], 0.05)
 
 ## Transferring fields
 
-The transfer function can be
-- interpolation
-- extrapolation
-- conservative
-- non-conservative
-- using cells
-- using cell centers and point clouds methods
-- etc
+A transfer maps a field from a **source** mesh onto a **target** mesh. Every
+`mf.transfer` operator reduces to the same operation — each target cell is a
+weighted sum of source cells:
 
-They are many.
+    t_j = sum_i w_ji s_i
+
+The weights are computed **once**, at construction time (the *prepare* step);
+applying the operator to any field is then a single, fast matrix-vector
+product. Reuse one operator for many fields, as long as the two meshes do not
+change.
+
+What differs between the four operators is only *how the weights are
+obtained*:
+
+| Operator | Kind | Sampling / support | Conserves the integral | Typical use |
+|---|---|---|---|---|
+| `ConstantPiecewise` | cell-based | target cell center located in a source cell (centroid) | no | faithful piecewise-constant copy, coarsening |
+| `InverseDistance` | meshless | `k` nearest source cell centers, weights `1 / r**exponent` | no | cheap local fallback, unrelated point clouds |
+| `MovingLeastSquares` | meshless | `k` nearest source cell centers, local fit with a distance kernel | no | smooth fields, trend reconstruction |
+| `ConservativeP0` | overlap | volumetric intersection with source cells | **yes** | keep mass / energy exact (ALE, coupling) |
+
+Some shared rules:
+
+- **Interpolation methods** (`ConstantPiecewise`, `InverseDistance`,
+  `MovingLeastSquares`) combine a few source cells per target cell and never
+  conserve the integral.
+- **`ConservativeP0`** weights each contribution by the intersection measure.
+  For **intensive** fields (temperature, density) it normalizes by the target
+  cell measure afterwards — enough to behave like an interpolation — while
+  **extensive** fields (mass, energy) keep the raw weighted sum. Pass
+  `extensive=True` to treat a field as extensive.
+- Target cells covered by **no** source cell keep the **default value**
+  `def_val` (defaults to `0.0`; `np.nan` makes the uncovered cells explicit).
+- All operators share one calling convention: build them with
+  `tr = mf.transfer.Op(src, tgt, ...)`, then call `tr(expr)` (returns a field
+  on `tgt`), `tr.eval(expr)` (returns per-type arrays), or
+  `tr.apply_update(src, name, tgt, ...)` to write into a target field in
+  place.
 
 ### ConstantPiecewise Transfer
 
-The transfer is very simple. It is based on the cells of src_mesh and the cells center of the target mesh. It assigns to a cell from the target the value of the cell in which the center is located in. This is a point location based value assignment. By default the centroid (mean of cell nodes) is used because it is fast to comupute and is accurate with regular cells.
+The transfer is very simple. It is based on the cells of src_mesh and the cells center of the target mesh. It assigns to a cell from the target the value of the cell in which the center is located in. This is a point location based value assignment. By default the centroid (mean of cell nodes) is used because it is fast to compute and is accurate with regular cells.
 
 
 ```python
@@ -68,36 +99,51 @@ m_tgt.to_pyvista().plot(show_edges=True)
 
 
 
-![png](transfers_files/transfers_7_0.png)
+![png](transfers_files/transfers_8_0.png)
 
 
 
-As you can see the `"Measure"` field from m_src was used to compute the `"Projection"` field on m_tgt. Both mesh are not completly overlapping but that is not an issue. Cells from m_tgt whose center is not in a cell from m_src take a default value `def_val`. Default is 0.0 but any floating point value, such as `np.nan` is accepted.
+As you can see the `"Measure"` field from m_src was used to compute the
+`"Projection"` field on m_tgt. Both meshes are not completely overlapping but
+that is not an issue: cells from m_tgt whose center is not in a cell from m_src
+take a default value `def_val`. Default is `0.0`, but any floating point value,
+such as `np.nan`, is accepted.
 
-This interpolation is good when coarseing a mesh and you do not need conservation. It might be useful in other circumstances I do not know of. It is quite fast but not that much because of the `is_in_cell` exact geometrical query.
+This interpolation is a good fit when coarsening a mesh and you do not need
+conservation. It is fast, though not as fast as the meshless methods, because
+of the `is_in_cell` exact geometrical query.
 
-### MovingMean Transfer
+### InverseDistance Transfer
 
-This Transfer is based on m_src cell center positions and m_tgt cell centers positions. It is a "meshless" operation as it does not care about connectivity. There are several options :
+The meshless counterpart of the piecewise-constant copy: each target cell
+center samples its `k` nearest source cell centers and receives their weighted
+mean, with weights `w_i ~ 1 / r**exponent` (defaults: `k = 4`,
+`exponent = 2.0`). The weights are non-negative and normalized, so the value is
+a convex combination of the neighbours — it stays inside the source range,
+never overshoots, and is cheap to evaluate.
 
-- normal mean
-- weighted mean
+Use it when `ConstantPiecewise` leaves holes (uncovered cells) or when the
+source and target meshes are unrelated point clouds. A higher `exponent`
+concentrates the weight on the closest neighbour; `k = 1` degenerates to exact
+nearest-neighbour sampling.
 
-Pros :
+### MovingLeastSquares Transfer
 
-- it is extremly fast to compute
-- it does not overshoot / undershoot
+The most flexible of the meshless methods: for each target cell center it
+fits a local least-squares polynomial through the `k` nearest source centers
+(default `k = 10`) and evaluates it at the target point. The neighbour weights
+are shaped by a distance kernel, one of the `mf.transfer.DistanceWeighting`
+choices:
 
-Cons :
+- `Constant()` — a plain (linear) least-squares fit over the `k` neighbours;
+- `InverseDistance(exponent)` — neighbours weighted by `(h / r)**exponent`
+  where `h` is the distance to the farthest selected neighbour;
+- `Gaussian()` — a gaussian kernel.
 
-- It lacks precision
-
-### MovingLeastSquare Transfer
-
-This Transfer is based on m_src cell center positions and m_tgt cell centers positions. It is a "meshless" operation as it does not care about connectivity. There are several options :
-
-- linear least square : the projection is the least square linear approx of the solution (can be an extrapolation)
-- weighted least square : the projection is the weighted least square linear approx of the solution, there are several possibilities for the weighting function but it depends on the relative distance to the target interpolation point.
+It smooths the field and reconstructs trends, but it is the only method that
+can **overshoot** the source values and **extrapolate** outside the source
+domain. Watch the boundaries — using `def_val=np.nan` as target for the
+uncovered cells makes the extrapolated region visible.
 
 
 ```python
@@ -122,7 +168,7 @@ m_tgt.to_pyvista().plot(show_edges=True)
 
 
 
-![png](transfers_files/transfers_13_0.png)
+![png](transfers_files/transfers_14_0.png)
 
 
 
@@ -132,168 +178,11 @@ Inside the domain the interpolation works like a charm.
 
 ### Transfer methods comparison
 
-
-```python
-def compare_src_tgt(m_src, m_tgt):
-    scale = (1.0 - 1e-2) / (1.1 + 0.05)
-
-    pt = pv.Plotter(shape=(1, 2))
-    pt.subplot(0, 0)
-    pt.add_text("Source")
-    pt.add_mesh(m_src.to_pyvista(), show_edges=True, clim=[0.0, 0.06])
-    pt.camera_position = "xy"
-    pt.camera.zoom(scale)
-    pt.subplot(0, 1)
-    pt.add_text("Target")
-    pt.add_mesh(
-        m_tgt.to_pyvista(), clim=[0.0, 0.06], below_color="pink", above_color="red"
-    )
-    pt.add_mesh(m_src.descend().to_pyvista(), show_edges=True, line_width=1)
-    pt.camera_position = "xy"
-    pt.show()
-```
-
-
-```python
-import time
-
-transfers = (
-    mf.transfer.ConstantPiecewise,
-    lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=5),
-    mf.transfer.MovingLeastSquares,
-    lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=20),
-    mf.transfer.MovingLeastSquares,
-    lambda src, tgt: mf.transfer.MovingLeastSquares(
-        src, tgt, weighting=mf.transfer.DistanceWeighting.Gaussian()
-    ),
-    lambda src, tgt: mf.transfer.MovingLeastSquares(
-        src, tgt, weighting=mf.transfer.DistanceWeighting.InverseDistance(1.0)
-    ),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=3),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=5),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=10),
-    mf.transfer.ConservativeP0,
-)
-trasfers_labels = (
-    "CPW",
-    "MLS k5",
-    "MLS k10",
-    "MLS k20",
-    "MLS",
-    "MLS gaussian",
-    "MLS inv_dist",
-    "ID k3",
-    "ID k5",
-    "ID k10",
-    "ConservativeP0",
-)
-prepare_times = []
-apply_times = []
-
-for T, label in zip(transfers, trasfers_labels):
-    m_src = mf.build_cmesh(np.logspace(-2.0, 0.0, 20), np.logspace(-2.0, 0.0, 20))
-    m_tgt = mf.build_cmesh(np.linspace(-0.05, 1.1, 40), np.linspace(-0.05, 1.1, 40))
-    m_src.fields["Measure"] = mf.M
-    t0 = time.time()
-    tr = T(m_src, m_tgt)
-    t1 = time.time()
-    tr.apply_update(m_src, "Measure", m_tgt, label + " Transfered Measure")
-    t2 = time.time()
-
-    prepare_times.append((t1 - t0) * 1000.0)
-    apply_times.append((t2 - t1) * 1000.0)
-
-    compare_src_tgt(m_src, m_tgt)
-```
-
-
-
-![png](transfers_files/transfers_17_0.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_1.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_2.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_3.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_4.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_5.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_6.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_7.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_8.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_9.png)
-
-
-
-
-
-![png](transfers_files/transfers_17_10.png)
-
-
-
-
-```python
-import matplotlib.pyplot as plt
-
-chart_data = {
-    "Prepare": prepare_times,
-    "Apply": apply_times,
-}
-
-fig, ax = plt.subplots(figsize=(10, 5))
-
-res = ax.grouped_bar(chart_data, tick_labels=trasfers_labels, group_spacing=1)
-for container in res.bar_containers:
-    ax.bar_label(container, padding=3)
-
-# Add some text for labels, title, etc.
-ax.set_ylabel("Time (ms)")
-ax.set_title("Time per step")
-ax.legend(loc="upper left", ncols=3)
-fig.tight_layout()
-plt.show()
-```
+Which method to use? `ConstantPiecewise` (CPW) is local and cheap, `MovingLeastSquares` (MLS) smooths the field but can extrapolate outside the source, `InverseDistance` (ID) is a tunable local fallback, and `ConservativeP0` conserves the integral.
+
+Every method is timed on the same grid pair, split between the one-shot
+**prepare** (slow) and the repeated **apply** (fast). The timing loop is hidden
+for readability — it only fills the chart below.
 
 
 
@@ -301,141 +190,111 @@ plt.show()
 
 
 
+
+
+![png](transfers_files/transfers_18_1.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_2.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_3.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_4.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_5.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_6.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_7.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_8.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_9.png)
+
+
+
+
+
+![png](transfers_files/transfers_18_10.png)
+
+
+
+
+
+![png](transfers_files/transfers_19_0.png)
+
+
+
 ## Transfer of 3D fields
 
-
-```python
-def compare_src_tgt_3d(m_src, m_tgt):
-    vmin = m_src.select(mf.sel.all()).min(mf.M) * 0.99
-    vmax = m_src.select(mf.sel.all()).max(mf.M) * 1.01
-    scale = (1.0 - 1e-2) / (1.1 + 0.05)
-
-    pt = pv.Plotter(shape=(1, 2))
-    pt.subplot(0, 0)
-    pt.add_text("Source")
-    pt.add_mesh(m_src.to_pyvista(), show_edges=True, clim=[vmin, vmax])
-    # pt.view_xy()
-    pt.camera.zoom(scale)
-
-    pt.subplot(0, 1)
-    pt.add_text("Target")
-    pt.add_mesh(
-        m_tgt.to_pyvista(), clim=[vmin, vmax], below_color="pink", above_color="red"
-    )
-    pt.add_mesh(m_src.descend(target_dim=1).to_pyvista(), show_edges=True, line_width=1)
-    # pt.view_xy()
-    pt.show()
-```
-
-
-```python
-import time
-
-transfers = (
-    mf.transfer.ConstantPiecewise,
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=5),
-    # mf.transfer.MovingLeastSquares,
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(src, tgt, k=20),
-    # mf.transfer.MovingLeastSquares,
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(
-    #     src, tgt, weighting=mf.transfer.DistanceWeighting.Gaussian()
-    # ),
-    # lambda src, tgt: mf.transfer.MovingLeastSquares(
-    #     src, tgt, weighting=mf.transfer.DistanceWeighting.InverseDistance(1.0)
-    # ),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=3),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=5),
-    lambda src, tgt: mf.transfer.InverseDistance(src, tgt, k=10),
-    mf.transfer.ConservativeP0,
-)
-trasfers_labels = (
-    "CPW",
-    "ID k3",
-    "ID k5",
-    "ID k10",
-    "ConservativeP0",
-)
-prepare_times = []
-apply_times = []
-
-for T, label in zip(transfers, trasfers_labels):
-    m_src = mf.build_cmesh(
-        np.logspace(-2.0, 0.0, 20), np.logspace(-2.0, 0.0, 20), np.linspace(0.0, 0.1, 3)
-    )
-    m_tgt = mf.build_cmesh(
-        np.linspace(-0.05, 1.1, 40),
-        np.linspace(-0.05, 1.1, 40),
-        np.linspace(0.0, 0.1, 3),
-    )
-    m_src.fields["Measure"] = mf.M
-    t0 = time.time()
-    tr = T(m_src, m_tgt)
-    t1 = time.time()
-    tr.apply_update(m_src, "Measure", m_tgt, label + " Transfered Measure")
-    t2 = time.time()
-
-    prepare_times.append((t1 - t0) * 1000.0)
-    apply_times.append((t2 - t1) * 1000.0)
-
-    compare_src_tgt_3d(m_src, m_tgt)
-```
-
-
-
-![png](transfers_files/transfers_21_0.png)
-
-
-
-
-
-![png](transfers_files/transfers_21_1.png)
-
-
-
-
-
-![png](transfers_files/transfers_21_2.png)
-
-
-
-
-
-![png](transfers_files/transfers_21_3.png)
-
-
-
-
-
-![png](transfers_files/transfers_21_4.png)
-
-
-
-
-```python
-import matplotlib.pyplot as plt
-
-chart_data = {
-    "Prepare": prepare_times,
-    "Apply": apply_times,
-}
-
-fig, ax = plt.subplots(figsize=(10, 5))
-
-res = ax.grouped_bar(chart_data, tick_labels=trasfers_labels, group_spacing=1)
-for container in res.bar_containers:
-    ax.bar_label(container, padding=3)
-
-# Add some text for labels, title, etc.
-ax.set_ylabel("Time (ms)")
-ax.set_title("Time per step")
-ax.legend(loc="upper left", ncols=3)
-fig.tight_layout()
-plt.show()
-```
+The same benchmark on a hexahedral grid pair — here `ConstantPiecewise`,
+`InverseDistance` and `ConservativeP0` are timed. The prepare / apply split is
+unchanged:
 
 
 
 ![png](transfers_files/transfers_22_0.png)
+
+
+
+
+
+![png](transfers_files/transfers_22_1.png)
+
+
+
+
+
+![png](transfers_files/transfers_22_2.png)
+
+
+
+
+
+![png](transfers_files/transfers_22_3.png)
+
+
+
+
+
+![png](transfers_files/transfers_22_4.png)
+
+
+
+
+
+![png](transfers_files/transfers_23_0.png)
 
 
 
@@ -466,7 +325,7 @@ coarse.to_pyvista().plot(show_edges=True)
 
 
 
-![png](transfers_files/transfers_25_0.png)
+![png](transfers_files/transfers_26_0.png)
 
 
 
@@ -478,7 +337,7 @@ fine.to_pyvista().plot(show_edges=True)
 
 
 
-![png](transfers_files/transfers_26_0.png)
+![png](transfers_files/transfers_27_0.png)
 
 
 
@@ -495,7 +354,7 @@ fine.to_pyvista().plot()
 
 
 
-![png](transfers_files/transfers_28_0.png)
+![png](transfers_files/transfers_29_0.png)
 
 
 
@@ -528,28 +387,8 @@ mf_apply = t2 - t1
 ```
 
 
-```python
-pt = pv.Plotter(shape=(1, 2))
-pt.subplot(0, 0)
-pt.add_text("Source")
-pt.add_mesh(m_src.to_pyvista(), show_edges=True)
-pt.camera.zoom(0.99 / 1.15)
 
-pt.subplot(0, 1)
-pt.add_text("Target")
-pt.add_mesh(
-    m_src.descend(target_dim=1).to_pyvista(),
-    show_edges=True,
-    line_width=2,
-    color="black",
-)
-pt.add_mesh(m_tgt.to_pyvista(), show_edges=True)
-pt.show()
-```
-
-
-
-![png](transfers_files/transfers_32_0.png)
+![png](transfers_files/transfers_33_0.png)
 
 
 
@@ -574,36 +413,15 @@ mc_apply = t2 - t1
 
 
 ```python
-# Les champs produits sont identiques
+# Identical fields, whichever library computed them
 mf_f = m_tgt.fields["Measure"].numpy()
 mc_f = f_tgt.getArray().toNumPyArray()
 assert np.allclose(mc_f, mf_f)
 ```
 
 
-```python
-chart_data = {
-    "Mefikit": [mf_prepare, mf_apply],
-    "Medcoupling": [mc_prepare, mc_apply],
-}
 
-fig, ax = plt.subplots(figsize=(10, 5))
-
-res = ax.grouped_bar(chart_data, tick_labels=["Prepare", "Apply"], group_spacing=1)
-for container in res.bar_containers:
-    ax.bar_label(container, padding=3)
-
-# Add some text for labels, title, etc.
-ax.set_ylabel("Time (s)")
-ax.set_title("Time per step")
-ax.legend(loc="upper right", ncols=3)
-fig.tight_layout()
-plt.show()
-```
-
-
-
-![png](transfers_files/transfers_35_0.png)
+![png](transfers_files/transfers_36_0.png)
 
 
 
@@ -630,21 +448,5 @@ m_tgt.fields["temp"] = trsf(rho * cp)
 > Cells covered by the source are transferred correctly and match `apply_update` exactly.
 
 
-```python
-pt = pv.Plotter()
 
-box = mf.sel.bbox([-np.inf] * 3, [0.9, np.inf, np.inf])
-pvm = m_tgt.select(box).to_mesh().to_pyvista()
-pvm.active_scalars_name = "temp"
-pt.add_mesh(pvm.shrink(0.8), show_edges=True)
-
-pvs = m_src.to_pyvista()
-pvs.active_scalars_name = "rhoCp"
-pt.add_mesh(pvs, style="wireframe", line_width=2)
-
-pt.show()
-```
-
-
-
-![png](transfers_files/transfers_39_0.png)
+![png](transfers_files/transfers_40_0.png)

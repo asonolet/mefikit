@@ -1,19 +1,26 @@
 # Mesh extrusions
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
+Extrusion sweeps a **base** mesh along a direction to build a mesh one
+dimension higher: a `VERTEX` becomes a `SEG2`, a `SEG2` a `QUAD4`, a `QUAD4`
+a `HEX8`. mefikit offers three flavours — plain `extrude` along an existing
+axis, `extrude_parallel` along any 3D line, and `extrude_curv` for a
+curvilinear sweep.
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 ```
 
-## Building mesh with custom connectivity
+## Building a 2D base mesh
 
-First let's build a 2D mesh wich will by used to demonstrate extrusions.
+Any mesh can be extruded, as long as each of its blocks is a
+lower-dimensional "slice". Let us first build one by hand with mixed
+topologies (isolated nodes, edges and one quad), so that every sweeping demo
+pulls each block up one dimension at once:
 
 
 ```python
@@ -52,11 +59,16 @@ mesh.to_pyvista(dim="all").plot(cpos="xy", show_edges=True)
 
 
 
-![png](extrusions_files/extrusions_5_0.png)
+![png](extrusions_files/extrusions_6_0.png)
 
 
 
 ## Extrusion along an existing axis
+
+`extrude(along)` stacks copies of the base mesh at the node ids given by
+`along`. Here `range(3)` steps through three existing nodes, so the quad is
+swept into three HEX8 cells, the edges into QUAD4 faces and the vertices into
+SEG2 segments:
 
 ### Build simple extruded mesh
 
@@ -72,11 +84,14 @@ extruded.to_pyvista(dim="all").plot(show_edges=True)
 
 
 
-![png](extrusions_files/extrusions_9_0.png)
+![png](extrusions_files/extrusions_10_0.png)
 
 
 
-### Build extruded mesh along a 3d line with parallel z faces
+### Extrusion along a 3D line, with parallel z faces
+
+`extrude_parallel(line)` sweeps the base mesh along an arbitrary 3D polyline;
+the layers follow the line while staying parallel to each other:
 
 
 ```python
@@ -96,11 +111,15 @@ extruded_par.to_pyvista(dim="all").plot(show_edges=True)
 
 
 
-![png](extrusions_files/extrusions_12_0.png)
+![png](extrusions_files/extrusions_13_0.png)
 
 
 
-### Build curvilinear extrusion mesh
+### Curvilinear extrusion
+
+Finally, `extrude_curv(line)` builds a *curvilinear* sweep: the base mesh is
+swept along a curve and the nodes settle on it, so the result can be bent or
+wrapped — a natural fit for pipes, blades and other swept geometries:
 
 
 ```python
@@ -121,4 +140,4 @@ extruded_curv.to_pyvista(dim="all").plot(show_edges=True)
 
 
 
-![png](extrusions_files/extrusions_15_0.png)
+![png](extrusions_files/extrusions_16_0.png)

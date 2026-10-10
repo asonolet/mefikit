@@ -1,12 +1,25 @@
 # Python guide
 
-This page is a compact reference for the Python API. The notebooks under
-[Python Examples](./python_examples/SUMMARY.md) show the same features in
-context; here they are gathered as tables.
+This page is a compact reference for the Python API. The notebooks grouped at
+the end of the book show the same features in context; here they are gathered
+as tables.
 
 Meshes are `UMesh` objects. Fields and element groups live in two dict-like
 mappings on the mesh, and selections are lazy views that only evaluate when
 queried.
+
+Some insights on how to use the current Python library:
+
+- Use autocompletion with the tool you like, type hints are provided! A missing
+  type hint is a bug, please report it.
+- Only high level whole mesh operations are supported through python. For finer
+  grain ops either reach me or implement it in rust consuming the `mefikit` rust
+  crate.
+- Use lazy expressions wherever possible, they are fast, reusable, expressive
+  and less error prone than manual indexing. They are inspired from `polars`, a
+  DataFrame python-rust lib.
+- Visualize with `pyvista`. It lacks type hints and the syntax may not feel
+  familiar but the overall experience is really better than anything else.
 
 ## The fields mapping
 
@@ -143,6 +156,26 @@ relabeled per input mesh, and fields and groups are dropped. Coincident interfac
 must be piecewise planar within `tol`. This is an *imprint only* operation:
 overlapping volumes are not detected, so the output may contain overlapping cells.
 
+## Geometric transforms
+
+Pure coordinate transformations, each returning a **new** `UMesh` (the source
+is left untouched):
+
+| Operation | Call |
+|---|---|
+| translate by a vector | `mesh.translate([x, y, z])` |
+| scale per axis / uniformly | `mesh.scale([sx, sy, sz])` / `mesh.scale_uniform(s)` |
+| rotate around an axis through the origin | `mesh.rotate(axis, angle)` |
+| rotate around an axis through a point | `mesh.rotate_about(center, axis, angle)` |
+| mirror across a plane through the origin | `mesh.mirror(normal)` |
+| mirror across a plane through a point | `mesh.mirror_about(point, normal)` |
+| apply an arbitrary affine transform | `mesh.transform(mf.Transform(matrix))` |
+| repeat a shape with a step transform | `mesh.duplicate(step, n)` |
+
+Angles are in radian. `mf.Transform` also offers the `identity`, `translation`,
+`scaling`, `rotation`, `reflection` and `from_matrix` constructors; `transform`
+also accepts a plain 4x4 numpy array.
+
 Field expressions (notably `mf.M` for the on-the-fly measure) can be evaluated
 without a stored field:
 
@@ -150,3 +183,56 @@ without a stored field:
 - `mesh.eval_update(name, expr, dim=None)` stores the result in-place
 - `mesh.measure()` → per-type measures; `mesh.measure_update()` materializes a
   `"Measure"` field (usually unnecessary, prefer `mf.M`)
+
+## Input / output
+
+`UMesh.read` and `UMesh.write` build a mesh from — or dump it to — a file, the
+format being selected by the file extension (`.json`, `.yaml`, `.vtk`, `.vtu`,
+`.vtkhdf`, `.cgns`, `.med`):
+
+| Operation | Call |
+|---|---|
+| read a mesh from disk | `mf.UMesh.read(path)` |
+| write a mesh to disk | `mesh.write(path)` |
+| in-memory PyVista object | `mesh.to_pyvista(dim=None, with_fields=True)` |
+| in-memory meshio object | `mesh.to_meshio()` |
+| in-memory medcoupling twin | `mesh.to_mc(lev=None)` / `mf.UMesh.from_mc(mc_mesh)` |
+
+`to_pyvista` copies the mesh (and, by default, its fields) into a
+`pyvista.UnstructuredGrid`; `to_meshio` produces a `meshio.Mesh`; the
+medcoupling pair converts to / from a `MEDCouplingUMesh`. See the
+[Input/Output](./python_examples/input_output.md) notebook and the `.med`
+round-trip in [mefikit vs. medcoupling](./python_examples/compare_medcoupling.md).
+
+## Field transfers
+
+Remapping a field from a **source** mesh onto a **target** mesh is done with
+the `mf.transfer` operators. All of them share the same prepare / apply split:
+construction builds the interpolation coefficients once, and applying the
+operator to any field is then a single fast sparse product:
+
+| Operator | Kind | Conserves | Signature |
+|---|---|---|---|
+| `ConstantPiecewise` | cell-based, point location | no | `(src, tgt, def_val=0.0)` |
+| `InverseDistance` | meshless, `k`-nearest | no | `(src, tgt, k=4, exponent=2.0, def_val=0.0)` |
+| `MovingLeastSquares` | meshless, local fit | no | `(src, tgt, k=10, weighting=DistanceWeighting.Constant(), def_val=0.0)` |
+| `ConservativeP0` | volumetric overlap | **yes** | `(src, tgt, def_val=0.0)` |
+
+Weighting kernels for `MovingLeastSquares` come from
+`mf.transfer.DistanceWeighting`: `Constant()`, `InverseDistance(exponent)`
+and `Gaussian()`.
+
+Once built, every operator is used the same way:
+
+- `tr(expr, extensive=False)` → the transferred field, as a `Field` on `tgt`
+- `tr.eval(expr, extensive=False)` → `{etype: array}`
+- `tr.apply_update(src, name, tgt, tgt_field_name=None, def_val=0.0, extensive=False)`
+  writes the result into a target field in place
+
+`extensive=True` treats the field as extensive (mass, energy): `ConservativeP0`
+then keeps the raw measure-weighted sum, whereas intensive fields are
+normalized by the target cell measure. Cells uncovered by any source cell keep
+the transfer `def_val`. The [Field transfers](./python_examples/transfers.md)
+notebook walks through each operator; the timing and correctness comparison
+with medcoupling is at the end of [mefikit vs.
+medcoupling](./python_examples/compare_medcoupling.md).

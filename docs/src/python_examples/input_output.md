@@ -1,14 +1,12 @@
 # Input / Output
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 ```
 
 
@@ -20,12 +18,8 @@ volumes = mf.build_cmesh(
 
 ## Memory exports
 
-- Through numpy arrays manipulations:
-    - medcoupling
-    - meshio
-    - pyvista
-- Through `string` translation to `Python`:
-    - json
+A `UMesh` can be handed to other libraries without ever touching the disk:
+
 
 
 ```python
@@ -36,10 +30,11 @@ print(volumes.to_mc())
     Description of mesh : ""
     Time attached to the mesh [unit] : 0 []
     Iteration : -1 Order : -1
-     Mesh dimension has not been set or is invalid !3
+    Mesh dimension : 3
+    Space dimension : 3
     Info attached on space dimension : "" "" ""
     Number of nodes : 50
-    Number of cells : 15
+    Number of cells : 16
     Cell types present : NORM_HEXA8
 
 
@@ -49,7 +44,7 @@ print(volumes.to_mc())
 print(volumes.to_pyvista())
 ```
 
-    UnstructuredGrid (0x7cf1a2281cc0)
+    UnstructuredGrid (0x7dcd539db520)
       N Cells:    16
       N Points:   50
       X Bounds:   0.000e+00, 1.000e+00
@@ -65,7 +60,7 @@ volumes.to_pyvista().plot(show_edges=True)
 
 
 
-![png](input_output_files/input_output_6_0.png)
+![png](input_output_files/input_output_7_0.png)
 
 
 

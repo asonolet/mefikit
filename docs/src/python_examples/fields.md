@@ -1,14 +1,12 @@
 # Fields
 
+*Figures use PyVista; verbose plotting boilerplate is omitted.*
+
 
 ```python
 import numpy as np
-import pyvista as pv
 
 import mefikit as mf
-
-pv.set_plot_theme("dark")
-pv.set_jupyter_backend("static")
 ```
 
 ## Field expressions
@@ -41,6 +39,8 @@ toto * 2.0
 
 ### Scalar unary ops
 
+
+```python
 toto.sin()
 toto.cos()
 toto.abs()
@@ -49,7 +49,15 @@ toto.ln()
 toto.square()
 toto.sqrt()
 toto.tan()
-toto.log10();
+toto.log10()
+```
+
+
+
+
+    <Field at 0x7fe3d99ddfb0>
+
+
 
 ### Vector ops
 
@@ -75,7 +83,8 @@ ny = mf.Ny  # y compo of element normal
 nz = mf.Nz  # z compo of element normal
 ```
 
-### How does it work ?
+### How does it work?
+
 
 
 The operations build a binary operation tree structure. `Mefikit` knows how to interpret this binary tree to compute fields.
@@ -124,13 +133,13 @@ mesh2.to_pyvista().plot(show_edges=True)
 
 
 
-![png](fields_files/fields_16_0.png)
+![png](fields_files/fields_17_0.png)
 
 
 
-Fields attribute is dictionnary like: fields can be accessed, modified, added, defined through it using field expressions evaluation on the mesh.
+The `fields` attribute is dict-like: fields can be accessed, modified, added and defined through it, using field expressions evaluated on the mesh.
 
-Fields expressions are independent from the mesh and light, fields are evaluated field expressions stored alongside the mesh.
+Field expressions are independent from the mesh and light; fields are the evaluated expressions stored alongside the mesh.
 
 
 ```python
@@ -144,7 +153,7 @@ mesh2.to_pyvista().plot()
 
 
 
-![png](fields_files/fields_19_0.png)
+![png](fields_files/fields_20_0.png)
 
 
 
@@ -154,15 +163,8 @@ mesh2.fields["toto"] = mf.X + mf.Y
 ```
 
 
-```python
-pvm = mesh2.to_pyvista()
-pvm.active_scalars_name = "toto"
-pvm.plot()
-```
 
-
-
-![png](fields_files/fields_21_0.png)
+![png](fields_files/fields_22_0.png)
 
 
 
@@ -288,21 +290,17 @@ mesh2.fields["Scratch"][sel2] = m  # assign this constant value to the whole reg
 ```
 
 
-```python
-pvm = mesh2.to_pyvista()
-pvm.active_scalars_name = "Scratch"
-pvm.plot()
-```
 
-
-
-![png](fields_files/fields_39_0.png)
+![png](fields_files/fields_40_0.png)
 
 
 
 ## Direct field expression evaluation to numpy
 
-It is not really recommended not to use the .fields storing mecanism as it provides complete integration with mefikit, but it is nevertheless possible to evaluate an expression on a field and export it directly as a numpy array. The `eval` method does exaclty this.
+It is not recommended to bypass the `.fields` storage — it provides complete
+integration with mefikit — but it is nevertheless possible to evaluate an
+expression and export the result directly as a numpy array. The `eval` method
+does exactly this:
 
 
 ```python
@@ -338,14 +336,11 @@ th = (m > lb) & (m <= hb)
 
 ```python
 m2sel = mesh2.select(th).to_mesh()
-pvm2: pv.UnstructuredGrid = m2sel.to_pyvista()
-pvm2.active_scalars_name = "Measure"
-pvm2.plot()
 ```
 
 
 
-![png](fields_files/fields_44_0.png)
+![png](fields_files/fields_46_0.png)
 
 
 
@@ -364,7 +359,7 @@ mesh2.select(th - r - c).to_mesh().to_pyvista().plot()
 
 
 
-![png](fields_files/fields_47_0.png)
+![png](fields_files/fields_49_0.png)
 
 
 
@@ -422,13 +417,12 @@ top = mesh2.select(mf.sel.group("top")).to_mesh()
 ```
 
 
-```python
-pt = pv.Plotter()
-pt.add_mesh(mesh2.descend(target_dim=1).to_pyvista())
-pt.add_mesh(top.to_pyvista(), show_edges=True)
-pt.show()
-```
+
+![png](fields_files/fields_58_0.png)
 
 
 
-![png](fields_files/fields_56_0.png)
+---
+
+> **Read next:** [Field transfers](./transfers.md) moves fields from one mesh to
+> another, reusing the same expressions.
