@@ -22,6 +22,7 @@ use super::element::{etype_to_str, str_to_etype};
 use crate::pyfield::PyField;
 use crate::pyfields::PyFieldsMapping;
 use crate::pygroups::PyGroupsMapping;
+use crate::pytimeseries::PyTimeSeriesMapping;
 use crate::select::{PySelectionResult, extract_selector, selector_to_selection};
 
 #[pyclass(str)]
@@ -129,6 +130,13 @@ impl PyUMesh {
     #[getter]
     fn fields(slf: &Bound<'_, Self>) -> PyFieldsMapping {
         PyFieldsMapping {
+            mesh: slf.clone().unbind(),
+        }
+    }
+
+    #[getter]
+    fn time_series(slf: &Bound<'_, Self>) -> PyTimeSeriesMapping {
+        PyTimeSeriesMapping {
             mesh: slf.clone().unbind(),
         }
     }

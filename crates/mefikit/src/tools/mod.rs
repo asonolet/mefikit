@@ -48,6 +48,8 @@ pub mod snap;
 pub mod spatial_index;
 /// Cell splitting to create finer meshes.
 pub mod split_cells;
+/// Time-series field support.
+pub mod timeseries;
 /// Reusable field transfer operators between meshes.
 pub mod transfer;
 /// Coordinate transforms, duplication and concatenation.
@@ -68,5 +70,6 @@ pub use reorient::*;
 pub use selector::*;
 pub use snap::*;
 pub use split_cells::*;
+pub use timeseries::*;
 pub use transfer::*;
 pub use transforms::*;
