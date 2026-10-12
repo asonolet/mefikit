@@ -6,6 +6,7 @@ mod pyfield;
 mod pyfields;
 mod pygradient;
 mod pygroups;
+mod pystats;
 mod pytimeseries;
 mod pytransfer;
 mod pytransform;
@@ -64,6 +65,9 @@ mod mefipy {
 
     #[pymodule_export]
     use super::pyfields::{PyFieldRef, PyFieldsMapping};
+
+    #[pymodule_export]
+    use super::pystats::PyStats;
 
     #[pymodule_export]
     use super::pytimeseries::{PyTimeSeries, PyTimeSeriesMapping};

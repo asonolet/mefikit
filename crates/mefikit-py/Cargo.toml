@@ -17,5 +17,14 @@ pyo3 = { workspace = true, features = [
 ] }
 serde_yaml = { workspace = true }
 serde_json = { workspace = true }
+cubecl = { workspace = true, optional = true }
 
 mefikit = { path = "../mefikit", features = ["io", "rayon"] }
+
+[features]
+# The wgpu runtime ships by default; the pure-CPU runtime is opt-in because it
+# pulls an LLVM toolchain (cubecl-llvm). Without any runtime, `FieldRef.stats`
+# transparently falls back to a host reduction.
+default = ["gpu"]
+gpu = ["mefikit/gpu", "dep:cubecl"]
+gpu-cpu = ["mefikit/gpu-cpu"]

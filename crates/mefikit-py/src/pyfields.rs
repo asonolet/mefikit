@@ -15,6 +15,7 @@ use mefikit::tools::{
 
 use super::element::{etype_to_str, try_str_to_etype};
 use super::pyfield::PyField;
+use super::pystats::PyStats;
 use super::pyumesh::PyUMesh;
 use super::select::{Selector, extract_selector};
 
@@ -772,6 +773,18 @@ impl PyFieldRef {
     pub fn __len__(&self) -> PyResult<usize> {
         Python::attach(|py| {
             self.with_resolved(py, |_py, m, dim, _field| Ok(m.num_elements_of_dim(dim)))
+        })
+    }
+
+    /// Global statistics (count/sum/mean/min/max) over all values of the
+    /// field. Computed with the GPU tool when a CubeCL device is available,
+    /// falling back transparently to the host otherwise.
+    pub fn stats(&self) -> PyResult<PyStats> {
+        Python::attach(|py| {
+            self.with_resolved(py, |_py, _m, _dim, field| {
+                let values: Vec<f64> = field.0.values().flat_map(|a| a.iter()).copied().collect();
+                Ok(super::pystats::stats(&values))
+            })
         })
     }
 

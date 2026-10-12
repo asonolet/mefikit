@@ -1,26 +1,33 @@
 //! GPU-accelerated field statistics: sum / mean / min / max in `f64`.
 //!
-//! Demonstrates the `mf::field_stats` tool backed by CubeCL. The device is
-//! picked with the canonical [`Device::default`] walk (wgpu first, then the
-//! CPU runtime when the `gpu-cpu` feature is enabled). Set
+//! Demonstrates the `mf::field_stats` tool backed by CubeCL and gives a small,
+//! rough time comparison against the classical single-threaded CPU reduction
+//! (`Iterator::sum` + `fold` min/max) on the same values. The device is picked
+//! with the canonical [`Device::default`] walk (wgpu first, then the CPU
+//! runtime when the `gpu-cpu` feature is enabled). Set
 //! `MEFIKIT_GPU_BACKEND=wgpu` or `=cpu` to pin a specific backend.
 //!
-//! Run with: `cargo run -p mefikit --features gpu gpu-cpu --example gpu_stats`
+//! Run with: `cargo run -p mefikit --features gpu,gpu-cpu --example gpu_stats`
 
 use cubecl::device::{Device, WgpuDeviceKind};
 use mefikit::prelude as mf;
 use mefikit::tools::fieldexpr::{FieldExpr, MeshEvalUpdatable};
 
+/// Mesh resolution per axis: `N_AXIS²` cell values are reduced.
+const N_AXIS: usize = 601;
+/// Number of timed repetitions (after one warm-up pass).
+const ITERATIONS: usize = 50;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mesh = mf::RegularUMeshBuilder::new()
         .add_axis(
-            (0..=50)
-                .map(|i| i as f64 / 50.0 * 3.0)
+            (0..=N_AXIS)
+                .map(|i| i as f64 / N_AXIS as f64 * 3.0)
                 .collect::<Vec<f64>>(),
         )
         .add_axis(
-            (0..=40)
-                .map(|i| i as f64 / 40.0 * 2.0)
+            (0..=N_AXIS)
+                .map(|i| i as f64 / N_AXIS as f64 * 2.0)
                 .collect::<Vec<f64>>(),
         )
         .build();
@@ -42,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let now = std::time::Instant::now();
     let gpu = mf::field_stats(&device, values);
-    println!("gpu stats in {:.3?}", now.elapsed());
+    println!("first gpu stats in {:.3?}", now.elapsed());
     println!("count: {}", gpu.count);
     println!("sum:   {:.6}", gpu.sum);
     println!("mean:  {:.6}", gpu.mean);
@@ -62,7 +69,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         && (gpu.min - want.min).abs() <= 1e-9 * want.min.abs().max(1.0)
         && (gpu.max - want.max).abs() <= 1e-9 * want.max.abs().max(1.0);
     println!("match: {ok}");
+
+    // Timed comparison: warm up, then time `ITERATIONS` runs of each path.
+    std::hint::black_box(mf::field_stats(&device, values));
+    let gpu_total = timed(|| {
+        std::hint::black_box(mf::field_stats(&device, values));
+    });
+    let cpu_total = timed(|| {
+        let s = values.iter().sum::<f64>();
+        let mn = values.iter().copied().fold(f64::INFINITY, f64::min);
+        let mx = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        std::hint::black_box((s, mn, mx));
+    });
+
+    let gpu_per = gpu_total / ITERATIONS as u32;
+    let cpu_per = cpu_total / ITERATIONS as u32;
+    println!(
+        "mean per call over {ITERATIONS} runs: gpu {gpu_per:.3?}, cpu {cpu_per:.3?} (speedup {:.2}x)",
+        cpu_per.as_secs_f64() / gpu_per.as_secs_f64()
+    );
     Ok(())
+}
+
+fn timed(mut f: impl FnMut()) -> std::time::Duration {
+    let start = std::time::Instant::now();
+    for _ in 0..ITERATIONS {
+        f();
+    }
+    start.elapsed()
 }
 
 struct Stats {

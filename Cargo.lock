@@ -2978,6 +2978,7 @@ dependencies = [
 name = "mefipy"
 version = "0.4.1"
 dependencies = [
+ "cubecl",
  "mefikit",
  "ndarray",
  "numpy",
