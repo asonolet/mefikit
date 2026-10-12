@@ -41,10 +41,13 @@ jobs:
           python-version: 3.9
       - name: Build wheels
         uses: PyO3/maturin-action@v1
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ${{ !startsWith(github.ref, 'refs/tags/') && matrix.platform.target != 'x86' && 'sccache' || '' }}
+          CMAKE_CXX_COMPILER_LAUNCHER: ${{ !startsWith(github.ref, 'refs/tags/') && matrix.platform.target != 'x86' && 'sccache' || '' }}
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
-          sccache: ${{ !startsWith(github.ref, 'refs/tags/') }}
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') && matrix.platform.target != 'x86' }}
           manylinux: auto
           before-script-linux: |
             python3 --version
@@ -76,6 +79,9 @@ jobs:
           python-version: 3.9
       - name: Build wheels
         uses: PyO3/maturin-action@v1
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ${{ !startsWith(github.ref, 'refs/tags/') && 'sccache' || '' }}
+          CMAKE_CXX_COMPILER_LAUNCHER: ${{ !startsWith(github.ref, 'refs/tags/') && 'sccache' || '' }}
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
@@ -112,6 +118,9 @@ jobs:
         uses: lukka/get-cmake@v4.3.3
       - name: Build wheels
         uses: PyO3/maturin-action@v1
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ${{ !startsWith(github.ref, 'refs/tags/') && 'sccache' || '' }}
+          CMAKE_CXX_COMPILER_LAUNCHER: ${{ !startsWith(github.ref, 'refs/tags/') && 'sccache' || '' }}
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
@@ -140,6 +149,9 @@ jobs:
         uses: lukka/get-cmake@v4.3.3
       - name: Build wheels
         uses: PyO3/maturin-action@v1
+        env:
+          CMAKE_C_COMPILER_LAUNCHER: ${{ !startsWith(github.ref, 'refs/tags/') && 'sccache' || '' }}
+          CMAKE_CXX_COMPILER_LAUNCHER: ${{ !startsWith(github.ref, 'refs/tags/') && 'sccache' || '' }}
         with:
           target: ${{ matrix.platform.target }}
           args: --release --out dist --find-interpreter
