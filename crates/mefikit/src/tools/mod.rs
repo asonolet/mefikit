@@ -12,6 +12,7 @@
 //! - Element selection
 //! - Node snapping
 //! - Field transfer between meshes
+//! - GPU-accelerated field statistics
 
 /// Centroids of meshes.
 pub mod centroids;
@@ -23,6 +24,9 @@ pub mod crack;
 pub mod extrude;
 /// Field expression evaluation and manipulation.
 pub mod fieldexpr;
+/// GPU-accelerated field statistics.
+#[cfg(feature = "gpu")]
+pub mod gpu_stats;
 /// Gradient of a scalar field on meshes and point clouds.
 pub mod gradient;
 /// Structured grid generation utilities.
@@ -59,6 +63,8 @@ pub use centroids::*;
 pub use connected_components::*;
 pub use crack::*;
 pub use extrude::*;
+#[cfg(feature = "gpu")]
+pub use gpu_stats::*;
 pub use gradient::*;
 pub use grid::*;
 pub use measure::*;

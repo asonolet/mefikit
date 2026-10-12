@@ -8,6 +8,7 @@ members = [
 
 [workspace.dependencies]
 ndarray = { version = "0.17", features = ["serde"] }
+cubecl = "0.11.0"
 arrayvec = "0.7.8"
 derive-where = "1.6.1"
 itertools = "0.15.0"
@@ -54,3 +55,12 @@ inherits = "bench"
 debug = true
 lto = false
 strip = false
+
+# See vendor/lzma-sys/UPSTREAM.md: cubecl's `liblzma-sys` and vtkio's `lzma-sys`
+# both declare `links = "lzma"`, which Cargo forbids in one build graph. The
+# freeze applied to the stale vtkio side (`lzma-sys`): the vendored copy is the
+# maintained `liblzma-sys` (0.4.9) implementation under the `lzma-sys` name,
+# with `links` renamed to "lzma-vtkio", so `cubecl` (wgpu + CPU runtimes) can
+# coexist with `vtkio` while `liblzma-sys` itself stays pristine on crates.io.
+[patch.crates-io]
+lzma-sys = { path = "vendor/lzma-sys" }

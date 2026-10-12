@@ -17,6 +17,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Verify vendored lzma-sys
+        run: tools/update_liblzma_sys.sh --verify
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:

@@ -1,3 +1,5 @@
+# Never modify or inspect anything inside the vendored tree.
+exclude: "^vendor/lzma-sys/"
 repos:
   - repo: https://github.com/kynan/nbstripout
     rev: 0.9.1

@@ -1,0 +1,192 @@
+use core::ffi::{c_char, c_int, c_void};
+use std::alloc::{alloc, alloc_zeroed, dealloc, Layout};
+
+#[no_mangle]
+pub extern "C" fn rust_lzma_wasm_shim_malloc(size: usize) -> *mut c_void {
+    wasm_shim_alloc::<false>(size)
+}
+
+#[no_mangle]
+pub extern "C" fn rust_lzma_wasm_shim_calloc(nmemb: usize, size: usize) -> *mut c_void {
+    // note: calloc expects the allocation to be zeroed
+    match nmemb.checked_mul(size) {
+        Some(size) => wasm_shim_alloc::<true>(size),
+        None => core::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_lzma_wasm_shim_free(ptr: *mut c_void) {
+    if ptr.is_null() {
+        return;
+    }
+    wasm_shim_free(ptr)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_lzma_wasm_shim_memcmp(
+    str1: *const c_void,
+    str2: *const c_void,
+    n: usize,
+) -> i32 {
+    if n == 0 {
+        return 0;
+    }
+
+    // SAFETY: function contracts requires str1 and str2 at least `n`-long.
+    unsafe {
+        let str1: &[u8] = core::slice::from_raw_parts(str1 as *const u8, n);
+        let str2: &[u8] = core::slice::from_raw_parts(str2 as *const u8, n);
+        match str1.cmp(str2) {
+            core::cmp::Ordering::Less => -1,
+            core::cmp::Ordering::Equal => 0,
+            core::cmp::Ordering::Greater => 1,
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_lzma_wasm_shim_memcpy(
+    dest: *mut c_void,
+    src: *const c_void,
+    n: usize,
+) -> *mut c_void {
+    core::ptr::copy_nonoverlapping(src as *const u8, dest as *mut u8, n);
+    dest
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_lzma_wasm_shim_memmove(
+    dest: *mut c_void,
+    src: *const c_void,
+    n: usize,
+) -> *mut c_void {
+    core::ptr::copy(src as *const u8, dest as *mut u8, n);
+    dest
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_lzma_wasm_shim_memset(
+    dest: *mut c_void,
+    c: c_int,
+    n: usize,
+) -> *mut c_void {
+    core::ptr::write_bytes(dest as *mut u8, c as u8, n);
+    dest
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_lzma_wasm_shim_strlen(s: *const c_char) -> usize {
+    let str = unsafe { std::ffi::CStr::from_ptr(s) };
+    str.to_bytes().len()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rust_lzma_wasm_shim_memchr(
+    s: *const c_void,
+    c: c_int,
+    n: usize,
+) -> *mut c_void {
+    if n == 0 {
+        return core::ptr::null_mut();
+    }
+
+    let s_slice = unsafe { core::slice::from_raw_parts(s as *const u8, n) };
+    s_slice
+        .iter()
+        .position(|&r| r == c as u8)
+        .map_or(core::ptr::null_mut(), |p| unsafe {
+            s.add(p) as *mut c_void
+        })
+}
+
+const USIZE_ALIGN: usize = core::mem::align_of::<usize>();
+const USIZE_SIZE: usize = core::mem::size_of::<usize>();
+
+#[inline]
+fn wasm_shim_alloc<const ZEROED: bool>(size: usize) -> *mut c_void {
+    // in order to recover the size upon free, we store the size below the allocation
+    // special alignment is never requested via the malloc API,
+    // so it's not stored, and usize-alignment is used
+    // memory layout: [size] [allocation]
+
+    let Some(full_alloc_size) = size.checked_add(USIZE_SIZE) else {
+        return core::ptr::null_mut();
+    };
+
+    unsafe {
+        let Ok(layout) = Layout::from_size_align(full_alloc_size, USIZE_ALIGN) else {
+            return core::ptr::null_mut();
+        };
+
+        let ptr = if ZEROED {
+            alloc_zeroed(layout)
+        } else {
+            alloc(layout)
+        };
+        if ptr.is_null() {
+            return core::ptr::null_mut();
+        }
+
+        // SAFETY: ptr is usize-aligned and we've allocated sufficient memory
+        ptr.cast::<usize>().write(full_alloc_size);
+
+        ptr.add(USIZE_SIZE).cast()
+    }
+}
+
+unsafe fn wasm_shim_free(ptr: *mut c_void) {
+    // the layout for the allocation needs to be recovered for dealloc
+    // - the size must be recovered from directly below the allocation
+    // - the alignment will always by USIZE_ALIGN
+
+    let alloc_ptr = ptr.sub(USIZE_SIZE);
+    // SAFETY: the allocation routines must uphold having a valid usize below the provided pointer
+    let full_alloc_size = alloc_ptr.cast::<usize>().read();
+
+    let layout = Layout::from_size_align_unchecked(full_alloc_size, USIZE_ALIGN);
+    dealloc(alloc_ptr.cast(), layout);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn calloc_overflow_returns_null() {
+        let ptr = rust_lzma_wasm_shim_calloc(usize::MAX / 2 + 1, 2);
+
+        assert!(ptr.is_null());
+    }
+
+    #[test]
+    fn malloc_header_overflow_returns_null() {
+        let ptr = rust_lzma_wasm_shim_malloc(usize::MAX);
+
+        assert!(ptr.is_null());
+    }
+
+    #[test]
+    fn zero_length_ops_tolerate_null() {
+        let null = core::ptr::null_mut::<c_void>();
+
+        unsafe {
+            assert_eq!(rust_lzma_wasm_shim_memcmp(null, null, 0), 0);
+            assert!(rust_lzma_wasm_shim_memchr(null, b'x' as c_int, 0).is_null());
+            assert!(rust_lzma_wasm_shim_memcpy(null, null, 0).is_null());
+            assert!(rust_lzma_wasm_shim_memmove(null, null, 0).is_null());
+            assert!(rust_lzma_wasm_shim_memset(null, 0, 0).is_null());
+        }
+    }
+
+    #[test]
+    fn calloc_zeroes_memory() {
+        let ptr = rust_lzma_wasm_shim_calloc(4, 2);
+        assert!(!ptr.is_null());
+
+        let bytes = unsafe { core::slice::from_raw_parts(ptr.cast::<u8>(), 8) };
+        assert_eq!(bytes, &[0; 8]);
+
+        unsafe { rust_lzma_wasm_shim_free(ptr) };
+    }
+}
