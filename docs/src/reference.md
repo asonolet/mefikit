@@ -246,7 +246,7 @@ operator to any field is then a single fast sparse product:
 | `ConservativeP0` | volumetric overlap | **yes** | `(src, tgt, def_val=0.0)` |
 
 Weighting kernels for `MovingLeastSquares` come from
-`mf.transfer.DistanceWeighting`: `Constant()`, `InverseDistance(exponent)`
+`mf.DistanceWeighting`: `Constant()`, `InverseDistance(exponent)`
 and `Gaussian()`.
 
 Once built, every operator is used the same way:

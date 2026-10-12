@@ -41,7 +41,7 @@ print("numpy       :", np.__version__)
 ```
 
     medcoupling version: V9_15_0
-    numpy       : 2.5.2
+    numpy       : 2.5.4
 
 
 ### Helpers
@@ -532,15 +532,15 @@ assert all(r[5] < 1e-9 for r in poly_res)
 print("transferred fields match at every size: OK")
 ```
 
-    poly n= 100 | mefikit    3.18 ms (prepare) /  0.01 ms (apply) | medcoupling    191.1 ms /  0.20 ms |   60x faster
+    poly n= 100 | mefikit    1.83 ms (prepare) /  0.00 ms (apply) | medcoupling     76.4 ms /  0.05 ms |   42x faster
                 | max |mefikit - medcoupling| on the transferred field: 5.88e-15
 
 
-    poly n= 200 | mefikit   13.22 ms (prepare) /  0.01 ms (apply) | medcoupling    853.8 ms /  0.41 ms |   65x faster
+    poly n= 200 | mefikit    4.30 ms (prepare) /  0.00 ms (apply) | medcoupling    273.4 ms /  0.11 ms |   64x faster
                 | max |mefikit - medcoupling| on the transferred field: 6.38e-15
 
 
-    poly n= 400 | mefikit   43.79 ms (prepare) /  0.02 ms (apply) | medcoupling   3338.4 ms /  0.78 ms |   76x faster
+    poly n= 400 | mefikit   14.71 ms (prepare) /  0.01 ms (apply) | medcoupling   1076.1 ms /  0.22 ms |   73x faster
                 | max |mefikit - medcoupling| on the transferred field: 7.22e-15
     transferred fields match at every size: OK
 
@@ -560,7 +560,7 @@ print(
 )
 ```
 
-    At 400 cells mefikit prepares the polyhedral remap 76 times faster than medcoupling, and the gap grows with the mesh size.
+    At 400 cells mefikit prepares the polyhedral remap 73 times faster than medcoupling, and the gap grows with the mesh size.
 
 
 ## Performance on common operations
@@ -650,16 +650,16 @@ assert all_ok, "a cross-check failed"
 
     case           step             mefikit ms   medcoup ms     mc/mf
     --------------------------------------------------------------
-    remap-2d       build/prepare        35.108       40.813      1.2x
-    remap-2d       transfer              0.124        0.762      6.1x
-    remap-3d       build/prepare       260.281      865.010      3.3x
-    remap-3d       transfer              0.046        1.319     28.5x
-    remap-3d-poly  build/prepare       173.516     2844.467     16.4x
-    remap-3d-poly  transfer              0.049        2.027     41.6x
-    merge-nodes    merge                 0.599        0.531      0.9x
-    descend        run                  15.889       27.950      1.8x
-    overlay        run                   2.191       19.334      8.8x
-    crack          crack                73.527      525.266      7.1x
+    remap-2d       build/prepare         7.805       12.052      1.5x
+    remap-2d       transfer              0.040        0.227      5.7x
+    remap-3d       build/prepare        65.415      184.369      2.8x
+    remap-3d       transfer              0.020        0.534     27.1x
+    remap-3d-poly  build/prepare        65.900     1228.287     18.6x
+    remap-3d-poly  transfer              0.020        0.577     28.6x
+    merge-nodes    merge                 0.262        0.313      1.2x
+    descend        run                   7.539       15.981      2.1x
+    overlay        run                   1.430       10.420      7.3x
+    crack          crack                33.303      291.792      8.8x
 
     correctness cross-checks:
       [OK] remap-2d: intensive match (mf == mc)  7.752687380957468e-13

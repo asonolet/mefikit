@@ -55,7 +55,7 @@ toto.log10()
 
 
 
-    <Field at 0x7bbd5f051fb0>
+    <Field at 0x72523d78a7b0>
 
 
 
@@ -426,80 +426,3 @@ top = mesh2.select(mf.sel.group("top")).to_mesh()
 
 > **Read next:** [Field transfers](./transfers.md) moves fields from one mesh to
 > another, reusing the same expressions.
-
-## Time series
-
-Stepped (transient) fields are stored as ordinary fields with encoded names
-`<base>_step_<n>_time_<t>`. The `mesh.time_series` mapping provides a grouped
-view keyed by base name. Each series is a `TimeSeries` handle with ordered
-steps.
-
-
-```python
-mesh = mf.build_cmesh(np.linspace(0.0, 1.0, 3), np.linspace(0.0, 1.0, 3))
-mesh.fields.keys()
-```
-
-
-
-
-    []
-
-
-
-
-```python
-ts_t = mesh.time_series["T"]
-ts_t.add(20.0, time=0.0)
-ts_t.add(40.0, time=0.5)
-ts_t.add(60.0, time=1.0)
-mesh.time_series.keys()
-```
-
-
-
-
-    ['T']
-
-
-
-
-```python
-sorted(mesh.fields.keys())
-```
-
-
-
-
-    ['T_step_0_time_0', 'T_step_1_time_0.5', 'T_step_2_time_1']
-
-
-
-The series handle gives access to steps, times and values. Indexing with an
-integer returns the step; use `at_time()` or `nearest()` for time lookups.
-
-
-```python
-s = mesh.time_series["T"]
-s.base, s.dim(), s.steps(), s.times()
-```
-
-
-
-
-    ('T', 2, [0, 1, 2], [0.0, 0.5, 1.0])
-
-
-
-
-```python
-s.at(0).numpy()
-s.at_time(0.5).numpy()
-s.nearest(0.7).numpy()
-s.latest().numpy()
-```
-
-
-
-
-    array([60., 60., 60., 60.])

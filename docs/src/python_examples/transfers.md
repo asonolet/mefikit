@@ -132,7 +132,7 @@ nearest-neighbour sampling.
 The most flexible of the meshless methods: for each target cell center it
 fits a local least-squares polynomial through the `k` nearest source centers
 (default `k = 10`) and evaluates it at the target point. The neighbour weights
-are shaped by a distance kernel, one of the `mf.transfer.DistanceWeighting`
+are shaped by a distance kernel, one of the `mf.DistanceWeighting`
 choices:
 
 - `Constant()` — a plain (linear) least-squares fit over the `k` neighbours;
