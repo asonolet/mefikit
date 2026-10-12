@@ -200,13 +200,13 @@ pub(crate) fn measure_weighted(
     Ok(val.to_owned() * expanded)
 }
 
-enum FieldValue {
+pub(crate) enum FieldValue {
     Expr(Box<FieldExpr>),
     Broadcast(nd::ArcArrayD<f64>),
     PerBlock(BTreeMap<ElementType, nd::ArcArrayD<f64>>),
 }
 
-fn extract_field_value(value: &Bound<'_, PyAny>) -> PyResult<FieldValue> {
+pub(crate) fn extract_field_value(value: &Bound<'_, PyAny>) -> PyResult<FieldValue> {
     if let Ok(expr) = value.extract::<PyField>() {
         return Ok(FieldValue::Expr(Box::new(expr.into())));
     }
@@ -382,10 +382,24 @@ fn split_element_array(
     Ok(map)
 }
 
-fn assign_broadcast(m: &mut mf::UMesh, name: &str, arr: &nd::ArcArrayD<f64>) -> PyResult<()> {
+fn assign_broadcast_at(
+    m: &mut mf::UMesh,
+    name: &str,
+    arr: &nd::ArcArrayD<f64>,
+    forced_dim: Option<Dimension>,
+) -> PyResult<()> {
     let instances = find_instances(m, name);
     if let Some((dim, field)) = highest_instance(&instances) {
         let dim = *dim;
+        if let Some(fd) = forced_dim
+            && fd != dim
+        {
+            return Err(PyValueError::new_err(format!(
+                "field '{name}' already exists on dimension {}: cannot store it on dimension {}",
+                u8::from(dim),
+                u8::from(fd)
+            )));
+        }
         let first = field
             .0
             .values()
@@ -424,7 +438,17 @@ fn assign_broadcast(m: &mut mf::UMesh, name: &str, arr: &nd::ArcArrayD<f64>) -> 
         m.update_field(name, mf::FieldArcD::new(map));
         return Ok(());
     }
-    let dim = target_dim(m, name)?;
+    let dim = match forced_dim {
+        Some(d) => d,
+        None => target_dim(m, name)?,
+    };
+    if etypes_at_dim(m, dim).is_empty() {
+        return Err(PyValueError::new_err(format!(
+            "cannot store a field on dimension {}: the mesh has no {} elements",
+            u8::from(dim),
+            u8::from(dim)
+        )));
+    }
     let total_n = m.num_elements_of_dim(dim);
     let as_element_array = arr.ndim() >= 1 && arr.shape()[0] == total_n;
     let map = if as_element_array {
@@ -441,10 +465,11 @@ fn assign_broadcast(m: &mut mf::UMesh, name: &str, arr: &nd::ArcArrayD<f64>) -> 
     Ok(())
 }
 
-fn assign_per_block(
+fn assign_per_block_at(
     m: &mut mf::UMesh,
     name: &str,
     map: BTreeMap<ElementType, nd::ArcArrayD<f64>>,
+    forced_dim: Option<Dimension>,
 ) -> PyResult<()> {
     let mut dims: HashSet<u8> = HashSet::new();
     for et in map.keys() {
@@ -456,6 +481,15 @@ fn assign_per_block(
         ));
     }
     let dim = map.keys().next().expect("non-empty").dimension();
+    if let Some(fd) = forced_dim
+        && fd != dim
+    {
+        return Err(PyValueError::new_err(format!(
+            "per-block field targets dimension {}, but dimension {} was requested",
+            u8::from(dim),
+            u8::from(fd)
+        )));
+    }
     let expected_types = etypes_at_dim(m, dim);
     for et in &expected_types {
         if !map.contains_key(et) {
@@ -491,7 +525,12 @@ fn assign_per_block(
     Ok(())
 }
 
-fn assign_field(m: &mut mf::UMesh, name: &str, value: FieldValue) -> PyResult<()> {
+pub(crate) fn assign_field_at(
+    m: &mut mf::UMesh,
+    name: &str,
+    value: FieldValue,
+    forced_dim: Option<Dimension>,
+) -> PyResult<()> {
     match value {
         FieldValue::Expr(expr) => {
             let mut refs = Vec::new();
@@ -504,12 +543,16 @@ fn assign_field(m: &mut mf::UMesh, name: &str, value: FieldValue) -> PyResult<()
                     )));
                 }
             }
-            m.eval_update_field(name, None, *expr);
+            m.eval_update_field(name, forced_dim, *expr);
             Ok(())
         }
-        FieldValue::Broadcast(arr) => assign_broadcast(m, name, &arr),
-        FieldValue::PerBlock(map) => assign_per_block(m, name, map),
+        FieldValue::Broadcast(arr) => assign_broadcast_at(m, name, &arr, forced_dim),
+        FieldValue::PerBlock(map) => assign_per_block_at(m, name, map, forced_dim),
     }
+}
+
+pub(crate) fn assign_field(m: &mut mf::UMesh, name: &str, value: FieldValue) -> PyResult<()> {
+    assign_field_at(m, name, value, None)
 }
 
 enum RowSource {

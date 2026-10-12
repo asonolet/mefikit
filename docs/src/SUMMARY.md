@@ -21,6 +21,7 @@
 # Fields and selections
 
 - [Fields](./python_examples/fields.md)
+- [Time series](./python_examples/time_series.md)
 - [Selection](./python_examples/selection.md)
 - [Field transfers](./python_examples/transfers.md)
 - [Field gradients](./python_examples/gradient.md)

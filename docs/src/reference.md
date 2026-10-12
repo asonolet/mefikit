@@ -61,6 +61,31 @@ through `ref[selector] = value` writes them. Selectors are:
 - an ids dict: `{"QUAD4": [0, 3]}`
 - any selection expression: `mf.sel.rect(...)`, `mf.Field("T") > 1.0`, ...
 
+## The time-series mapping
+
+Steps of a transient field are stored as ordinary fields named
+`"<base>_step_<n>_time_<t>"`. The `mesh.time_series` mapping groups them by
+base into `TimeSeries` handles.
+
+| Operation | Call | Notes |
+|---|---|---|
+| list bases | `mesh.time_series.keys()` / `items()` / `len()` / `name in mesh.time_series` | sorted |
+| get a series | `s = mesh.time_series["T"]` | factory: creates a handle even before the series exists |
+| add a step | `mesh.time_series["T"].add(value, time=0.5, dim=None)` | step = max + 1; returns a `FieldRef`; creates the series on first add |
+| series metadata | `s.base`, `s.dim()`, `s.steps()`, `s.times()` | times need not be sorted nor unique |
+| get a step | `s.at(step)` / `s.at_time(t)` | `KeyError` if absent |
+| closest step | `s.nearest(t)` | ties go to the lower step |
+| last step | `s.latest()` | highest step number |
+| add to series | `s.add(value, time=...)` | appends at `max step + 1` |
+| re-stamp | `s.set_time(step, t)` | `ValueError` on name collision |
+| remove | `s.remove(step)` / `del s[step]` | `KeyError` if absent |
+| rename | `s.rename("T2")` | moves every step; the handle follows |
+| iterate | `list(s)` → `(time, FieldRef)`, `s.items()` → `(step, time, FieldRef)` | in step order |
+| index | `s[0]` (step only) | `TypeError` for float keys; use `at_time` / `nearest` for times |
+
+Static, non-stepped fields are unaffected and live in `mesh.fields` alongside
+the encoded step names.
+
 ## The groups mapping
 
 `mesh.groups` behaves like a dict keyed by group name. Each entry is a
@@ -221,7 +246,7 @@ operator to any field is then a single fast sparse product:
 | `ConservativeP0` | volumetric overlap | **yes** | `(src, tgt, def_val=0.0)` |
 
 Weighting kernels for `MovingLeastSquares` come from
-`mf.transfer.DistanceWeighting`: `Constant()`, `InverseDistance(exponent)`
+`mf.DistanceWeighting`: `Constant()`, `InverseDistance(exponent)`
 and `Gaussian()`.
 
 Once built, every operator is used the same way:

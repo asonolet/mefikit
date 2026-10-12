@@ -84,7 +84,7 @@ mod io;
 /// convention supporting time-dependent fields, e.g.:
 ///
 /// ```
-/// "temperature_iter_3_time_0.01"
+/// "temperature_step_3_time_0.01"
 /// ```
 ///
 /// Group data is stored as families groups. Families always form a partition of
