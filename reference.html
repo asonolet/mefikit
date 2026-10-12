@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-64d38436.js";
+            window.path_to_searchindex_js = "searchindex-65b857ab.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-7bca2e67.js"></script>
+        <script src="toc-c7a05c98.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -236,6 +236,34 @@ through <code>ref[selector] = value</code> writes them. Selectors are:</p>
 <li>an ids dict: <code>{"QUAD4": [0, 3]}</code></li>
 <li>any selection expression: <code>mf.sel.rect(...)</code>, <code>mf.Field("T") &gt; 1.0</code>, …</li>
 </ul>
+<h2 id="the-time-series-mapping"><a class="header" href="#the-time-series-mapping">The time-series mapping</a></h2>
+<p>Steps of a transient field are stored as ordinary fields named
+<code>"&lt;base&gt;_step_&lt;n&gt;_time_&lt;t&gt;"</code>. The <code>mesh.time_series</code> mapping groups them by
+base into <code>TimeSeries</code> handles.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Call</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>list bases</td><td><code>mesh.time_series.keys()</code> / <code>items()</code> / <code>len()</code> / <code>name in mesh.time_series</code></td><td>sorted</td></tr>
+<tr><td>get a series</td><td><code>s = mesh.time_series["T"]</code></td><td>factory: creates a handle even before the series exists</td></tr>
+<tr><td>add a step</td><td><code>mesh.time_series["T"].add(value, time=0.5, dim=None)</code></td><td>step = max + 1; returns a <code>FieldRef</code>; creates the series on first add</td></tr>
+<tr><td>series metadata</td><td><code>s.base</code>, <code>s.dim()</code>, <code>s.steps()</code>, <code>s.times()</code></td><td>times need not be sorted nor unique</td></tr>
+<tr><td>get a step</td><td><code>s.at(step)</code> / <code>s.at_time(t)</code></td><td><code>KeyError</code> if absent</td></tr>
+<tr><td>closest step</td><td><code>s.nearest(t)</code></td><td>ties go to the lower step</td></tr>
+<tr><td>last step</td><td><code>s.latest()</code></td><td>highest step number</td></tr>
+<tr><td>add to series</td><td><code>s.add(value, time=...)</code></td><td>appends at <code>max step + 1</code></td></tr>
+<tr><td>re-stamp</td><td><code>s.set_time(step, t)</code></td><td><code>ValueError</code> on name collision</td></tr>
+<tr><td>remove</td><td><code>s.remove(step)</code> / <code>del s[step]</code></td><td><code>KeyError</code> if absent</td></tr>
+<tr><td>rename</td><td><code>s.rename("T2")</code></td><td>moves every step; the handle follows</td></tr>
+<tr><td>iterate</td><td><code>list(s)</code> → <code>(time, FieldRef)</code>, <code>s.items()</code> → <code>(step, time, FieldRef)</code></td><td>in step order</td></tr>
+<tr><td>index</td><td><code>s[0]</code> (step only)</td><td><code>TypeError</code> for float keys; use <code>at_time</code> / <code>nearest</code> for times</td></tr>
+</tbody>
+</table>
+</div>
+<p>Static, non-stepped fields are unaffected and live in <code>mesh.fields</code> alongside
+the encoded step names.</p>
 <h2 id="the-groups-mapping"><a class="header" href="#the-groups-mapping">The groups mapping</a></h2>
 <p><code>mesh.groups</code> behaves like a dict keyed by group name. Each entry is a
 <code>GroupRef</code>.</p>
@@ -409,7 +437,7 @@ operator to any field is then a single fast sparse product:</p>
 </table>
 </div>
 <p>Weighting kernels for <code>MovingLeastSquares</code> come from
-<code>mf.transfer.DistanceWeighting</code>: <code>Constant()</code>, <code>InverseDistance(exponent)</code>
+<code>mf.DistanceWeighting</code>: <code>Constant()</code>, <code>InverseDistance(exponent)</code>
 and <code>Gaussian()</code>.</p>
 <p>Once built, every operator is used the same way:</p>
 <ul>

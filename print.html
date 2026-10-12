@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-64d38436.js";
+            window.path_to_searchindex_js = "searchindex-65b857ab.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-7bca2e67.js"></script>
+        <script src="toc-c7a05c98.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -706,6 +706,34 @@ through <code>ref[selector] = value</code> writes them. Selectors are:</p>
 <li>an ids dict: <code>{"QUAD4": [0, 3]}</code></li>
 <li>any selection expression: <code>mf.sel.rect(...)</code>, <code>mf.Field("T") &gt; 1.0</code>, …</li>
 </ul>
+<h2 id="the-time-series-mapping"><a class="header" href="#the-time-series-mapping">The time-series mapping</a></h2>
+<p>Steps of a transient field are stored as ordinary fields named
+<code>"&lt;base&gt;_step_&lt;n&gt;_time_&lt;t&gt;"</code>. The <code>mesh.time_series</code> mapping groups them by
+base into <code>TimeSeries</code> handles.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Call</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr><td>list bases</td><td><code>mesh.time_series.keys()</code> / <code>items()</code> / <code>len()</code> / <code>name in mesh.time_series</code></td><td>sorted</td></tr>
+<tr><td>get a series</td><td><code>s = mesh.time_series["T"]</code></td><td>factory: creates a handle even before the series exists</td></tr>
+<tr><td>add a step</td><td><code>mesh.time_series["T"].add(value, time=0.5, dim=None)</code></td><td>step = max + 1; returns a <code>FieldRef</code>; creates the series on first add</td></tr>
+<tr><td>series metadata</td><td><code>s.base</code>, <code>s.dim()</code>, <code>s.steps()</code>, <code>s.times()</code></td><td>times need not be sorted nor unique</td></tr>
+<tr><td>get a step</td><td><code>s.at(step)</code> / <code>s.at_time(t)</code></td><td><code>KeyError</code> if absent</td></tr>
+<tr><td>closest step</td><td><code>s.nearest(t)</code></td><td>ties go to the lower step</td></tr>
+<tr><td>last step</td><td><code>s.latest()</code></td><td>highest step number</td></tr>
+<tr><td>add to series</td><td><code>s.add(value, time=...)</code></td><td>appends at <code>max step + 1</code></td></tr>
+<tr><td>re-stamp</td><td><code>s.set_time(step, t)</code></td><td><code>ValueError</code> on name collision</td></tr>
+<tr><td>remove</td><td><code>s.remove(step)</code> / <code>del s[step]</code></td><td><code>KeyError</code> if absent</td></tr>
+<tr><td>rename</td><td><code>s.rename("T2")</code></td><td>moves every step; the handle follows</td></tr>
+<tr><td>iterate</td><td><code>list(s)</code> → <code>(time, FieldRef)</code>, <code>s.items()</code> → <code>(step, time, FieldRef)</code></td><td>in step order</td></tr>
+<tr><td>index</td><td><code>s[0]</code> (step only)</td><td><code>TypeError</code> for float keys; use <code>at_time</code> / <code>nearest</code> for times</td></tr>
+</tbody>
+</table>
+</div>
+<p>Static, non-stepped fields are unaffected and live in <code>mesh.fields</code> alongside
+the encoded step names.</p>
 <h2 id="the-groups-mapping"><a class="header" href="#the-groups-mapping">The groups mapping</a></h2>
 <p><code>mesh.groups</code> behaves like a dict keyed by group name. Each entry is a
 <code>GroupRef</code>.</p>
@@ -879,7 +907,7 @@ operator to any field is then a single fast sparse product:</p>
 </table>
 </div>
 <p>Weighting kernels for <code>MovingLeastSquares</code> come from
-<code>mf.transfer.DistanceWeighting</code>: <code>Constant()</code>, <code>InverseDistance(exponent)</code>
+<code>mf.DistanceWeighting</code>: <code>Constant()</code>, <code>InverseDistance(exponent)</code>
 and <code>Gaussian()</code>.</p>
 <p>Once built, every operator is used the same way:</p>
 <ul>
@@ -1084,7 +1112,7 @@ Cell types present : NORM_HEXA8
 </code></pre>
 <pre><code class="language-python">print(volumes.to_pyvista())
 </code></pre>
-<pre><code>UnstructuredGrid (0x72835c75b520)
+<pre><code>UnstructuredGrid (0x78585195b280)
   N Cells:    16
   N Points:   50
   X Bounds:   0.000e+00, 1.000e+00
@@ -1735,7 +1763,7 @@ toto.sqrt()
 toto.tan()
 toto.log10()
 </code></pre>
-<pre><code>&lt;Field at 0x7aa6f97f9fb0&gt;
+<pre><code>&lt;Field at 0x72523d78a7b0&gt;
 </code></pre>
 <h3 id="vector-ops"><a class="header" href="#vector-ops">Vector ops</a></h3>
 <pre><code class="language-python">toto.dot(tata)
@@ -1936,6 +1964,156 @@ top = mesh2.select(mf.sel.group("top")).to_mesh()
 <p><strong>Read next:</strong> <a href="#field-transfers-1">Field transfers</a> moves fields from one mesh to
 another, reusing the same expressions.</p>
 </blockquote>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="time-series"><a class="header" href="#time-series">Time series</a></h1>
+<p><em>Figures are omitted; the API is the focus here.</em></p>
+<pre><code class="language-python">import numpy as np
+
+import mefikit as mf
+</code></pre>
+<h2 id="creating-a-time-series"><a class="header" href="#creating-a-time-series">Creating a time series</a></h2>
+<p>A time series is a set of fields sharing a common <strong>base name</strong>, each step stored as a field
+named <code>"&lt;base&gt;_step_&lt;n&gt;_time_&lt;t&gt;"</code>. Steps are numbered automatically (<code>0, 1, 2, ...</code>), and the
+time stamps are yours to choose: they need not be sorted nor unique.</p>
+<pre><code class="language-python">mesh = mf.build_cmesh(np.linspace(0.0, 1.0, 3), np.linspace(0.0, 1.0, 3))
+</code></pre>
+<pre><code class="language-python">mesh.time_series["T"].add(20.0, time=0.0)
+</code></pre>
+<pre><code>FieldRef("T_step_0_time_0")
+</code></pre>
+<pre><code class="language-python">mesh.time_series["T"].add(40.0, time=0.5)
+mesh.time_series["T"].add(60.0, time=1.0)
+</code></pre>
+<pre><code>FieldRef("T_step_2_time_1")
+</code></pre>
+<pre><code class="language-python">mesh.time_series
+</code></pre>
+<pre><code>TimeSeriesMapping(["T"])
+</code></pre>
+<pre><code class="language-python">mesh.fields.keys()  # the same data, seen as raw steps
+</code></pre>
+<pre><code>['T_step_0_time_0', 'T_step_1_time_0.5', 'T_step_2_time_1']
+</code></pre>
+<h2 id="step-access"><a class="header" href="#step-access">Step access</a></h2>
+<p><code>mesh.time_series</code> maps base names to <code>TimeSeries</code> handles. A handle knows its base, the
+dimension it lives on, and its ordered steps.</p>
+<pre><code class="language-python">s = mesh.time_series["T"]
+</code></pre>
+<pre><code class="language-python">s.base, s.dim()
+</code></pre>
+<pre><code>('T', 2)
+</code></pre>
+<pre><code class="language-python">s.steps()
+</code></pre>
+<pre><code>[0, 1, 2]
+</code></pre>
+<pre><code class="language-python">s.times()
+</code></pre>
+<pre><code>[0.0, 0.5, 1.0]
+</code></pre>
+<pre><code class="language-python">s.at(0).numpy()  # exact step
+</code></pre>
+<pre><code>array([20., 20., 20., 20.])
+</code></pre>
+<pre><code class="language-python">s.at_time(0.5).numpy()  # exact time
+</code></pre>
+<pre><code>array([40., 40., 40., 40.])
+</code></pre>
+<pre><code class="language-python">s.nearest(0.7).numpy()  # closest time
+</code></pre>
+<pre><code>array([40., 40., 40., 40.])
+</code></pre>
+<pre><code class="language-python">s.latest().numpy()  # last step
+</code></pre>
+<pre><code>array([60., 60., 60., 60.])
+</code></pre>
+<pre><code class="language-python">s[1]  # int -&gt; step
+s.nearest(0.9)  # float lookups go through nearest()/at_time()
+</code></pre>
+<pre><code>FieldRef("T_step_2_time_1")
+</code></pre>
+<p><code>TimeSeries</code> also supports the usual collection protocol.</p>
+<pre><code class="language-python">list(s)  # (time, FieldRef) pairs, in step order
+</code></pre>
+<pre><code>[(0.0, FieldRef("T_step_0_time_0")),
+ (0.5, FieldRef("T_step_1_time_0.5")),
+ (1.0, FieldRef("T_step_2_time_1"))]
+</code></pre>
+<pre><code class="language-python">s.items()  # (step, time, FieldRef) triples
+</code></pre>
+<pre><code>[(0, 0.0, FieldRef("T_step_0_time_0")),
+ (1, 0.5, FieldRef("T_step_1_time_0.5")),
+ (2, 1.0, FieldRef("T_step_2_time_1"))]
+</code></pre>
+<pre><code class="language-python">(len(s), 1 in s, 7 in s)
+</code></pre>
+<pre><code>(3, True, False)
+</code></pre>
+<pre><code class="language-python">s  # compact repr
+</code></pre>
+<pre><code>TimeSeries('T', dim=2) {0:0, 1:0.5, 2:1}
+</code></pre>
+<h2 id="growing-a-series"><a class="header" href="#growing-a-series">Growing a series</a></h2>
+<p><code>add</code> appends the next step (<code>max step + 1</code>) with the given time. Values accept the same inputs
+as <code>fields</code>: scalars, arrays, per-block dicts, field expressions,</p>
+<pre><code class="language-python">mesh.time_series["T"].add(np.array([1.0, 2.0, 3.0, 4.0]), time=1.5)
+</code></pre>
+<pre><code>FieldRef("T_step_3_time_1.5")
+</code></pre>
+<pre><code class="language-python">s.times()
+</code></pre>
+<pre><code>[0.0, 0.5, 1.0, 1.5]
+</code></pre>
+<pre><code class="language-python">s.at(3).numpy()
+</code></pre>
+<pre><code>array([1., 2., 3., 4.])
+</code></pre>
+<h2 id="mutating-steps"><a class="header" href="#mutating-steps">Mutating steps</a></h2>
+<p>Timestamps can be rewritten in place, and steps removed again.</p>
+<pre><code class="language-python">s.set_time(0, -0.1)  # re-stamp step 0
+</code></pre>
+<pre><code class="language-python">s.times()
+</code></pre>
+<pre><code>[-0.1, 0.5, 1.0, 1.5]
+</code></pre>
+<pre><code class="language-python">s.remove(1)
+print(s.steps(), s.times())
+</code></pre>
+<pre><code>[0, 2, 3] [-0.1, 1.0, 1.5]
+</code></pre>
+<p><code>TimeSeries</code> is also subscript-settable / deletable through dunder methods.</p>
+<pre><code class="language-python">del s[3]
+print(s.steps(), s.times())
+</code></pre>
+<pre><code>[0, 2] [-0.1, 1.0]
+</code></pre>
+<h2 id="renaming-a-series"><a class="header" href="#renaming-a-series">Renaming a series</a></h2>
+<p>Renaming moves every step to a new base name, and the handle follows.</p>
+<pre><code class="language-python">s.rename("Temperature")
+print(s.base)
+</code></pre>
+<pre><code>Temperature
+</code></pre>
+<pre><code class="language-python">mesh.time_series
+</code></pre>
+<pre><code>TimeSeriesMapping(["Temperature"])
+</code></pre>
+<pre><code class="language-python">sorted(mesh.fields.keys())
+</code></pre>
+<pre><code>['Temperature_step_0_time_-0.1', 'Temperature_step_2_time_1']
+</code></pre>
+<h2 id="coexisting-with-plain-fields"><a class="header" href="#coexisting-with-plain-fields">Coexisting with plain fields</a></h2>
+<p>Static, non-stepped fields live alongside the series and are untouched by any of the
+time-series helpers.</p>
+<pre><code class="language-python">mesh.fields["steady"] = 3.0
+print(sorted(mesh.fields.keys()))
+</code></pre>
+<pre><code>['Temperature_step_0_time_-0.1', 'Temperature_step_2_time_1', 'steady']
+</code></pre>
+<h2 id="limitations"><a class="header" href="#limitations">Limitations</a></h2>
+<p>Time series are a light naming scheme over ordinary fields: they do <strong>not</strong> model MED’s
+multi-step fields. MED import/export currently only handle the first step of a series; a
+conversion with time-stepping is not provided (yet).</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="selection-tool"><a class="header" href="#selection-tool">Selection tool</a></h1>
 <p><em>Figures use PyVista; verbose plotting boilerplate is omitted.</em></p>
@@ -2287,7 +2465,7 @@ nearest-neighbour sampling.</p>
 <p>The most flexible of the meshless methods: for each target cell center it
 fits a local least-squares polynomial through the <code>k</code> nearest source centers
 (default <code>k = 10</code>) and evaluates it at the target point. The neighbour weights
-are shaped by a distance kernel, one of the <code>mf.transfer.DistanceWeighting</code>
+are shaped by a distance kernel, one of the <code>mf.DistanceWeighting</code>
 choices:</p>
 <ul>
 <li><code>Constant()</code> — a plain (linear) least-squares fit over the <code>k</code> neighbours;</li>
@@ -2761,7 +2939,7 @@ print("medcoupling version:", mc.__version__)
 print("numpy       :", np.__version__)
 </code></pre>
 <pre><code>medcoupling version: V9_15_0
-numpy       : 2.5.2
+numpy       : 2.5.4
 </code></pre>
 <h3 id="helpers"><a class="header" href="#helpers">Helpers</a></h3>
 <p>Small utilities :</p>
@@ -3131,15 +3309,15 @@ for n in (100, 200, 400):
 assert all(r[5] &lt; 1e-9 for r in poly_res)
 print("transferred fields match at every size: OK")
 </code></pre>
-<pre><code>poly n= 100 | mefikit    3.18 ms (prepare) /  0.01 ms (apply) | medcoupling    191.1 ms /  0.20 ms |   60x faster
+<pre><code>poly n= 100 | mefikit    1.83 ms (prepare) /  0.00 ms (apply) | medcoupling     76.4 ms /  0.05 ms |   42x faster
             | max |mefikit - medcoupling| on the transferred field: 5.88e-15
 
 
-poly n= 200 | mefikit   13.22 ms (prepare) /  0.01 ms (apply) | medcoupling    853.8 ms /  0.41 ms |   65x faster
+poly n= 200 | mefikit    4.30 ms (prepare) /  0.00 ms (apply) | medcoupling    273.4 ms /  0.11 ms |   64x faster
             | max |mefikit - medcoupling| on the transferred field: 6.38e-15
 
 
-poly n= 400 | mefikit   43.79 ms (prepare) /  0.02 ms (apply) | medcoupling   3338.4 ms /  0.78 ms |   76x faster
+poly n= 400 | mefikit   14.71 ms (prepare) /  0.01 ms (apply) | medcoupling   1076.1 ms /  0.22 ms |   73x faster
             | max |mefikit - medcoupling| on the transferred field: 7.22e-15
 transferred fields match at every size: OK
 </code></pre>
@@ -3150,7 +3328,7 @@ print(
     "than medcoupling, and the gap grows with the mesh size."
 )
 </code></pre>
-<pre><code>At 400 cells mefikit prepares the polyhedral remap 76 times faster than medcoupling, and the gap grows with the mesh size.
+<pre><code>At 400 cells mefikit prepares the polyhedral remap 73 times faster than medcoupling, and the gap grows with the mesh size.
 </code></pre>
 <h2 id="performance-on-common-operations"><a class="header" href="#performance-on-common-operations">Performance on common operations</a></h2>
 <p>Now the same benchmark spirit on the structured meshes (quad / hexa) of daily
@@ -3228,16 +3406,16 @@ assert all_ok, "a cross-check failed"
 </code></pre>
 <pre><code>case           step             mefikit ms   medcoup ms     mc/mf
 --------------------------------------------------------------
-remap-2d       build/prepare        35.108       40.813      1.2x
-remap-2d       transfer              0.124        0.762      6.1x
-remap-3d       build/prepare       260.281      865.010      3.3x
-remap-3d       transfer              0.046        1.319     28.5x
-remap-3d-poly  build/prepare       173.516     2844.467     16.4x
-remap-3d-poly  transfer              0.049        2.027     41.6x
-merge-nodes    merge                 0.599        0.531      0.9x
-descend        run                  15.889       27.950      1.8x
-overlay        run                   2.191       19.334      8.8x
-crack          crack                73.527      525.266      7.1x
+remap-2d       build/prepare         7.805       12.052      1.5x
+remap-2d       transfer              0.040        0.227      5.7x
+remap-3d       build/prepare        65.415      184.369      2.8x
+remap-3d       transfer              0.020        0.534     27.1x
+remap-3d-poly  build/prepare        65.900     1228.287     18.6x
+remap-3d-poly  transfer              0.020        0.577     28.6x
+merge-nodes    merge                 0.262        0.313      1.2x
+descend        run                   7.539       15.981      2.1x
+overlay        run                   1.430       10.420      7.3x
+crack          crack                33.303      291.792      8.8x
 
 correctness cross-checks:
   [OK] remap-2d: intensive match (mf == mc)  7.752687380957468e-13
