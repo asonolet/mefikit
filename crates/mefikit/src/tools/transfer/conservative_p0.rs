@@ -77,8 +77,7 @@ fn build_overlap_2d(
 ) -> Vec<(ElementType, RowSparse)> {
     let index = mesh_src.bvh2();
     let mut data = Vec::new();
-    for (_, block) in mesh_tgt.blocks() {
-        let tgt_et = block.element_type();
+    for (tgt_et, block) in mesh_tgt.blocks() {
         if tgt_et.dimension() != Dimension::D2 {
             continue;
         }
@@ -90,8 +89,11 @@ fn build_overlap_2d(
         let mut weights = Vec::new();
         for (j, elem) in block.iter(mesh_tgt.coords()).enumerate() {
             let mut pgon: Vec<[f64; 2]> = elem.coords2().copied().collect();
-            into_ccw2(&mut pgon);
-            target_measure[j] = signed_area2(&pgon).abs();
+            let a = signed_area2(&pgon);
+            target_measure[j] = a.abs();
+            if a < 0.0 {
+                pgon.reverse();
+            }
 
             let [min, max] = elem.bounds2();
             // The BVH stores f32 boxes: inflate the query by a small epsilon so a source cell
@@ -105,13 +107,13 @@ fn build_overlap_2d(
             let candidates =
                 index.in_bounds([min[0] - eps, min[1] - eps], [max[0] + eps, max[1] + eps]);
 
-            for (src_et, indices) in candidates.0 {
+            for (src_et, indices) in candidates.iter_blocks() {
                 if src_et.dimension() != Dimension::D2 {
                     continue;
                 }
-                let offset = src_offsets[&src_et];
-                for &i in &indices {
-                    let src_elem = mesh_src.element(ElementId::new(src_et, i));
+                let offset = src_offsets[src_et];
+                for &i in indices {
+                    let src_elem = mesh_src.element(ElementId::new(*src_et, i));
                     let mut src_pgon: Vec<[f64; 2]> = src_elem.coords2().copied().collect();
                     into_ccw2(&mut src_pgon);
                     let area = convex_intersection_area(&src_pgon, &pgon);
@@ -124,7 +126,7 @@ fn build_overlap_2d(
             row_ptr.push(src_idx.len());
         }
         data.push((
-            tgt_et,
+            *tgt_et,
             RowSparse {
                 target_measure,
                 row_ptr,
