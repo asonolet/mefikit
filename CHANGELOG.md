@@ -1,5 +1,27 @@
 # CHANGELOG
 
+## [0.5.0](https://github.com/asonolet/mefikit/compare/v0.4.1...v0.5.0) - 2026-10-13
+
+### Add
+
+- stitch method (conformize3D) and 3d surface overlay ([#43](https://github.com/asonolet/mefikit/pull/43))
+
+### Documentation
+
+- refactor start of the docs
+- improve mdbook doc ([#45](https://github.com/asonolet/mefikit/pull/45))
+- update docs, change release compilation opts ([#44](https://github.com/asonolet/mefikit/pull/44))
+
+### Other
+
+- Ast/time fields api ([#47](https://github.com/asonolet/mefikit/pull/47))
+- Ast/gradient ([#46](https://github.com/asonolet/mefikit/pull/46))
+- Ast/misc coords ops ([#41](https://github.com/asonolet/mefikit/pull/41))
+
+### Performance
+
+- small optimization of reverse element connectivity ([#48](https://github.com/asonolet/mefikit/pull/48))
+
 ## [0.4.1](https://github.com/asonolet/mefikit/compare/v0.4.0...v0.4.1) - 2026-09-22
 
 ### Fix
