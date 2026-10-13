@@ -180,28 +180,46 @@ impl Display for PyMovingLeastSquares {
 
 #[pymethods]
 impl PyMovingLeastSquares {
+    /// Builds a moving least-squares transfer operator.
+    ///
+    /// `device` selects where the per-target weighted fit runs: `"cpu"` (the default, the f64 host
+    /// implementation), `"auto"` (a `wgpu` device when one is available, the host CPU otherwise), or
+    /// `"wgpu"` (the f32 device implementation).
     #[new]
-    #[pyo3(signature = (src_mesh, tgt_mesh, k=10, weighting=PyDistanceWeighting::Constant(), def_val=0.0))]
+    #[pyo3(signature = (src_mesh, tgt_mesh, k=10, weighting=PyDistanceWeighting::Constant(), def_val=0.0, device="cpu"))]
     fn new(
         src_mesh: &Bound<'_, PyUMesh>,
         tgt_mesh: &Bound<'_, PyUMesh>,
         k: usize,
         weighting: PyDistanceWeighting,
         def_val: f64,
-    ) -> Self {
-        let transfer = mf::TransferOperator::new(
-            &into_view(&src_mesh.borrow()),
-            &into_view(&tgt_mesh.borrow()),
-            mf::TransferMethod::MovingLeastSquares {
-                k,
-                weighting: weighting.into(),
-            },
-        );
-        PyMovingLeastSquares {
-            op: Arc::new(transfer),
+        device: &str,
+    ) -> PyResult<Self> {
+        let method = mf::TransferMethod::MovingLeastSquares {
+            k,
+            weighting: weighting.into(),
+        };
+        let src_guard = src_mesh.borrow();
+        let tgt_guard = tgt_mesh.borrow();
+        let src_view = into_view(&src_guard);
+        let tgt_view = into_view(&tgt_guard);
+        #[cfg(feature = "gpu")]
+        if let Some(dev) = crate::pygpu::resolve_device(device)? {
+            let op = mf::TransferOperator::new_gpu(&dev, &src_view, &tgt_view, method);
+            return Ok(PyMovingLeastSquares {
+                op: Arc::new(op),
+                src_mesh: src_mesh.clone().unbind(),
+                def_val,
+            });
+        }
+        #[cfg(not(feature = "gpu"))]
+        crate::pygpu::resolve_device(device)?;
+        let op = mf::TransferOperator::new(&src_view, &tgt_view, method);
+        Ok(PyMovingLeastSquares {
+            op: Arc::new(op),
             src_mesh: src_mesh.clone().unbind(),
             def_val,
-        }
+        })
     }
 
     #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0, extensive=false))]
@@ -340,25 +358,43 @@ impl Display for PyInverseDistance {
 
 #[pymethods]
 impl PyInverseDistance {
+    /// Builds an inverse-distance (Shepard) transfer operator.
+    ///
+    /// `device` selects where the per-target weighting runs: `"cpu"` (the default, the f64 host
+    /// implementation), `"auto"` (a `wgpu` device when one is available, the host CPU otherwise), or
+    /// `"wgpu"` (the f32 device implementation).
     #[new]
-    #[pyo3(signature = (src_mesh, tgt_mesh, k=4, exponent=2.0, def_val=0.0))]
+    #[pyo3(signature = (src_mesh, tgt_mesh, k=4, exponent=2.0, def_val=0.0, device="cpu"))]
     fn new(
         src_mesh: &Bound<'_, PyUMesh>,
         tgt_mesh: &Bound<'_, PyUMesh>,
         k: usize,
         exponent: f64,
         def_val: f64,
-    ) -> Self {
-        let transfer = mf::TransferOperator::new(
-            &into_view(&src_mesh.borrow()),
-            &into_view(&tgt_mesh.borrow()),
-            mf::TransferMethod::InverseDistance { k, exponent },
-        );
-        PyInverseDistance {
-            op: Arc::new(transfer),
+        device: &str,
+    ) -> PyResult<Self> {
+        let method = mf::TransferMethod::InverseDistance { k, exponent };
+        let src_guard = src_mesh.borrow();
+        let tgt_guard = tgt_mesh.borrow();
+        let src_view = into_view(&src_guard);
+        let tgt_view = into_view(&tgt_guard);
+        #[cfg(feature = "gpu")]
+        if let Some(dev) = crate::pygpu::resolve_device(device)? {
+            let op = mf::TransferOperator::new_gpu(&dev, &src_view, &tgt_view, method);
+            return Ok(PyInverseDistance {
+                op: Arc::new(op),
+                src_mesh: src_mesh.clone().unbind(),
+                def_val,
+            });
+        }
+        #[cfg(not(feature = "gpu"))]
+        crate::pygpu::resolve_device(device)?;
+        let op = mf::TransferOperator::new(&src_view, &tgt_view, method);
+        Ok(PyInverseDistance {
+            op: Arc::new(op),
             src_mesh: src_mesh.clone().unbind(),
             def_val,
-        }
+        })
     }
 
     #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0, extensive=false))]

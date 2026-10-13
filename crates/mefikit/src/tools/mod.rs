@@ -24,6 +24,9 @@ pub mod crack;
 pub mod extrude;
 /// Field expression evaluation and manipulation.
 pub mod fieldexpr;
+/// GPU-accelerated meshless reconstruction (k-NN fit for gradients and transfers).
+#[cfg(feature = "gpu")]
+pub mod gpu_meshless;
 /// GPU-accelerated field statistics.
 #[cfg(feature = "gpu")]
 pub mod gpu_stats;

@@ -11,7 +11,7 @@
 
 use super::operator::{TransferMethod, TransferOperator, point_interpolation, validated_dims};
 use crate::mesh::UMeshView;
-use crate::tools::meshless::{NeighbourScheme, solve_neighbours, source_centroids};
+use crate::tools::meshless::{NeighbourScheme, Solver, source_centroids};
 
 /// Builds the inverse-distance operator over the `k` nearest source points of every target point.
 ///
@@ -36,6 +36,7 @@ pub(crate) fn prepare(
     mesh_tgt: &UMeshView,
     k: usize,
     exponent: f64,
+    solver: Solver,
 ) -> TransferOperator {
     let (src_dim, tgt_dim, src_space) = validated_dims(mesh_src, mesh_tgt, "Inverse-distance");
     assert!(k > 0, "k should be at least 1");
@@ -56,7 +57,7 @@ pub(crate) fn prepare(
         tgt_dim,
         n_src,
         point_interpolation(mesh_tgt, src_space, |coords| {
-            solve_neighbours(
+            solver.interpolation_weights(
                 &src_coords.view(),
                 &coords,
                 k,

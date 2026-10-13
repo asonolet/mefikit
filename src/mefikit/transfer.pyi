@@ -35,6 +35,7 @@ class MovingLeastSquares:
         k: int = ...,
         weighting: DistanceWeighting = ...,
         def_val: float = ...,
+        device: str = ...,
     ) -> None: ...
     def __call__(
         self,
@@ -64,6 +65,7 @@ class InverseDistance:
         k: int = ...,
         exponent: float = ...,
         def_val: float = ...,
+        device: str = ...,
     ) -> None: ...
     def __call__(
         self,

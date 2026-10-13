@@ -11,8 +11,7 @@ use ndarray as nd;
 
 use crate::mesh::UMeshView;
 use crate::tools::meshless::{
-    DistanceWeighting, solve_gradient_neighbours, source_centroids, target_centroids,
-    validated_dims,
+    DistanceWeighting, Solver, source_centroids, target_centroids, validated_dims,
 };
 
 use super::operator::{GradientMethod, GradientOperator, GradientRowSparse, GradientTarget};
@@ -23,6 +22,7 @@ pub(crate) fn prepare_cells(
     mesh_tgt: &UMeshView,
     k: usize,
     weighting: DistanceWeighting,
+    solver: Solver,
 ) -> GradientOperator {
     let (src_dim, tgt_dim, space) = validated_dims(mesh_src, mesh_tgt, "Gradient");
     assert!(k > 0, "k should be at least 1");
@@ -34,7 +34,12 @@ pub(crate) fn prepare_cells(
     let (src_coords, n_src) = source_centroids(mesh_src, src_dim);
     let blocks = target_centroids(mesh_tgt, space)
         .into_iter()
-        .map(|(et, coords)| (et, gradient_block(&src_coords, &coords, k, weighting)))
+        .map(|(et, coords)| {
+            (
+                et,
+                gradient_block(&src_coords, &coords, k, weighting, &solver),
+            )
+        })
         .collect();
 
     GradientOperator::build(
@@ -52,6 +57,7 @@ pub(crate) fn prepare_on_source(
     mesh_src: &UMeshView,
     k: usize,
     weighting: DistanceWeighting,
+    solver: Solver,
 ) -> GradientOperator {
     let (src_dim, _, space) = validated_dims(mesh_src, mesh_src, "Gradient");
     assert!(k > 0, "k should be at least 1");
@@ -65,7 +71,12 @@ pub(crate) fn prepare_on_source(
     let blocks = target_centroids(mesh_src, space)
         .into_iter()
         .filter(|(et, _)| et.dimension() == src_dim)
-        .map(|(et, coords)| (et, gradient_block(&src_coords, &coords, k, weighting)))
+        .map(|(et, coords)| {
+            (
+                et,
+                gradient_block(&src_coords, &coords, k, weighting, &solver),
+            )
+        })
         .collect();
 
     GradientOperator::build(
@@ -84,6 +95,7 @@ pub(crate) fn prepare_points(
     points: &nd::ArrayView2<f64>,
     k: usize,
     weighting: DistanceWeighting,
+    solver: Solver,
 ) -> GradientOperator {
     let (src_dim, _, space) = validated_dims(mesh_src, mesh_src, "Gradient");
     assert!(k > 0, "k should be at least 1");
@@ -99,7 +111,7 @@ pub(crate) fn prepare_points(
     );
 
     let (src_coords, n_src) = source_centroids(mesh_src, src_dim);
-    let rows = gradient_block(&src_coords, &points.to_owned(), k, weighting);
+    let rows = gradient_block(&src_coords, &points.to_owned(), k, weighting, &solver);
 
     GradientOperator::build(
         GradientMethod::MovingLeastSquares { k, weighting },
@@ -117,9 +129,10 @@ fn gradient_block(
     tgt_coords: &nd::Array2<f64>,
     k: usize,
     weighting: DistanceWeighting,
+    solver: &Solver,
 ) -> GradientRowSparse {
     let (indices, grads) =
-        solve_gradient_neighbours(&src_coords.view(), &tgt_coords.view(), k, weighting);
+        solver.gradient_weights(&src_coords.view(), &tgt_coords.view(), k, weighting);
 
     let n_tgt = indices.nrows();
     let k_nb = indices.ncols();

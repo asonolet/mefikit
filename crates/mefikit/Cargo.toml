@@ -75,6 +75,10 @@ required-features = ["io"]
 name = "gpu_stats"
 required-features = ["gpu"]
 
+[[example]]
+name = "gpu_meshless"
+required-features = ["gpu"]
+
 # ref: https://bheisler.github.io/criterion.rs/book/getting_started.html#step-1---add-dependency-to-cargotoml
 [[bench]]
 name = "neighbours"

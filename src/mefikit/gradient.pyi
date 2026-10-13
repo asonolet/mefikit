@@ -15,6 +15,7 @@ class Gradient:
         k: int = ...,
         weighting: DistanceWeighting = ...,
         def_val: float = ...,
+        device: str = ...,
     ) -> None: ...
     @staticmethod
     def at_points(
@@ -23,6 +24,7 @@ class Gradient:
         k: int = ...,
         weighting: DistanceWeighting = ...,
         def_val: float = ...,
+        device: str = ...,
     ) -> Gradient: ...
     def __call__(
         self,

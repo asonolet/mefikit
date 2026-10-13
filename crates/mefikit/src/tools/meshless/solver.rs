@@ -22,6 +22,56 @@ use ndarray as nd;
 
 use super::kernel::DistanceWeighting;
 
+/// Selects where the per-target meshless fit runs: on the host CPU, or on a CubeCL device.
+///
+/// Both paths share the same host `k`-nearest-neighbours search; only the per-point weighted fit
+/// (and the linear solve it contains) is offloaded when a device is given, so the neighbour lists
+/// and the resulting operators are identical up to floating-point rounding.
+#[derive(Clone, Debug)]
+pub(crate) enum Solver {
+    /// Run the fit on the host CPU.
+    Cpu,
+    /// Run the fit on the given CubeCL device.
+    #[cfg(feature = "gpu")]
+    Gpu(cubecl::Device),
+}
+
+impl Solver {
+    /// Computes the gradient weights through the selected backend.
+    pub(crate) fn gradient_weights(
+        &self,
+        src_coords: &nd::ArrayView2<f64>,
+        tgt_coords: &nd::ArrayView2<f64>,
+        k: usize,
+        weighting: DistanceWeighting,
+    ) -> (nd::Array2<usize>, nd::Array3<f64>) {
+        match self {
+            Self::Cpu => solve_gradient_neighbours(src_coords, tgt_coords, k, weighting),
+            #[cfg(feature = "gpu")]
+            Self::Gpu(device) => crate::tools::gpu_meshless::gpu_gradient_weights(
+                device, src_coords, tgt_coords, k, weighting,
+            ),
+        }
+    }
+
+    /// Computes the interpolation weights through the selected backend.
+    pub(crate) fn interpolation_weights(
+        &self,
+        src_coords: &nd::ArrayView2<f64>,
+        tgt_coords: &nd::ArrayView2<f64>,
+        k: usize,
+        scheme: NeighbourScheme,
+    ) -> (nd::Array2<usize>, nd::Array2<f64>) {
+        match self {
+            Self::Cpu => solve_neighbours(src_coords, tgt_coords, k, scheme),
+            #[cfg(feature = "gpu")]
+            Self::Gpu(device) => crate::tools::gpu_meshless::gpu_interpolation_weights(
+                device, src_coords, tgt_coords, k, scheme,
+            ),
+        }
+    }
+}
+
 /// The flavour of per-target-point interpolation weights computed by [`solve_neighbours`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum NeighbourScheme {

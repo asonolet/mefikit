@@ -73,22 +73,43 @@ impl PyGradient {
     /// Builds a moving least-squares gradient operator.
     ///
     /// With no `tgt_mesh` the gradient is evaluated at the source mesh's own cell centroids;
-    /// otherwise it is evaluated at the target mesh's cell centroids.
+    /// otherwise it is evaluated at the target mesh's cell centroids. `device` selects where the
+    /// per-point weighted fit runs: `"cpu"` (the default, the f64 host implementation), `"auto"`
+    /// (a `wgpu` device when one is available, the host CPU otherwise), or `"wgpu"` (the f32
+    /// device implementation).
     #[new]
-    #[pyo3(signature = (src_mesh, tgt_mesh=None, k=10, weighting=PyDistanceWeighting::Constant(), def_val=0.0))]
+    #[pyo3(signature = (src_mesh, tgt_mesh=None, k=10, weighting=PyDistanceWeighting::Constant(), def_val=0.0, device="cpu"))]
     fn new(
         src_mesh: &Bound<'_, PyUMesh>,
         tgt_mesh: Option<&Bound<'_, PyUMesh>>,
         k: usize,
         weighting: PyDistanceWeighting,
         def_val: f64,
-    ) -> Self {
+        device: &str,
+    ) -> PyResult<Self> {
         let method = mf::GradientMethod::MovingLeastSquares {
             k,
             weighting: weighting.into(),
         };
         let src_guard = src_mesh.borrow();
         let src = into_view(&src_guard);
+        #[cfg(feature = "gpu")]
+        if let Some(dev) = crate::pygpu::resolve_device(device)? {
+            let op = match tgt_mesh {
+                Some(tgt) => {
+                    let tgt_guard = tgt.borrow();
+                    mf::GradientOperator::new_gpu(&dev, &src, &into_view(&tgt_guard), method)
+                }
+                None => mf::GradientOperator::on_source_gpu(&dev, &src, method),
+            };
+            return Ok(PyGradient {
+                op: Arc::new(op),
+                src_mesh: src_mesh.clone().unbind(),
+                def_val,
+            });
+        }
+        #[cfg(not(feature = "gpu"))]
+        crate::pygpu::resolve_device(device)?;
         let op = match tgt_mesh {
             Some(tgt) => {
                 let tgt_guard = tgt.borrow();
@@ -96,25 +117,27 @@ impl PyGradient {
             }
             None => mf::GradientOperator::on_source(&src, method),
         };
-        PyGradient {
+        Ok(PyGradient {
             op: Arc::new(op),
             src_mesh: src_mesh.clone().unbind(),
             def_val,
-        }
+        })
     }
 
     /// Builds a moving least-squares gradient operator evaluated at arbitrary `points`.
     ///
-    /// `points` is an `(n_points, d)` array of coordinates in the source mesh's space.
+    /// `points` is an `(n_points, d)` array of coordinates in the source mesh's space. `device`
+    /// selects where the per-point weighted fit runs (see [`PyGradient::new`]).
     #[staticmethod]
-    #[pyo3(signature = (src_mesh, points, k=10, weighting=PyDistanceWeighting::Constant(), def_val=0.0))]
+    #[pyo3(signature = (src_mesh, points, k=10, weighting=PyDistanceWeighting::Constant(), def_val=0.0, device="cpu"))]
     fn at_points(
         src_mesh: &Bound<'_, PyUMesh>,
         points: np::PyReadonlyArray2<'_, f64>,
         k: usize,
         weighting: PyDistanceWeighting,
         def_val: f64,
-    ) -> Self {
+        device: &str,
+    ) -> PyResult<Self> {
         let method = mf::GradientMethod::MovingLeastSquares {
             k,
             weighting: weighting.into(),
@@ -122,12 +145,23 @@ impl PyGradient {
         let src_guard = src_mesh.borrow();
         let src = into_view(&src_guard);
         let points = points.as_array();
+        #[cfg(feature = "gpu")]
+        if let Some(dev) = crate::pygpu::resolve_device(device)? {
+            let op = mf::GradientOperator::at_points_gpu(&dev, &src, &points, method);
+            return Ok(PyGradient {
+                op: Arc::new(op),
+                src_mesh: src_mesh.clone().unbind(),
+                def_val,
+            });
+        }
+        #[cfg(not(feature = "gpu"))]
+        crate::pygpu::resolve_device(device)?;
         let op = mf::GradientOperator::at_points(&src, &points, method);
-        PyGradient {
+        Ok(PyGradient {
             op: Arc::new(op),
             src_mesh: src_mesh.clone().unbind(),
             def_val,
-        }
+        })
     }
 
     /// Computes the gradient of `field_name` on `src_mesh` and stores it in `tgt_mesh`.

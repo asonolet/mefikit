@@ -16,4 +16,8 @@ mod solver;
 
 pub use kernel::DistanceWeighting;
 pub(crate) use points::{source_centroids, target_centroids, validated_dims};
-pub(crate) use solver::{NeighbourScheme, solve_gradient_neighbours, solve_neighbours};
+#[cfg(feature = "gpu")]
+pub(crate) use solver::nearest_neighbours;
+pub(crate) use solver::{NeighbourScheme, Solver};
+#[cfg(test)]
+pub(crate) use solver::{solve_gradient_neighbours, solve_neighbours};

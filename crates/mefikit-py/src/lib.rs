@@ -4,6 +4,7 @@ mod element;
 mod element_ids;
 mod pyfield;
 mod pyfields;
+mod pygpu;
 mod pygradient;
 mod pygroups;
 mod pystats;

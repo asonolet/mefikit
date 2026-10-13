@@ -13,6 +13,7 @@ use super::inverse_distance;
 use super::moving_least_squares;
 use super::operator::{TransferMethod, TransferOperator};
 use crate::mesh::UMeshView;
+use crate::tools::meshless::Solver;
 
 impl TransferOperator {
     /// Builds a transfer operator from `mesh_src` to `mesh_tgt` with the given method.
@@ -33,11 +34,42 @@ impl TransferOperator {
             }
             TransferMethod::ConservativeP0 => conservative_p0::prepare(mesh_src, mesh_tgt),
             TransferMethod::InverseDistance { k, exponent } => {
-                inverse_distance::prepare(mesh_src, mesh_tgt, k, exponent)
+                inverse_distance::prepare(mesh_src, mesh_tgt, k, exponent, Solver::Cpu)
             }
             TransferMethod::MovingLeastSquares { k, weighting } => {
-                moving_least_squares::prepare(mesh_src, mesh_tgt, k, weighting)
+                moving_least_squares::prepare(mesh_src, mesh_tgt, k, weighting, Solver::Cpu)
             }
+        }
+    }
+
+    /// Like [`TransferOperator::new`], but runs the per-target weighted fit on `device`.
+    ///
+    /// Only the inverse-distance and moving least-squares methods have a per-point fit to offload;
+    /// the other methods ([`TransferMethod::ConstantPiecewise`], [`TransferMethod::ConservativeP0`])
+    /// ignore `device` and behave exactly like [`TransferOperator::new`].
+    #[cfg(feature = "gpu")]
+    pub fn new_gpu(
+        device: &cubecl::Device,
+        mesh_src: &UMeshView,
+        mesh_tgt: &UMeshView,
+        method: TransferMethod,
+    ) -> Self {
+        match method {
+            TransferMethod::InverseDistance { k, exponent } => inverse_distance::prepare(
+                mesh_src,
+                mesh_tgt,
+                k,
+                exponent,
+                Solver::Gpu(device.clone()),
+            ),
+            TransferMethod::MovingLeastSquares { k, weighting } => moving_least_squares::prepare(
+                mesh_src,
+                mesh_tgt,
+                k,
+                weighting,
+                Solver::Gpu(device.clone()),
+            ),
+            other => Self::new(mesh_src, mesh_tgt, other),
         }
     }
 }
