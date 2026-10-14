@@ -126,10 +126,14 @@
 //!                     NOM/       dataset : array of fixed-size names
 //! ```
 //!
+//! * Family numbers form a single namespace shared by every element block.
+//!   Element-family numbers are **negative** (`-1, -2, …`), following the MED
+//!   format convention (node-family numbers would be positive).
 //! * Family id 0 is represented by the mandatory `FAMILLE_ZERO` group; it
 //!   groups the cells that belong to no named group.
-//! * Each named family `n≥1` gets a `FAM_<n>_` group whose `NUM` attribute
-//!   is its numeric family id.
+//! * Each named family `n < 0` gets a `FAM_<n>_` group whose `NUM` attribute
+//!   is its numeric family id. Cells from different element blocks share a
+//!   family when they belong to the same set of named groups.
 //! * The actual group *names* are stored under `GRO/`:
 //!   * `NBR` : an integer attribute giving the number of group names.
 //!   * `NOM` : a **dataset** whose element type is an HDF5 array of 80
@@ -307,13 +311,77 @@ fn write_mesh(file: &File, mesh: &UMeshView) -> hdf5_metno::Result<()> {
     let mai = timestep.create_group("MAI")?;
     write_scalar_attr(&mai, "CGT", 1i64)?;
 
+    let (family_numbers, num_to_names) = build_family_plan(mesh);
+
     for (et, block) in mesh.blocks() {
-        write_block(&mai, et, &block.view())?;
+        write_block(&mai, et, &block.view(), &family_numbers[et])?;
     }
 
-    write_families(file, mesh)?;
+    write_families(file, &num_to_names)?;
 
     Ok(())
+}
+
+/// Build the global MED family numbering for `mesh`.
+///
+/// MED uses a single family-number namespace shared by every element block, so
+/// two blocks that locally number their families independently must be merged
+/// into one namespace before writing. Element-family numbers are negative,
+/// counting down from `-1`.
+///
+/// A family is identified by its *signature*: the sorted set of group names a
+/// cell belongs to. Cells from any block that share a signature share a family.
+///
+/// Returns the per-block family numbers (`0` for cells in no named group) and
+/// the global `family number -> group names` map.
+fn build_family_plan(
+    mesh: &UMeshView,
+) -> (
+    BTreeMap<ElementType, Array1<i64>>,
+    BTreeMap<i64, Vec<String>>,
+) {
+    let mut signature_to_num: BTreeMap<Vec<String>, i64> = BTreeMap::new();
+    let mut num_to_names: BTreeMap<i64, Vec<String>> = BTreeMap::new();
+    let mut per_block: BTreeMap<ElementType, Array1<i64>> = BTreeMap::new();
+    let mut next_num: i64 = -1;
+
+    for (&et, block) in mesh.blocks() {
+        // Invert the group map: local family id -> sorted group names.
+        let mut fid_names: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+
+        for (group_name, family_ids) in block.groups() {
+            for &fid in family_ids {
+                if fid == 0 {
+                    continue;
+                }
+                fid_names.entry(fid).or_default().push(group_name.clone());
+            }
+        }
+
+        for names in fid_names.values_mut() {
+            names.sort();
+        }
+
+        let local_to_global: BTreeMap<usize, i64> = fid_names
+            .iter()
+            .map(|(&fid, names)| {
+                let num = *signature_to_num.entry(names.clone()).or_insert_with(|| {
+                    let num = next_num;
+                    next_num -= 1;
+                    num_to_names.insert(num, names.clone());
+                    num
+                });
+                (fid, num)
+            })
+            .collect();
+
+        let fam_numbers = block
+            .families()
+            .mapv(|fid| if fid == 0 { 0 } else { local_to_global[&fid] });
+        per_block.insert(et, fam_numbers);
+    }
+
+    (per_block, num_to_names)
 }
 
 fn write_nodes(timestep: &Group, coords: &ArrayView2<f64>) -> hdf5_metno::Result<()> {
@@ -380,12 +448,12 @@ fn reorder_connectivity(conn: &ArrayView2<usize>, permutation: Option<&[usize]>)
 
 fn write_fam_dataset(
     parent: &Group,
-    families: ndarray::ArrayView1<'_, usize>,
+    families: ndarray::ArrayView1<'_, i64>,
 ) -> hdf5_metno::Result<()> {
     if families.iter().all(|&f| f == 0) {
         return Ok(());
     }
-    let fam_data: Vec<i64> = families.iter().map(|&f| f as i64).collect();
+    let fam_data: Vec<i64> = families.to_vec();
     let n = fam_data.len() as i64;
     let ds = parent
         .new_dataset_builder()
@@ -426,6 +494,7 @@ fn write_regular(
     mai: &Group,
     element_type: ElementType,
     regular: &ElementBlockView,
+    fam_numbers: &Array1<i64>,
 ) -> hdf5_metno::Result<()> {
     let conn = match &regular.connectivity {
         ConnectivityView::Regular(pc) => pc,
@@ -455,46 +524,31 @@ fn write_regular(
     write_scalar_attr(&nod, "CGT", 1i64)?;
     write_scalar_attr(&nod, "NBR", med_conn.nrows() as i64)?;
 
-    write_fam_dataset(&group, regular.families())?;
+    write_fam_dataset(&group, fam_numbers.view())?;
 
     Ok(())
 }
 
-fn write_families(file: &File, mesh: &UMeshView) -> hdf5_metno::Result<()> {
+fn write_families(
+    file: &File,
+    num_to_names: &BTreeMap<i64, Vec<String>>,
+) -> hdf5_metno::Result<()> {
     let fas = file.create_group("FAS")?;
     let families = fas.create_group("mesh")?;
 
     let family_zero = families.create_group("FAMILLE_ZERO")?;
     write_scalar_attr(&family_zero, "NUM", 0i64)?;
 
-    // Collect the reverse map: family_id → set of group names, across all blocks.
-    let mut fam_to_names: BTreeMap<usize, BTreeMap<String, ()>> = BTreeMap::new();
-
-    for (_et, block) in mesh.blocks() {
-        for (group_name, family_ids) in block.groups() {
-            for &fid in family_ids {
-                if fid == 0 {
-                    continue;
-                }
-                fam_to_names
-                    .entry(fid)
-                    .or_default()
-                    .insert(group_name.clone(), ());
-            }
-        }
-    }
-
-    if fam_to_names.is_empty() {
+    if num_to_names.is_empty() {
         return Ok(());
     }
 
     let elem = families.create_group("ELEME")?;
 
-    for (&fid, names_map) in &fam_to_names {
-        let names: Vec<&str> = names_map.keys().map(|s| s.as_str()).collect();
-        let gname = format!("FAM_{fid}_");
+    for (&num, names) in num_to_names {
+        let gname = format!("FAM_{num}_");
         let fam_group = elem.create_group(&gname)?;
-        write_scalar_attr(&fam_group, "NUM", fid as i64)?;
+        write_scalar_attr(&fam_group, "NUM", num)?;
 
         if names.is_empty() {
             continue;
@@ -719,7 +773,11 @@ fn write_fixed_bytes_attr<const N: usize>(
         .write_scalar(&value)
 }
 
-fn write_polygon(mai: &Group, poly: &ElementBlockView) -> hdf5_metno::Result<()> {
+fn write_polygon(
+    mai: &Group,
+    poly: &ElementBlockView,
+    fam_numbers: &Array1<i64>,
+) -> hdf5_metno::Result<()> {
     let poly_conn = match &poly.connectivity {
         ConnectivityView::Poly(pc) => pc,
         _ => panic!("A PGON block must contain a poly connectivity."),
@@ -760,12 +818,16 @@ fn write_polygon(mai: &Group, poly: &ElementBlockView) -> hdf5_metno::Result<()>
     write_scalar_attr(&inn_ds, "CGT", 1i64)?;
     write_scalar_attr(&inn_ds, "NBR", inn.len() as i64)?;
 
-    write_fam_dataset(&group, poly.families())?;
+    write_fam_dataset(&group, fam_numbers.view())?;
 
     Ok(())
 }
 
-fn write_polyhedron(mai: &Group, block: &ElementBlockView) -> hdf5_metno::Result<()> {
+fn write_polyhedron(
+    mai: &Group,
+    block: &ElementBlockView,
+    fam_numbers: &Array1<i64>,
+) -> hdf5_metno::Result<()> {
     let poly_conn = match &block.connectivity {
         ConnectivityView::Poly(pc) => pc,
         _ => panic!("A PHED block must contain a poly connectivity."),
@@ -820,24 +882,29 @@ fn write_polyhedron(mai: &Group, block: &ElementBlockView) -> hdf5_metno::Result
     write_scalar_attr(&ifn_ds, "CGT", 1i64)?;
     write_scalar_attr(&ifn_ds, "NBR", ifn.len() as i64)?;
 
-    write_fam_dataset(&group, block.families())?;
+    write_fam_dataset(&group, fam_numbers.view())?;
 
     Ok(())
 }
 
-fn write_block(mai: &Group, et: &ElementType, block: &ElementBlockView) -> hdf5_metno::Result<()> {
+fn write_block(
+    mai: &Group,
+    et: &ElementType,
+    block: &ElementBlockView,
+    fam_numbers: &Array1<i64>,
+) -> hdf5_metno::Result<()> {
     match et.regularity() {
         Regularity::Regular => {
-            write_regular(mai, *et, block)?;
+            write_regular(mai, *et, block, fam_numbers)?;
         }
 
         Regularity::Poly => match et {
             ElementType::PGON => {
-                write_polygon(mai, block)?;
+                write_polygon(mai, block, fam_numbers)?;
             }
 
             ElementType::PHED => {
-                write_polyhedron(mai, block)?;
+                write_polyhedron(mai, block, fam_numbers)?;
             }
 
             _ => {
@@ -1512,6 +1579,29 @@ mod tests {
     }
 
     #[test]
+    fn test_roundtrip_med_groups_multi_block() {
+        // Families form a single MED namespace shared by every element block.
+        // Two differently-named groups in different blocks must not collide,
+        // even though each is the first family of its own block.
+        let path = PathBuf::from("test_roundtrip_med_groups_multi_block.med");
+        let mesh = me::make_mesh_2d_multi_simple();
+        let mut mesh = mesh;
+
+        let mut seg_ids = ElementIds::new();
+        seg_ids.add_block(ElementType::SEG2, vec![0]);
+        mesh.add_to_group("seg_group", &seg_ids);
+
+        let mut quad_ids = ElementIds::new();
+        quad_ids.add_block(ElementType::QUAD4, vec![0]);
+        mesh.add_to_group("quad_group", &quad_ids);
+
+        write(&path, &mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
     fn test_med_groups_nom_fixed_string() {
         // The FAM GRO/NOM dataset must be stored exactly as the MED library
         // stores it: an H5T_ARRAY of MED_GROUPE_NAME_SIZE (80) signed bytes per
@@ -1531,7 +1621,7 @@ mod tests {
         let fas = file.group("FAS").unwrap();
         let families = fas.group("mesh").unwrap();
         let eleme = families.group("ELEME").unwrap();
-        let fam1 = eleme.group("FAM_1_").unwrap();
+        let fam1 = eleme.group("FAM_-1_").unwrap();
         let gro = fam1.group("GRO").unwrap();
         let nom_ds = gro.dataset("NOM").unwrap();
         let nom_dt = nom_ds.dtype().unwrap().to_descriptor().unwrap();

@@ -219,7 +219,49 @@ def test_med_groups_nom_is_int8_array_dataset(tmp_path):
     m.write(path)
 
     with h5py.File(path) as h:
-        d = h["/FAS/mesh/ELEME/FAM_1_/GRO/NOM"]
+        d = h["/FAS/mesh/ELEME/FAM_-1_/GRO/NOM"]
         assert d.dtype == np.dtype(("i1", (80,))), d.dtype
         assert d.shape == (1,)
         assert bytes(d[0]) == b"mygroup" + b" " * 73
+
+
+def test_med_groups_multi_block_global_families(tmp_path):
+    """Element family numbers are one global, negative namespace.
+
+    Groups with different names living in different element blocks must get
+    distinct (negative) family numbers and must not be merged, and medcoupling
+    must resolve each group to the right cells of its own block.
+    """
+    import h5py
+
+    path = str(tmp_path / "groups_multi.med")
+    m = _make_mixed_mesh()
+    m.groups["hexgroup"] = {"HEX8": np.array([0])}
+    m.groups["tetgroup"] = {"TET4": np.array([0, 1])}
+    m.write(path)
+
+    # On disk: every element family is negative and carries exactly one name.
+    with h5py.File(path) as h:
+        eleme = h["/FAS/mesh/ELEME"]
+        name_for_num = {}
+        for fam in eleme:
+            num = int(eleme[fam].attrs["NUM"])
+            assert num < 0, f"{fam} has non-negative NUM {num}"
+            nom = eleme[fam]["GRO"]["NOM"][:]
+            names = [bytes(s).rstrip(b" \x00").decode() for s in nom]
+            assert len(names) == 1, f"{fam} carries names {names}"
+            name_for_num[num] = names[0]
+        assert sorted(name_for_num.values()) == ["hexgroup", "tetgroup"]
+
+    # medcoupling: each group resolves to a disjoint set of cells.
+    fum = mc.MEDFileUMesh(path)
+    found = {}
+    for lev in fum.getNonEmptyLevelsExt():
+        gs = set(fum.getGroupsOnSpecifiedLev(lev))
+        for gname in ("hexgroup", "tetgroup"):
+            if gname in gs:
+                arr = fum.getGroupArr(lev, gname, False).toNumPyArray().ravel()
+                found[gname] = sorted(arr.tolist())
+    assert len(found["hexgroup"]) == 1, found
+    assert len(found["tetgroup"]) == 2, found
+    assert set(found["hexgroup"]).isdisjoint(found["tetgroup"])
