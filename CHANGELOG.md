@@ -1,5 +1,11 @@
 # CHANGELOG
 
+## [0.5.1](https://github.com/asonolet/mefikit/compare/v0.5.0...v0.5.1) - 2026-10-14
+
+### Fix
+
+- med file groups io ([#50](https://github.com/asonolet/mefikit/pull/50))
+
 ## [0.5.0](https://github.com/asonolet/mefikit/compare/v0.4.1...v0.5.0) - 2026-10-13
 
 ### Add
