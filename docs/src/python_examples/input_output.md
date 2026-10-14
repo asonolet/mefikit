@@ -96,12 +96,37 @@ print(volumes.to_json())
 
 The legacy vtk reader/writer only handles the old binary VTK 2.0 format; the HDF5-based `.vtkhdf` and `.cgns` formats are the recommended options for modern, HPC-friendly storage.
 
+## Fields and groups
+
+Cell-centered fields and element groups are stored alongside the geometry in every
+format. Coordinates are written once, and each field/group refers to cells through
+the same global cell ordering, so nothing is duplicated per element block.
+
+| Format   | Fields                                   | Groups                          |
+| -------- | ---------------------------------------- | ------------------------------- |
+| json     | all (any number of components)           | all                             |
+| yaml/yml | all (any number of components)           | all                             |
+| med      | all (any number of components)           | all                             |
+| vtkhdf   | scalar/vector, single topological dim    | all (`GroupData`, 0-based)      |
+| cgns     | scalar only, one solution per dim        | all (`ZoneSubRegion_t`, 1-based)|
+| vtk/vtu  | none (legacy reader/writer, geometry only)| none                           |
+
+Some restrictions apply to the HDF5 formats:
+
+- **VTKHDF** fields are only exported when the mesh has a single topological
+  dimension; on mixed-dimension meshes they are skipped.
+- **CGNS** cell-centered solutions must be scalar, so multi-component fields are
+  skipped. Each topological dimension gets its own `FlowSolution` node, and a
+  `PointList` is added for mixed-dimension meshes. Groups are written as
+  `ZoneSubRegion_t` nodes whose `reg_dim` is the highest dimension present in the
+  group.
+
 
 ```python
 import pathlib
 
 pathlib.Path("data").mkdir(exist_ok=True)
-for ext in ("vtk", "yaml", "json", "vtkhdf", "med"):
+for ext in ("vtk", "yaml", "json", "vtkhdf", "cgns", "med"):
     volumes.write(f"data/volumes.{ext}")
     volumes_from_disk = mf.UMesh.read(f"data/volumes.{ext}")
     assert volumes_from_disk

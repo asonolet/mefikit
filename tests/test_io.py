@@ -1,5 +1,6 @@
 import numpy as np
 import pyvista as pv
+import pytest
 
 import mefikit as mf
 
@@ -104,3 +105,43 @@ def test_to_mc_keeps_every_cell():
     mm3 = m3.to_mc()
     assert mm3.getNumberOfCells() == 64
     assert mm3.getNumberOfNodes() == m3.coords().shape[0]
+
+
+def _field_group_mesh():
+    m = mf.UMesh(np.arange(30.0).reshape(10, 3))
+    m.add_regular_block(
+        "QUAD4",
+        np.array(
+            [[0, 1, 2, 3], [1, 2, 3, 4], [4, 5, 6, 7], [5, 6, 7, 8]], dtype=np.uintp
+        ),
+        fields={"T": np.array([1.0, 2.0, 3.0, 4.0])},
+    )
+    m.groups["left"] = {"QUAD4": np.array([0, 2])}
+    return m
+
+
+@pytest.mark.parametrize("ext", ["vtkhdf", "cgns"])
+def test_fields_groups_roundtrip(tmp_path, ext):
+    m = _field_group_mesh()
+    path = str(tmp_path / f"mesh.{ext}")
+    m.write(path)
+
+    m2 = mf.UMesh.read(path)
+    assert np.array_equal(
+        np.asarray(m2.fields["T"].values()["QUAD4"]), [1.0, 2.0, 3.0, 4.0]
+    )
+    assert set(m2.groups) == {"left"}
+    assert sorted(m2.groups["left"].ids()["QUAD4"]) == [0, 2]
+
+
+def test_cgns_skips_vector_fields(tmp_path):
+    path = str(tmp_path / "vector.cgns")
+    m = mf.UMesh(np.arange(30.0).reshape(10, 3))
+    m.add_regular_block(
+        "QUAD4",
+        np.array([[0, 1, 2, 3], [1, 2, 3, 4]], dtype=np.uintp),
+        fields={"V": np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])},
+    )
+    m.write(path)
+    m2 = mf.UMesh.read(path)
+    assert "V" not in m2.fields
