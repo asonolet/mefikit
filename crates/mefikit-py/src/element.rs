@@ -15,6 +15,7 @@ pub fn etype_to_str(et: mf::ElementType) -> String {
         QUAD8 => "QUAD8",
         QUAD9 => "QUAD9",
         PGON => "PGON",
+        QPOLY => "QPOLY",
         TET4 => "TET4",
         TET10 => "TET10",
         HEX8 => "HEX8",
@@ -49,6 +50,7 @@ pub fn try_str_to_etype(et: &str) -> Result<mf::ElementType, String> {
         "HEX8" => HEX8,
         "HEX21" => HEX21,
         "PGON" => PGON,
+        "QPOLY" => QPOLY,
         "PHED" => PHED,
         _ => return Err(format!("Unsupported element type: {}", et)),
     })

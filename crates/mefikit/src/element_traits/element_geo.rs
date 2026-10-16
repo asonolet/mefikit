@@ -6,9 +6,9 @@
 
 use super::element_topo::ElementTopo;
 use crate::geometry::{
-    Polygon, Polyhedron, Segment, area_polygon3, area_quad2, area_tri2, bounds_iter,
-    convex_polygon_contains2, hex_contains, hex_volume, signed_area2, tet_contains, tet_volume,
-    vertex_centroid,
+    Polygon, Polyhedron, Segment, arc_length2, area_polygon3, area_quad2, area_tri2, bounds_iter,
+    convex_polygon_contains2, hex_contains, hex_volume, in_quadratic_polygon,
+    quadratic_polygon_area2, signed_area2, tet_contains, tet_volume, vertex_centroid,
 };
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
@@ -98,11 +98,44 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
     }
 
     /// Builds the element as a 2D polygon.
+    ///
+    /// For the quadratic element types this only uses every connectivity node as a vertex,
+    /// so the mid-side nodes become spurious vertices; use [`Self::to_quadratic_polygon2`]
+    /// instead.
     fn to_polygon2(&self) -> Polygon<2> {
         Polygon::with_convexity(
             self.coords2().copied(),
             self.element_type().known_convexity(),
         )
+    }
+
+    /// The element's vertex coordinates: the first [`ElementLike::num_vertices`] nodes of
+    /// the connectivity (mid-side nodes and the TRI7/QUAD9 centre node excluded).
+    fn vertices2(&self) -> Vec<[f64; 2]> {
+        (0..self.num_vertices())
+            .map(|i| *self.coord2_ref(i))
+            .collect()
+    }
+
+    /// The element's vertex coordinates in 3D (see [`Self::vertices2`]).
+    fn vertices3(&self) -> Vec<[f64; 3]> {
+        (0..self.num_vertices())
+            .map(|i| *self.coord3_ref(i))
+            .collect()
+    }
+
+    /// Builds the element as its quadratic polygon `[v0..v{n-1}, m0..m{n-1}]`: the `n`
+    /// vertices first, then the `n` mid-side nodes in edge order (edge `i` joins vertex `i`
+    /// to vertex `i+1` and is shaped by mid-side node `i`). A TRI7/QUAD9 centre node is
+    /// excluded, as it takes no part in the boundary.
+    ///
+    /// Only meaningful for the quadratic 2D types (TRI6, TRI7, QUAD8, QUAD9, QPOLY).
+    fn to_quadratic_polygon2(&self) -> Vec<[f64; 2]> {
+        let n = self.num_vertices();
+        debug_assert!(self.space_dimension() == 2 && self.connectivity().len() >= 2 * n);
+        let mut pgon = self.vertices2();
+        pgon.extend((n..2 * n).map(|i| *self.coord2_ref(i)));
+        pgon
     }
 
     /// Builds the element as a 3D polyhedron from its faces.
@@ -129,24 +162,31 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
 
     /// Computes the geometric measure of the element in 1D space.
     ///
-    /// Returns length for 1D elements.
+    /// Returns length for 1D elements. A SEG3 length is the polyline through its mid-side
+    /// node (in 1D space the three points are always collinear, so the arc degenerates).
     fn measure1(&self) -> f64 {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
             SEG2 => Segment::new(self.coord1(0).into(), self.coord1(1).into()).length(),
+            SEG3 => {
+                let [a, b, m] = [self.coord1(0).x, self.coord1(1).x, self.coord1(2).x];
+                (m - a).abs() + (b - m).abs()
+            }
             other => unimplemented!("measure1 is not implemented for element type {other:?}"),
         }
     }
 
     /// Computes the geometric measure of the element in 2D space.
     ///
-    /// Returns length for 1D elements and area for 2D elements.
+    /// Returns length for 1D elements and area for 2D elements. Quadratic elements use
+    /// their exact arc-bounded SEG3 length and quadratic-polygon area.
     fn measure2(&self) -> f64 {
         use ElementType::*;
         match self.element_type() {
             VERTEX => 0.0,
             SEG2 => Segment::new(*self.coord2_ref(0), *self.coord2_ref(1)).length(),
+            SEG3 => arc_length2(self.coord2_ref(0), self.coord2_ref(2), self.coord2_ref(1)),
             TRI3 => area_tri2(self.coord2_ref(0), self.coord2_ref(1), self.coord2_ref(2)),
             QUAD4 => area_quad2(&[
                 *self.coord2_ref(0),
@@ -155,6 +195,9 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord2_ref(3),
             ]),
             PGON => self.to_polygon2().area(),
+            TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => {
+                quadratic_polygon_area2(&self.to_quadratic_polygon2())
+            }
             other => unimplemented!("measure2 is not implemented for element type {other:?}"),
         }
     }
@@ -216,6 +259,22 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 let pts: Vec<[f64; 2]> = self.coords2().copied().collect();
                 if signed_area2(&pts) < 0.0 {
                     (et, co.iter().rev().copied().collect())
+                } else {
+                    (et, co.to_vec())
+                }
+            }
+            TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => {
+                if quadratic_polygon_area2(&self.to_quadratic_polygon2()) < 0.0 {
+                    // Reverse the vertex block, then re-pair the mid-side nodes with the
+                    // reversed edges: the edge `(v_i, v_{i+1})` of the reversed cycle is the
+                    // reverse of edge `(v_{n-2-i}, v_{n-1-i})`, shaped by mid-side node
+                    // `m_{n-2-i}`. A TRI7/QUAD9 centre node (if any) stays last.
+                    let n = self.num_vertices();
+                    let mut conn = co.to_vec();
+                    conn[..n].reverse();
+                    conn[n..2 * n].reverse();
+                    conn[n..2 * n].rotate_left(1);
+                    (et, conn)
                 } else {
                     (et, co.to_vec())
                 }
@@ -282,6 +341,9 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 &[point[0], point[1]],
             ),
             PGON => self.to_polygon2().contains(&[point[0], point[1]]),
+            TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => {
+                in_quadratic_polygon(&[point[0], point[1]], &self.to_quadratic_polygon2())
+            }
             TET4 => tet_contains(
                 &[point[0], point[1], point[2]],
                 self.coord3_ref(0),
@@ -319,13 +381,13 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         bounds_iter(self.coords3().copied())
     }
 
-    /// Computes the 2D vertex centroid of the element: the arithmetic mean of its node
-    /// coordinates.
+    /// Computes the 2D vertex centroid of the element: the arithmetic mean of its
+    /// [`Self::vertices2`] (mid-side nodes and the TRI7/QUAD9 centre node are excluded).
     fn centroid2(&self) -> [f64; 2] {
         use ElementType::*;
         match self.element_type() {
             VERTEX => *self.coord2_ref(0),
-            SEG2 => Segment::new(*self.coord2_ref(0), *self.coord2_ref(1)).midpoint(),
+            SEG2 | SEG3 => Segment::new(*self.coord2_ref(0), *self.coord2_ref(1)).midpoint(),
             TRI3 => vertex_centroid(&[
                 *self.coord2_ref(0),
                 *self.coord2_ref(1),
@@ -338,17 +400,22 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord2_ref(3),
             ]),
             PGON => self.to_polygon2().centroid(),
+            // The higher-order regulars and the 1D types resolve their vertex block
+            // through `num_vertices()`.
+            SEG4 | SPLINE | TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => {
+                vertex_centroid(&self.vertices2())
+            }
             other => unimplemented!("centroid2 is not implemented for element type {other:?}"),
         }
     }
 
-    /// Computes the 3D vertex centroid of the element: the arithmetic mean of its node
-    /// coordinates.
+    /// Computes the 3D vertex centroid of the element: the arithmetic mean of its
+    /// [`Self::vertices3`] (mid-side nodes are excluded).
     fn centroid3(&self) -> [f64; 3] {
         use ElementType::*;
         match self.element_type() {
             VERTEX => *self.coord3_ref(0),
-            SEG2 => Segment::new(*self.coord3_ref(0), *self.coord3_ref(1)).midpoint(),
+            SEG2 | SEG3 => Segment::new(*self.coord3_ref(0), *self.coord3_ref(1)).midpoint(),
             TRI3 => vertex_centroid(&[
                 *self.coord3_ref(0),
                 *self.coord3_ref(1),
@@ -377,6 +444,11 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord3_ref(7),
             ]),
             PHED => self.to_polyhedron().centroid(),
+            // The higher-order regulars, the quadratic 2D cells and the 1D types resolve
+            // their vertex block through `num_vertices()`.
+            SEG4 | SPLINE | TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY | TET10 | HEX21 => {
+                vertex_centroid(&self.vertices3())
+            }
             other => unimplemented!("centroid3 is not implemented for element type {other:?}"),
         }
     }
@@ -772,6 +844,101 @@ mod tests {
         assert_eq!(
             elem.oriented_positive_connectivity(),
             (ElementType::HEX8, canonical)
+        );
+    }
+
+    #[test]
+    fn test_measure2_seg3_arc() {
+        // Quarter circle of radius 1 centred at the origin; SEG3 layout is [v0, v1, m].
+        let s = std::f64::consts::FRAC_1_SQRT_2;
+        let coords = nd::array![[1.0, 0.0], [0.0, 1.0], [s, s]];
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(0, coords.view(), &0, &[0, 1, 2], ElementType::SEG3, &groups);
+        assert_abs_diff_eq!(
+            elem.measure2(),
+            std::f64::consts::FRAC_PI_2,
+            epsilon = 1e-12
+        );
+    }
+
+    #[test]
+    fn test_quad8_curved_edge_measure_and_containment() {
+        // The bottom edge bulges down to y = -0.4 at its midpoint; the other edges are
+        // straight. The shape is the flat unit square minus the chord plus the arc bulge.
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -0.4],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5],
+        ];
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[0, 1, 2, 3, 4, 5, 6, 7],
+            ElementType::QUAD8,
+            &groups,
+        );
+        assert!(elem.measure2() > 1.0);
+        assert!(elem.is_point_inside(&[0.5, -0.1]));
+        assert!(!elem.is_point_inside(&[0.5, -0.6]));
+    }
+
+    #[test]
+    fn test_centroid2_quadratic_ignores_mid_nodes() {
+        // TRI6 vertices at (0,0), (3,0), (0,3); mid-side nodes are irrelevant to the
+        // vertex centroid.
+        let coords = nd::array![
+            [0.0, 0.0],
+            [3.0, 0.0],
+            [0.0, 3.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0]
+        ];
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[0, 1, 2, 3, 4, 5],
+            ElementType::TRI6,
+            &groups,
+        );
+        assert_abs_diff_eq!(elem.centroid2()[0], 1.0, epsilon = 1e-12);
+        assert_abs_diff_eq!(elem.centroid2()[1], 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_oriented_positive_connectivity_quad8() {
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5],
+        ];
+        let groups = crate::mesh::ArcGroups::new();
+        // Clockwise vertex block with the mid-side nodes matching the reversed edges.
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[3, 2, 1, 0, 6, 5, 4, 7],
+            ElementType::QUAD8,
+            &groups,
+        );
+        assert_eq!(
+            elem.oriented_positive_connectivity(),
+            (ElementType::QUAD8, vec![0, 1, 2, 3, 4, 5, 6, 7])
         );
     }
 }

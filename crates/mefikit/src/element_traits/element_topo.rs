@@ -78,6 +78,39 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 }
                 _ => panic!("It is not possible to ask for codim diff from D1 and D2 on QUAD"),
             },
+            QUAD8 | QUAD9 => match codim {
+                Dimension::D1 => {
+                    let conn = arr2(&[
+                        [co[0], co[1], co[4]],
+                        [co[1], co[2], co[5]],
+                        [co[2], co[3], co[6]],
+                        [co[3], co[0], co[7]],
+                    ]);
+                    res.push((SEG3, Connectivity::new_regular(conn.to_shared())));
+                }
+                Dimension::D2 => {
+                    let conn = arr2(&[[co[0]], [co[1]], [co[2]], [co[3]]]);
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => panic!("It is not possible to ask for codim diff from D1 and D2 on QUAD"),
+            },
+            QPOLY => match codim {
+                Dimension::D1 => {
+                    let n = co.len() / 2;
+                    let mut data = Vec::with_capacity(3 * n);
+                    for i in 0..n {
+                        data.extend([co[i], co[(i + 1) % n], co[n + i]]);
+                    }
+                    let conn = Array2::from_shape_vec([n, 3], data).unwrap();
+                    res.push((SEG3, Connectivity::new_regular(conn.to_shared())));
+                }
+                Dimension::D2 => {
+                    let n = co.len() / 2;
+                    let conn = Array2::from_shape_vec([n, 1], co[..n].to_vec()).unwrap();
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => panic!("It is not possible to ask for codim diff from D1 or D2 on QPOLY"),
+            },
             TET4 => match codim {
                 Dimension::D1 => {
                     let conn = arr2(&[
@@ -200,7 +233,10 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
     ///
     /// - 0D (VERTEX) is returned unchanged.
     /// - 1D elements become SPLINE with the same node list.
-    /// - 2D elements become PGON with the same node list.
+    /// - Linear 2D elements become PGON with the same node list.
+    /// - Quadratic 2D elements (TRI6, TRI7, QUAD8, QUAD9) become QPOLY with the same
+    ///   vertices and mid-side nodes; the TRI7/QUAD9 centre node is dropped, as it takes
+    ///   no part in the boundary.
     /// - 3D elements become PHED with face-based connectivity. Faces are
     ///   separated by `usize::MAX` sentinel values in the returned vector.
     /// - Already-poly elements are returned unchanged.
@@ -210,7 +246,8 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         match self.element_type() {
             VERTEX => (VERTEX, co.to_vec()),
             SEG2 | SEG3 | SEG4 => (SPLINE, co.to_vec()),
-            TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 => (PGON, co.to_vec()),
+            TRI3 | QUAD4 => (PGON, co.to_vec()),
+            TRI6 | TRI7 | QUAD8 | QUAD9 => (QPOLY, co[..2 * self.num_vertices()].to_vec()),
             TET4 => {
                 let m = usize::MAX;
                 (
@@ -266,7 +303,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     ],
                 )
             }
-            SPLINE | PGON | PHED => (self.element_type(), co.to_vec()),
+            SPLINE | PGON | QPOLY | PHED => (self.element_type(), co.to_vec()),
         }
     }
 
@@ -275,6 +312,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
     /// - Regular elements (VERTEX, SEG*, TRI*, QUAD*, TET*, HEX*) are returned unchanged.
     /// - SPLINE cannot be converted (ambiguous: could be SEG2, SEG3, or SEG4).
     /// - PGON with 3 nodes becomes TRI3, with 4 nodes becomes QUAD4.
+    /// - QPOLY with 6 nodes becomes TRI6, with 8 nodes becomes QUAD8.
     /// - PHED with 4 triangular faces becomes TET4, with 6 quadrilateral faces becomes HEX8.
     ///   Face orientation is verified by checking that each edge is shared by exactly
     ///   two faces with consistent winding.
@@ -291,6 +329,13 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 4 => Ok((QUAD4, co.to_vec())),
                 n => Err(format!(
                     "PGON with {n} nodes cannot be converted to TRI3 or QUAD4"
+                )),
+            },
+            QPOLY => match co.len() {
+                6 => Ok((TRI6, co.to_vec())),
+                8 => Ok((QUAD8, co.to_vec())),
+                n => Err(format!(
+                    "QPOLY with {n} nodes cannot be converted to TRI6 or QUAD8"
                 )),
             },
             PHED => {
@@ -317,6 +362,12 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 (TRI3, vec![co[0], co[1], co[3]]),
                 (TRI3, vec![co[2], co[3], co[1]]),
             ],
+            QPOLY => {
+                let n = self.num_vertices();
+                (1..n - 1)
+                    .map(|i| (TRI3, vec![co[0], co[i], co[i + 1]]))
+                    .collect()
+            }
             TET4 | TET10 => vec![(TET4, vec![co[0], co[1], co[2], co[3]])],
             HEX8 | HEX21 => vec![
                 (TET4, vec![co[0], co[1], co[3], co[4]]),
@@ -683,6 +734,123 @@ mod tests {
     }
 
     #[test]
+    fn test_to_poly_tri6_and_tri7() {
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [0.5, 0.5],
+            [0.0, 0.5],
+            [0.3, 0.3]
+        ];
+        let groups = crate::mesh::ArcGroups::new();
+        // TRI6 keeps all 6 nodes.
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[0, 1, 2, 3, 4, 5],
+            ElementType::TRI6,
+            &groups,
+        );
+        assert_eq!(elem.to_poly(), (ElementType::QPOLY, vec![0, 1, 2, 3, 4, 5]));
+        // TRI7 drops its centre node.
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[0, 1, 2, 3, 4, 5, 6],
+            ElementType::TRI7,
+            &groups,
+        );
+        assert_eq!(elem.to_poly(), (ElementType::QPOLY, vec![0, 1, 2, 3, 4, 5]));
+    }
+
+    #[test]
+    fn test_to_poly_quad8() {
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5]
+        ];
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[0, 1, 2, 3, 4, 5, 6, 7],
+            ElementType::QUAD8,
+            &groups,
+        );
+        assert_eq!(
+            elem.to_poly(),
+            (ElementType::QPOLY, vec![0, 1, 2, 3, 4, 5, 6, 7])
+        );
+    }
+
+    #[test]
+    fn test_subentities_quad8_edges_are_seg3() {
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5]
+        ];
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[0, 1, 2, 3, 4, 5, 6, 7],
+            ElementType::QUAD8,
+            &groups,
+        );
+        let subentities = elem.subentities(Some(crate::mesh::Dimension::D1));
+        assert_eq!(subentities.len(), 1);
+        let (et, conn) = &subentities[0];
+        assert_eq!(*et, ElementType::SEG3);
+        assert_eq!(conn.len(), 4);
+    }
+
+    #[test]
+    fn test_subentities_qpoly_edges_are_seg3() {
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5]
+        ];
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[0, 1, 2, 3, 4, 5, 6, 7],
+            ElementType::QPOLY,
+            &groups,
+        );
+        let subentities = elem.subentities(Some(crate::mesh::Dimension::D1));
+        assert_eq!(subentities.len(), 1);
+        let (et, conn) = &subentities[0];
+        assert_eq!(*et, ElementType::SEG3);
+        assert_eq!(conn.len(), 4);
+    }
+
+    #[test]
     fn test_to_poly_tet4() {
         let coords = nd::array![
             [0.0, 0.0, 0.0],
@@ -830,6 +998,69 @@ mod tests {
             &groups,
         );
         assert!(elem.from_poly().is_err());
+    }
+
+    #[test]
+    fn test_from_poly_qpoly_to_quadratic() {
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [0.5, 0.5],
+            [0.0, 0.5]
+        ];
+        let groups = crate::mesh::ArcGroups::new();
+        // 6-node QPOLY -> TRI6.
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[0, 1, 2, 3, 4, 5],
+            ElementType::QPOLY,
+            &groups,
+        );
+        assert_eq!(
+            elem.from_poly().unwrap(),
+            (ElementType::TRI6, vec![0, 1, 2, 3, 4, 5])
+        );
+        // 4-node QPOLY is not a quadratic cell.
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[0, 1, 2, 3],
+            ElementType::QPOLY,
+            &groups,
+        );
+        assert!(elem.from_poly().is_err());
+    }
+
+    #[test]
+    fn test_from_poly_qpoly8_to_quad8() {
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5]
+        ];
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &0,
+            &[0, 1, 2, 3, 4, 5, 6, 7],
+            ElementType::QPOLY,
+            &groups,
+        );
+        assert_eq!(
+            elem.from_poly().unwrap(),
+            (ElementType::QUAD8, vec![0, 1, 2, 3, 4, 5, 6, 7])
+        );
     }
 
     #[test]

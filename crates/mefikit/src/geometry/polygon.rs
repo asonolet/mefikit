@@ -10,6 +10,7 @@ use robust as ro;
 use smallvec::SmallVec;
 use std::sync::OnceLock;
 
+use super::arc::ArcCircle;
 use super::convexity::Convexity;
 
 /// An owned polygon in `D`-dimensional space.
@@ -411,19 +412,10 @@ impl Polygon<2> {
 
         // Iterate edges
         for i in 0..n {
-            let (x0, y0) = (self.points[i][0], self.points[i][1]);
-            let (x1, y1) = (self.points[(i + 1) % n][0], self.points[(i + 1) % n][1]);
-
-            // Check if edge straddles horizontal ray at py
-            let cond = (y0 > py) != (y1 > py);
-            if cond {
-                // Compute intersection x coordinate
-                let t = (py - y0) / (y1 - y0);
-                let x_int = x0 + t * (x1 - x0);
-
-                if px < x_int {
-                    inside = !inside;
-                }
+            let p0 = &self.points[i];
+            let p1 = &self.points[(i + 1) % n];
+            if ray_crosses_segment(p0, p1, px, py) {
+                inside = !inside;
             }
         }
 
@@ -613,93 +605,33 @@ impl Polygon<3> {
 
 /// Returns `true` if point `x` is inside a quadratic polygon.
 ///
-/// The polygon is specified as `[vertices..., quadratic_control_points...]`.
+/// The polygon is specified as `[vertices..., mid-side nodes...]`, the layout of the
+/// quadratic element types (TRI6, TRI7, QUAD8, QUAD9, QPOLY): edge `i` joins vertex `i`
+/// to vertex `i + 1` and is the circular arc through its mid-side node. Collinear edges
+/// fall back to the straight segment, so classification is always defined. Points on the
+/// boundary are not classified.
 pub fn in_quadratic_polygon(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
-    let px = x[0];
-    let py = x[1];
-
     let n = pgon.len() / 2;
     assert!(pgon.len().is_multiple_of(2));
 
-    let vertices = &pgon[..n];
-    let arcs = &pgon[n..];
-
+    let [px, py] = *x;
     let mut inside = false;
-
     for i in 0..n {
-        let p0 = vertices[i];
-        let q = arcs[i];
-        let p2 = vertices[(i + 1) % n];
-
-        // Compute circle center
-        let x0 = p0[0];
-        let y0 = p0[1];
-        let x1 = q[0];
-        let y1 = q[1];
-        let x2 = p2[0];
-        let y2 = p2[1];
-
-        let d = 2.0 * (x0 * (y1 - y2) + x1 * (y2 - y0) + x2 * (y0 - y1));
-        if d.abs() < 1e-14 {
-            // Degenerate → treat as line segment
-            continue;
-        }
-
-        let c_x = ((x0 * x0 + y0 * y0) * (y1 - y2)
-            + (x1 * x1 + y1 * y1) * (y2 - y0)
-            + (x2 * x2 + y2 * y2) * (y0 - y1))
-            / d;
-
-        let c_y = ((x0 * x0 + y0 * y0) * (x2 - x1)
-            + (x1 * x1 + y1 * y1) * (x0 - x2)
-            + (x2 * x2 + y2 * y2) * (x1 - x0))
-            / d;
-
-        let r2 = (x0 - c_x).powi(2) + (y0 - c_y).powi(2);
-        let dy = py - c_y;
-        let disc = r2 - dy * dy;
-
-        if disc < 0.0 {
-            continue;
-        }
-
-        let sqrt_d = disc.sqrt();
-        let xs = [c_x - sqrt_d, c_x + sqrt_d];
-
-        let theta0 = (y0 - c_y).atan2(x0 - c_x);
-        let theta1 = (y1 - c_y).atan2(x1 - c_x);
-        let theta2 = (y2 - c_y).atan2(x2 - c_x);
-
-        for &xi in &xs {
-            if xi <= px {
-                continue;
-            }
-
-            let yi = py;
-            let thetai = (yi - c_y).atan2(xi - c_x);
-
-            let a = angle_between(theta0, theta2, thetai);
-            let b = angle_between(theta0, theta2, theta1);
-
-            if a == b {
-                inside = !inside;
-            }
-        }
+        let p0 = &pgon[i];
+        let m = &pgon[n + i];
+        let p1 = &pgon[(i + 1) % n];
+        inside ^= match ArcCircle::through(p0, m, p1) {
+            Some(circ) => circ.crosses_ray_right(p0, m, p1, px, py),
+            None => ray_crosses_segment(p0, p1, px, py),
+        };
     }
-
     inside
 }
 
-fn angle_between(a: f64, b: f64, x: f64) -> bool {
-    let mut ab = b - a;
-    let mut ax = x - a;
-    if ab < 0.0 {
-        ab += 2.0 * std::f64::consts::TAU;
-    }
-    if ax < 0.0 {
-        ax += 2.0 * std::f64::consts::TAU;
-    }
-    ax <= ab
+/// Whether the horizontal ray `(px, py) -> +inf` crosses the straight segment `p0 -> p1`.
+#[inline]
+fn ray_crosses_segment(p0: &[f64; 2], p1: &[f64; 2], px: f64, py: f64) -> bool {
+    (p0[1] > py) != (p1[1] > py) && p0[0] + (py - p0[1]) / (p1[1] - p0[1]) * (p1[0] - p0[0]) > px
 }
 
 /// Returns `true` if point `x` is inside a Bezier polygon.

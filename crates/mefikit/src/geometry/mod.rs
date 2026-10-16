@@ -10,7 +10,8 @@
 //!    `pub` and is the supported surface for element traits and mesh tools.
 //! 2. **`pub(crate)` helpers**: `area_tri2`, `area_quad2`, `area_polygon3`, `newell_normal3`,
 //!    `signed_area2`, `into_ccw2`, `vertex_centroid`, `bounds_iter`, `cross2`,
-//!    `convex_polygon_contains2`, `tet_volume`, `hex_volume`, `tet_contains`, `hex_contains`.
+//!    `convex_polygon_contains2`, `arc_length2`, `quadratic_polygon_area2`, `tet_volume`,
+//!    `hex_volume`, `tet_contains`, `hex_contains`.
 //!    These are allocation-free, bit-exact shortcuts for the common regular element types
 //!    (TRI3, QUAD4, SEG2, TET4, HEX8).
 //!
@@ -37,6 +38,7 @@
 //!   allocation instead of one `Vec` per face, mirroring `Connectivity::Poly` in the mesh layer).
 //!   This is the single geometry→mesh edge; keep it to this one data structure.
 
+mod arc;
 mod convexity;
 mod plane;
 mod polygon;
@@ -44,6 +46,7 @@ mod polyhedron;
 mod region;
 mod segment;
 
+pub(crate) use arc::{arc_length2, quadratic_polygon_area2};
 pub use convexity::Convexity;
 pub use plane::PlaneFrame;
 pub(crate) use polygon::newell_normal;

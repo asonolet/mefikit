@@ -3,7 +3,8 @@
 //! This module converts all elements of a `UMeshView` into their poly equivalents:
 //! - 0D elements (VERTEX) stay unchanged.
 //! - 1D elements become SPLINE.
-//! - 2D elements become PGON.
+//! - 2D linear elements become PGON and quadratic ones QPOLY (the latter keeping their
+//!   vertices and mid-side nodes, dropping the TRI7/QUAD9 centre node).
 //! - 3D elements become PHED with face-based connectivity.
 //!
 //! The inverse operation can be used to simplify some cells from a mesh.
@@ -16,9 +17,11 @@ use crate::mesh::{Dimension, UMesh, UMeshView};
 /// Returns a new `UMesh` where:
 /// - 0D elements (VERTEX) are preserved as-is.
 /// - 1D elements (SEG2, SEG3, SEG4) become SPLINE.
-/// - 2D elements (TRI3, TRI6, TRI7, QUAD4, QUAD8, QUAD9) become PGON.
+/// - 2D linear elements (TRI3, QUAD4) become PGON.
+/// - 2D quadratic elements (TRI6, TRI7, QUAD8, QUAD9) become QPOLY, keeping their
+///   vertices and mid-side nodes and dropping the TRI7/QUAD9 centre node.
 /// - 3D elements (TET4, TET10, HEX8, HEX21) become PHED.
-/// - Already-poly elements (SPLINE, PGON, PHED) are preserved.
+/// - Already-poly elements (SPLINE, PGON, QPOLY, PHED) are preserved.
 ///
 /// Fields and groups are not transferred.
 pub fn polyze(mesh: &UMeshView) -> UMesh {
@@ -36,6 +39,7 @@ pub fn polyze(mesh: &UMeshView) -> UMesh {
 ///
 /// - SPLINE cannot be converted (ambiguous).
 /// - PGON with 3 nodes becomes TRI3, with 4 nodes becomes QUAD4.
+/// - QPOLY with 6 nodes becomes TRI6, with 8 nodes becomes QUAD8.
 /// - PHED with 4 triangular faces becomes TET4, with 6 quadrilateral faces becomes HEX8.
 /// - Already-regular elements are copied unchanged.
 ///
@@ -73,7 +77,7 @@ pub fn polyze_dim(mesh: &UMeshView, dim: Dimension) -> UMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::{ElementType, UMesh};
+    use crate::mesh::{ElementLike, ElementType, UMesh};
     use ndarray as nd;
 
     #[test]
@@ -262,6 +266,71 @@ mod tests {
                 .element_types()
                 .any(|&et| et == ElementType::QUAD4)
         );
+    }
+
+    #[test]
+    fn test_polyze_quadratic_2d() {
+        // TRI7 -> QPOLY drops the centre node; QUAD8 -> QPOLY keeps all 8 nodes.
+        let coords = nd::ArcArray2::from_shape_vec(
+            (7, 2),
+            vec![
+                0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.5, 0.0, 0.5, 0.5, 0.0, 0.5, 0.3, 0.3,
+            ],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_regular_block(
+            ElementType::TRI7,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6]]).to_shared(),
+            None,
+        );
+
+        let poly_mesh = polyze(&mesh.view());
+        assert!(
+            poly_mesh
+                .element_types()
+                .all(|&et| et == ElementType::QPOLY)
+        );
+        let elem = poly_mesh.elements().next().unwrap();
+        assert_eq!(elem.connectivity(), &[0, 1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_unpolyze_qpoly_roundtrip() {
+        // QUAD8 -> QPOLY -> QUAD8 and TRI6 -> QPOLY -> TRI6 are both lossless.
+        for (et, coords) in [
+            (
+                ElementType::QUAD8,
+                vec![
+                    0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.5, 0.0, 1.0, 0.5, 0.5, 1.0, 0.0, 0.5,
+                ],
+            ),
+            (
+                ElementType::TRI6,
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.5, 0.0, 0.5, 0.5, 0.0, 0.5],
+            ),
+        ] {
+            let n = et.num_nodes().unwrap();
+            let coords = nd::ArcArray2::from_shape_vec((n, 2), coords).unwrap();
+            let mut mesh = UMesh::new(coords);
+            mesh.add_regular_block(
+                et,
+                nd::Array2::from_shape_vec((1, n), (0..n).collect())
+                    .unwrap()
+                    .to_shared(),
+                None,
+            );
+
+            let poly_mesh = polyze(&mesh.view());
+            assert!(poly_mesh.element_types().all(|&e| e == ElementType::QPOLY));
+            let unpoly_mesh = unpolyze(&poly_mesh.view()).unwrap();
+            let types: Vec<ElementType> = unpoly_mesh.element_types().copied().collect();
+            assert_eq!(types, vec![et]);
+            assert_eq!(
+                unpoly_mesh.elements().next().unwrap().connectivity(),
+                (0..n).collect::<Vec<_>>()
+            );
+        }
     }
 
     // ===== unpolyze tests =====

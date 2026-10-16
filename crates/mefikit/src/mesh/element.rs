@@ -64,8 +64,8 @@ pub enum RegularElemType {
 /// considered as elements. A mesh will hold VERTEX elements if it needs to store node groups or
 /// node fields for example. This can also be used to store nodes order, or duplicated nodes, etc.
 /// Some elements are not linear but of higher order such as SEG3, HEX21. The elements node
-/// connecivity follows a convention. Three kinds of elements can hold an abitrary number of nodes
-/// and are specials: SPLINE, PGON (Polygon), and PHED (Polyhedron).
+/// connecivity follows a convention. Four kinds of elements can hold an abitrary number of nodes
+/// and are specials: SPLINE, PGON (Polygon), QPOLY (quadratic polygon) and PHED (Polyhedron).
 #[repr(u8)]
 #[derive(Debug, Eq, Hash, Copy, Clone, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ElementType {
@@ -86,6 +86,13 @@ pub enum ElementType {
     QUAD8,
     QUAD9,
     PGON,
+    /// Quadratic polygon with arbitrary node count (2D).
+    ///
+    /// Connectivity is `[v0..v{n-1}, m0..m{n-1}]`: the `n` vertices first, then the `n`
+    /// mid-side nodes in edge order (edge `i` joins vertex `i` to vertex `i+1` and is
+    /// shaped by mid-side node `i`). Each edge is the circular arc through its three
+    /// points.
+    QPOLY,
 
     // 3d
     TET4,
@@ -139,7 +146,7 @@ impl ElementType {
             SEG2 | SEG3 | SEG4 | SPLINE => Dimension::D1,
 
             // 2D
-            TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 | PGON => Dimension::D2,
+            TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 | PGON | QPOLY => Dimension::D2,
 
             // 3D
             TET4 | TET10 | HEX8 | HEX21 | PHED => Dimension::D3,
@@ -150,7 +157,7 @@ impl ElementType {
         use ElementType::*;
         match self {
             // poly
-            SPLINE | PGON | PHED => Regularity::Poly,
+            SPLINE | PGON | QPOLY | PHED => Regularity::Poly,
             // regular
             _ => Regularity::Regular,
         }
@@ -170,7 +177,8 @@ impl ElementType {
             QUAD4 => Some(4),
             QUAD8 => Some(8),
             QUAD9 => Some(9),
-            PGON => None, // Polygon can have arbitrary number of nodes
+            PGON => None,  // Polygon can have arbitrary number of nodes
+            QPOLY => None, // Quadratic polygon has an even, arbitrary number of nodes
             TET4 => Some(4),
             TET10 => Some(10),
             HEX8 => Some(8),
@@ -254,6 +262,25 @@ pub trait ElementLike<'a> {
     /// This is used to determine the number of nodes in the element.
     fn num_nodes(&self) -> usize {
         self.connectivity().len()
+    }
+
+    /// Returns the number of nodes that shape the element's boundary polygon: the
+    /// vertices, excluding mid-side nodes and the TRI7/QUAD9 centre node. For QPOLY
+    /// (variable node count) it is half the connectivity length. Poly elements have all
+    /// their nodes on the boundary, so this is [`Self::num_nodes`].
+    ///
+    /// The vertices are always the *first* `num_vertices()` nodes of the connectivity,
+    /// followed by the same number of mid-side nodes in edge order.
+    fn num_vertices(&self) -> usize {
+        match self.element_type() {
+            ElementType::SEG3 | ElementType::SEG4 => 2,
+            ElementType::TRI6 | ElementType::TRI7 => 3,
+            ElementType::QUAD8 | ElementType::QUAD9 => 4,
+            ElementType::TET10 => 4,
+            ElementType::HEX21 => 8,
+            ElementType::QPOLY => self.connectivity().len() / 2,
+            et => et.num_nodes().unwrap_or_else(|| self.connectivity().len()),
+        }
     }
 
     /// Returns the topological dimension of the element.

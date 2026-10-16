@@ -110,8 +110,9 @@ fn normal_component(
 
 /// Computes the unit surface normal of a single element.
 ///
-/// For a 2D cell in 3D space this is the (normalized) Newell normal of its facet; for a
-/// 1D cell in 2D space it is the in-plane normal obtained by rotating the segment
+/// For a 2D cell in 3D space this is the (normalized) Newell normal of its vertex loop —
+/// mid-side nodes of quadratic cells take no part, they lie on the curved facet itself;
+/// for a 1D cell in 2D space it is the in-plane normal obtained by rotating the segment
 /// direction by 90° counter-clockwise. Returns a 3-vector whose first two components
 /// carry the in-plane normal when the space is 2D.
 fn surface_normal<'a, E>(e: &E, space_dim: usize) -> [f64; 3]
@@ -120,7 +121,7 @@ where
 {
     match space_dim {
         3 => {
-            let points: Vec<[f64; 3]> = e.coords3().copied().collect();
+            let points: Vec<[f64; 3]> = (0..e.num_vertices()).map(|i| *e.coord3_ref(i)).collect();
             let mut n = newell_normal(&points);
             let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
             if len > 0.0 {

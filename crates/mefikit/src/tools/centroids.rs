@@ -30,7 +30,9 @@ pub fn centroids(
                 k,
                 match mesh.space_dimension() {
                     1 => {
-                        let a: Vec<f64> = v.par_iter(mesh.coords.view()).map(|e| e.coords().map(|x| x[0]).sum::<f64>() / (e.num_nodes() as f64)).collect();
+                        let a: Vec<f64> = v.par_iter(mesh.coords.view())
+                            .map(|e| vertex_mean_component(&e, 0))
+                            .collect();
                         nd::Array2::from_shape_vec(
                             (v.len(), 1),
                             a
@@ -49,8 +51,8 @@ pub fn centroids(
                             .map(|e| e.centroid3())
                             .collect();
                         nd::Array2::from_shape_vec(
-                            (v.len(), 3),
-                            a.into_iter().flat_map(|x| x.into_iter()).collect()
+                        (v.len(), 3),
+                        a.into_iter().flat_map(|x| x.into_iter()).collect()
                     ).unwrap()},
                     c => panic!( "{c} is not a valid space dimension. Space (coordinates) dimension must be 0, 1, 2 ou 3.")
                 }
@@ -59,70 +61,69 @@ pub fn centroids(
     .collect()
 }
 
+/// The `axis` component of each element's vertex centroid in a 1D space (there is no
+/// `centroid1`, so the mean is taken directly over the vertex block).
+fn vertex_mean_component<'a>(elem: &impl ElementLike<'a>, axis: usize) -> f64 {
+    let n = elem.num_vertices();
+    elem.coords().take(n).map(|c| c[axis]).sum::<f64>() / n as f64
+}
+
+/// The `axis` component of each element's vertex centroid: [`ElementGeo::centroid2`] or
+/// [`ElementGeo::centroid3`] in 2D/3D space, matching [`centroids`].
+fn center_component(
+    mesh: &UMeshView,
+    dim: Option<Dimension>,
+    axis: usize,
+) -> BTreeMap<ElementType, nd::Array1<f64>> {
+    let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
+    mesh.par_blocks()
+        .filter(|(et, _)| et.dimension() == dim)
+        .map(|(&k, v)| {
+            let a: Vec<f64> = v
+                .par_iter(mesh.coords.view())
+                .map(|e| match mesh.space_dimension() {
+                    2 => e.centroid2()[axis],
+                    3 => e.centroid3()[axis],
+                    1 => vertex_mean_component(&e, axis),
+                    c => panic!(
+                        "{c} is not a valid space dimension. Space (coordinates) dimension must \
+                         be 0, 1, 2 ou 3."
+                    ),
+                })
+                .collect();
+            (k, nd::Array1::from_shape_vec((v.len(),), a).unwrap())
+        })
+        .collect()
+}
+
 /// Computes the x coord of each element center in the mesh.
 ///
-/// Returns a map of element types to arrays of measure values.
+/// Returns a map of element types to arrays of x components of the vertex centroid.
 pub fn x_center(
     mesh: &UMeshView,
     dim: Option<Dimension>,
 ) -> BTreeMap<ElementType, nd::Array1<f64>> {
-    let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
-    mesh.par_blocks()
-        .filter(|(et, _)| et.dimension() == dim)
-        .map(|(&k, v)| {
-            (k, {
-                let a: Vec<f64> = v
-                    .par_iter(mesh.coords.view())
-                    .map(|e| e.coords().map(|x| x[0]).sum::<f64>() / (e.num_nodes() as f64))
-                    .collect();
-                nd::Array1::from_shape_vec((v.len(),), a).unwrap()
-            })
-        })
-        .collect()
+    center_component(mesh, dim, 0)
 }
 
 /// Computes the y coord of each element center in the mesh.
 ///
-/// Returns a map of element types to arrays of measure values.
+/// Returns a map of element types to arrays of y components of the vertex centroid.
 pub fn y_center(
     mesh: &UMeshView,
     dim: Option<Dimension>,
 ) -> BTreeMap<ElementType, nd::Array1<f64>> {
-    let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
-    mesh.par_blocks()
-        .filter(|(et, _)| et.dimension() == dim)
-        .map(|(&k, v)| {
-            (k, {
-                let a: Vec<f64> = v
-                    .par_iter(mesh.coords.view())
-                    .map(|e| e.coords().map(|x| x[1]).sum::<f64>() / (e.num_nodes() as f64))
-                    .collect();
-                nd::Array1::from_shape_vec((v.len(),), a).unwrap()
-            })
-        })
-        .collect()
+    center_component(mesh, dim, 1)
 }
 
 /// Computes the z coord of each element center in the mesh.
 ///
-/// Returns a map of element types to arrays of measure values.
+/// Returns a map of element types to arrays of z components of the vertex centroid.
 pub fn z_center(
     mesh: &UMeshView,
     dim: Option<Dimension>,
 ) -> BTreeMap<ElementType, nd::Array1<f64>> {
-    let dim = dim.unwrap_or_else(|| mesh.topological_dimension().unwrap());
-    mesh.par_blocks()
-        .filter(|(et, _)| et.dimension() == dim)
-        .map(|(&k, v)| {
-            (k, {
-                let a: Vec<f64> = v
-                    .par_iter(mesh.coords.view())
-                    .map(|e| e.coords().map(|x| x[2]).sum::<f64>() / (e.num_nodes() as f64))
-                    .collect();
-                nd::Array1::from_shape_vec((v.len(),), a).unwrap()
-            })
-        })
-        .collect()
+    center_component(mesh, dim, 2)
 }
 
 /// Trait for computing and storing element measures as fields.

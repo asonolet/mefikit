@@ -1,9 +1,10 @@
 //! Mesh reorientation: repair every element's winding to the canonical convention.
 //!
 //! Cell-level repair is delegated to [`ElementGeo::oriented_positive_connectivity`] for the
-//! linear cell types it understands:
-//! - 2D cells (TRI3, QUAD4, PGON) are rewound counter-clockwise in the xy plane
-//!   (`signed_area2` tells the sign, so the fix is translation/rotation independent);
+//! cell types it understands:
+//! - 2D cells (TRI3, QUAD4, PGON, the quadratic 2D cells and QPOLY) are rewound
+//!   counter-clockwise in the xy plane (the signed area of the element tells the sign, so
+//!   the fix is translation/rotation independent);
 //! - TET4 and HEX8 are given positive signed volume.
 //!
 //! Polyhedral (PHED) cells cannot be handled by that linear fixer (their node lists do not map
@@ -13,8 +14,9 @@
 //! plane contains the centroid reference point are left untouched (degenerate guard) instead of
 //! panicking, keeping the repair total on pathological input.
 //!
-//! Cells with no well-defined winding in the mesh's space dimension are copied unchanged
-//! (higher-order cells, 1D/0D cells, and 2D cells embedded in a 3D mesh).
+//! Cells the fixer does not cover are copied unchanged: 1D/0D cells, the quadratic 3D
+//! cells (TET10, HEX21), and 2D cells embedded in a 3D mesh (their winding has no meaning
+//! in the space they live in).
 //!
 //! The operation is out-of-place and block-preserving: for every input element block a block
 //! with the same element type, count and element order is produced, so families, fields and
@@ -29,10 +31,17 @@ use crate::mesh::{
 use ndarray as nd;
 use rustc_hash::FxHashMap;
 
-/// Whether `et` is a linear cell with a well-defined winding in `space_dim`.
+/// Whether `et` is a cell with a well-defined winding in `space_dim`.
 fn fixable(et: ElementType, space_dim: usize) -> bool {
     match et {
-        ElementType::TRI3 | ElementType::QUAD4 | ElementType::PGON => space_dim == 2,
+        ElementType::TRI3
+        | ElementType::TRI6
+        | ElementType::TRI7
+        | ElementType::QUAD4
+        | ElementType::QUAD8
+        | ElementType::QUAD9
+        | ElementType::PGON
+        | ElementType::QPOLY => space_dim == 2,
         ElementType::TET4 | ElementType::HEX8 => space_dim == 3,
         _ => false,
     }
@@ -378,6 +387,35 @@ mod tests {
             }
         }
         assert!(node_sets.is_empty(), "reorient changed the cell count");
+    }
+
+    #[test]
+    fn cw_quadratic_cell_is_rewound_ccw() {
+        // A clockwise QUAD8 whose mid-side nodes are paired with the clockwise edges;
+        // reorient must reverse the vertices and re-pair the mids to the unit square.
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5]
+        ]
+        .into_shared();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[3, 2, 1, 0, 6, 5, 4, 7]]).to_shared(),
+            None,
+        );
+        let fixed = Reorientable::reorient(&mesh);
+        let (_, block) = fixed.blocks().next().unwrap();
+        let coords = fixed.coords();
+        let elem = block.iter(coords.view()).next().unwrap();
+        assert_eq!(elem.connectivity(), &[0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_abs_diff_eq!(elem.measure2(), 1.0, epsilon = 1e-12);
     }
 
     #[test]

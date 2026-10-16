@@ -128,6 +128,23 @@ mod mesh_creation {
         let elements: Vec<_> = mesh.elements().collect();
         assert_eq!(elements[0].connectivity, &[0, 1, 2, 3]);
     }
+
+    #[test]
+    fn create_qpoly_element() {
+        let coords = nd::ArcArray2::from_shape_vec(
+            (8, 2),
+            vec![
+                0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.5, 0.0, 1.0, 0.5, 0.5, 1.0, 0.0, 0.5,
+            ],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_element(ElementType::QPOLY, &[0, 1, 2, 3, 4, 5, 6, 7], None);
+        assert_eq!(mesh.num_elements(), 1);
+        let elements: Vec<_> = mesh.elements().collect();
+        assert_eq!(elements[0].connectivity, &[0, 1, 2, 3, 4, 5, 6, 7]);
+        assert_eq!(elements[0].num_vertices(), 4);
+    }
 }
 
 mod mesh_iteration {
@@ -221,6 +238,7 @@ mod element_types {
         assert_eq!(ElementType::TET4.dimension(), Dimension::D3);
         assert_eq!(ElementType::HEX8.dimension(), Dimension::D3);
         assert_eq!(ElementType::PGON.dimension(), Dimension::D2);
+        assert_eq!(ElementType::QPOLY.dimension(), Dimension::D2);
         assert_eq!(ElementType::PHED.dimension(), Dimension::D3);
         assert_eq!(ElementType::SPLINE.dimension(), Dimension::D1);
     }
@@ -230,6 +248,7 @@ mod element_types {
         assert_eq!(ElementType::SEG2.regularity(), Regularity::Regular);
         assert_eq!(ElementType::QUAD4.regularity(), Regularity::Regular);
         assert_eq!(ElementType::PGON.regularity(), Regularity::Poly);
+        assert_eq!(ElementType::QPOLY.regularity(), Regularity::Poly);
         assert_eq!(ElementType::PHED.regularity(), Regularity::Poly);
         assert_eq!(ElementType::SPLINE.regularity(), Regularity::Poly);
     }
@@ -253,6 +272,7 @@ mod element_types {
     #[test]
     fn num_nodes_of_poly_elements() {
         assert_eq!(ElementType::PGON.num_nodes(), None);
+        assert_eq!(ElementType::QPOLY.num_nodes(), None);
         assert_eq!(ElementType::PHED.num_nodes(), None);
         assert_eq!(ElementType::SPLINE.num_nodes(), None);
     }
