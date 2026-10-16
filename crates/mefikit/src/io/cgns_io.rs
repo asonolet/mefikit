@@ -455,8 +455,11 @@ fn read_groups(zone: &Group, mesh: &mut UMesh, layout: &BlockLayout) -> Result<(
         }
     }
 
-    if !groups.is_empty() {
-        mesh.set_groups(groups);
+    // `add_to_group` (not `set_groups`) preserves the exact cell indices: on a
+    // freshly built mesh every cell shares family 0, and `set_groups` would map
+    // the indices onto that family and thereby pull in every other cell too.
+    for (name, element_ids) in &groups {
+        mesh.add_to_group(name, element_ids);
     }
     Ok(())
 }
@@ -1252,9 +1255,7 @@ mod tests {
                 element_ids.add_block(*element_type, indices);
             }
         }
-        let mut groups = std::collections::BTreeMap::new();
-        groups.insert("left".to_string(), element_ids);
-        mesh.set_groups(groups);
+        mesh.add_to_group("left", &element_ids);
 
         write_cgns(&dst, mesh.view()).unwrap();
         let back = read(&dst).unwrap();
