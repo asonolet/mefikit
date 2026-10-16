@@ -712,6 +712,7 @@ pub fn in_bezier_polygon(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;
+    use proptest::prelude::*;
 
     fn square() -> Polygon<2> {
         Polygon::unknown([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
@@ -1313,6 +1314,415 @@ mod tests {
                     "convex fast path must match Polygon::contains for {p:?}"
                 );
             }
+        }
+    }
+
+    // -------------------------------------------------------------------------------------
+    // Floating-point robustness properties for the ray-casting containment paths.
+    //
+    // The ray cast is an inherently floating-point computation: it locates a horizontal
+    // crossing by interpolation and toggles a parity bit. These tests cross-check it against
+    // oracles that are as exact as we can make them (`robust::orient2d` winding numbers, the
+    // straight-chord fallback) and against rigid/affine invariance, and they deliberately
+    // probe the cases where error is worst: vertices exactly on the ray, mid-side nodes
+    // almost on their chords (where the arc centre escapes to infinity), and large
+    // coordinate offsets. Points within a scale-aware tolerance of the boundary are skipped,
+    // since no two correct implementations need to agree there.
+    // -------------------------------------------------------------------------------------
+
+    /// Largest coordinate magnitude seen in `pts` or `extra`, floored at `1.0`. Used to make
+    /// tolerances scale-aware.
+    fn coord_scale(pts: &[[f64; 2]], extra: [f64; 2]) -> f64 {
+        let mut s = 1.0f64;
+        for p in pts {
+            s = s.max(p[0].abs()).max(p[1].abs());
+        }
+        s.max(extra[0].abs()).max(extra[1].abs())
+    }
+
+    /// Non-zero-winding containment using the exact orientation predicate. For simple
+    /// polygons this agrees with the even-odd ray-casting rule, so it is a sound oracle.
+    fn winding_contains(poly: &[[f64; 2]], p: [f64; 2]) -> bool {
+        let n = poly.len();
+        let mut wn = 0i32;
+        for i in 0..n {
+            let a = poly[i];
+            let b = poly[(i + 1) % n];
+            if a[1] <= p[1] {
+                if b[1] > p[1] && orient2d2(a, b, p) > 0.0 {
+                    wn += 1;
+                }
+            } else if b[1] <= p[1] && orient2d2(a, b, p) < 0.0 {
+                wn -= 1;
+            }
+        }
+        wn != 0
+    }
+
+    /// Euclidean distance from `p` to the segment `[a, b]`.
+    fn dist_to_segment(p: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+        let ab = [b[0] - a[0], b[1] - a[1]];
+        let ap = [p[0] - a[0], p[1] - a[1]];
+        let len2 = ab[0] * ab[0] + ab[1] * ab[1];
+        let t = if len2 > 0.0 {
+            ((ap[0] * ab[0] + ap[1] * ab[1]) / len2).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let dx = ap[0] - t * ab[0];
+        let dy = ap[1] - t * ab[1];
+        (dx * dx + dy * dy).sqrt()
+    }
+
+    /// Distance from `p` to the closed polyline through `poly`.
+    fn dist_to_boundary(poly: &[[f64; 2]], p: [f64; 2]) -> f64 {
+        let n = poly.len();
+        let mut d = f64::INFINITY;
+        for i in 0..n {
+            d = d.min(dist_to_segment(p, poly[i], poly[(i + 1) % n]));
+        }
+        d
+    }
+
+    /// A random star-shaped (hence simple) polygon: vertices sorted by angle around a random
+    /// centre. This can be concave, so it exercises the ray-casting path rather than the
+    /// convex fast path.
+    fn star_polygon(min_n: usize, max_n: usize) -> impl Strategy<Value = Vec<[f64; 2]>> {
+        (min_n..=max_n).prop_flat_map(|n| {
+            (
+                prop::collection::vec(0.0f64..std::f64::consts::TAU, n),
+                prop::collection::vec(0.3f64..2.0, n),
+                prop::array::uniform2(-1.0f64..1.0),
+            )
+                .prop_map(|(angles, radii, center)| {
+                    let mut pairs: Vec<(f64, f64)> = angles.into_iter().zip(radii).collect();
+                    pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                    pairs
+                        .into_iter()
+                        .map(|(a, r)| [center[0] + r * a.cos(), center[1] + r * a.sin()])
+                        .collect()
+                })
+        })
+    }
+
+    /// Convex hull (monotone chain), returned counter-clockwise.
+    fn convex_hull(mut pts: Vec<[f64; 2]>) -> Vec<[f64; 2]> {
+        pts.sort_by(|a, b| {
+            a[0].partial_cmp(&b[0])
+                .unwrap()
+                .then(a[1].partial_cmp(&b[1]).unwrap())
+        });
+        pts.dedup();
+        if pts.len() < 3 {
+            return pts;
+        }
+        let cross = |o: [f64; 2], a: [f64; 2], b: [f64; 2]| {
+            (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+        };
+        let mut lower: Vec<[f64; 2]> = Vec::new();
+        for &p in &pts {
+            while lower.len() >= 2
+                && cross(lower[lower.len() - 2], lower[lower.len() - 1], p) <= 0.0
+            {
+                lower.pop();
+            }
+            lower.push(p);
+        }
+        let mut upper: Vec<[f64; 2]> = Vec::new();
+        for &p in pts.iter().rev() {
+            while upper.len() >= 2
+                && cross(upper[upper.len() - 2], upper[upper.len() - 1], p) <= 0.0
+            {
+                upper.pop();
+            }
+            upper.push(p);
+        }
+        lower.pop();
+        upper.pop();
+        lower.extend(upper);
+        lower
+    }
+
+    proptest! {
+        /// The ray cast must agree with the exact winding test on a simple polygon whenever
+        /// the query point is far enough from the boundary for the comparison to be meaningful.
+        #[test]
+        fn raycast_matches_exact_winding(
+            poly in star_polygon(3, 8),
+            q in prop::array::uniform2(-2.0f64..2.0),
+        ) {
+            let scale = coord_scale(&poly, q);
+            prop_assume!(dist_to_boundary(&poly, q) > 64.0 * f64::EPSILON * scale);
+            let got = Polygon::unknown(poly.clone()).raycast_contains(&q);
+            prop_assert_eq!(got, winding_contains(&poly, q));
+        }
+    }
+
+    proptest! {
+        /// Classification is a geometric property, so translating the whole configuration must
+        /// not change it — even when the translation moves coordinates to ~1e6, where the
+        /// interpolated crossing absorbs a much larger absolute rounding error.
+        #[test]
+        fn raycast_is_translation_invariant(
+            poly in star_polygon(3, 8),
+            q in prop::array::uniform2(-2.0f64..2.0),
+            t in prop::array::uniform2(-1e6f64..1e6),
+        ) {
+            let shifted: Vec<[f64; 2]> =
+                poly.iter().map(|p| [p[0] + t[0], p[1] + t[1]]).collect();
+            let qs = [q[0] + t[0], q[1] + t[1]];
+            prop_assume!(dist_to_boundary(&poly, q) > 64.0 * f64::EPSILON * coord_scale(&shifted, qs));
+            let before = Polygon::unknown(poly).raycast_contains(&q);
+            let after = Polygon::unknown(shifted).raycast_contains(&qs);
+            prop_assert_eq!(before, after);
+        }
+    }
+
+    proptest! {
+        /// Uniform scaling must not change the classification.
+        #[test]
+        fn raycast_is_scale_invariant(
+            poly in star_polygon(3, 8),
+            q in prop::array::uniform2(-2.0f64..2.0),
+            s in 1e-3f64..1e3,
+        ) {
+            let scale = coord_scale(&poly, q);
+            prop_assume!(dist_to_boundary(&poly, q) > 64.0 * f64::EPSILON * scale);
+            let before = Polygon::unknown(poly.clone()).raycast_contains(&q);
+            let scaled: Vec<[f64; 2]> = poly.iter().map(|p| [p[0] * s, p[1] * s]).collect();
+            let after = Polygon::unknown(scaled).raycast_contains(&[q[0] * s, q[1] * s]);
+            prop_assert_eq!(before, after);
+        }
+    }
+
+    proptest! {
+        /// The half-plane fast path (exact orientation predicates) and the ray cast must agree
+        /// on a convex polygon away from the boundary.
+        #[test]
+        fn convex_fast_path_matches_raycast(
+            pts in prop::collection::vec(prop::array::uniform2(-2.0f64..2.0), 3..=12),
+            q in prop::array::uniform2(-3.0f64..3.0),
+        ) {
+            let hull = convex_hull(pts);
+            prop_assume!(hull.len() >= 3);
+            let scale = coord_scale(&hull, q);
+            prop_assume!(dist_to_boundary(&hull, q) > 64.0 * f64::EPSILON * scale);
+            let poly = Polygon::unknown(hull.clone());
+            prop_assert_eq!(convex_polygon_contains2(&hull, &q), poly.raycast_contains(&q));
+        }
+    }
+
+    /// Star-shaped vertices with one mid-side node per edge, offset along the chord normal by
+    /// a bounded fraction of the chord length. The offset magnitude stays away from zero so the
+    /// arcs are comfortably non-degenerate (near-degenerate arcs are covered separately).
+    fn quadratic_polygon(min_n: usize, max_n: usize) -> impl Strategy<Value = Vec<[f64; 2]>> {
+        (
+            star_polygon(min_n, max_n),
+            prop::collection::vec(prop_oneof![-0.3f64..-0.05, 0.05f64..0.3], max_n),
+        )
+            .prop_map(|(verts, offsets)| {
+                let n = verts.len();
+                let mut out = verts.clone();
+                for i in 0..n {
+                    let p0 = verts[i];
+                    let p1 = verts[(i + 1) % n];
+                    let d = [p1[0] - p0[0], p1[1] - p0[1]];
+                    let mid = [(p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0];
+                    let off = offsets[i];
+                    out.push([mid[0] + off * d[1], mid[1] - off * d[0]]);
+                }
+                out
+            })
+    }
+
+    /// Circle through `p0`, `m`, `p1`, sampled into `k` equal-angle chords. Returns the
+    /// polyline together with the maximum deviation between a chord and the true arc, or `None`
+    /// when the three points are collinear at the edge's scale. This is an independent
+    /// circumcentre computation, on purpose: it must not share code with the production arc.
+    fn sample_arc(
+        p0: [f64; 2],
+        m: [f64; 2],
+        p1: [f64; 2],
+        k: usize,
+    ) -> Option<(Vec<[f64; 2]>, f64)> {
+        let (ax, ay) = (p0[0], p0[1]);
+        let (bx, by) = (m[0], m[1]);
+        let (cx, cy) = (p1[0], p1[1]);
+        let d = 2.0 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+        let scale2 =
+            ((bx - ax).powi(2) + (by - ay).powi(2)).max((cx - ax).powi(2) + (cy - ay).powi(2));
+        if d.abs() <= 64.0 * f64::EPSILON * scale2 {
+            return None;
+        }
+        let a2 = ax * ax + ay * ay;
+        let b2 = bx * bx + by * by;
+        let c2 = cx * cx + cy * cy;
+        let ux = (a2 * (by - cy) + b2 * (cy - ay) + c2 * (ay - by)) / d;
+        let uy = (a2 * (cx - bx) + b2 * (ax - cx) + c2 * (bx - ax)) / d;
+        let r = ((ax - ux).powi(2) + (ay - uy).powi(2)).sqrt();
+        let a0 = (ay - uy).atan2(ax - ux);
+        let am = (by - uy).atan2(bx - ux);
+        let a1 = (cy - uy).atan2(cx - ux);
+        let tau = std::f64::consts::TAU;
+        let ccw = (a1 - a0).rem_euclid(tau);
+        let sweep = if (am - a0).rem_euclid(tau) <= ccw {
+            ccw
+        } else {
+            ccw - tau
+        };
+        let mut pts = Vec::with_capacity(k + 1);
+        for j in 0..=k {
+            let a = a0 + sweep * (j as f64) / (k as f64);
+            pts.push([ux + r * a.cos(), uy + r * a.sin()]);
+        }
+        let gap = r * (1.0 - (sweep.abs() / (2.0 * k as f64)).cos());
+        Some((pts, gap))
+    }
+
+    /// Dense boundary polyline of a quadratic polygon, with the largest chord deviation over
+    /// all arcs.
+    fn quadratic_boundary_polyline(pgon: &[[f64; 2]], k: usize) -> (Vec<[f64; 2]>, f64) {
+        let n = pgon.len() / 2;
+        let mut out = Vec::new();
+        let mut gap = 0.0f64;
+        for i in 0..n {
+            let p0 = pgon[i];
+            let m = pgon[n + i];
+            let p1 = pgon[(i + 1) % n];
+            match sample_arc(p0, m, p1, k) {
+                Some((pts, g)) => {
+                    gap = gap.max(g);
+                    out.extend_from_slice(&pts[..pts.len() - 1]);
+                }
+                None => out.push(p0),
+            }
+        }
+        (out, gap)
+    }
+
+    proptest! {
+        /// With mid-side nodes exactly on the chords the arcs collapse to the straight
+        /// segments, so the quadratic path must agree with the straight ray cast.
+        #[test]
+        fn straight_mids_match_straight_raycast(
+            poly in star_polygon(3, 8),
+            q in prop::array::uniform2(-2.0f64..2.0),
+        ) {
+            let n = poly.len();
+            let mut pgon = poly.clone();
+            for i in 0..n {
+                let p0 = poly[i];
+                let p1 = poly[(i + 1) % n];
+                pgon.push([(p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0]);
+            }
+            let scale = coord_scale(&poly, q);
+            prop_assume!(dist_to_boundary(&poly, q) > 64.0 * f64::EPSILON * scale);
+            prop_assert_eq!(
+                in_quadratic_polygon(&q, &pgon),
+                Polygon::unknown(poly).raycast_contains(&q)
+            );
+        }
+    }
+
+    proptest! {
+        /// The curved containment must agree with an exact winding test on a densely sampled
+        /// boundary, once the query point is farther from the boundary than the sampling error.
+        #[test]
+        fn quadratic_matches_sampled_boundary(
+            pgon in quadratic_polygon(3, 6),
+            q in prop::array::uniform2(-2.5f64..2.5),
+        ) {
+            let (poly_pts, gap) = quadratic_boundary_polyline(&pgon, 64);
+            prop_assume!(poly_pts.len() >= 3 && gap < 0.5);
+            let scale = coord_scale(&pgon, q);
+            prop_assume!(dist_to_boundary(&poly_pts, q) > 4.0 * gap + 64.0 * f64::EPSILON * scale);
+            prop_assert_eq!(
+                in_quadratic_polygon(&q, &pgon),
+                winding_contains(&poly_pts, q)
+            );
+        }
+    }
+
+    proptest! {
+        /// Curved containment is translation invariant, including at ~1e6 offsets.
+        #[test]
+        fn quadratic_is_translation_invariant(
+            pgon in quadratic_polygon(3, 6),
+            q in prop::array::uniform2(-2.5f64..2.5),
+            t in prop::array::uniform2(-1e6f64..1e6),
+        ) {
+            let (poly_pts, gap) = quadratic_boundary_polyline(&pgon, 64);
+            prop_assume!(poly_pts.len() >= 3 && gap < 0.5);
+            let shifted: Vec<[f64; 2]> =
+                pgon.iter().map(|p| [p[0] + t[0], p[1] + t[1]]).collect();
+            let qs = [q[0] + t[0], q[1] + t[1]];
+            prop_assume!(
+                dist_to_boundary(&poly_pts, q)
+                    > 4.0 * gap + 64.0 * f64::EPSILON * coord_scale(&shifted, qs)
+            );
+            prop_assert_eq!(
+                in_quadratic_polygon(&q, &pgon),
+                in_quadratic_polygon(&qs, &shifted)
+            );
+        }
+    }
+
+    proptest! {
+        /// Mid-side nodes almost on their chords drive the arc centre to infinity and make
+        /// `disc = r2 - dy^2` catastrophically cancelling. As long as the true sagitta stays
+        /// below the skip margin, points away from the chord must still classify as if the
+        /// edge were straight; a blow-up would show up as a disagreement far from the boundary.
+        #[test]
+        fn near_collinear_mids_stay_stable(
+            poly in star_polygon(3, 8),
+            q in prop::array::uniform2(-3.0f64..3.0),
+            rel in 1e-12f64..1e-3,
+            sign in proptest::bool::ANY,
+        ) {
+            let n = poly.len();
+            let s = if sign { 1.0 } else { -1.0 };
+            let mut pgon = poly.clone();
+            let mut max_off = 0.0f64;
+            for i in 0..n {
+                let p0 = poly[i];
+                let p1 = poly[(i + 1) % n];
+                let d = [p1[0] - p0[0], p1[1] - p0[1]];
+                let mid = [(p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0];
+                let off = s * rel;
+                max_off = max_off.max((off * d[0]).hypot(off * d[1]));
+                pgon.push([mid[0] + off * d[1], mid[1] - off * d[0]]);
+            }
+            let scale = coord_scale(&poly, q);
+            prop_assume!(dist_to_boundary(&poly, q) > 4.0 * max_off + 64.0 * f64::EPSILON * scale);
+            prop_assert_eq!(in_quadratic_polygon(&q, &pgon), winding_contains(&poly, q));
+        }
+    }
+
+    proptest! {
+        /// A horizontal ray passing exactly through a vertex is the classic degenerate case
+        /// for even-odd ray casting: whichever incident edge counts the vertex, it must be
+        /// counted exactly once. The arc path must still match the robust reference.
+        #[test]
+        fn vertex_ray_matches_reference(
+            pgon in quadratic_polygon(3, 6),
+            idx in 0usize..6,
+            side in proptest::bool::ANY,
+            off in 0.05f64..2.5,
+        ) {
+            let n = pgon.len() / 2;
+            let v = pgon[idx % n];
+            let px = if side { v[0] + off } else { v[0] - off };
+            let q = [px, v[1]];
+            let (poly_pts, gap) = quadratic_boundary_polyline(&pgon, 128);
+            prop_assume!(poly_pts.len() >= 3 && gap < 0.5);
+            let scale = coord_scale(&pgon, q);
+            prop_assume!(
+                dist_to_boundary(&poly_pts, q) > 4.0 * gap + 64.0 * f64::EPSILON * scale
+            );
+            prop_assert_eq!(
+                in_quadratic_polygon(&q, &pgon),
+                winding_contains(&poly_pts, q)
+            );
         }
     }
 }

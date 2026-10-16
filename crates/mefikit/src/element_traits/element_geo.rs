@@ -462,6 +462,7 @@ mod tests {
     use crate::mesh::{Element, ElementType};
     use approx::assert_abs_diff_eq;
     use ndarray as nd;
+    use proptest::prelude::*;
 
     #[test]
     fn test_coord2() {
@@ -940,5 +941,141 @@ mod tests {
             elem.oriented_positive_connectivity(),
             (ElementType::QUAD8, vec![0, 1, 2, 3, 4, 5, 6, 7])
         );
+    }
+
+    // -------------------------------------------------------------------------------------
+    // `oriented_positive_connectivity` must reverse a clockwise quadratic cell without ever
+    // mis-pairing its mid-side nodes with the wrong edges. The earlier bug reversed the whole
+    // mid-node block instead of re-pairing it, silently changing the geometry — which none of
+    // the fixed hand-written tests caught because their shapes were too symmetric. These
+    // properties compare the arc set directly and check area/idempotence on random shapes.
+    // -------------------------------------------------------------------------------------
+
+    /// A random star-shaped quadratic cell: `n` vertices in counter-clockwise angular order
+    /// plus one mid-side node per edge, offset along the chord normal by a bounded, non-zero
+    /// fraction of the chord length.
+    fn arb_quadratic_coords(n: usize) -> impl Strategy<Value = Vec<[f64; 2]>> {
+        (
+            prop::collection::vec(0.0f64..std::f64::consts::TAU, n),
+            prop::collection::vec(0.5f64..2.0, n),
+            prop::array::uniform2(-1.0f64..1.0),
+            prop::collection::vec(prop_oneof![-0.3f64..-0.05, 0.05f64..0.3], n),
+        )
+            .prop_map(move |(angles, radii, center, offs)| {
+                let mut pairs: Vec<(f64, f64)> = angles.into_iter().zip(radii).collect();
+                pairs.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                let verts: Vec<[f64; 2]> = pairs
+                    .iter()
+                    .map(|&(a, r)| [center[0] + r * a.cos(), center[1] + r * a.sin()])
+                    .collect();
+                let mut out = verts.clone();
+                for i in 0..n {
+                    let p0 = verts[i];
+                    let p1 = verts[(i + 1) % n];
+                    let d = [p1[0] - p0[0], p1[1] - p0[1]];
+                    let mid = [(p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0];
+                    let off = offs[i];
+                    out.push([mid[0] + off * d[1], mid[1] - off * d[0]]);
+                }
+                out
+            })
+    }
+
+    fn coords_array(pts: &[[f64; 2]]) -> nd::Array2<f64> {
+        nd::Array2::from_shape_vec(
+            (pts.len(), 2),
+            pts.iter().flat_map(|p| p.iter().copied()).collect(),
+        )
+        .unwrap()
+    }
+
+    /// Normalised key of the arc joining `a` to `b` through `m`: the endpoints are sorted so
+    /// that a reversed edge keys identically.
+    fn edge_key(a: [f64; 2], m: [f64; 2], b: [f64; 2]) -> [f64; 6] {
+        let (lo, hi) = if a[0] < b[0] || (a[0] == b[0] && a[1] <= b[1]) {
+            (a, b)
+        } else {
+            (b, a)
+        };
+        [lo[0], lo[1], m[0], m[1], hi[0], hi[1]]
+    }
+
+    /// The multiset of arcs (as normalised keys), sorted for comparison.
+    fn sorted_edge_keys(pgon: &[[f64; 2]]) -> Vec<[f64; 6]> {
+        let n = pgon.len() / 2;
+        let mut keys: Vec<[f64; 6]> = (0..n)
+            .map(|i| edge_key(pgon[i], pgon[n + i], pgon[(i + 1) % n]))
+            .collect();
+        keys.sort_by(|x, y| {
+            for k in 0..6 {
+                match x[k].partial_cmp(&y[k]).unwrap() {
+                    std::cmp::Ordering::Equal => continue,
+                    o => return o,
+                }
+            }
+            std::cmp::Ordering::Equal
+        });
+        keys
+    }
+
+    fn reorient_case(pts: &[[f64; 2]], etype: ElementType, n: usize, flip: bool) {
+        let coords = coords_array(pts);
+        let groups = crate::mesh::ArcGroups::new();
+        let identity: Vec<usize> = (0..2 * n).collect();
+
+        // A clockwise traversal of the *same* shape: reverse the vertex block, then re-pair
+        // the mid-side nodes with the reversed edges.
+        let conn: Vec<usize> = if flip {
+            let mut c: Vec<usize> = (0..n).rev().collect();
+            let mut mids: Vec<usize> = (n..2 * n).rev().collect();
+            mids.rotate_left(1);
+            c.extend(mids);
+            c
+        } else {
+            identity.clone()
+        };
+
+        let elem = Element::new(0, coords.view(), &0, &conn, etype, &groups);
+        let (et, conn2) = elem.oriented_positive_connectivity();
+        assert_eq!(et, etype);
+
+        let canonical = Element::new(0, coords.view(), &0, &identity, etype, &groups);
+        let reoriented = Element::new(0, coords.view(), &0, &conn2, etype, &groups);
+
+        // Orientation is fixed, and the measure (area) is preserved in magnitude.
+        let area = canonical.measure2().abs();
+        assert!(reoriented.measure2() >= -1e-9 * area.max(1.0));
+        assert!((reoriented.measure2().abs() - area).abs() <= 1e-9 * area.max(1.0));
+
+        // The reoriented cell is the same shape: the arc set is unchanged.
+        assert_eq!(
+            sorted_edge_keys(&canonical.to_quadratic_polygon2()),
+            sorted_edge_keys(&reoriented.to_quadratic_polygon2()),
+            "mid-side nodes must stay paired with their edges"
+        );
+
+        // Reorienting an already-positive cell is a no-op.
+        let (et2, conn3) = reoriented.oriented_positive_connectivity();
+        assert_eq!((et2, conn3), (et, conn2));
+    }
+
+    proptest! {
+        #[test]
+        fn reorient_preserves_quad8_shape(
+            pts in arb_quadratic_coords(4),
+            flip in proptest::bool::ANY,
+        ) {
+            reorient_case(&pts, ElementType::QUAD8, 4, flip);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn reorient_preserves_tri6_shape(
+            pts in arb_quadratic_coords(3),
+            flip in proptest::bool::ANY,
+        ) {
+            reorient_case(&pts, ElementType::TRI6, 3, flip);
+        }
     }
 }
