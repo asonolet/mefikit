@@ -171,8 +171,11 @@ fn read_groups(
             groups.insert(name, element_ids);
         }
     }
-    if !groups.is_empty() {
-        mesh.set_groups(groups);
+    // `add_to_group` (not `set_groups`) preserves the exact cell indices: on a
+    // freshly built mesh every cell shares family 0, and `set_groups` would map
+    // the indices onto that family and thereby pull in every other cell too.
+    for (name, element_ids) in &groups {
+        mesh.add_to_group(name, element_ids);
     }
     Ok(())
 }
@@ -408,9 +411,7 @@ mod tests {
                 element_ids.add_block(*et, indices);
             }
         }
-        let mut groups = BTreeMap::new();
-        groups.insert("left".to_string(), element_ids);
-        mesh.set_groups(groups);
+        mesh.add_to_group("left", &element_ids);
 
         write(&path, mesh.view()).unwrap();
         let mesh2 = read(&path).unwrap();
@@ -466,9 +467,11 @@ mod tests {
     }
 
     #[test]
-    fn repro_single_block_group() {
+    fn test_group_roundtrip_preserves_exact_indices() {
+        // A single block whose cells all start in the reserved family 0: a
+        // non-contiguous subset must survive the write/read round trip.
         let _guard = hdf5_test_guard();
-        let path = PathBuf::from("repro_single_block_group.vtkhdf");
+        let path = PathBuf::from("test_exact_group_indices.vtkhdf");
         let coords =
             ndarray::Array2::from_shape_vec((10, 3), (0..30).map(|x| x as f64).collect::<Vec<_>>())
                 .unwrap();
@@ -480,19 +483,20 @@ mod tests {
 
         let mut element_ids = crate::mesh::ElementIds::new();
         element_ids.add_block(ElementType::QUAD4, vec![0, 2]);
-        let mut groups = BTreeMap::new();
-        groups.insert("left".to_string(), element_ids);
-        mesh.set_groups(groups);
+        mesh.add_to_group("left", &element_ids);
 
         write(&path, mesh.view()).unwrap();
         let mesh2 = read(&path).unwrap();
         std::fs::remove_file(path).unwrap();
 
-        eprintln!(
-            "entries: {:?}",
-            BlockLayout::new(&mesh).entries().collect::<Vec<_>>()
-        );
-        eprintln!("src ids: {:?}", mesh.group_elements("left"));
-        eprintln!("back ids: {:?}", mesh2.group_elements("left"));
+        let selected = |m: &UMesh| -> Vec<usize> {
+            m.group_elements("left")
+                .iter_blocks()
+                .flat_map(|(_, idx)| idx.iter().copied())
+                .collect()
+        };
+        let expected = selected(&mesh);
+        assert_eq!(expected, vec![0, 2]);
+        assert_eq!(selected(&mesh2), expected);
     }
 }
