@@ -9,6 +9,7 @@ use crate::element_traits::SortedVecKey;
 use crate::mesh::ElementId;
 use crate::mesh::ElementIds;
 use crate::mesh::ElementLike;
+use crate::mesh::ElementType;
 use crate::mesh::IndirectIndexOwned;
 use crate::mesh::UMeshView;
 
@@ -27,6 +28,31 @@ pub enum IntersectionIds {
 }
 
 /// Build the map n1 -> Vec<(n2, reached)>
+/// Enumerates the boundary edge endpoint pairs (corner-to-corner, ignoring midpoints) of a
+/// cell given its connectivity and element type.
+fn boundary_edge_pairs(et: ElementType, conn: &[usize]) -> Vec<(usize, usize)> {
+    use ElementType::*;
+    match et {
+        TRI6 | TRI7 => vec![(conn[0], conn[1]), (conn[1], conn[2]), (conn[2], conn[0])],
+        QUAD8 | QUAD9 => vec![
+            (conn[0], conn[1]),
+            (conn[1], conn[2]),
+            (conn[2], conn[3]),
+            (conn[3], conn[0]),
+        ],
+        QPOLY => {
+            let n = conn.len() / 2;
+            (0..n).map(|i| (conn[i], conn[(i + 1) % n])).collect()
+        }
+        // TRI3, QUAD4, PGON and any other linear/poly element: all consecutive pairs.
+        _ => conn
+            .iter()
+            .circular_tuple_windows()
+            .map(|(&a, &b)| (a, b))
+            .collect(),
+    }
+}
+
 /// This map should be build locally (by cell).
 /// The cell must be counter-clockwise oriented
 fn build_cell_dart_map(
@@ -34,11 +60,12 @@ fn build_cell_dart_map(
     mesh2: &UMeshView,
     candidate: &ElementIds,
     cell: &[usize],
+    cell_et: ElementType,
 ) -> (Vec<Dart>, DartMap) {
     let mut graph: FxHashMap<NodeId, Vec<(NodeId, bool)>> = FxHashMap::default();
     let mut heap: Vec<Dart> = Vec::new();
     let mut m1_dart_set: FxHashSet<SortedVecKey> = FxHashSet::default();
-    for (&p0, &p1) in cell.iter().circular_tuple_windows() {
+    for (p0, p1) in boundary_edge_pairs(cell_et, cell) {
         let co = [p0, p1];
         let eid = SortedVecKey::new(co.as_slice().into());
         let pieces = s_int.get(&eid);
@@ -196,6 +223,7 @@ impl<'a, T: ElementLike<'a>> Cutable for T {
             m2_edges,
             m2_candidates,
             self.connectivity(),
+            self.element_type(),
         );
         sort_cell_dart_map(&mut dart_map, coords);
         // NOTE: dart heap trick: le 2eme usize peut servir a indiquer non l'indice du 2eme noeud

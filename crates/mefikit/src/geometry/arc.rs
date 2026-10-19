@@ -184,6 +184,275 @@ pub(crate) fn quadratic_polygon_area2(pgon: &[[f64; 2]]) -> f64 {
             .sum::<f64>()
 }
 
+/// Real roots of `a t^2 + b t + c = 0` (empty when there are none).
+fn quad_roots(a: f64, b: f64, c: f64) -> Vec<f64> {
+    let mut roots = Vec::new();
+    if a.abs() <= f64::MIN_POSITIVE {
+        if b.abs() > f64::MIN_POSITIVE {
+            roots.push(-c / b);
+        }
+        return roots;
+    }
+    let disc = b * b - 4.0 * a * c;
+    if disc < 0.0 {
+        return roots;
+    }
+    let sq = disc.sqrt();
+    roots.push((-b - sq) / (2.0 * a));
+    roots.push((-b + sq) / (2.0 * a));
+    roots
+}
+
+#[inline]
+fn dedup_push(pts: &mut Vec<[f64; 2]>, pt: [f64; 2], eps: f64) {
+    let eps2 = eps * eps;
+    for p in pts.iter() {
+        let dx = p[0] - pt[0];
+        let dy = p[1] - pt[1];
+        if dx * dx + dy * dy <= eps2 {
+            return;
+        }
+    }
+    pts.push(pt);
+}
+
+#[inline]
+fn point_on_seg(a: &[f64; 2], b: &[f64; 2], p: &[f64; 2], eps: f64) -> bool {
+    let ap = [p[0] - a[0], p[1] - a[1]];
+    let bp = [p[0] - b[0], p[1] - b[1]];
+    let ab = [b[0] - a[0], b[1] - a[1]];
+    let cross = ap[0] * bp[1] - ap[1] * bp[0];
+    if cross.abs() > eps {
+        return false;
+    }
+    let dot = ap[0] * ab[0] + ap[1] * ab[1];
+    if dot < 0.0 {
+        return false;
+    }
+    let len_sq = ab[0] * ab[0] + ab[1] * ab[1];
+    dot <= len_sq
+}
+
+/// Whether `pt` lies on the circular arc `p0 -> m -> p1` (on the circle within `eps` and
+/// inside the angular sweep chosen through `m`).
+fn on_arc(
+    circ: &ArcCircle,
+    p0: &[f64; 2],
+    m: &[f64; 2],
+    p1: &[f64; 2],
+    pt: &[f64; 2],
+    eps: f64,
+) -> bool {
+    let dx = pt[0] - circ.center[0];
+    let dy = pt[1] - circ.center[1];
+    let r = circ.r2.sqrt();
+    let dist = (dx * dx + dy * dy).sqrt();
+    if (dist - r).abs() > eps {
+        return false;
+    }
+    let a0 = (p0[1] - circ.center[1]).atan2(p0[0] - circ.center[0]);
+    let apt = (pt[1] - circ.center[1]).atan2(pt[0] - circ.center[0]);
+    let sweep = circ.sweep(p0, m, p1);
+    let diff = (apt - a0).rem_euclid(TAU);
+    let tol_ang = (eps / r.max(eps)).min(1e-6);
+    if sweep >= 0.0 {
+        diff <= sweep + tol_ang
+    } else {
+        diff <= tol_ang || diff >= TAU + sweep - tol_ang
+    }
+}
+
+/// Intersection points (as coordinates) of the circular arc `p0 -> m -> p1` with the straight
+/// segment `l0 -> l1`. A degenerate (collinear) arc falls back to the polyline `p0 -> m -> p1`.
+pub fn intersect_arc_seg(
+    p0: &[f64; 2],
+    m: &[f64; 2],
+    p1: &[f64; 2],
+    l0: &[f64; 2],
+    l1: &[f64; 2],
+) -> Vec<[f64; 2]> {
+    let mut pts: Vec<[f64; 2]> = Vec::new();
+    let mut scale = 1.0f64;
+    for p in [p0, m, p1, l0, l1] {
+        scale = scale.max(p[0].abs()).max(p[1].abs());
+    }
+    let eps = 64.0 * scale * f64::EPSILON;
+
+    match ArcCircle::through(p0, m, p1) {
+        None => {
+            for (a, b) in [(p0, m), (m, p1)] {
+                let res = super::segment::Segment::new(*a, *b)
+                    .intersect(super::segment::Segment::new(*l0, *l1));
+                for pt in seg_int_coords(res, a, b, l0, l1) {
+                    dedup_push(&mut pts, pt, eps);
+                }
+            }
+        }
+        Some(circ) => {
+            let d = [l1[0] - l0[0], l1[1] - l0[1]];
+            let f = [l0[0] - circ.center[0], l0[1] - circ.center[1]];
+            let qa = d[0] * d[0] + d[1] * d[1];
+            let qb = 2.0 * (f[0] * d[0] + f[1] * d[1]);
+            let qc = f[0] * f[0] + f[1] * f[1] - circ.r2;
+            for t in quad_roots(qa, qb, qc) {
+                if t >= -1e-12 && t <= 1.0 + 1e-12 {
+                    let t = t.clamp(0.0, 1.0);
+                    let pt = [l0[0] + t * d[0], l0[1] + t * d[1]];
+                    if on_arc(&circ, p0, m, p1, &pt, eps) {
+                        dedup_push(&mut pts, pt, eps);
+                    }
+                }
+            }
+            for l in [l0, l1] {
+                if on_arc(&circ, p0, m, p1, l, eps) {
+                    dedup_push(&mut pts, *l, eps);
+                }
+            }
+            for a in [p0, m, p1] {
+                if point_on_seg(a, l0, l1, eps) {
+                    dedup_push(&mut pts, *a, eps);
+                }
+            }
+        }
+    }
+    pts
+}
+
+/// Intersection points (as coordinates) of the circular arc `a0 -> am -> a1` with the circular
+/// arc `b0 -> bm -> b1`. Degenerate (collinear) arcs fall back to their polyline.
+pub fn intersect_arc_arc(
+    a0: &[f64; 2],
+    am: &[f64; 2],
+    a1: &[f64; 2],
+    b0: &[f64; 2],
+    bm: &[f64; 2],
+    b1: &[f64; 2],
+) -> Vec<[f64; 2]> {
+    let mut pts: Vec<[f64; 2]> = Vec::new();
+    let mut scale = 1.0f64;
+    for p in [a0, am, a1, b0, bm, b1] {
+        scale = scale.max(p[0].abs()).max(p[1].abs());
+    }
+    let eps = 64.0 * scale * f64::EPSILON;
+
+    let ca = ArcCircle::through(a0, am, a1);
+    let cb = ArcCircle::through(b0, bm, b1);
+
+    match (ca, cb) {
+        (None, None) => {
+            for (x0, x1) in [(a0, am), (am, a1)] {
+                pts.extend(intersect_arc_seg(b0, bm, b1, x0, x1));
+            }
+        }
+        (None, Some(_)) => {
+            for (x0, x1) in [(a0, am), (am, a1)] {
+                pts.extend(intersect_arc_seg(b0, bm, b1, x0, x1));
+            }
+        }
+        (Some(_), None) => {
+            for (x0, x1) in [(b0, bm), (bm, b1)] {
+                pts.extend(intersect_arc_seg(a0, am, a1, x0, x1));
+            }
+        }
+        (Some(ca), Some(cb)) => {
+            let dx = cb.center[0] - ca.center[0];
+            let dy = cb.center[1] - ca.center[1];
+            let d2 = dx * dx + dy * dy;
+            let d = d2.sqrt();
+            let ra = ca.r2.sqrt();
+            let rb = cb.r2.sqrt();
+            if d <= 1e-12 * ra.max(rb) {
+                // Concentric: identical circles overlap everywhere, distinct radii never meet.
+                // Discrete points are undefined here; treat as no intersections for imprint.
+            } else {
+                let a = (d2 + ra * ra - rb * rb) / (2.0 * d);
+                let h2 = ra * ra - a * a;
+                if h2 >= -eps * eps {
+                    let h = h2.max(0.0).sqrt();
+                    let xm = ca.center[0] + a * dx / d;
+                    let ym = ca.center[1] + a * dy / d;
+                    let rx = -dy * (h / d);
+                    let ry = dx * (h / d);
+                    let p1pt = [xm + rx, ym + ry];
+                    if on_arc(&ca, a0, am, a1, &p1pt, eps) && on_arc(&cb, b0, bm, b1, &p1pt, eps) {
+                        dedup_push(&mut pts, p1pt, eps);
+                    }
+                    if h > eps {
+                        let p2pt = [xm - rx, ym - ry];
+                        if on_arc(&ca, a0, am, a1, &p2pt, eps)
+                            && on_arc(&cb, b0, bm, b1, &p2pt, eps)
+                        {
+                            dedup_push(&mut pts, p2pt, eps);
+                        }
+                    }
+                }
+            }
+            // Explicit endpoint-on-other-arc checks (covers near-tangential/endpoint cases
+            // the circle-circle solve may miss within tolerance).
+            for (p, other) in [
+                (a0, (&cb, b0, bm, b1)),
+                (am, (&cb, b0, bm, b1)),
+                (a1, (&cb, b0, bm, b1)),
+            ] {
+                if on_arc(other.0, other.1, other.2, other.3, p, eps) {
+                    dedup_push(&mut pts, *p, eps);
+                }
+            }
+            for (p, other) in [
+                (b0, (&ca, a0, am, a1)),
+                (bm, (&ca, a0, am, a1)),
+                (b1, (&ca, a0, am, a1)),
+            ] {
+                if on_arc(other.0, other.1, other.2, other.3, p, eps) {
+                    dedup_push(&mut pts, *p, eps);
+                }
+            }
+        }
+    }
+
+    // Final dedup pass across all sources.
+    let mut uniq: Vec<[f64; 2]> = Vec::with_capacity(pts.len());
+    for p in pts {
+        dedup_push(&mut uniq, p, eps);
+    }
+    uniq
+}
+
+/// Converts an [`Intersections`] result between two specific straight segments into plain
+/// coordinates (Existing ids are resolved against the endpoints used for that call).
+fn seg_int_coords(
+    res: super::segment::Intersections,
+    a1: &[f64; 2],
+    a2: &[f64; 2],
+    b1: &[f64; 2],
+    b2: &[f64; 2],
+) -> Vec<[f64; 2]> {
+    use super::segment::{Intersection, Intersections, PointId};
+    let one = |i: Intersection| -> [f64; 2] {
+        match i {
+            Intersection::Existing(PointId::P1) => *a1,
+            Intersection::Existing(PointId::P2) => *a2,
+            Intersection::Existing(PointId::P3) => *b1,
+            Intersection::Existing(PointId::P4) => *b2,
+            Intersection::New(p) => p,
+        }
+    };
+    let pid = |p: PointId| -> [f64; 2] {
+        match p {
+            PointId::P1 => *a1,
+            PointId::P2 => *a2,
+            PointId::P3 => *b1,
+            PointId::P4 => *b2,
+        }
+    };
+    match res {
+        Intersections::None => vec![],
+        Intersections::One(i) => vec![one(i)],
+        Intersections::Two([i1, i2]) => vec![one(i1), one(i2)],
+        Intersections::Segment([p1, p2]) => vec![pid(p1), pid(p2)],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -381,6 +650,117 @@ mod tests {
                 pgon.push([(p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0]);
             }
             prop_assert_eq!(quadratic_polygon_area2(&pgon), signed_area2(&verts));
+        }
+    }
+
+    fn sample_arc(p0: &[f64; 2], m: &[f64; 2], p1: &[f64; 2], n: usize) -> Vec<[f64; 2]> {
+        match ArcCircle::through(p0, m, p1) {
+            Some(circ) => {
+                let r = circ.r2.sqrt();
+                let a0 = (p0[1] - circ.center[1]).atan2(p0[0] - circ.center[0]);
+                let sweep = circ.sweep(p0, m, p1);
+                (0..=n)
+                    .map(|i| {
+                        let t = i as f64 / n as f64;
+                        let a = a0 + sweep * t;
+                        [circ.center[0] + r * a.cos(), circ.center[1] + r * a.sin()]
+                    })
+                    .collect()
+            }
+            None => {
+                // Degenerate: sample the polyline p0 -> m -> p1.
+                let mut pts = Vec::with_capacity(2 * n + 1);
+                for (a, b) in [(p0, m), (m, p1)] {
+                    for i in 0..=n {
+                        let t = i as f64 / n as f64;
+                        pts.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+                    }
+                }
+                pts
+            }
+        }
+    }
+
+    fn dist_point_to_seg(p: &[f64; 2], a: &[f64; 2], b: &[f64; 2]) -> f64 {
+        let ab = [b[0] - a[0], b[1] - a[1]];
+        let ap = [p[0] - a[0], p[1] - a[1]];
+        let len_sq = ab[0] * ab[0] + ab[1] * ab[1];
+        if len_sq <= f64::MIN_POSITIVE {
+            return (ap[0] * ap[0] + ap[1] * ap[1]).sqrt();
+        }
+        let t = ((ap[0] * ab[0] + ap[1] * ab[1]) / len_sq).clamp(0.0, 1.0);
+        let proj = [a[0] + t * ab[0], a[1] + t * ab[1]];
+        let dx = p[0] - proj[0];
+        let dy = p[1] - proj[1];
+        (dx * dx + dy * dy).sqrt()
+    }
+
+    #[test]
+    fn arc_seg_known_crossing() {
+        let s = std::f64::consts::FRAC_1_SQRT_2;
+        let p0 = [1.0, 0.0];
+        let m = [s, s];
+        let p1 = [0.0, 1.0];
+        let l0 = [0.5, -1.0];
+        let l1 = [0.5, 1.0];
+        let pts = intersect_arc_seg(&p0, &m, &p1, &l0, &l1);
+        assert_eq!(pts.len(), 1);
+        let expect = [0.5, (1.0 - 0.25f64).sqrt()];
+        assert!((pts[0][0] - expect[0]).abs() < 1e-12);
+        assert!((pts[0][1] - expect[1]).abs() < 1e-12);
+    }
+
+    #[test]
+    fn arc_arc_known_crossing() {
+        // Unit circle arc (quarter, through 45deg) vs circle of radius 1 centred at (1, 0):
+        // they intersect at (0.5, ±sqrt(3)/2); only the +one lies on the quarter arc.
+        let s = std::f64::consts::FRAC_1_SQRT_2;
+        let a0 = [1.0, 0.0];
+        let am = [s, s];
+        let a1 = [0.0, 1.0];
+        // Second arc: circle centred (1,0) radius 1, arc from (0,0) through (1,-1) to (2,0)
+        // i.e. the lower semicircle, which misses the quarter arc except possibly at endpoints.
+        let b0 = [0.0, 0.0];
+        let bm = [1.0, -1.0];
+        let b1 = [2.0, 0.0];
+        let pts = intersect_arc_arc(&a0, &am, &a1, &b0, &bm, &b1);
+        // The lower semicircle of circle(1,0,r=1) meets the unit-circle quarter arc only where
+        // both circles meet within both sweeps: the circles themselves intersect at
+        // (0.5, ±sqrt(3)/2); +sqrt(3)/2 ~ 0.866 is on the upper quarter arc (angle ~60deg),
+        // but is it on the lower semicircle arc (sweep from angle 180deg through 270deg to 360deg
+        // i.e. 180..360)? (0.5, 0.866) relative to center (1,0) is at angle ~120deg (upper-left),
+        // NOT in 180..360 sweep. So no intersection is expected.
+        assert!(pts.is_empty(), "expected no intersections, got {pts:?}");
+    }
+
+    proptest! {
+        #[test]
+        fn arc_seg_intersections_lie_on_both_curves(
+            p0 in prop::array::uniform2(-2.0f64..2.0),
+            m in prop::array::uniform2(-2.0f64..2.0),
+            p1 in prop::array::uniform2(-2.0f64..2.0),
+            l0 in prop::array::uniform2(-2.0f64..2.0),
+            l1 in prop::array::uniform2(-2.0f64..2.0),
+        ) {
+            prop_assume!((p0[0]-p1[0]).hypot(p0[1]-p1[1]) > 1e-3);
+            prop_assume!((l0[0]-l1[0]).hypot(l0[1]-l1[1]) > 1e-3);
+            let pts = intersect_arc_seg(&p0, &m, &p1, &l0, &l1);
+            let mut scale = 1.0f64;
+            for p in [&p0, &m, &p1, &l0, &l1] {
+                scale = scale.max(p[0].abs()).max(p[1].abs());
+            }
+            let eps = 64.0 * scale * f64::EPSILON * 1e4; // looser tolerance for property check
+            let circ = ArcCircle::through(&p0, &m, &p1);
+            for pt in &pts {
+                prop_assert!(point_on_seg(&l0, &l1, pt, eps), "point not on segment: {pt:?}");
+                match &circ {
+                    Some(c) => prop_assert!(on_arc(c, &p0, &m, &p1, pt, eps), "point not on arc: {pt:?}"),
+                    None => {
+                        let on_poly = point_on_seg(&p0, &m, pt, eps) || point_on_seg(&m, &p1, pt, eps);
+                        prop_assert!(on_poly, "degenerate point not on polyline: {pt:?}");
+                    }
+                }
+            }
         }
     }
 }

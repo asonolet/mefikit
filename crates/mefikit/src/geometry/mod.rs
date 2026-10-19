@@ -47,6 +47,7 @@ mod region;
 mod segment;
 
 pub(crate) use arc::{arc_length2, quadratic_polygon_area2};
+pub use arc::{intersect_arc_arc, intersect_arc_seg};
 pub use convexity::Convexity;
 pub use plane::PlaneFrame;
 pub(crate) use polygon::newell_normal;

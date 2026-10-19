@@ -44,7 +44,9 @@ use crate::element_traits::cut::{
     IntersectionIds, M1M2Intersections, NodeId, SortedSegIntersections,
 };
 use crate::element_traits::{Cutable, SortedVecKey};
-use crate::geometry::{Intersection, Intersections, PointId, Polygon, Segment};
+use crate::geometry::{
+    Intersection, Intersections, PointId, Polygon, Segment, intersect_arc_arc, intersect_arc_seg,
+};
 use crate::mesh::{Dimension, Element, ElementId, ElementLike, ElementType, UMesh, UMeshView};
 use crate::prelude::ElementGeo;
 use crate::tools::duplicates_from;
@@ -465,6 +467,8 @@ fn compute_intersections(
                 &mut new_coord_id,
                 &edge,
                 edge2,
+                &m1_edges.coords(),
+                &m2_edges.coords(),
             );
         }
     }
@@ -479,33 +483,94 @@ fn add_intersection(
     new_coord_id: &mut usize,
     edge: &Element<'_>,
     edge2: Element<'_>,
+    _m1_coords: &nd::ArrayView2<'_, f64>,
+    m2_coords: &nd::ArrayView2<'_, f64>,
 ) {
     use crate::mesh::ElementType::*;
-    let int = match (edge.element_type(), edge2.element_type()) {
-        (SEG2, SEG2) => Segment::new(edge.coord2(0).into(), edge.coord2(1).into())
-            .intersect(Segment::new(edge2.coord2(0).into(), edge2.coord2(1).into())),
-        _ => todo!("Intersection with SEG3 is not yet implemented"),
+    let et1 = edge.element_type();
+    let et2 = edge2.element_type();
+
+    let quad_pts: Option<Vec<[f64; 2]>> = match (et1, et2) {
+        (SEG2, SEG2) => None,
+        (SEG3, SEG2) => Some(intersect_arc_seg(
+            edge.coord2_ref(0),
+            edge.coord2_ref(2),
+            edge.coord2_ref(1),
+            edge2.coord2_ref(0),
+            edge2.coord2_ref(1),
+        )),
+        (SEG2, SEG3) => Some(intersect_arc_seg(
+            edge2.coord2_ref(0),
+            edge2.coord2_ref(2),
+            edge2.coord2_ref(1),
+            edge.coord2_ref(0),
+            edge.coord2_ref(1),
+        )),
+        (SEG3, SEG3) => Some(intersect_arc_arc(
+            edge.coord2_ref(0),
+            edge.coord2_ref(2),
+            edge.coord2_ref(1),
+            edge2.coord2_ref(0),
+            edge2.coord2_ref(2),
+            edge2.coord2_ref(1),
+        )),
+        _ => todo!("Intersection with higher order not yet implemented"),
     };
+
+    if let Some(pts) = quad_pts {
+        if pts.is_empty() {
+            return;
+        }
+        let mut scale = 1.0f64;
+        for &n in edge.connectivity() {
+            scale = scale
+                .max(m2_coords[(n, 0)].abs())
+                .max(m2_coords[(n, 1)].abs());
+        }
+        for &n in edge2.connectivity() {
+            scale = scale
+                .max(m2_coords[(n, 0)].abs())
+                .max(m2_coords[(n, 1)].abs());
+        }
+        let eps = 64.0 * scale * f64::EPSILON;
+        // Key on the two endpoint nodes only (matches build_cell_dart_map's endpoint-pair
+        // lookup); the midpoint (index 2 for SEG3) is not part of the key.
+        let endpoints = [edge.connectivity()[0], edge.connectivity()[1]];
+        let m1sgid = SortedVecKey::new(endpoints.as_slice().into());
+        let v = intersections.entry(m1sgid).or_default();
+        for coord in pts {
+            let gid = match closest_global_node(coord, edge, &edge2, m2_coords, eps) {
+                Some(n) => n,
+                None => {
+                    let id = *new_coord_id;
+                    *new_coord_id += 1;
+                    new_coords.extend_from_slice(&coord);
+                    id
+                }
+            };
+            v.push((edge2.id(), IntersectionIds::One(gid)));
+        }
+        return;
+    }
+
+    // Linear (SEG2, SEG2) path: unchanged original behaviour.
+    let int = Segment::new(edge.coord2(0).into(), edge.coord2(1).into())
+        .intersect(Segment::new(edge2.coord2(0).into(), edge2.coord2(1).into()));
     match int {
         Intersections::None => (),
         Intersections::One(i) => {
-            {
-                let m1sgid = SortedVecKey::new(edge.connectivity().into());
-                let v = intersections.entry(m1sgid).or_default();
-                match i {
-                    Intersection::Existing(p) => {
-                        v.push((
-                            edge2.id(),
-                            IntersectionIds::One(intersection_p_to_global_index(p, edge, &edge2)),
-                        ));
-                    }
-                    Intersection::New(coord) => {
-                        v.push((edge2.id(), IntersectionIds::One(*new_coord_id)));
-                        *new_coord_id += 1;
-                        new_coords.extend_from_slice(&coord);
-                    }
+            let m1sgid = SortedVecKey::new(edge.connectivity().into());
+            let v = intersections.entry(m1sgid).or_default();
+            let gid = match i {
+                Intersection::Existing(p) => intersection_p_to_global_index(p, edge, &edge2),
+                Intersection::New(coord) => {
+                    let id = *new_coord_id;
+                    *new_coord_id += 1;
+                    new_coords.extend_from_slice(&coord);
+                    id
                 }
             };
+            v.push((edge2.id(), IntersectionIds::One(gid)));
         }
         Intersections::Two([_i1, _i2]) => todo!("Arc intersections is not yet implemented."),
         Intersections::Segment([p1, p2]) => {
@@ -520,6 +585,36 @@ fn add_intersection(
             ));
         }
     }
+}
+
+fn closest_global_node(
+    pt: [f64; 2],
+    edge: &Element<'_>,
+    edge2: &Element<'_>,
+    coords: &nd::ArrayView2<'_, f64>,
+    eps: f64,
+) -> Option<usize> {
+    let mut best: Option<(usize, f64)> = None;
+    let eps2 = eps * eps;
+    for &nid in edge
+        .connectivity()
+        .iter()
+        .chain(edge2.connectivity().iter())
+    {
+        let x = coords[(nid, 0)];
+        let y = coords[(nid, 1)];
+        let dx = x - pt[0];
+        let dy = y - pt[1];
+        let d2 = dx * dx + dy * dy;
+        if d2 <= eps2 {
+            match best {
+                None => best = Some((nid, d2)),
+                Some((_, bd2)) if d2 < bd2 => best = Some((nid, d2)),
+                _ => {}
+            }
+        }
+    }
+    best.map(|(n, _)| n)
 }
 
 fn intersection_p_to_global_index(p: PointId, edge: &Element<'_>, edge2: &Element<'_>) -> usize {
