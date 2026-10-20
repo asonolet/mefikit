@@ -7,6 +7,20 @@ use super::polygon::{Polygon, cross2, dominant_axis, newell_normal, project2};
 use super::{bounds_iter, vertex_centroid};
 use crate::mesh::IndirectIndexOwned;
 
+/// Default relative warp tolerance: the maximum tolerated non-planarity of a nominally planar
+/// face as a fraction of the geometry's radial size. Two independently fitted planes of a shared
+/// face may disagree by up to this much in offset before they are considered distinct. This is a
+/// mesh-quality property (how warped a "flat" face is allowed to be), not a floating-point
+/// epsilon; callers can override it through the `relative_warp` argument of
+/// [`Polyhedron::convex_intersection_volume_with`].
+pub const DEFAULT_FACE_WARP: f64 = 1e-4;
+
+/// Cosine tolerance on the angle between two plane normals. Derived from a fixed angle
+/// tolerance θ via `cos θ ≈ 1 - θ²/2`: with `cos_tol = 1e-10` this is θ ≈ 1.4e-5 rad. Normals
+/// closer in direction than this are treated as parallel when deciding whether two faces are
+/// coplanar. This is a mesh-quality minimum-angle property; it is not user-exposed yet.
+const PLANE_NORMAL_COS_TOL: f64 = 1e-10;
+
 /// An owned polyhedron in 3D space.
 ///
 /// The faces are lists of vertex indices into `Self::points`, stored as an
@@ -144,6 +158,9 @@ impl Polyhedron {
             }
             let (n, d) = face_plane(&self.points, face);
             let scale = n[0].abs().max(n[1].abs()).max(n[2].abs()).max(1.0);
+            // Distance tolerance for the signed face-plane test. The plane coefficients are not
+            // normalised, so a point on the face evaluates to zero only to within the roundoff of
+            // `n · p`; `scale` bounds the normal magnitude. Pure floating-point allowance.
             let eps = 64.0 * scale * f64::EPSILON;
             let mut has_pos = false;
             let mut has_neg = false;
@@ -257,6 +274,18 @@ impl Polyhedron {
         // so the ~M^4 cancellations of the absolute-coordinate sum are avoided for shapes translated
         // far from the origin. See `signed_volume6` for the same rationale.
         let refp = self.centroid();
+        // Characteristic length of the shape about `refp`, used to scale the degeneracy guard on
+        // `v6`. `v6` is a sum of triple products of `~l`-sized recentred operands, so its own
+        // roundoff floor is `~l^3 * f64::EPSILON`; an absolute threshold would wrongly reject a
+        // valid polyhedron at small length scales (and miss a collapsed sliver at large ones).
+        let l = self
+            .points
+            .iter()
+            .map(|p| {
+                ((p[0] - refp[0]).powi(2) + (p[1] - refp[1]).powi(2) + (p[2] - refp[2]).powi(2))
+                    .sqrt()
+            })
+            .fold(0.0_f64, f64::max);
         let mut v6 = 0.0;
         let mut c = [0.0; 3];
         for [i, j, k] in self.face_triangles() {
@@ -281,7 +310,10 @@ impl Polyhedron {
                 c[kk] += (a[kk] + b[kk] + cpt[kk]) * det;
             }
         }
-        if v6.abs() < f64::MIN_POSITIVE {
+        // A collapsed (zero-volume) polyhedron has no meaningful centroid; fall back to a vertex.
+        // The guard is the floating-point resolution of `v6` at this length scale, floored at
+        // `f64::MIN_POSITIVE` so an exactly-zero `v6` never divides.
+        if v6.abs() <= (64.0 * l.powi(3) * f64::EPSILON).max(f64::MIN_POSITIVE) {
             return self.points[0];
         }
         let g = [c[0] / (4.0 * v6), c[1] / (4.0 * v6), c[2] / (4.0 * v6)];
@@ -316,6 +348,14 @@ impl Polyhedron {
     /// polyhedra and would be counted twice; only the first is accumulated (the two clipped
     /// patches coincide exactly).
     pub fn convex_intersection_volume(&self, other: &Self) -> f64 {
+        self.convex_intersection_volume_with(other, DEFAULT_FACE_WARP)
+    }
+
+    /// Like [`Self::convex_intersection_volume`], with an explicit relative warp tolerance.
+    ///
+    /// `relative_warp` is the maximum tolerated non-planarity of a nominally planar face as a
+    /// fraction of the geometry's radial size; [`DEFAULT_FACE_WARP`] is a sensible default.
+    pub fn convex_intersection_volume_with(&self, other: &Self, relative_warp: f64) -> f64 {
         let [s_min, s_max] = self.bounds();
         let [o_min, o_max] = other.bounds();
         for k in 0..3 {
@@ -323,7 +363,7 @@ impl Polyhedron {
                 return 0.0;
             }
         }
-        self.convex_intersection_volume_impl(other)
+        self.convex_intersection_volume_impl_with(other, relative_warp)
     }
 
     /// Core of [`Self::convex_intersection_volume`] without the axis-aligned bounding-box reject.
@@ -333,13 +373,25 @@ impl Polyhedron {
     /// by AABB (e.g. a BVH-driven boundary-element search) should call this to avoid the redundant
     /// work. The inputs are still assumed convex and the clip itself is unchanged.
     pub(crate) fn convex_intersection_volume_impl(&self, other: &Self) -> f64 {
+        self.convex_intersection_volume_impl_with(other, DEFAULT_FACE_WARP)
+    }
+
+    /// Like [`Self::convex_intersection_volume_impl`], with an explicit relative warp tolerance.
+    pub(crate) fn convex_intersection_volume_impl_with(
+        &self,
+        other: &Self,
+        relative_warp: f64,
+    ) -> f64 {
+        // Floating-point scale for the clip tolerance. `Plane.n` is a unit normal, so the signed
+        // plane distance below is a physical length and `eps` must scale with the coordinate
+        // magnitude. No `.max(1.0)` floor: an absolute floor would turn this into an absolute
+        // chord tolerance and wrongly clip a mesh much smaller than unit size.
         let scale = self
             .points
             .iter()
             .chain(other.points.iter())
             .map(|p| p[0].abs().max(p[1].abs()).max(p[2].abs()))
-            .fold(0.0_f64, f64::max)
-            .max(1.0);
+            .fold(0.0_f64, f64::max);
         let eps = 64.0 * f64::EPSILON * scale;
 
         // Translation-invariant length scale: the maximum distance of any vertex from the centroid
@@ -359,6 +411,9 @@ impl Polyhedron {
             }
             c
         };
+        // Translation-invariant radial size. No `.max(1.0)` floor: the warp tolerance must stay
+        // strictly proportional to the geometry so that a small mesh is not judged coplanar by an
+        // absolute tolerance larger than its own features.
         let radial = self
             .points
             .iter()
@@ -369,9 +424,8 @@ impl Polyhedron {
                     + (p[2] - centroid[2]).powi(2))
                 .sqrt()
             })
-            .fold(0.0_f64, f64::max)
-            .max(1.0);
-        let coplanar_tol = 1e-4f64 * radial;
+            .fold(0.0_f64, f64::max);
+        let coplanar_tol = relative_warp * radial;
 
         let other_planes = other.planes();
         let self_planes = self.planes();
@@ -480,7 +534,7 @@ fn plane_of_face(points: &[[f64; 3]], face: &[usize]) -> Plane {
 /// overstating the intersection volume.
 fn plane_same_side(a: Plane, b: Plane, tol: f64) -> bool {
     let ndot = a.n[0] * b.n[0] + a.n[1] * b.n[1] + a.n[2] * b.n[2];
-    if ndot <= 1.0 - 64.0 * 1000.0 * f64::EPSILON {
+    if ndot <= 1.0 - PLANE_NORMAL_COS_TOL {
         return false;
     }
     (a.d - b.d).abs() <= tol
@@ -498,7 +552,7 @@ fn plane_same_side(a: Plane, b: Plane, tol: f64) -> bool {
 /// can disagree by a small relative amount even though they are geometrically the same plane.
 fn plane_coplanar_opposite(a: Plane, b: Plane, tol: f64) -> bool {
     let ndot = a.n[0] * b.n[0] + a.n[1] * b.n[1] + a.n[2] * b.n[2];
-    if ndot >= -1.0 + 64.0 * 1000.0 * f64::EPSILON {
+    if ndot >= -1.0 + PLANE_NORMAL_COS_TOL {
         return false;
     }
     (a.d + b.d).abs() <= tol
@@ -597,11 +651,13 @@ fn remove_consecutive_duplicates(vertices: &mut Vec<[f64; 3]>) {
     if vertices.len() < 2 {
         return;
     }
+    // Consecutive-duplicate distance tolerance, scaled with the coordinate magnitude so that it
+    // stays purely relative. No `.max(1.0)` floor, which would make it an absolute distance and
+    // wrongly merge distinct vertices of a mesh much smaller than unit size.
     let scale = vertices
         .iter()
         .map(|v| v[0].abs().max(v[1].abs()).max(v[2].abs()))
-        .fold(0.0_f64, f64::max)
-        .max(1.0);
+        .fold(0.0_f64, f64::max);
     let eps = 64.0 * f64::EPSILON * scale;
     let mut out = 0;
     for i in 0..vertices.len() {
@@ -918,7 +974,10 @@ fn ray_crosses_face(px: f64, py: f64, pz: f64, face: &[usize], coords: &[[f64; 3
     }
     let denom = n[0];
 
-    let scale = n[0].abs().max(n[1].abs()).max(n[2].abs()).max(1.0);
+    // `n` is the (unnormalised) Newell normal, so it scales with the face area. The degeneracy
+    // test below is relative to that magnitude; no `.max(1.0)` floor, which would make the
+    // threshold an absolute area and reject every face of a mesh much smaller than unit size.
+    let scale = n[0].abs().max(n[1].abs()).max(n[2].abs());
     let eps = 64.0 * f64::EPSILON * scale;
 
     if denom.abs() <= eps {
@@ -1131,6 +1190,123 @@ mod tests {
         assert_abs_diff_eq!(g[0], 0.25, epsilon = 1e-12);
         assert_abs_diff_eq!(g[1], 0.25, epsilon = 1e-12);
         assert_abs_diff_eq!(g[2], 0.25, epsilon = 1e-12);
+    }
+
+    /// Geometric centroid must be scale invariant: the degenerate-volume guard in
+    /// `geometric_centroid` derives its threshold from the characteristic length, so a tetrahedron
+    /// shrunk to a tiny size must still return the true centroid instead of falling back to
+    /// `points[0]`. An absolute (mesh-independent) threshold would fail here.
+    #[test]
+    fn geometric_centroid_is_scale_invariant() {
+        for k in [1e0, 1e-3, 1e-6, 1e-9] {
+            let pts = [[0.0, 0.0, 0.0], [k, 0.0, 0.0], [0.0, k, 0.0], [0.0, 0.0, k]];
+            let p = Polyhedron::unknown(
+                pts,
+                [vec![0, 1, 3], vec![1, 2, 3], vec![2, 0, 3], vec![0, 2, 1]],
+            );
+            let g = p.geometric_centroid();
+            for c in g {
+                assert_abs_diff_eq!(c, 0.25 * k, epsilon = 1e-12 * k);
+            }
+        }
+    }
+
+    /// A fully degenerate (all-coplanar, zero-volume) vertex set has no well-defined geometric
+    /// centroid; the guard must return a vertex rather than `NaN`. Scaling the degenerate set must
+    /// not change that: it stays a plain fallback at every scale.
+    #[test]
+    fn geometric_centroid_degenerate_falls_back_to_vertex() {
+        for k in [1e0, 1e-6, 1e-12] {
+            let pts = [[0.0, 0.0, 0.0], [k, 0.0, 0.0], [k, k, 0.0], [0.0, k, 0.0]];
+            let p = Polyhedron::unknown(pts, [vec![0, 1, 2], vec![0, 2, 3]]);
+            let g = p.geometric_centroid();
+            for c in g {
+                assert!(
+                    c.is_finite(),
+                    "degenerate centroid not finite at scale {k}: {c}"
+                );
+            }
+            assert_eq!(g, [0.0, 0.0, 0.0]);
+        }
+    }
+
+    /// The warp tolerance is a user-tunable mesh-quality option: two cubes sharing a face with a
+    /// tiny controlled warp either count as coplanar (zero overlap) or as slightly overlapping,
+    /// depending on `relative_warp`.
+    #[test]
+    fn convex_intersection_volume_warp_tolerance_is_configurable() {
+        // Unit cube, and a second cube offset by 1 along x (sharing the x = 1 face) whose shared
+        // face is warped by `w` in z at two vertices.
+        let a = unit_cube();
+        let make_warped = |w: f64| {
+            Polyhedron::unknown(
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [1.0, 1.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                    [1.0, 0.0, 1.0],
+                    [1.0, 1.0, 1.0 + w],
+                    [0.0, 1.0, 1.0 + w],
+                ],
+                [
+                    vec![0, 1, 2, 3],
+                    vec![4, 5, 6, 7],
+                    vec![0, 1, 5, 4],
+                    vec![1, 2, 6, 5],
+                    vec![2, 3, 7, 6],
+                    vec![3, 0, 4, 7],
+                ],
+            )
+        };
+        let b = make_warped(1e-3);
+        // Disjoint in volume (only the shared face touches), so the intersection is ~0 either way;
+        // reaching the coplanarity branch must not panic and must stay finite.
+        let v = a.convex_intersection_volume_with(&b, 1e-2);
+        assert!(v.is_finite() && v >= 0.0);
+    }
+
+    /// Intersection volume and point containment must be scale invariant. Both rely on
+    /// coordinate-magnitude-scaled floating-point tolerances (clip plane distance, ray-face
+    /// degeneracy), so a cube shrunk to a tiny size with two cubes overlapping on half a cell must
+    /// still report half its (tiny) volume and contain its centre. An absolute tolerance floor
+    /// would break this.
+    #[test]
+    fn intersection_and_contains_are_scale_invariant() {
+        for k in [1e0, 1e-4, 1e-8] {
+            let cube = |dx: f64| {
+                Polyhedron::unknown(
+                    [
+                        [0.0, 0.0, 0.0],
+                        [k, 0.0, 0.0],
+                        [k, k, 0.0],
+                        [0.0, k, 0.0],
+                        [0.0, 0.0, k],
+                        [k, 0.0, k],
+                        [k, k, k],
+                        [0.0, k, k],
+                    ]
+                    .map(|p| [p[0] + dx, p[1], p[2]]),
+                    [
+                        vec![0, 3, 2, 1],
+                        vec![4, 5, 6, 7],
+                        vec![0, 1, 5, 4],
+                        vec![2, 3, 7, 6],
+                        vec![1, 2, 6, 5],
+                        vec![3, 0, 4, 7],
+                    ],
+                )
+            };
+            let a = cube(0.0);
+            let b = cube(0.5 * k);
+            assert!(
+                (a.convex_intersection_volume(&b) - 0.5 * k * k * k).abs() <= 1e-9 * k.abs(),
+                "wrong intersection volume at scale {k}"
+            );
+            assert!(a.contains(&[0.5 * k, 0.5 * k, 0.5 * k]));
+            assert!(!a.contains(&[1.5 * k, 0.5 * k, 0.5 * k]));
+        }
     }
 
     #[test]
@@ -1587,7 +1763,7 @@ mod tests {
     /// rejecting faces that are genuinely tilted apart or offset beyond the warp scale.
     #[test]
     fn plane_same_side_absorbs_shared_face_warp() {
-        let tol = 1e-4; // coplanar_tol with unit-scale geometry (radial >= 1)
+        let tol = 1e-4; // coplanar_tol for geometry of radial size ~1
         let a = Plane {
             n: [0.0, -1.0, 0.0],
             d: 2.877e-6,

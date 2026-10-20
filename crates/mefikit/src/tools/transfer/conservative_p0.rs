@@ -117,7 +117,7 @@ fn build_overlap_2d(
                     let mut src_pgon: Vec<[f64; 2]> = src_elem.coords2().copied().collect();
                     into_ccw2(&mut src_pgon);
                     let area = convex_intersection_area(&src_pgon, &pgon);
-                    if area > f64::MIN_POSITIVE {
+                    if area > 1e-15 {
                         src_idx.push(offset + i);
                         weights.push(area);
                     }
@@ -199,7 +199,7 @@ fn build_overlap_3d(
                     // The candidates already come from a BVH AABB query, so skip the redundant
                     // AABB reject inside the intersection and clip directly.
                     let vol = tgt_poly.convex_intersection_volume_impl(src_poly);
-                    if vol > f64::MIN_POSITIVE {
+                    if vol > 1e-16 {
                         src_idx.push(offset + i);
                         weights.push(vol);
                     }

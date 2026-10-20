@@ -51,8 +51,10 @@ use crate::mesh::{
 use nalgebra as na;
 use ndarray as nd;
 
-/// Tolerance under which a value is treated as exactly `0` in validation checks.
-const EPS: f64 = 64.0 * f64::EPSILON;
+/// Absolute tolerance under which a matrix entry is treated as exactly `0` in validation checks.
+/// The entries are dimensionless homogeneous-matrix coefficients (a rigid/affine transform), so
+/// the tolerance is an absolute value and does not need to scale with the mesh geometry.
+const EPS: f64 = 1e-12;
 
 // ----------------------------------------------------------------------------
 // Transform

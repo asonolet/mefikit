@@ -4,9 +4,19 @@
 //! `m`: the edge is the circular arc through the three points. When the three points are
 //! collinear the edge degenerates to the polyline `p0 -> m -> p1` (the straight segment
 //! when `m` lies between the vertices).
+//!
+//! This module is pure geometry: it answers *where* curves meet (as coordinates /
+//! [`Intersections`]) using exact orientation and in-circle predicates for the topological
+//! decisions ([`robust::orient2d`], [`robust::incircle`]) and length-relative
+//! floating-point tolerances for the numeric ones, following the same convention as
+//! [`super::segment`]. Mesh-quality policy (snapping to shared nodes, discarding
+//! near-coincident intersections, …) is the caller's responsibility.
 
 use std::f64::consts::TAU;
 
+use robust::{Coord, incircle, orient2d};
+
+use super::segment::{Intersection, Intersections, PointId};
 use super::signed_area2;
 
 /// The circle through three points.
@@ -16,18 +26,24 @@ pub(crate) struct ArcCircle {
     r2: f64,
 }
 
+#[inline(always)]
+fn coord(p: &[f64; 2]) -> Coord<f64> {
+    Coord { x: p[0], y: p[1] }
+}
+
 impl ArcCircle {
     /// The circle through `p0`, `m` and `p1`, or `None` when the three points are
     /// collinear at the scale of the edge.
     ///
-    /// The centre is computed relative to `p0` (translation invariant) and the
-    /// degeneracy test compares the doubled triangle area against the edge's own squared
-    /// scale, so there is no absolute epsilon.
+    /// The centre is computed relative to `p0` (translation invariant). The degeneracy test
+    /// uses the exact orientation determinant ([`robust::orient2d`]) compared against the
+    /// edge's own squared scale, so there is no absolute epsilon.
     pub(crate) fn through(p0: &[f64; 2], m: &[f64; 2], p1: &[f64; 2]) -> Option<Self> {
         let a = [m[0] - p0[0], m[1] - p0[1]];
         let b = [p1[0] - p0[0], p1[1] - p0[1]];
-        let cross = a[0] * b[1] - a[1] * b[0];
         let scale2 = (a[0] * a[0] + a[1] * a[1]).max(b[0] * b[0] + b[1] * b[1]);
+        // Exact signed double area of the triangle (p0, m, p1).
+        let cross = orient2d(coord(p0), coord(m), coord(p1));
         if cross.abs() <= 32.0 * f64::EPSILON * scale2 {
             return None;
         }
@@ -40,6 +56,26 @@ impl ArcCircle {
         ];
         let r2 = (p0[0] - center[0]).powi(2) + (p0[1] - center[1]).powi(2);
         Some(Self { center, r2 })
+    }
+
+    /// Signed radial deviation of `pt` from the circle, as a length: negative inside, positive
+    /// outside. Uses the exact in-circle determinant ([`robust::incircle`]) so the sign is
+    /// exact even for nearly straight arcs; the determinant is converted to a length through
+    /// `power / (2 r)` where `power` is the power of the point.
+    fn signed_radial(&self, p0: &[f64; 2], m: &[f64; 2], p1: &[f64; 2], pt: &[f64; 2]) -> f64 {
+        // incircle(p0, m, p1, pt) = orient2d(p0, m, p1) * power(pt), with power = |pt-c|^2 - r^2.
+        // Dividing by the orientation gives the power; dividing by 2r gives the radial length.
+        let det = incircle(coord(p0), coord(m), coord(p1), coord(pt));
+        let ori = orient2d(coord(p0), coord(m), coord(p1));
+        if ori == 0.0 {
+            return 0.0;
+        }
+        let r = self.r2.sqrt();
+        if r == 0.0 {
+            return 0.0;
+        }
+        let power = det / ori;
+        power / (2.0 * r)
     }
 
     /// Signed angular sweep from `p0` to `p1` along the circle, in `(-tau, tau)`:
@@ -96,11 +132,9 @@ impl ArcCircle {
             }
         }
         breaks.sort_by(|x, y| x.partial_cmp(y).unwrap());
-        breaks.dedup_by(|x, y| {
-            (*x - *y).abs()
-                <= 1e-12 * ((1.0 + x.abs() + y.abs()) * f64::EPSILON / f64::EPSILON).max(1.0) * 1.0
-        }); // keep simple but fix later
-        // Better: use scale-dependent eps; breaks are parameter values, so use a small multiple of epsilon
+        // `breaks` holds normalised parameters in `[0, 1]`; two breakpoints closer than the
+        // floating-point resolution of that interval are the same breakpoint. This is a pure
+        // roundoff tolerance, not a mesh-quality one, so it is derived solely from `f64::EPSILON`.
         breaks
             .dedup_by(|x, y| (*x - *y).abs() <= 64.0 * (1.0 + x.abs().max(y.abs())) * f64::EPSILON);
 
@@ -239,8 +273,12 @@ fn point_on_seg(a: &[f64; 2], b: &[f64; 2], p: &[f64; 2], eps: f64) -> bool {
     dot <= len_sq
 }
 
-/// Whether `pt` lies on the circular arc `p0 -> m -> p1` (on the circle within `eps` and
-/// inside the angular sweep chosen through `m`).
+/// Whether `pt` lies on the circular arc `p0 -> m -> p1`: on the circle within the length
+/// tolerance `eps` and inside the angular sweep chosen through `m`.
+///
+/// `eps` is the radial (length) floating-point tolerance, derived from the coordinate
+/// magnitude with the same convention as [`super::segment`]. The angular sweep is extended by
+/// `eps / r`, the angular resolution implied by that same length tolerance.
 fn on_arc(
     circ: &ArcCircle,
     p0: &[f64; 2],
@@ -249,18 +287,15 @@ fn on_arc(
     pt: &[f64; 2],
     eps: f64,
 ) -> bool {
-    let dx = pt[0] - circ.center[0];
-    let dy = pt[1] - circ.center[1];
-    let r = circ.r2.sqrt();
-    let dist = (dx * dx + dy * dy).sqrt();
-    if (dist - r).abs() > eps {
+    if circ.signed_radial(p0, m, p1, pt).abs() > eps {
         return false;
     }
+    let r = circ.r2.sqrt();
     let a0 = (p0[1] - circ.center[1]).atan2(p0[0] - circ.center[0]);
     let apt = (pt[1] - circ.center[1]).atan2(pt[0] - circ.center[0]);
     let sweep = circ.sweep(p0, m, p1);
     let diff = (apt - a0).rem_euclid(TAU);
-    let tol_ang = (eps / r.max(eps)).max(64.0 * f64::EPSILON);
+    let tol_ang = eps / r.max(eps);
     if sweep >= 0.0 {
         diff <= sweep + tol_ang
     } else {
@@ -268,15 +303,20 @@ fn on_arc(
     }
 }
 
-/// Intersection points (as coordinates) of the circular arc `p0 -> m -> p1` with the straight
-/// segment `l0 -> l1`. A degenerate (collinear) arc falls back to the polyline `p0 -> m -> p1`.
+/// Intersection points of the circular arc `p0 -> m -> p1` with the straight segment
+/// `l0 -> l1`. A degenerate (collinear) arc falls back to the polyline `p0 -> m -> p1`.
+///
+/// The result identifies intersections that fall on an endpoint of either operand
+/// ([`Intersection::Existing`]); everything else is returned as coordinates
+/// ([`Intersection::New`]). An arc and a segment meet in at most two points, so the result is
+/// never [`Intersections::Segment`].
 pub fn intersect_arc_seg(
     p0: &[f64; 2],
     m: &[f64; 2],
     p1: &[f64; 2],
     l0: &[f64; 2],
     l1: &[f64; 2],
-) -> Vec<[f64; 2]> {
+) -> Intersections {
     let mut pts: Vec<[f64; 2]> = Vec::new();
     let mut scale = 1.0f64;
     for p in [p0, m, p1, l0, l1] {
@@ -322,11 +362,40 @@ pub fn intersect_arc_seg(
             }
         }
     }
-    pts
+    classify_intersections(&pts, [p0, p1, l0, l1], eps)
 }
 
-/// Intersection points (as coordinates) of the circular arc `a0 -> am -> a1` with the circular
+/// Builds an [`Intersections`] from up to two intersection coordinates, mapping a coordinate
+/// that coincides with one of the four operands' endpoints to [`Intersection::Existing`].
+///
+/// `endpoints` is `[P1, P2, P3, P4]`: the endpoints of the first operand (arc or segment),
+/// then those of the second. Mid-side nodes are shape parameters, never endpoints.
+fn classify_intersections(pts: &[[f64; 2]], endpoints: [&[f64; 2]; 4], eps: f64) -> Intersections {
+    let ids = [PointId::P1, PointId::P2, PointId::P3, PointId::P4];
+    let classify = |pt: [f64; 2]| -> Intersection {
+        for (c, id) in endpoints.iter().zip(ids) {
+            let dx = c[0] - pt[0];
+            let dy = c[1] - pt[1];
+            if dx * dx + dy * dy <= eps * eps {
+                return Intersection::Existing(id);
+            }
+        }
+        Intersection::New(pt)
+    };
+    match pts {
+        [] => Intersections::None,
+        [p] => Intersections::One(classify(*p)),
+        [p, q, ..] => Intersections::Two([classify(*p), classify(*q)]),
+    }
+}
+
+/// Intersection points of the circular arc `a0 -> am -> a1` with the circular
 /// arc `b0 -> bm -> b1`. Degenerate (collinear) arcs fall back to their polyline.
+///
+/// The result identifies intersections that fall on an endpoint of either arc
+/// ([`Intersection::Existing`], with `a0/a1` as `P1/P2` and `b0/b1` as `P3/P4`);
+/// everything else is returned as coordinates. Two arcs meet in at most two points, so the
+/// result is never [`Intersections::Segment`].
 pub fn intersect_arc_arc(
     a0: &[f64; 2],
     am: &[f64; 2],
@@ -334,7 +403,7 @@ pub fn intersect_arc_arc(
     b0: &[f64; 2],
     bm: &[f64; 2],
     b1: &[f64; 2],
-) -> Vec<[f64; 2]> {
+) -> Intersections {
     let mut pts: Vec<[f64; 2]> = Vec::new();
     let mut scale = 1.0f64;
     for p in [a0, am, a1, b0, bm, b1] {
@@ -346,19 +415,18 @@ pub fn intersect_arc_arc(
     let cb = ArcCircle::through(b0, bm, b1);
 
     match (ca, cb) {
-        (None, None) => {
+        (None, None) | (None, Some(_)) => {
             for (x0, x1) in [(a0, am), (am, a1)] {
-                pts.extend(intersect_arc_seg(b0, bm, b1, x0, x1));
-            }
-        }
-        (None, Some(_)) => {
-            for (x0, x1) in [(a0, am), (am, a1)] {
-                pts.extend(intersect_arc_seg(b0, bm, b1, x0, x1));
+                for p in seg_int_coords(intersect_arc_seg(b0, bm, b1, x0, x1), b0, b1, x0, x1) {
+                    dedup_push(&mut pts, p, eps);
+                }
             }
         }
         (Some(_), None) => {
             for (x0, x1) in [(b0, bm), (bm, b1)] {
-                pts.extend(intersect_arc_seg(a0, am, a1, x0, x1));
+                for p in seg_int_coords(intersect_arc_seg(a0, am, a1, x0, x1), a0, a1, x0, x1) {
+                    dedup_push(&mut pts, p, eps);
+                }
             }
         }
         (Some(ca), Some(cb)) => {
@@ -423,19 +491,18 @@ pub fn intersect_arc_arc(
     for p in pts {
         dedup_push(&mut uniq, p, eps);
     }
-    uniq
+    classify_intersections(&uniq, [a0, a1, b0, b1], eps)
 }
 
 /// Converts an [`Intersections`] result between two specific straight segments into plain
 /// coordinates (Existing ids are resolved against the endpoints used for that call).
 fn seg_int_coords(
-    res: super::segment::Intersections,
+    res: Intersections,
     a1: &[f64; 2],
     a2: &[f64; 2],
     b1: &[f64; 2],
     b2: &[f64; 2],
 ) -> Vec<[f64; 2]> {
-    use super::segment::{Intersection, Intersections, PointId};
     let one = |i: Intersection| -> [f64; 2] {
         match i {
             Intersection::Existing(PointId::P1) => *a1,
@@ -705,6 +772,31 @@ mod tests {
         (dx * dx + dy * dy).sqrt()
     }
 
+    /// The coordinates of an [`Intersections`] result, resolving `Existing` ids against the
+    /// `[P1, P2, P3, P4]` endpoints supplied.
+    fn int_coords(res: &Intersections, eps: [&[f64; 2]; 4]) -> Vec<[f64; 2]> {
+        let one = |i: &Intersection| -> [f64; 2] {
+            match i {
+                Intersection::Existing(PointId::P1) => *eps[0],
+                Intersection::Existing(PointId::P2) => *eps[1],
+                Intersection::Existing(PointId::P3) => *eps[2],
+                Intersection::Existing(PointId::P4) => *eps[3],
+                Intersection::New(p) => *p,
+            }
+        };
+        match res {
+            Intersections::None => vec![],
+            Intersections::One(i) => vec![one(i)],
+            Intersections::Two([i1, i2]) => vec![one(i1), one(i2)],
+            Intersections::Segment([p1, p2]) => {
+                vec![
+                    one(&Intersection::Existing(*p1)),
+                    one(&Intersection::Existing(*p2)),
+                ]
+            }
+        }
+    }
+
     #[test]
     fn arc_seg_known_crossing() {
         let s = std::f64::consts::FRAC_1_SQRT_2;
@@ -713,11 +805,25 @@ mod tests {
         let p1 = [0.0, 1.0];
         let l0 = [0.5, -1.0];
         let l1 = [0.5, 1.0];
-        let pts = intersect_arc_seg(&p0, &m, &p1, &l0, &l1);
+        let res = intersect_arc_seg(&p0, &m, &p1, &l0, &l1);
+        let pts = int_coords(&res, [&p0, &p1, &l0, &l1]);
         assert_eq!(pts.len(), 1);
         let expect = [0.5, (1.0 - 0.25f64).sqrt()];
         assert!((pts[0][0] - expect[0]).abs() < 1e-12);
         assert!((pts[0][1] - expect[1]).abs() < 1e-12);
+    }
+
+    #[test]
+    fn arc_seg_endpoint_contact_is_existing() {
+        // A segment that ends exactly on the arc's endpoint `p0` must report `Existing(P1)`.
+        let s = std::f64::consts::FRAC_1_SQRT_2;
+        let p0 = [1.0, 0.0];
+        let m = [s, s];
+        let p1 = [0.0, 1.0];
+        let l0 = [1.0, 1.0];
+        let l1 = [1.0, 0.0];
+        let res = intersect_arc_seg(&p0, &m, &p1, &l0, &l1);
+        assert_eq!(res, Intersections::One(Intersection::Existing(PointId::P1)));
     }
 
     #[test]
@@ -733,7 +839,8 @@ mod tests {
         let b0 = [0.0, 0.0];
         let bm = [1.0, -1.0];
         let b1 = [2.0, 0.0];
-        let pts = intersect_arc_arc(&a0, &am, &a1, &b0, &bm, &b1);
+        let res = intersect_arc_arc(&a0, &am, &a1, &b0, &bm, &b1);
+        let pts = int_coords(&res, [&a0, &a1, &b0, &b1]);
         // The lower semicircle of circle(1,0,r=1) meets the unit-circle quarter arc only where
         // both circles meet within both sweeps: the circles themselves intersect at
         // (0.5, ±sqrt(3)/2); +sqrt(3)/2 ~ 0.866 is on the upper quarter arc (angle ~60deg),
@@ -754,7 +861,8 @@ mod tests {
         ) {
             prop_assume!((p0[0]-p1[0]).hypot(p0[1]-p1[1]) > 1e-3);
             prop_assume!((l0[0]-l1[0]).hypot(l0[1]-l1[1]) > 1e-3);
-            let pts = intersect_arc_seg(&p0, &m, &p1, &l0, &l1);
+            let res = intersect_arc_seg(&p0, &m, &p1, &l0, &l1);
+            let pts = int_coords(&res, [&p0, &p1, &l0, &l1]);
             let mut scale = 1.0f64;
             for p in [&p0, &m, &p1, &l0, &l1] {
                 scale = scale.max(p[0].abs()).max(p[1].abs());
@@ -770,6 +878,63 @@ mod tests {
                         prop_assert!(on_poly, "degenerate point not on polyline: {pt:?}");
                     }
                 }
+            }
+        }
+    }
+
+    /// A point just past the end of the arc's sweep is rejected once the mesh-quality minimum-angle
+    /// tolerance has been removed from [`on_arc`]: only floating-point slack remains.
+    #[test]
+    fn on_arc_rejects_point_just_outside_sweep() {
+        let p0 = [1.0, 0.0];
+        let m = [0.0, 1.0];
+        let p1 = [-1.0, 0.0];
+        let circ = ArcCircle::through(&p0, &m, &p1).unwrap();
+        let ang = std::f64::consts::PI + 5e-7;
+        let pt = [ang.cos(), ang.sin()];
+        let r_eps = 64.0 * f64::EPSILON;
+        assert!(!on_arc(&circ, &p0, &m, &p1, &pt, r_eps));
+    }
+
+    /// A point clearly off the arc must be rejected.
+    #[test]
+    fn on_arc_rejects_point_far_outside_sweep() {
+        let p0 = [1.0, 0.0];
+        let m = [0.0, 1.0];
+        let p1 = [-1.0, 0.0];
+        let circ = ArcCircle::through(&p0, &m, &p1).unwrap();
+        let ang = std::f64::consts::PI + 0.1;
+        let pt = [ang.cos(), ang.sin()];
+        let r_eps = 64.0 * f64::EPSILON;
+        assert!(!on_arc(&circ, &p0, &m, &p1, &pt, r_eps));
+    }
+
+    /// The arc/segment solver uses the same absolute `.max(1.0)` scale floor as
+    /// [`super::segment`], so its tolerance stops shrinking once the geometry is smaller than
+    /// unit size. The exact crossing must always be reported; only the unit-scale case is exactly
+    /// a single point (below unit size the floor may additionally admit points within its
+    /// absolute near-endpoint tolerance).
+    #[test]
+    fn arc_seg_intersection_with_unit_scale_floor() {
+        let s = std::f64::consts::FRAC_1_SQRT_2;
+        let p0 = [1.0, 0.0];
+        let m = [s, s];
+        let p1 = [0.0, 1.0];
+        let l0 = [0.5, -1.0];
+        let l1 = [0.5, 1.0];
+        for k in [1e0, 1e-6, 1e-9] {
+            let sp = |p: [f64; 2]| [p[0] * k, p[1] * k];
+            let res = intersect_arc_seg(&sp(p0), &sp(m), &sp(p1), &sp(l0), &sp(l1));
+            let pts = int_coords(&res, [&sp(p0), &sp(p1), &sp(l0), &sp(l1)]);
+            let expect = [0.5 * k, (1.0 - 0.25f64).sqrt() * k];
+            let tol = 1e-9 * k.abs().max(1.0);
+            assert!(
+                pts.iter()
+                    .any(|pt| (pt[0] - expect[0]).abs() <= tol && (pt[1] - expect[1]).abs() <= tol),
+                "true crossing not reported at scale {k}: {pts:?}"
+            );
+            if k >= 1.0 {
+                assert_eq!(pts.len(), 1, "unexpected extra intersections at scale {k}");
             }
         }
     }
