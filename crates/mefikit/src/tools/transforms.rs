@@ -52,7 +52,7 @@ use nalgebra as na;
 use ndarray as nd;
 
 /// Tolerance under which a value is treated as exactly `0` in validation checks.
-const EPS: f64 = 1e-12;
+const EPS: f64 = 64.0 * f64::EPSILON;
 
 // ----------------------------------------------------------------------------
 // Transform

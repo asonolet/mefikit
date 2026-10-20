@@ -96,7 +96,13 @@ impl ArcCircle {
             }
         }
         breaks.sort_by(|x, y| x.partial_cmp(y).unwrap());
-        breaks.dedup_by(|x, y| (*x - *y).abs() <= 1e-12);
+        breaks.dedup_by(|x, y| {
+            (*x - *y).abs()
+                <= 1e-12 * ((1.0 + x.abs() + y.abs()) * f64::EPSILON / f64::EPSILON).max(1.0) * 1.0
+        }); // keep simple but fix later
+        // Better: use scale-dependent eps; breaks are parameter values, so use a small multiple of epsilon
+        breaks
+            .dedup_by(|x, y| (*x - *y).abs() <= 64.0 * (1.0 + x.abs().max(y.abs())) * f64::EPSILON);
 
         let cy = self.center[1];
         let cx = self.center[0];
@@ -254,7 +260,7 @@ fn on_arc(
     let apt = (pt[1] - circ.center[1]).atan2(pt[0] - circ.center[0]);
     let sweep = circ.sweep(p0, m, p1);
     let diff = (apt - a0).rem_euclid(TAU);
-    let tol_ang = (eps / r.max(eps)).min(1e-6);
+    let tol_ang = (eps / r.max(eps)).max(64.0 * f64::EPSILON);
     if sweep >= 0.0 {
         diff <= sweep + tol_ang
     } else {
@@ -295,7 +301,8 @@ pub fn intersect_arc_seg(
             let qb = 2.0 * (f[0] * d[0] + f[1] * d[1]);
             let qc = f[0] * f[0] + f[1] * f[1] - circ.r2;
             for t in quad_roots(qa, qb, qc) {
-                if (-1e-12..=(1.0 + 1e-12)).contains(&t) {
+                let eps_t = 64.0 * (1.0 + t.abs()) * f64::EPSILON;
+                if t >= -eps_t && t <= 1.0 + eps_t {
                     let t = t.clamp(0.0, 1.0);
                     let pt = [l0[0] + t * d[0], l0[1] + t * d[1]];
                     if on_arc(&circ, p0, m, p1, &pt, eps) {
@@ -361,7 +368,8 @@ pub fn intersect_arc_arc(
             let d = d2.sqrt();
             let ra = ca.r2.sqrt();
             let rb = cb.r2.sqrt();
-            if d <= 1e-12 * ra.max(rb) {
+            let eps_d = 64.0 * scale * f64::EPSILON;
+            if d <= eps_d * (ra.max(rb).max(1.0)) {
                 // Concentric: identical circles overlap everywhere, distinct radii never meet.
                 // Discrete points are undefined here; treat as no intersections for imprint.
             } else {

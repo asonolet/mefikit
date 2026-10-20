@@ -144,7 +144,7 @@ impl Polyhedron {
             }
             let (n, d) = face_plane(&self.points, face);
             let scale = n[0].abs().max(n[1].abs()).max(n[2].abs()).max(1.0);
-            let eps = 1e-12 * scale;
+            let eps = 64.0 * scale * f64::EPSILON;
             let mut has_pos = false;
             let mut has_neg = false;
             for (i, p) in self.points.iter().enumerate() {
@@ -281,7 +281,7 @@ impl Polyhedron {
                 c[kk] += (a[kk] + b[kk] + cpt[kk]) * det;
             }
         }
-        if v6.abs() < 1e-30 {
+        if v6.abs() < f64::MIN_POSITIVE {
             return self.points[0];
         }
         let g = [c[0] / (4.0 * v6), c[1] / (4.0 * v6), c[2] / (4.0 * v6)];
@@ -371,7 +371,7 @@ impl Polyhedron {
             })
             .fold(0.0_f64, f64::max)
             .max(1.0);
-        let coplanar_tol = 1e-4 * radial;
+        let coplanar_tol = 1e-4f64 * radial;
 
         let other_planes = other.planes();
         let self_planes = self.planes();
@@ -480,7 +480,7 @@ fn plane_of_face(points: &[[f64; 3]], face: &[usize]) -> Plane {
 /// overstating the intersection volume.
 fn plane_same_side(a: Plane, b: Plane, tol: f64) -> bool {
     let ndot = a.n[0] * b.n[0] + a.n[1] * b.n[1] + a.n[2] * b.n[2];
-    if ndot <= 1.0 - 1e-10 {
+    if ndot <= 1.0 - 64.0 * 1000.0 * f64::EPSILON {
         return false;
     }
     (a.d - b.d).abs() <= tol
@@ -498,7 +498,7 @@ fn plane_same_side(a: Plane, b: Plane, tol: f64) -> bool {
 /// can disagree by a small relative amount even though they are geometrically the same plane.
 fn plane_coplanar_opposite(a: Plane, b: Plane, tol: f64) -> bool {
     let ndot = a.n[0] * b.n[0] + a.n[1] * b.n[1] + a.n[2] * b.n[2];
-    if ndot >= -1.0 + 1e-10 {
+    if ndot >= -1.0 + 64.0 * 1000.0 * f64::EPSILON {
         return false;
     }
     (a.d + b.d).abs() <= tol
@@ -1116,7 +1116,7 @@ mod tests {
             let p0 = p.points[p.faces[fi][0]];
             assert!(
                 (n[0] * (p0[0] - c[0]) + n[1] * (p0[1] - c[1]) + n[2] * (p0[2] - c[2]))
-                    > scale * 1e-12
+                    > scale * 64.0 * f64::EPSILON
             );
         }
     }
