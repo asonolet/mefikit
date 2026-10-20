@@ -30,7 +30,7 @@ pub enum IntersectionIds {
 /// Build the map n1 -> Vec<(n2, reached)>
 /// Enumerates the boundary edge endpoint pairs (corner-to-corner, ignoring midpoints) of a
 /// cell given its connectivity and element type.
-fn boundary_edge_pairs(et: ElementType, conn: &[usize]) -> Vec<(usize, usize)> {
+pub(crate) fn boundary_edge_pairs(et: ElementType, conn: &[usize]) -> Vec<(usize, usize)> {
     use ElementType::*;
     match et {
         TRI6 | TRI7 => vec![(conn[0], conn[1]), (conn[1], conn[2]), (conn[2], conn[0])],
@@ -241,5 +241,42 @@ impl<'a, T: ElementLike<'a>> Cutable for T {
         }
 
         Some(walk_dart_map(dart_map, heap))
+    }
+}
+
+#[cfg(test)]
+mod quadratic_cut_tests {
+    use crate::element_traits::cut::boundary_edge_pairs;
+    use crate::mesh::ElementType::*;
+
+    #[test]
+    fn boundary_edge_pairs_tri6_corners_only() {
+        let conn = [10, 11, 12, 13, 14, 15];
+        let pairs = boundary_edge_pairs(TRI6, &conn);
+        assert_eq!(pairs, vec![(10, 11), (11, 12), (12, 10)]);
+    }
+
+    #[test]
+    fn boundary_edge_pairs_quad8_corners_only() {
+        let conn = [0, 1, 2, 3, 4, 5, 6, 7];
+        let pairs = boundary_edge_pairs(QUAD8, &conn);
+        assert_eq!(pairs, vec![(0, 1), (1, 2), (2, 3), (3, 0)]);
+    }
+
+    #[test]
+    fn boundary_edge_pairs_qpoly_corners_only() {
+        let conn = [1, 2, 3, 4, 5, 6, 10, 11, 12, 13]; // 5 corners + 5 mids
+        let pairs = boundary_edge_pairs(QPOLY, &conn);
+        assert_eq!(pairs, vec![(1, 2), (2, 3), (3, 4), (4, 5), (5, 1)]);
+    }
+
+    #[test]
+    fn boundary_edge_pairs_linear_unchanged() {
+        let conn = [0, 1, 2, 3];
+        let pairs = boundary_edge_pairs(QUAD4, &conn);
+        assert_eq!(pairs, vec![(0, 1), (1, 2), (2, 3), (3, 0)]);
+        let conn2 = [5, 6, 7];
+        let pairs2 = boundary_edge_pairs(TRI3, &conn2);
+        assert_eq!(pairs2, vec![(5, 6), (6, 7), (7, 5)]);
     }
 }

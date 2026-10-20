@@ -295,7 +295,7 @@ pub fn intersect_arc_seg(
             let qb = 2.0 * (f[0] * d[0] + f[1] * d[1]);
             let qc = f[0] * f[0] + f[1] * f[1] - circ.r2;
             for t in quad_roots(qa, qb, qc) {
-                if t >= -1e-12 && t <= 1.0 + 1e-12 {
+                if (-1e-12..=(1.0 + 1e-12)).contains(&t) {
                     let t = t.clamp(0.0, 1.0);
                     let pt = [l0[0] + t * d[0], l0[1] + t * d[1]];
                     if on_arc(&circ, p0, m, p1, &pt, eps) {
@@ -653,6 +653,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     fn sample_arc(p0: &[f64; 2], m: &[f64; 2], p1: &[f64; 2], n: usize) -> Vec<[f64; 2]> {
         match ArcCircle::through(p0, m, p1) {
             Some(circ) => {
@@ -681,6 +682,7 @@ mod tests {
         }
     }
 
+    #[allow(dead_code)]
     fn dist_point_to_seg(p: &[f64; 2], a: &[f64; 2], b: &[f64; 2]) -> f64 {
         let ab = [b[0] - a[0], b[1] - a[1]];
         let ap = [p[0] - a[0], p[1] - a[1]];

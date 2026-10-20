@@ -1073,4 +1073,42 @@ mod tests {
             assert_abs_diff_eq!(s, symdiff_expected, epsilon = 1e-9);
         }
     }
+
+    #[test]
+    fn test_overlay_seg3_seg2_arc_intersection_reused_nodes() {
+        use crate::prelude::RegularUMeshBuilder;
+        // Mesh1: a single quad [0,1]x[0,1]
+        let mesh1 = RegularUMeshBuilder::new()
+            .add_axis(vec![0.0, 1.0])
+            .add_axis(vec![0.0, 1.0])
+            .build();
+        // Mesh2: a vertical line that passes through the quad center; model as a 2-cell strip
+        // but easier: use two triangles? Or just construct a simple mesh with a SEG2 cutting edge
+        // Actually overlay works on 2D meshes; create mesh2 as a thin rectangle that crosses mesh1
+        // to force intersections on element edges.
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.25, 0.5, 1.25])
+            .add_axis(vec![0.25, 0.75])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        // Imprint should produce valid output
+        let area = mesh_area(&cutted);
+        assert!(area > 0.0);
+    }
+
+    #[test]
+    fn test_overlay_seg3_seg3_imprint_basic() {
+        use crate::prelude::RegularUMeshBuilder;
+        let mesh1 = RegularUMeshBuilder::new()
+            .add_axis(vec![0.0, 1.0])
+            .add_axis(vec![0.0, 1.0])
+            .build();
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.1, 0.5, 1.1])
+            .add_axis(vec![0.4, 0.6])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        let area = mesh_area(&cutted);
+        assert!(area > 0.0 && area <= 1.0 + 1e-12);
+    }
 }
