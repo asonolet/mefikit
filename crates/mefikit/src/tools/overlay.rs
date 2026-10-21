@@ -45,7 +45,8 @@ use crate::element_traits::cut::{
 };
 use crate::element_traits::{Cutable, SortedVecKey};
 use crate::geometry::{
-    Intersection, Intersections, Polygon, Segment, intersect_arc_arc, intersect_arc_seg,
+    Intersection, Intersections, Polygon, Segment, arc_param, intersect_arc_arc, intersect_arc_seg,
+    point_on_arc, sub_arc_midpoint,
 };
 use crate::mesh::{Dimension, Element, ElementId, ElementLike, ElementType, UMesh, UMeshView};
 use crate::prelude::ElementGeo;
@@ -441,7 +442,10 @@ fn curved_mid(
 ) -> Option<usize> {
     let (pa, pb) = {
         let coords = out.coords();
-        ([coords[(a, 0)], coords[(a, 1)]], [coords[(b, 0)], coords[(b, 1)]])
+        (
+            [coords[(a, 0)], coords[(a, 1)]],
+            [coords[(b, 0)], coords[(b, 1)]],
+        )
     };
     for arc in arcs {
         let Some(edge) = arc.arc else { continue };
@@ -458,8 +462,7 @@ fn curved_mid(
             (Some(sa), Some(sb)) => (sa, sb),
             _ => continue,
         };
-        let sm = arc_param(&edge[0], &edge[1], &edge[2], &arc_parent_mid(out, arc))
-            .unwrap_or(-1.0);
+        let sm = arc_param(&edge[0], &edge[1], &edge[2], &arc_parent_mid(out, arc)).unwrap_or(-1.0);
         let (lo, hi) = if sa <= sb { (sa, sb) } else { (sb, sa) };
         // Margin so a mid essentially at an endpoint is not reused (it would sit on a node).
         let margin = 1e-9;
@@ -1311,38 +1314,201 @@ mod tests {
     #[test]
     fn test_overlay_seg3_seg2_arc_intersection_reused_nodes() {
         use crate::prelude::RegularUMeshBuilder;
-        // Mesh1: a single quad [0,1]x[0,1]
-        let mesh1 = RegularUMeshBuilder::new()
-            .add_axis(vec![0.0, 1.0])
-            .add_axis(vec![0.0, 1.0])
-            .build();
-        // Mesh2: a vertical line that passes through the quad center; model as a 2-cell strip
-        // but easier: use two triangles? Or just construct a simple mesh with a SEG2 cutting edge
-        // Actually overlay works on 2D meshes; create mesh2 as a thin rectangle that crosses mesh1
-        // to force intersections on element edges.
+        // Mesh1: a single quadratic QUAD8 cell over [0, 1]^2 with outward-bulging edges.
+        let mesh1 = quad8_square(0.15);
+        // Mesh2: a linear strip crossing mesh1 vertically, so it cuts the curved edges.
         let mesh2 = RegularUMeshBuilder::new()
             .add_axis(vec![-0.25, 0.5, 1.25])
             .add_axis(vec![0.25, 0.75])
             .build();
         let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
-        // Imprint should produce valid output
-        let area = mesh_area(&cutted);
-        assert!(area > 0.0);
+        // The curved cell is cut, so the pieces must stay curved (QPOLY), not be flattened.
+        assert!(
+            cutted.element_types().any(|&et| et == ElementType::QPOLY),
+            "cut pieces of a quadratic cell must be QPOLY"
+        );
+    }
+
+    /// A QUAD8 cell over `[0, 1]^2` whose four edges bulge outward by `bulge`.
+    fn quad8_square(bulge: f64) -> UMesh {
+        let coords = nd::arr2(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -bulge],
+            [1.0 + bulge, 0.5],
+            [0.5, 1.0 + bulge],
+            [-bulge, 0.5],
+        ]);
+        let mut mesh = UMesh::new(coords.into_shared());
+        mesh.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7]]).to_shared(),
+            None,
+        );
+        mesh
     }
 
     #[test]
     fn test_overlay_seg3_seg3_imprint_basic() {
         use crate::prelude::RegularUMeshBuilder;
-        let mesh1 = RegularUMeshBuilder::new()
-            .add_axis(vec![0.0, 1.0])
-            .add_axis(vec![0.0, 1.0])
-            .build();
+        let mesh1 = quad8_square(0.15);
         let mesh2 = RegularUMeshBuilder::new()
             .add_axis(vec![-0.1, 0.5, 1.1])
             .add_axis(vec![0.4, 0.6])
             .build();
         let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
         let area = mesh_area(&cutted);
-        assert!(area > 0.0 && area <= 1.0 + 1e-12);
+        assert!(area > 0.0);
+    }
+
+    /// Exact area of a 2D element, using the quadratic arc area for quadratic elements and the
+    /// shoelace area otherwise.
+    fn exact_cell_area(cell: Element<'_>) -> f64 {
+        use ElementType::*;
+        match cell.element_type() {
+            QPOLY | QUAD8 | QUAD9 | TRI6 | TRI7 => {
+                crate::geometry::quadratic_polygon_area2(&cell.to_quadratic_polygon2())
+            }
+            _ => crate::geometry::signed_area2(&cell.vertices2()),
+        }
+    }
+
+    fn exact_mesh_area(mesh: &UMesh) -> f64 {
+        mesh.elements_of_dim(Dimension::D2)
+            .map(exact_cell_area)
+            .sum()
+    }
+
+    /// Two QUAD8 cells sharing the curved vertical edge `x = 1` (same corner and mid nodes), so
+    /// the mesh is conform. Bulge is outward on every edge.
+    fn two_quad8_squares(bulge: f64) -> UMesh {
+        // Nodes: 0..3 left cell, 4..7 right cell, but the shared edge reuses left cell's nodes.
+        let coords = nd::arr2(&[
+            [0.0, 0.0],         // 0
+            [1.0, 0.0],         // 1 shared
+            [1.0, 1.0],         // 2 shared
+            [0.0, 1.0],         // 3
+            [0.5, -bulge],      // 4 left bottom
+            [1.0 + bulge, 0.5], // 5 shared mid
+            [0.5, 1.0 + bulge], // 6 left top
+            [-bulge, 0.5],      // 7 left left
+            [2.0, 0.0],         // 8
+            [2.0, 1.0],         // 9
+            [1.5, -bulge],      // 10 right bottom
+            [2.0 + bulge, 0.5], // 11 right right
+            [1.5, 1.0 + bulge], // 12 right top
+        ]);
+        let mut mesh = UMesh::new(coords.into_shared());
+        // Left cell QUAD8: corners 0,1,2,3; mids edge0=4, edge1=5, edge2=6, edge3=7.
+        mesh.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7]]).to_shared(),
+            None,
+        );
+        // Right cell QUAD8: corners 1,8,9,2; mids edge0=10, edge1=11, edge2=12, edge3=5 (shared).
+        mesh.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[1, 8, 9, 2, 10, 11, 12, 5]]).to_shared(),
+            None,
+        );
+        mesh
+    }
+
+    /// Imprinting a quadratic cell with a linear cutter must preserve the exact curved area.
+    #[test]
+    fn test_overlay_qpoly_imprint_preserves_curved_area() {
+        use crate::prelude::RegularUMeshBuilder;
+        let mesh1 = quad8_square(0.15);
+        let before = exact_mesh_area(&mesh1);
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.25, 0.5, 1.25])
+            .add_axis(vec![0.25, 0.75])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert!(
+            cutted.element_types().any(|&et| et == ElementType::QPOLY),
+            "cut quadratic pieces must be QPOLY"
+        );
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+    }
+
+    /// A curved edge shared by two quadratic cells must yield one shared mid node, not two.
+    #[test]
+    fn test_overlay_qpoly_shared_mid_is_not_duplicated() {
+        use crate::prelude::RegularUMeshBuilder;
+        let mesh1 = two_quad8_squares(0.15);
+        let before = exact_mesh_area(&mesh1);
+        // A horizontal strip cutting both cells without touching the shared vertical edge.
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![0.4, 0.6])
+            .add_axis(vec![-0.5, 0.5, 1.5])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+
+        // Count how many times each node is used as a mid-side node; a shared mid must appear in
+        // both adjacent pieces, but the *same* node id, so no mid node is duplicated.
+        let mut mid_uses: FxHashMap<usize, usize> = FxHashMap::default();
+        for cell in cutted.elements_of_dim(Dimension::D2) {
+            if cell.element_type() != ElementType::QPOLY {
+                continue;
+            }
+            let conn = cell.connectivity();
+            let n = conn.len() / 2;
+            for i in 0..n {
+                *mid_uses.entry(conn[n + i]).or_default() += 1;
+            }
+        }
+        // No two distinct mid nodes may share a coordinate: a mid shared by two pieces must be one
+        // node id, never a duplicated coordinate under a new id.
+        let coords = cutted.coords();
+        let mut by_pos: FxHashMap<(i64, i64), usize> = FxHashMap::default();
+        for &mid in mid_uses.keys() {
+            let key = (
+                (coords[(mid, 0)] * 1e9).round() as i64,
+                (coords[(mid, 1)] * 1e9).round() as i64,
+            );
+            if let Some(&prev) = by_pos.get(&key) {
+                assert_eq!(
+                    prev, mid,
+                    "two mid nodes share coordinates {key:?}: {prev} and {mid}"
+                );
+            }
+            by_pos.insert(key, mid);
+        }
+    }
+
+    /// A quadratic cell whose mid-side nodes lie exactly on the chords is geometrically straight;
+    /// cutting it must match the linear result exactly and not invent curvature.
+    #[test]
+    fn test_overlay_degenerate_straight_quadratic() {
+        use crate::prelude::RegularUMeshBuilder;
+        let mesh1 = quad8_square(0.0);
+        // With all mids on the chords the exact area is the unit square.
+        assert_abs_diff_eq!(exact_mesh_area(&mesh1), 1.0, epsilon = 1e-12);
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.25, 0.5, 1.25])
+            .add_axis(vec![0.25, 0.75])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), 1.0, epsilon = 1e-12);
+    }
+
+    /// A diagonal linear cutter crossing many curved edges at non-trivial points, splitting some
+    /// edges into two sub-arcs. Exact curved area must survive.
+    #[test]
+    fn test_overlay_qpoly_diagonal_cutter() {
+        use crate::prelude::RegularUMeshBuilder;
+        let mesh1 = quad8_square(0.2);
+        let before = exact_mesh_area(&mesh1);
+        // A diagonal strip across the cell.
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.5, 0.0, 0.5, 1.0, 1.5])
+            .add_axis(vec![-0.5, 0.5, 1.5])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
     }
 }

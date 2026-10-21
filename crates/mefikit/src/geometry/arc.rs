@@ -286,7 +286,7 @@ pub(crate) fn point_on_arc(p0: &[f64; 2], m: &[f64; 2], p1: &[f64; 2], pt: &[f64
     let eps = 64.0 * scale * f64::EPSILON;
     match ArcCircle::through(p0, m, p1) {
         Some(circ) => on_arc(&circ, p0, m, p1, pt, eps),
-        None => point_on_seg(pt, p0, m, eps) || point_on_seg(pt, m, p1, eps),
+        None => point_on_seg(p0, m, pt, eps) || point_on_seg(m, p1, pt, eps),
     }
 }
 
@@ -441,7 +441,7 @@ pub fn intersect_arc_seg(
                 }
             }
             for a in [p0, m, p1] {
-                if point_on_seg(a, l0, l1, eps) {
+                if point_on_seg(l0, l1, a, eps) {
                     dedup_push(&mut pts, *a, eps);
                 }
             }
@@ -933,6 +933,26 @@ mod tests {
         // i.e. 180..360)? (0.5, 0.866) relative to center (1,0) is at angle ~120deg (upper-left),
         // NOT in 180..360 sweep. So no intersection is expected.
         assert!(pts.is_empty(), "expected no intersections, got {pts:?}");
+    }
+
+    /// Regression: an arc endpoint that lies on the segment's *line* but outside the segment
+    /// must not be reported as an intersection. This arose when the left arc of a `QUAD8` cell
+    /// `(0,0) -> (-0.1,0.5) -> (0,1)` met the segment `(0,-0.5) -> (0,0.5)`: the far endpoint
+    /// `(0,1)` was wrongly reported, yielding a spurious `Intersections::Two`.
+    #[test]
+    fn arc_seg_ignores_arc_endpoint_outside_segment() {
+        let p0 = [0.0, 0.0];
+        let m = [-0.1, 0.5];
+        let p1 = [0.0, 1.0];
+        let l0 = [0.0, -0.5];
+        let l1 = [0.0, 0.5];
+        let res = intersect_arc_seg(&p0, &m, &p1, &l0, &l1);
+        let pts = int_coords(&res, [&p0, &p1, &l0, &l1]);
+        assert_eq!(pts.len(), 1, "expected a single crossing, got {pts:?}");
+        assert!(
+            (pts[0][0]).abs() < 1e-12 && (pts[0][1]).abs() < 1e-12,
+            "expected the crossing at (0,0), got {pts:?}"
+        );
     }
 
     proptest! {
