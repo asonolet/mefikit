@@ -340,21 +340,22 @@ fn cut_cells_all(
         Some(p) => p,
         None => &mut dropped_parents,
     };
+    let mut mid_store = MidStore::default();
     for cell in subject.elements_of_dim(Dimension::D2) {
         let [bmin, bmax] = cell.bounds2();
         let candidates = cutting_bvh.in_bounds(bmin, bmax);
-        let reconstructed = cell.cut_with_intersections(
-            seg_intersections,
-            cutting_edges,
-            out.coords(),
-            &candidates,
-        );
+        // Reconstructing the piece uses the current coordinates; append-only mid nodes are added
+        // afterwards so this borrow ends before `out` is mutated.
+        let reconstructed = {
+            let coords = out.coords();
+            cell.cut_with_intersections(seg_intersections, cutting_edges, coords, &candidates)
+        };
 
         let mut piece_ids: Vec<ElementId> = Vec::new();
         // If the cell was cut, I add new polys from the cut
         if let Some(polys) = reconstructed {
             for new_cell in polys {
-                let id = out.add_element(ElementType::PGON, &new_cell, Some(*cell.family));
+                let id = emit_piece(out, &cell, &new_cell, &mut mid_store);
                 piece_ids.push(id);
             }
         } else {
@@ -362,6 +363,195 @@ fn cut_cells_all(
             piece_ids.push(id);
         }
         parents.push((cell.id(), piece_ids));
+    }
+}
+
+/// Appends a cut piece of `cell` to `out`, restoring the curvature of its original boundary
+/// edges. A piece whose boundary includes at least one non-degenerate original edge is emitted as
+/// a [`ElementType::QPOLY`] (`[v0..v{n-1}, m0..m{n-1}]`); an all-straight piece stays a
+/// [`ElementType::PGON`].
+fn emit_piece(
+    out: &mut UMesh,
+    cell: &Element<'_>,
+    chain: &[usize],
+    mid_store: &mut MidStore,
+) -> ElementId {
+    if let Some(conn) = build_qpoly(out, cell, chain, mid_store) {
+        out.add_element(ElementType::QPOLY, &conn, Some(*cell.family))
+    } else {
+        out.add_element(ElementType::PGON, chain, Some(*cell.family))
+    }
+}
+
+/// Builds the QPOLY connectivity for a cut piece, or `None` when every piece edge is straight
+/// (the piece is then a plain polygon).
+///
+/// For each edge `(a, b)` of the piece chain the parent boundary edge of `cell` it lies on is
+/// located; when that edge is a genuine circular arc, a mid-side node is produced: the parent
+/// mid node itself when it falls strictly inside the sub-arc, otherwise a newly synthesized
+/// point on the same circle. Synthesized mids are shared between cells through [`MidStore`].
+fn build_qpoly(
+    out: &mut UMesh,
+    cell: &Element<'_>,
+    chain: &[usize],
+    mid_store: &mut MidStore,
+) -> Option<Vec<usize>> {
+    let arcs = cell_boundary_arcs(cell);
+    if arcs.iter().all(|a| a.arc.is_none()) {
+        return None;
+    }
+    let n = chain.len();
+    let mut mids: Vec<usize> = Vec::with_capacity(n);
+    let mut any_curved = false;
+    for i in 0..n {
+        let a = chain[i];
+        let b = chain[(i + 1) % n];
+        match curved_mid(out, &arcs, a, b, mid_store) {
+            Some(mid) => {
+                mids.push(mid);
+                any_curved = true;
+            }
+            None => mids.push(usize::MAX),
+        }
+    }
+    if !any_curved {
+        return None;
+    }
+    let mut conn = chain.to_vec();
+    // A straight piece edge still needs a mid-side node for a valid QPOLY; use the edge midpoint.
+    for (i, mid) in mids.into_iter().enumerate() {
+        if mid == usize::MAX {
+            let a = chain[i];
+            let b = chain[(i + 1) % n];
+            conn.push(straight_edge_mid(out, mid_store, a, b));
+        } else {
+            conn.push(mid);
+        }
+    }
+    Some(conn)
+}
+
+/// The mid-side node to use for the piece edge `(a, b)`, or `None` when that edge is straight.
+fn curved_mid(
+    out: &mut UMesh,
+    arcs: &[BoundaryArc],
+    a: usize,
+    b: usize,
+    mid_store: &mut MidStore,
+) -> Option<usize> {
+    let (pa, pb) = {
+        let coords = out.coords();
+        ([coords[(a, 0)], coords[(a, 1)]], [coords[(b, 0)], coords[(b, 1)]])
+    };
+    for arc in arcs {
+        let Some(edge) = arc.arc else { continue };
+        if !point_on_arc(&edge[0], &edge[1], &edge[2], &pa)
+            || !point_on_arc(&edge[0], &edge[1], &edge[2], &pb)
+        {
+            continue;
+        }
+        // `(a, b)` lies on this arc: it is a sub-arc. Reuse the parent mid when it is interior.
+        let (sa, sb) = match (
+            arc_param(&edge[0], &edge[1], &edge[2], &pa),
+            arc_param(&edge[0], &edge[1], &edge[2], &pb),
+        ) {
+            (Some(sa), Some(sb)) => (sa, sb),
+            _ => continue,
+        };
+        let sm = arc_param(&edge[0], &edge[1], &edge[2], &arc_parent_mid(out, arc))
+            .unwrap_or(-1.0);
+        let (lo, hi) = if sa <= sb { (sa, sb) } else { (sb, sa) };
+        // Margin so a mid essentially at an endpoint is not reused (it would sit on a node).
+        let margin = 1e-9;
+        if sm > lo + margin && sm < hi - margin {
+            return Some(arc.mid_node);
+        }
+        let mid = sub_arc_midpoint(&edge[0], &edge[1], &edge[2], &pa, &pb)
+            .expect("non-degenerate arc has a sub-arc midpoint");
+        return Some(mid_store.get_or_create(out, a, b, mid));
+    }
+    None
+}
+
+/// The parent mid-side node coordinates of a boundary arc.
+fn arc_parent_mid(out: &UMesh, arc: &BoundaryArc) -> [f64; 2] {
+    let coords = out.coords();
+    [coords[(arc.mid_node, 0)], coords[(arc.mid_node, 1)]]
+}
+
+/// The midpoint of a straight piece edge, used as the mid-side node of an otherwise-straight
+/// edge of a QPOLY piece. Shared through [`MidStore`] like a curved mid.
+fn straight_edge_mid(out: &mut UMesh, mid_store: &mut MidStore, a: usize, b: usize) -> usize {
+    let mid = {
+        let coords = out.coords();
+        [
+            0.5 * (coords[(a, 0)] + coords[(b, 0)]),
+            0.5 * (coords[(a, 1)] + coords[(b, 1)]),
+        ]
+    };
+    mid_store.get_or_create(out, a, b, mid)
+}
+
+/// A curved boundary edge of a cell: its corner node ids, the parent mid-side node id, and the
+/// three points `[p0, m, p1]` defining the arc (`None` when the edge is straight/degenerate).
+struct BoundaryArc {
+    mid_node: usize,
+    arc: Option<[[f64; 2]; 3]>,
+}
+
+/// The boundary edges of a cell as arcs. Linear cells (and any cell type without mid-side nodes)
+/// yield `arc: None` for every edge. Edge `i` joins local vertex `i` to vertex `i+1` and is
+/// shaped by the local mid node `n + i`.
+fn cell_boundary_arcs(cell: &Element<'_>) -> Vec<BoundaryArc> {
+    let conn = cell.connectivity();
+    let n = cell.num_vertices();
+    if conn.len() < 2 * n {
+        return (0..n)
+            .map(|_| BoundaryArc {
+                mid_node: usize::MAX,
+                arc: None,
+            })
+            .collect();
+    }
+    (0..n)
+        .map(|i| {
+            let p0 = *cell.coord2_ref(i);
+            let m = *cell.coord2_ref(n + i);
+            let p1 = *cell.coord2_ref((i + 1) % n);
+            let arc = if crate::geometry::arc_param(&p0, &m, &p1, &m).is_some() {
+                Some([p0, m, p1])
+            } else {
+                None
+            };
+            BoundaryArc {
+                mid_node: conn[n + i],
+                arc,
+            }
+        })
+        .collect()
+}
+
+/// Shares synthesized mid-side nodes between the pieces of a cut mesh. Keyed on the sub-arc's two
+/// endpoint node ids, so the two cells that share a curved edge reuse one mid node instead of
+/// duplicating it. New coordinates are appended to `out`.
+#[derive(Default)]
+struct MidStore {
+    by_edge: FxHashMap<(usize, usize), usize>,
+}
+
+impl MidStore {
+    /// The node id for the mid of the sub-arc bounded by nodes `a` and `b`, creating it at
+    /// coordinate `mid` (appended to `out`) on first use.
+    fn get_or_create(&mut self, out: &mut UMesh, a: usize, b: usize, mid: [f64; 2]) -> usize {
+        let key = (a.min(b), a.max(b));
+        if let Some(&id) = self.by_edge.get(&key) {
+            return id;
+        }
+        let id = out.coords().nrows();
+        out.append_coord(nd::arr1(&mid).view())
+            .expect("appending a single 2D coordinate");
+        self.by_edge.insert(key, id);
+        id
     }
 }
 

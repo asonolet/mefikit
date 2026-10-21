@@ -224,6 +224,91 @@ pub(crate) fn quadratic_polygon_area2(pgon: &[[f64; 2]]) -> f64 {
             .sum::<f64>()
 }
 
+impl ArcCircle {
+    /// Normalised parameter `s in [0, 1]` of the point `x` along the arc `p0 -> m -> p1`,
+    /// measured in the arc's own sweep direction (the direction that passes through `m`).
+    ///
+    /// `x` is assumed to lie on the circle; the result is `0` at `p0` and `1` at `p1`.
+    /// For a clock-wise sweep the parameter still increases from `p0` to `p1`.
+    pub(crate) fn param_along(
+        &self,
+        p0: &[f64; 2],
+        m: &[f64; 2],
+        p1: &[f64; 2],
+        x: &[f64; 2],
+    ) -> f64 {
+        let sweep = self.sweep(p0, m, p1);
+        if sweep == 0.0 {
+            return 0.0;
+        }
+        let a0 = self.angle(p0);
+        let ccw = (self.angle(x) - a0).rem_euclid(TAU);
+        if sweep > 0.0 {
+            ccw / sweep
+        } else {
+            (TAU - ccw) / (-sweep)
+        }
+    }
+
+    /// The point on the circle at the parameter midpoint between `a` and `b`, following the arc's
+    /// own sweep direction. Used to give a sub-arc its own mid-side node when the parent mid does
+    /// not fall strictly inside the sub-arc.
+    pub(crate) fn midpoint_between(
+        &self,
+        p0: &[f64; 2],
+        m: &[f64; 2],
+        p1: &[f64; 2],
+        a: &[f64; 2],
+        b: &[f64; 2],
+    ) -> [f64; 2] {
+        let sa = self.param_along(p0, m, p1, a);
+        let sb = self.param_along(p0, m, p1, b);
+        let sm = 0.5 * (sa + sb);
+        let a0 = self.angle(p0);
+        let sweep = self.sweep(p0, m, p1);
+        let ang = a0 + sweep * sm;
+        let r = self.r2.sqrt();
+        [
+            self.center[0] + r * ang.cos(),
+            self.center[1] + r * ang.sin(),
+        ]
+    }
+}
+
+/// Whether `pt` lies on the circular arc `p0 -> m -> p1` (within a floating-point tolerance),
+/// treating a collinear edge as its polyline. Used by the overlay to tell which pieces of a cut
+/// cell follow a curved boundary edge.
+pub(crate) fn point_on_arc(p0: &[f64; 2], m: &[f64; 2], p1: &[f64; 2], pt: &[f64; 2]) -> bool {
+    let mut scale = 1.0f64;
+    for p in [p0, m, p1, pt] {
+        scale = scale.max(p[0].abs()).max(p[1].abs());
+    }
+    let eps = 64.0 * scale * f64::EPSILON;
+    match ArcCircle::through(p0, m, p1) {
+        Some(circ) => on_arc(&circ, p0, m, p1, pt, eps),
+        None => point_on_seg(pt, p0, m, eps) || point_on_seg(pt, m, p1, eps),
+    }
+}
+
+/// Normalised parameter `s` of `pt` along the arc `p0 -> m -> p1` (see
+/// [`ArcCircle::param_along`]); `None` when the edge is degenerate (collinear), in which case the
+/// caller should treat it as straight.
+pub(crate) fn arc_param(p0: &[f64; 2], m: &[f64; 2], p1: &[f64; 2], pt: &[f64; 2]) -> Option<f64> {
+    ArcCircle::through(p0, m, p1).map(|circ| circ.param_along(p0, m, p1, pt))
+}
+
+/// The point on the arc `p0 -> m -> p1` at the parameter midpoint between `a` and `b`, giving a
+/// sub-arc its own mid-side node. `None` when the edge is degenerate (collinear).
+pub(crate) fn sub_arc_midpoint(
+    p0: &[f64; 2],
+    m: &[f64; 2],
+    p1: &[f64; 2],
+    a: &[f64; 2],
+    b: &[f64; 2],
+) -> Option<[f64; 2]> {
+    ArcCircle::through(p0, m, p1).map(|circ| circ.midpoint_between(p0, m, p1, a, b))
+}
+
 /// Real roots of `a t^2 + b t + c = 0` (empty when there are none).
 fn quad_roots(a: f64, b: f64, c: f64) -> Vec<f64> {
     let mut roots = Vec::new();
