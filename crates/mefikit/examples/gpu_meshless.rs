@@ -11,6 +11,7 @@
 use std::time::{Duration, Instant};
 
 use cubecl::device::{Device, WgpuDeviceKind};
+use mefikit::mesh::ElementType;
 use mefikit::prelude as mf;
 use mefikit::prelude::{Gradient, Transfer};
 use mefikit::tools::fieldexpr::{FieldExpr, MeshEvalUpdatable};
@@ -61,6 +62,23 @@ fn bench(mut f: impl FnMut()) -> Duration {
     now.elapsed() / ITERATIONS
 }
 
+fn case(
+    name: &str,
+    et: ElementType,
+    build_cpu: &mut dyn FnMut() -> (mf::FieldOwnedD, Duration),
+    build_gpu: &mut dyn FnMut() -> (mf::FieldOwnedD, Duration),
+) {
+    let (cpu, cpu_t) = build_cpu();
+    let (gpu, gpu_t) = build_gpu();
+    assess(name, &cpu, &gpu, et);
+    println!(
+        "  build per call: cpu {:.2?}, gpu {:.2?} (speedup {:.2}x)",
+        cpu_t,
+        gpu_t,
+        cpu_t.as_secs_f64() / gpu_t.as_secs_f64()
+    );
+}
+
 fn run_2d(device: &Device) {
     println!("--- 2D ---");
     let mut src_mesh = mf::RegularUMeshBuilder::new()
@@ -79,26 +97,13 @@ fn run_2d(device: &Device) {
         .build();
     let tgt = tgt_mesh.view();
 
-    let case = |name: &str,
-                build_cpu: &mut dyn FnMut() -> (mf::FieldOwnedD, Duration),
-                build_gpu: &mut dyn FnMut() -> (mf::FieldOwnedD, Duration)| {
-        let (cpu, cpu_t) = build_cpu();
-        let (gpu, gpu_t) = build_gpu();
-        assess(name, &cpu, &gpu, mf::ElementType::QUAD4);
-        println!(
-            "  build per call: cpu {:.2?}, gpu {:.2?} (speedup {:.2}x)",
-            cpu_t,
-            gpu_t,
-            cpu_t.as_secs_f64() / gpu_t.as_secs_f64()
-        );
-    };
-
     let method = mf::GradientMethod::MovingLeastSquares {
         k: 12,
         weighting: DistanceWeighting::CompactSupport { exponent: 3.0 },
     };
     case(
         "gradient ML S (2D)",
+        ElementType::QUAD4,
         &mut || {
             let cpu_t = bench(|| {
                 std::hint::black_box(
@@ -126,6 +131,7 @@ fn run_2d(device: &Device) {
     };
     case(
         "transfer inverse-distance (2D)",
+        ElementType::QUAD4,
         &mut || {
             let cpu_t = bench(|| {
                 std::hint::black_box(mf::TransferOperator::new(&src, &tgt, idw).apply(
@@ -164,6 +170,7 @@ fn run_2d(device: &Device) {
     };
     case(
         "transfer ML S (2D)",
+        ElementType::QUAD4,
         &mut || {
             let cpu_t = bench(|| {
                 std::hint::black_box(mf::TransferOperator::new(&src, &tgt, mls).apply(
@@ -221,15 +228,30 @@ fn run_3d(device: &Device) {
         k: 16,
         weighting: DistanceWeighting::Gaussian,
     };
-    let cpu = {
-        let op = mf::GradientOperator::new(&src, &tgt, method);
-        op.apply(&field.view(), 0.0)
-    };
-    let gpu = {
-        let op = mf::GradientOperator::new_gpu(device, &src, &tgt, method);
-        op.apply(&field.view(), 0.0)
-    };
-    assess("gradient ML S (3D)", &cpu, &gpu, mf::ElementType::HEX8);
+
+    case(
+        "gradient ML S (3D)",
+        ElementType::HEX8,
+        &mut || {
+            let cpu_t = bench(|| {
+                std::hint::black_box(
+                    mf::GradientOperator::new(&src, &tgt, method).apply(&field.view(), 0.0),
+                );
+            });
+            let op = mf::GradientOperator::new(&src, &tgt, method);
+            (op.apply(&field.view(), 0.0), cpu_t)
+        },
+        &mut || {
+            let gpu_t = bench(|| {
+                std::hint::black_box(
+                    mf::GradientOperator::new_gpu(device, &src, &tgt, method)
+                        .apply(&field.view(), 0.0),
+                );
+            });
+            let op = mf::GradientOperator::new_gpu(device, &src, &tgt, method);
+            (op.apply(&field.view(), 0.0), gpu_t)
+        },
+    );
 
     let idw = mf::TransferMethod::InverseDistance {
         k: 16,
