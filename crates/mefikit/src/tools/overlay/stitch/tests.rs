@@ -1016,3 +1016,202 @@ fn test_stitch_without_boundary_welds_and_polyizes() {
     );
     assert!((total_volume(&out) - 4.0).abs() < 1e-12);
 }
+
+// ---------------------------------------------------------------------------
+// is_conform
+// ---------------------------------------------------------------------------
+
+/// Builds a `PHED` mesh from full face rings, each `Vec<usize>` a face in winding order.
+fn phed_mesh(coords: Vec<[f64; 3]>, cells: &[Vec<Vec<usize>>]) -> UMesh {
+    let flat: Vec<f64> = coords.iter().flatten().copied().collect();
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec((coords.len(), 3), flat)
+            .unwrap()
+            .into_shared(),
+    );
+    let mut conn: Vec<usize> = Vec::new();
+    let mut offsets: Vec<usize> = Vec::new();
+    for (ci, cell) in cells.iter().enumerate() {
+        if ci > 0 {
+            conn.push(usize::MAX);
+        }
+        for face in cell {
+            conn.extend_from_slice(face);
+            conn.push(usize::MAX);
+        }
+        offsets.push(conn.len());
+    }
+    if let Some(last) = conn.last_mut() {
+        *last = usize::MAX;
+    }
+    // The last separator is not part of the data: `offsets` already ends the last cell.
+    conn.pop();
+    if let Some(last) = offsets.last_mut() {
+        *last = conn.len();
+    }
+    mesh.add_poly_block(
+        ElementType::PHED,
+        nd::ArcArray1::from_vec(conn),
+        nd::ArcArray1::from_vec(offsets),
+        None,
+    );
+    mesh
+}
+
+/// The six faces, in winding order, of the unit cube whose eight nodes are numbered
+/// `n(i, j, k) = i + 2 j + 4 k`.
+fn unit_cube_faces() -> Vec<Vec<usize>> {
+    vec![
+        vec![0, 2, 3, 1],
+        vec![4, 5, 7, 6],
+        vec![0, 1, 5, 4],
+        vec![1, 3, 7, 5],
+        vec![3, 2, 6, 7],
+        vec![2, 0, 4, 6],
+    ]
+}
+
+fn unit_cube_coords() -> Vec<[f64; 3]> {
+    let mut c = Vec::new();
+    for k in 0..2 {
+        for j in 0..2 {
+            for i in 0..2 {
+                c.push([i as f64, j as f64, k as f64]);
+            }
+        }
+    }
+    c
+}
+
+/// A single conformal `HEX8` block is conformal.
+#[test]
+fn is_conform_accepts_a_hex_block() {
+    let mesh = box_mesh(&[0.0, 1.0], &[0.0, 1.0], &[0.0, 1.0]);
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
+
+/// Two `HEX8` blocks sharing a face through the same node ids is conformal.
+#[test]
+fn is_conform_accepts_two_stacked_hexes() {
+    let mesh = box_mesh(&[0.0, 1.0], &[0.0, 1.0], &[0.0, 1.0, 2.0]);
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
+
+/// Two cells touching only at a vertex (a shared node id) is conformal: a shared node does not
+/// need a shared face.
+#[test]
+fn is_conform_accepts_vertex_touching_cells() {
+    // Node 0 is the shared corner at the origin. Cell A occupies [0, 1]^3, cell B [-1, 0]^3.
+    // A's nodes are 0..8, B's are 8..16, but B reuses node 0 as its corner at the origin.
+    let a_faces = unit_cube_faces();
+    let mut coords = unit_cube_coords();
+    let b_local: Vec<[f64; 3]> = (0..8)
+        .map(|n| {
+            let (i, j, k) = (n % 2, (n / 2) % 2, n / 4);
+            [i as f64 - 1.0, j as f64 - 1.0, k as f64 - 1.0]
+        })
+        .collect();
+    // b_local[7] = (0, 0, 0) is the shared corner: map it to node 0, the others to fresh ids.
+    let mut local_to_global = [usize::MAX; 8];
+    local_to_global[7] = 0;
+    for (n, slot) in local_to_global.iter_mut().enumerate() {
+        if *slot == usize::MAX {
+            *slot = coords.len();
+            coords.push(b_local[n]);
+        }
+    }
+    let b_faces: Vec<Vec<usize>> = unit_cube_faces()
+        .iter()
+        .map(|f| f.iter().map(|&n| local_to_global[n]).collect())
+        .collect();
+
+    let mesh = phed_mesh(coords, &[a_faces, b_faces]);
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
+
+/// The reported false negative: one cell that spells part of its boundary with coincident
+/// duplicate nodes, so it folds onto itself. This mesh is *not* conformal.
+#[test]
+fn is_conform_rejects_folded_cell() {
+    // Unit cube, plus duplicates of nodes 5=(1,0,1) and 7=(1,1,1) at ids 8 and 9.
+    let mut coords = unit_cube_coords();
+    coords.push(coords[5]);
+    coords.push(coords[7]);
+    let mut faces = unit_cube_faces();
+    // The x = 1 face uses the duplicates 8, 9 instead of 5, 7 (which the top face still uses).
+    faces[3] = vec![1, 3, 9, 8];
+    let mesh = phed_mesh(coords, &[faces]);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(!report.is_conform());
+    let merged = report
+        .issues
+        .iter()
+        .filter(|i| matches!(i, ConformanceIssue::MergedNodes { .. }))
+        .count();
+    assert!(merged >= 2, "{report:?}");
+}
+
+/// Two cells whose interface is only *partially* shared (some ids in common, some duplicated)
+/// is not conformal.
+#[test]
+fn is_conform_rejects_partial_interface() {
+    let a_coords = unit_cube_coords();
+    let a_faces = unit_cube_faces();
+
+    // Cell B to the right (x in [1, 2]), with fresh node ids 8..16 and its own coords.
+    let mut coords = a_coords.clone();
+    let mut b_coords = Vec::new();
+    for k in 0..2 {
+        for j in 0..2 {
+            for i in 0..2 {
+                b_coords.push([1.0 + i as f64, j as f64, k as f64]);
+            }
+        }
+    }
+    let base = coords.len();
+    coords.extend(b_coords.iter().copied());
+    let remap = |n: usize| base + n;
+    let mut b_faces: Vec<Vec<usize>> = unit_cube_faces()
+        .iter()
+        .map(|f| f.iter().map(|&n| remap(n)).collect())
+        .collect();
+    // B's x = 1 face keeps A's ids 1 and 5 but uses its own ids for the other two nodes: a
+    // partial interface.
+    b_faces[2] = vec![1, 5, remap(7), remap(4)];
+
+    let mesh = phed_mesh(coords, &[a_faces, b_faces]);
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(!report.is_conform(), "{report:?}");
+}
+
+/// Two cells overlapping in volume are reported as intersecting.
+#[test]
+fn is_conform_rejects_volume_overlap() {
+    let a = unit_cube_faces();
+    // Cell B is the same cube translated by half a cell: it overlaps A in a positive volume.
+    let coords_a = unit_cube_coords();
+    let mut coords = coords_a.clone();
+    let base = coords.len();
+    for p in &coords_a {
+        coords.push([p[0] + 0.5, p[1], p[2]]);
+    }
+    let b: Vec<Vec<usize>> = a
+        .iter()
+        .map(|f| f.iter().map(|&n| base + n).collect())
+        .collect();
+    let mesh = phed_mesh(coords, &[a, b]);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(!report.is_conform());
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|i| matches!(i, ConformanceIssue::IntersectingCells { .. })),
+        "{report:?}"
+    );
+}
