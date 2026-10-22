@@ -5,6 +5,8 @@ neighbour cells that share any node share a whole common face. A recurring false
 cell whose boundary is spelled with coincident duplicate nodes, which this module pins down.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -12,6 +14,8 @@ import mefikit as mf
 
 _TOL = 1e-9
 _SEP = np.iinfo(np.uint64).max
+
+_FIXTURES = Path(__file__).parent / "conformize"
 
 
 def _phed(coords, cells):
@@ -139,3 +143,68 @@ def test_invalid_tolerance_raises():
     mesh = mf.build_cmesh([0.0, 1.0], [0.0, 1.0], [0.0, 1.0])
     with pytest.raises(ValueError):
         mf.is_conform(mesh, -1.0)
+
+
+def _read(name):
+    return mf.UMesh.read(str(_FIXTURES / name))
+
+
+def _phedron_only(mesh):
+    return mesh.select(mf.sel.types(["PHED"])).to_mesh()
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        (
+            "Compound_Mesh_to_colinearize_simplier_41.med",
+            {"non_conforming_faces", "intersecting_cells"},
+        ),
+        (
+            "Mesh_poly_non_conforme_complexe.med",
+            {"non_conforming_faces", "intersecting_cells"},
+        ),
+    ],
+)
+def test_rejects_polyhedral_fixtures(name, expected):
+    """The shipped non-conforming polyhedral fixtures are detected, with the expected kinds.
+
+    Their defects are interfaces that are only partially shared (mismatched face
+    tessellations) plus a genuine volume overlap; both are found without any tolerance slack.
+    """
+    report = mf.is_conform(_phedron_only(_read(name)), _TOL)
+    assert not report.is_conform
+    assert set(_kinds(report)) == expected
+
+
+def test_rejects_poly_fixture():
+    """`Mesh_poly_non_conforme.med` carries interfaces that are only partially shared."""
+    report = mf.is_conform(_phedron_only(_read("Mesh_poly_non_conforme.med")), _TOL)
+    assert not report.is_conform
+    assert set(_kinds(report)) == {"non_conforming_faces"}
+    assert report.n_issues == 3
+
+
+def test_rejects_simplify_fixture():
+    """`Mesh_non_conforme_simplify.med` folds its cells through near-coincident duplicate nodes.
+
+    The pair of coincident nodes of each fold is about `8e-3` apart, so the default `1e-9`
+    tolerance does not see it; with a tolerance matching that spacing the folds are reported.
+    """
+    mesh = _phedron_only(_read("Mesh_non_conforme_simplify.med"))
+    assert mf.is_conform(mesh, _TOL).is_conform
+    report = mf.is_conform(mesh, 1e-2)
+    assert not report.is_conform
+    assert set(_kinds(report)) == {"merged_nodes"}
+    assert report.n_issues == 4
+
+
+def test_fixtures_reject_non_poly_cells():
+    """A whole fixture mixing polyhedral, polygonal and simplex cells is reported as unsupported.
+
+    `conformize` only handles volume cells, so a mesh holding polygonal or simplex cells is
+    rejected up front rather than silently diagnosed.
+    """
+    report = mf.is_conform(_read("Mesh_poly_non_conforme.med"), _TOL)
+    assert not report.is_conform
+    assert set(_kinds(report)) == {"unsupported_cells"}
