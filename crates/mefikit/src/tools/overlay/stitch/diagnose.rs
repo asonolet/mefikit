@@ -447,6 +447,17 @@ fn non_conforming_faces(
     };
     let index = faces.view().bvh3();
 
+    if std::env::var("MEFI_DBG").is_ok() {
+        for (i, f) in fdata.iter().enumerate() {
+            eprintln!(
+                "DBG face {i} owner {:?} ring {:?} norm {:?}",
+                owner[i],
+                keys[i],
+                f.normal.map(|x| (x * 1e3).round() / 1e3)
+            );
+        }
+    }
+
     let mut pairs: Vec<(ElementId, ElementId, [f64; 3])> = Vec::new();
     let mut seen: FxHashMap<(ElementId, ElementId), ()> =
         FxHashMap::with_capacity_and_hasher(faces.num_elements(), FxBuildHasher);
@@ -466,10 +477,20 @@ fn non_conforming_faces(
                     continue;
                 }
                 let fj = &fdata[j];
-                if !planes_coincident(fi, fj, tol) {
+                let pc = planes_coincident(fi, fj, tol);
+                let ov = if pc { faces_overlap(fi, fj) } else { None };
+                if std::env::var("MEFI_DBG").is_ok() {
+                    eprintln!(
+                        "DBG pair {i}({:?}) {j}({:?}) coplanar {pc} overlap {}",
+                        owner[i],
+                        owner[j],
+                        ov.is_some()
+                    );
+                }
+                if !pc {
                     continue;
                 }
-                let Some(center) = faces_overlap(fi, fj) else {
+                let Some(center) = ov else {
                     continue;
                 };
                 let pair = if owner[i] < owner[j] {
