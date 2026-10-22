@@ -9,10 +9,11 @@ use std::fmt;
 use ndarray as nd;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 
+use super::super::surface::{FaceData, PARALLEL_NORMAL_COS_EPS, collect_surface_faces};
 use super::{StitchError, point3, split_phed, supported_cell_type, weld_points};
 use crate::element_traits::{ElementGeo, ElementTopo};
-use crate::geometry::Polyhedron;
-use crate::mesh::{Dimension, ElementId, ElementLike, UMeshView};
+use crate::geometry::{Intersection, Intersections, PlaneFrame, Polygon, Polyhedron, Segment};
+use crate::mesh::{Dimension, ElementId, ElementLike, ElementType, UMesh, UMeshView};
 use crate::tools::spatial_index::SpatiallyIndexable;
 
 /// Why a mesh is not conformal, and where.
@@ -21,12 +22,8 @@ use crate::tools::spatial_index::SpatiallyIndexable;
 /// is centred, so that a report can be turned into a selection.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConformanceIssue {
-    /// Two nodes lie within `tol` of each other but are not the same node, and the cells using
-    /// them do not meet through a full, common face.
-    ///
-    /// Either one cell uses both nodes (it folds onto itself), or two neighbour cells share only
-    /// part of a face: they meet through a face which has some nodes in common and others that
-    /// differ. Welding the two nodes into one is what makes the interface conformal.
+    /// A cell uses two distinct nodes that lie within `tol` of each other: the cell folds onto
+    /// itself around that location. Welding the two nodes into one is what removes the fold.
     MergedNodes {
         /// Centroid of the two nodes.
         center: [f64; 3],
@@ -43,6 +40,15 @@ pub enum ConformanceIssue {
         center: [f64; 3],
         /// The cells sharing the face, more than two.
         cells: Vec<ElementId>,
+    },
+    /// Two cells have coincident, overlapping boundary faces that are not the same face: the
+    /// interface between them is only partially shared (a T-junction, or two different
+    /// tessellations of the same interface).
+    NonConformingFaces {
+        /// A point inside the overlap of the two faces.
+        center: [f64; 3],
+        /// The two cells whose faces overlap without matching.
+        cells: [ElementId; 2],
     },
     /// Two cells overlap in volume: their matter intersects although they are distinct cells.
     IntersectingCells {
@@ -99,6 +105,13 @@ impl fmt::Display for ConformanceIssue {
                  shared by at most two cells",
                 fmt_cells(cells),
             ),
+            Self::NonConformingFaces { center, cells } => write!(
+                f,
+                "cells {} and {} have overlapping boundary faces around {center:?} that are not \
+                 the same face; their interface is not conformal",
+                fmt_cells(&cells[..1]),
+                fmt_cells(&cells[1..]),
+            ),
             Self::IntersectingCells {
                 center,
                 cells,
@@ -151,8 +164,9 @@ fn issue_rank(issue: &ConformanceIssue) -> u8 {
         | ConformanceIssue::InvalidSpaceDimension { .. }
         | ConformanceIssue::UnsupportedCells { .. } => 0,
         ConformanceIssue::OverlappingFaces { .. } => 1,
-        ConformanceIssue::IntersectingCells { .. } => 2,
-        ConformanceIssue::MergedNodes { .. } => 3,
+        ConformanceIssue::NonConformingFaces { .. } => 2,
+        ConformanceIssue::IntersectingCells { .. } => 3,
+        ConformanceIssue::MergedNodes { .. } => 4,
     }
 }
 
@@ -235,7 +249,7 @@ pub fn is_conform(
     intersecting_cells(mesh, &mut issues, &mut n_issues, cap);
 
     // Node identification: every node is replaced by the representative of its coincident
-    // cluster, so that the shared-face test below compares geometry rather than node numbering.
+    // cluster, so that a cell using two ids for the same location is detected as a fold.
     let canonical = canonical_nodes(mesh, tol);
 
     // Cells that fold onto themselves: two of their nodes are coincident but distinct.
@@ -269,42 +283,20 @@ pub fn is_conform(
         }
     }
 
-    // Faces keyed by their coincident-node set, so that two cells spelling the same face with
-    // different node ids still produce one key.
-    let cells: Vec<ElementId> = mesh
-        .elements_of_dim(Dimension::D3)
-        .map(|c| c.id())
-        .collect();
-    let mut face_cells: FxHashMap<Vec<usize>, Vec<ElementId>> =
-        FxHashMap::with_capacity_and_hasher(cells.len() * 6, FxBuildHasher);
-    // For every cell, the keys of its faces, used for the shared-face test.
-    let mut cell_faces: FxHashMap<ElementId, Vec<Vec<usize>>> =
-        FxHashMap::with_capacity_and_hasher(cells.len(), FxBuildHasher);
-    // Nodes of every cell, in coincident coordinates, and the cells reaching each of them.
-    let mut node_cells: FxHashMap<usize, Vec<ElementId>> =
-        FxHashMap::with_capacity_and_hasher(coords.nrows(), FxBuildHasher);
-    for &cell in &cells {
-        let (_, conn) = mesh.element(cell).to_poly();
-        let mut keys: Vec<Vec<usize>> = Vec::new();
-        let mut own_nodes: FxHashMap<usize, ()> = FxHashMap::default();
+    // A face spelled with the very same node ids by more than two cells cannot be reconciled by
+    // refining: report it first, as it hides whatever happens on that face.
+    let mut face_cells: FxHashMap<Vec<usize>, Vec<ElementId>> = FxHashMap::with_capacity_and_hasher(
+        mesh.elements_of_dim(Dimension::D3).count() * 6,
+        FxBuildHasher,
+    );
+    for cell in mesh.elements_of_dim(Dimension::D3) {
+        let (_, conn) = cell.to_poly();
         for ring in split_phed(&conn) {
-            let mut key: Vec<usize> = ring.iter().map(|&n| canonical[n]).collect();
-            for &n in &key {
-                own_nodes.entry(n).or_insert(());
-            }
+            let mut key = ring.to_vec();
             key.sort_unstable();
-            key.dedup();
-            face_cells.entry(key.clone()).or_default().push(cell);
-            keys.push(key);
+            face_cells.entry(key).or_default().push(cell.id());
         }
-        for &n in own_nodes.keys() {
-            node_cells.entry(n).or_default().push(cell);
-        }
-        cell_faces.insert(cell, keys);
     }
-
-    // A face used by more than two cells cannot be reconciled by refining: report it first, as
-    // it hides whatever happens on that face.
     let mut overlapping: Vec<(&Vec<usize>, &Vec<ElementId>)> =
         face_cells.iter().filter(|(_, cs)| cs.len() > 2).collect();
     overlapping.sort_by_key(|(_, cs)| cs[0]);
@@ -318,52 +310,11 @@ pub fn is_conform(
         }
     }
 
-    // Cells that share a node through *distinct* coincident ids must meet through a full common
-    // face; otherwise the interface is only partially shared. Cells that share the very same
-    // node id (touching along an edge or a vertex) are never a defect on that account.
-    //
-    // Walking the cells sharing each coincident node and pairing them reaches every candidate
-    // pair once. A pair is kept when it shares no canonical face and the shared node is spelled
-    // with two different original ids.
-    let share_face = |a: ElementId, b: ElementId| -> bool {
-        cell_faces[&a]
-            .iter()
-            .any(|ka| cell_faces[&b].iter().any(|kb| ka == kb))
-    };
-    let mut seen_pairs: FxHashMap<(ElementId, ElementId), ()> =
-        FxHashMap::with_capacity_and_hasher(cells.len(), FxBuildHasher);
-    for (&node, sharing) in &node_cells {
-        for i in 0..sharing.len() {
-            for j in (i + 1)..sharing.len() {
-                let (a, b) = (sharing[i], sharing[j]);
-                if a == b || share_face(a, b) {
-                    continue;
-                }
-                let Some((na, nb)) = distinct_ids(mesh, &canonical, node, a, b) else {
-                    continue;
-                };
-                let pair = if a < b { (a, b) } else { (b, a) };
-                if seen_pairs.insert(pair, ()).is_some() {
-                    continue;
-                }
-                merged.push(NodeDuplicate {
-                    center: midpoint(&coords, na, nb),
-                    nodes: [na, nb],
-                    cells_a: vec![pair.0],
-                    cells_b: vec![pair.1],
-                });
-            }
-        }
-    }
+    // Two cells whose coincident boundary faces overlap geometrically without being the same
+    // face have a non-conforming interface (a T-junction, or two different tessellations of the
+    // same interface). This is the case the topological checks above cannot see.
+    non_conforming_faces(mesh, tol, &mut issues, &mut n_issues, cap);
 
-    merged.sort_by(|x, y| {
-        x.center[0]
-            .total_cmp(&y.center[0])
-            .then_with(|| x.center[1].total_cmp(&y.center[1]))
-            .then_with(|| x.center[2].total_cmp(&y.center[2]))
-            .then_with(|| x.nodes.cmp(&y.nodes))
-    });
-    merged.dedup_by(|x, y| x.nodes == y.nodes && x.cells_a == y.cells_a && x.cells_b == y.cells_b);
     for dup in merged {
         n_issues += 1;
         if issues.len() < cap {
@@ -462,6 +413,139 @@ fn volume_eps(scale: f64) -> f64 {
     1e-12 * scale.powi(3)
 }
 
+/// Appends one [`ConformanceIssue::NonConformingFaces`] per pair of distinct cells whose
+/// coincident boundary faces overlap without being the same face.
+///
+/// Every face of every volume cell is collected in a 2D mesh and clustered by a bounding-volume
+/// hierarchy on its bounding box. A candidate pair is a defect when the two faces come from
+/// distinct cells, lie in a common plane within `tol`, are *not* spelled with the same node ids
+/// and overlap with a positive area. This is the T-junction / mismatched-tessellation interface
+/// that leaves two distinct faces where there should be one.
+fn non_conforming_faces(
+    mesh: &UMeshView,
+    tol: f64,
+    issues: &mut Vec<ConformanceIssue>,
+    n_issues: &mut usize,
+    cap: usize,
+) {
+    let coords = mesh.coords();
+    let mut faces = UMesh::new(coords.to_shared());
+    let mut owner: Vec<ElementId> = Vec::new();
+    let mut keys: Vec<Vec<usize>> = Vec::new();
+    for cell in mesh.elements_of_dim(Dimension::D3) {
+        let (_, conn) = cell.to_poly();
+        for ring in split_phed(&conn) {
+            faces.add_element(ElementType::PGON, &ring, None);
+            owner.push(cell.id());
+            let mut key = ring.to_vec();
+            key.sort_unstable();
+            keys.push(key);
+        }
+    }
+    let Ok(fdata) = collect_surface_faces(&faces.view()) else {
+        return;
+    };
+    let index = faces.view().bvh3();
+
+    let mut pairs: Vec<(ElementId, ElementId, [f64; 3])> = Vec::new();
+    let mut seen: FxHashMap<(ElementId, ElementId), ()> =
+        FxHashMap::with_capacity_and_hasher(faces.num_elements(), FxBuildHasher);
+    for (i, fi) in fdata.iter().enumerate() {
+        let [min, max] = fi.bounds;
+        let pad = tol.max(f64::EPSILON);
+        let candidates = index.in_bounds(
+            [min[0] - pad, min[1] - pad, min[2] - pad],
+            [max[0] + pad, max[1] + pad, max[2] + pad],
+        );
+        for (et, indices) in candidates.0 {
+            if et != ElementType::PGON {
+                continue;
+            }
+            for &j in &indices {
+                if j <= i || owner[i] == owner[j] || keys[i] == keys[j] {
+                    continue;
+                }
+                let fj = &fdata[j];
+                if !planes_coincident(fi, fj, tol) {
+                    continue;
+                }
+                let Some(center) = faces_overlap(fi, fj) else {
+                    continue;
+                };
+                let pair = if owner[i] < owner[j] {
+                    (owner[i], owner[j])
+                } else {
+                    (owner[j], owner[i])
+                };
+                if seen.insert(pair, ()).is_some() {
+                    continue;
+                }
+                pairs.push((pair.0, pair.1, center));
+            }
+        }
+    }
+    pairs.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
+    for (a, b, center) in pairs {
+        *n_issues += 1;
+        if issues.len() < cap {
+            issues.push(ConformanceIssue::NonConformingFaces {
+                center,
+                cells: [a, b],
+            });
+        }
+    }
+}
+
+/// Tells whether two coplanar-in-the-large faces lie in a common plane within `tol` (their
+/// normals may be antiparallel, as the two sides of an interface are wound oppositely).
+fn planes_coincident(a: &FaceData, b: &FaceData, tol: f64) -> bool {
+    let (na, nb) = (a.normal, b.normal);
+    let dot = na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2];
+    if dot.abs() < 1.0 - PARALLEL_NORMAL_COS_EPS {
+        return false;
+    }
+    let d = [
+        b.pts[0][0] - a.pts[0][0],
+        b.pts[0][1] - a.pts[0][1],
+        b.pts[0][2] - a.pts[0][2],
+    ];
+    (na[0] * d[0] + na[1] * d[1] + na[2] * d[2]).abs() <= tol
+}
+
+/// Returns a point inside the geometric overlap of two coplanar faces, or `None` when they do
+/// not overlap with a positive area. Both faces are projected on the first face's plane.
+fn faces_overlap(a: &FaceData, b: &FaceData) -> Option<[f64; 3]> {
+    let frame = PlaneFrame::from_points(&a.pts);
+    let pa: Vec<[f64; 2]> = a.pts.iter().map(|p| frame.project(p)).collect();
+    let pb: Vec<[f64; 2]> = b.pts.iter().map(|p| frame.project(p)).collect();
+
+    // A shared vertex or edge alone is not a non-conforming interface: require a positive-area
+    // overlap, witnessed by a strictly-interior vertex or a proper edge crossing. Both polygons
+    // are made counter-clockwise, as `contains_stable` assumes that winding.
+    let poly_a = Polygon::unknown(pa.iter().copied()).into_ccw();
+    let poly_b = Polygon::unknown(pb.iter().copied()).into_ccw();
+    for p in &pb {
+        if poly_a.contains_stable(p) {
+            return Some(frame.deproject(p));
+        }
+    }
+    for p in &pa {
+        if poly_b.contains_stable(p) {
+            return Some(frame.deproject(p));
+        }
+    }
+    for i in 0..pa.len() {
+        let s1 = Segment::new(pa[i], pa[(i + 1) % pa.len()]);
+        for j in 0..pb.len() {
+            let s2 = Segment::new(pb[j], pb[(j + 1) % pb.len()]);
+            if let Intersections::One(Intersection::New(p)) = s1.intersect(s2) {
+                return Some(frame.deproject(&p));
+            }
+        }
+    }
+    None
+}
+
 /// Centroid of a polyhedron, averaging its vertices.
 fn poly_centroid(poly: &Polyhedron) -> [f64; 3] {
     let n = poly.len().max(1) as f64;
@@ -486,40 +570,6 @@ fn canonical_nodes(mesh: &UMeshView, tol: f64) -> Vec<usize> {
     let points: Vec<[f64; 3]> = (0..n).map(|i| point3(&mesh.coords(), i)).collect();
     let (_, cluster_of) = weld_points(&points, tol);
     cluster_of
-}
-
-/// Returns one original node id from `a` and one from `b` that both map to `node`, when the two
-/// cells spell that coincident location with *different* ids; `None` when they share the very
-/// same id.
-fn distinct_ids(
-    mesh: &UMeshView,
-    canonical: &[usize],
-    node: usize,
-    a: ElementId,
-    b: ElementId,
-) -> Option<(usize, usize)> {
-    let ids_of = |cell: ElementId| -> Vec<usize> {
-        let mut ids: Vec<usize> = mesh
-            .element(cell)
-            .connectivity()
-            .iter()
-            .copied()
-            .filter(|&n| n != usize::MAX && canonical[n] == node)
-            .collect();
-        ids.sort_unstable();
-        ids.dedup();
-        ids
-    };
-    let ids_a = ids_of(a);
-    let ids_b = ids_of(b);
-    let (na, nb) = (
-        ids_a.iter().copied().find(|x| !ids_b.contains(x)),
-        ids_b.iter().copied().find(|x| !ids_a.contains(x)),
-    );
-    match (na, nb) {
-        (Some(x), Some(y)) => Some((x.min(y), x.max(y))),
-        _ => None,
-    }
 }
 
 /// Midpoint of two nodes.

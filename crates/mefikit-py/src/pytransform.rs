@@ -284,6 +284,11 @@ impl PyConformanceReport {
                 dict.set_item("center", center.to_vec())?;
                 dict.set_item("cells", cells_to_dict(py, cells))?;
             }
+            ConformanceIssue::NonConformingFaces { center, cells } => {
+                dict.set_item("kind", "non_conforming_faces")?;
+                dict.set_item("center", center.to_vec())?;
+                dict.set_item("cells", cells_to_dict(py, cells))?;
+            }
             ConformanceIssue::IntersectingCells {
                 center,
                 cells,
@@ -332,8 +337,9 @@ impl PyConformanceReport {
     }
 
     /// The problems found, ordered from the most structural to the most numerical. Each issue is
-    /// a dict: `kind` (`merged_nodes`, `overlapping_faces`, `intersecting_cells`,
-    /// `invalid_space_dimension`, `unsupported_cells`, `no_volume_cells`), the variant fields
+    /// a dict: `kind` (`merged_nodes`, `overlapping_faces`, `non_conforming_faces`,
+    /// `intersecting_cells`, `invalid_space_dimension`, `unsupported_cells`, `no_volume_cells`),
+    /// the variant fields
     /// (`center` as `xyz` coordinates,
     /// `nodes`, `cells` / `cells_a` / `cells_b` as `{element type: indices}` mappings), and
     /// `message`.
