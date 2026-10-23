@@ -313,7 +313,21 @@ pub fn is_conform(
     // Two cells whose coincident boundary faces overlap geometrically without being the same
     // face have a non-conforming interface (a T-junction, or two different tessellations of the
     // same interface). This is the case the topological checks above cannot see.
-    non_conforming_faces(mesh, tol, &mut issues, &mut n_issues, cap);
+    let mut non_conf_pairs: FxHashMap<[ElementId; 2], ()> = FxHashMap::default();
+    non_conforming_faces(
+        mesh,
+        tol,
+        &mut issues,
+        &mut n_issues,
+        cap,
+        &mut non_conf_pairs,
+    );
+
+    // Two cells that share three nodes or more but have no face in common meet through a face
+    // that is only partially shared: one side spells the interface with a node the other side
+    // does not have (a "descending face" T-junction that shares node ids). Two cells touching
+    // along an edge or a vertex share fewer than three nodes and are left alone.
+    partially_shared_faces(mesh, &mut issues, &mut n_issues, cap, &mut non_conf_pairs);
 
     for dup in merged {
         n_issues += 1;
@@ -427,6 +441,7 @@ fn non_conforming_faces(
     issues: &mut Vec<ConformanceIssue>,
     n_issues: &mut usize,
     cap: usize,
+    seen: &mut FxHashMap<[ElementId; 2], ()>,
 ) {
     let coords = mesh.coords();
     let mut faces = UMesh::new(coords.to_shared());
@@ -447,20 +462,7 @@ fn non_conforming_faces(
     };
     let index = faces.view().bvh3();
 
-    if std::env::var("MEFI_DBG").is_ok() {
-        for (i, f) in fdata.iter().enumerate() {
-            eprintln!(
-                "DBG face {i} owner {:?} ring {:?} norm {:?}",
-                owner[i],
-                keys[i],
-                f.normal.map(|x| (x * 1e3).round() / 1e3)
-            );
-        }
-    }
-
     let mut pairs: Vec<(ElementId, ElementId, [f64; 3])> = Vec::new();
-    let mut seen: FxHashMap<(ElementId, ElementId), ()> =
-        FxHashMap::with_capacity_and_hasher(faces.num_elements(), FxBuildHasher);
     for (i, fi) in fdata.iter().enumerate() {
         let [min, max] = fi.bounds;
         let pad = tol.max(f64::EPSILON);
@@ -477,33 +479,112 @@ fn non_conforming_faces(
                     continue;
                 }
                 let fj = &fdata[j];
-                let pc = planes_coincident(fi, fj, tol);
-                let ov = if pc { faces_overlap(fi, fj) } else { None };
-                if std::env::var("MEFI_DBG").is_ok() {
-                    eprintln!(
-                        "DBG pair {i}({:?}) {j}({:?}) coplanar {pc} overlap {}",
-                        owner[i],
-                        owner[j],
-                        ov.is_some()
-                    );
-                }
-                if !pc {
+                if !planes_coincident(fi, fj, tol) {
                     continue;
                 }
-                let Some(center) = ov else {
+                let Some(center) = faces_overlap(fi, fj) else {
                     continue;
                 };
                 let pair = if owner[i] < owner[j] {
-                    (owner[i], owner[j])
+                    [owner[i], owner[j]]
                 } else {
-                    (owner[j], owner[i])
+                    [owner[j], owner[i]]
                 };
                 if seen.insert(pair, ()).is_some() {
                     continue;
                 }
-                pairs.push((pair.0, pair.1, center));
+                pairs.push((pair[0], pair[1], center));
             }
         }
+    }
+    pairs.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
+    for (a, b, center) in pairs {
+        *n_issues += 1;
+        if issues.len() < cap {
+            issues.push(ConformanceIssue::NonConformingFaces {
+                center,
+                cells: [a, b],
+            });
+        }
+    }
+}
+
+/// Appends one [`ConformanceIssue::NonConformingFaces`] per pair of distinct cells that share
+/// three nodes or more without sharing a whole face.
+///
+/// Two cells meeting along a full face spell it with the same node set; two cells meeting only
+/// along an edge or a vertex share two nodes or one. Any pair in between shares a *part* of a
+/// face — the interface is only partially shared, and one side carries a node the other lacks —
+/// so the mesh is not conformal. Node ids are compared as given: coincident-but-distinct ids are
+/// handled by the geometric check, this one catches the case the two sides share ids.
+fn partially_shared_faces(
+    mesh: &UMeshView,
+    issues: &mut Vec<ConformanceIssue>,
+    n_issues: &mut usize,
+    cap: usize,
+    seen: &mut FxHashMap<[ElementId; 2], ()>,
+) {
+    let coords = mesh.coords();
+    // The faces of every cell, and the cells reaching every node.
+    let mut faces: Vec<(ElementId, Vec<usize>)> = Vec::new();
+    let mut node_faces: FxHashMap<usize, Vec<usize>> =
+        FxHashMap::with_capacity_and_hasher(coords.nrows(), FxBuildHasher);
+    for cell in mesh.elements_of_dim(Dimension::D3) {
+        let (_, conn) = cell.to_poly();
+        for ring in split_phed(&conn) {
+            let idx = faces.len();
+            for &n in &ring {
+                node_faces.entry(n).or_default().push(idx);
+            }
+            faces.push((cell.id(), ring.to_vec()));
+        }
+    }
+
+    // Count the nodes every pair of faces shares. A pair reaching three nodes from distinct cells
+    // is a partial interface; its two faces necessarily have different node sets.
+    let mut shared: FxHashMap<(usize, usize), usize> =
+        FxHashMap::with_capacity_and_hasher(faces.len(), FxBuildHasher);
+    for face_ids in node_faces.values() {
+        for (a_pos, &a) in face_ids.iter().enumerate() {
+            for &b in &face_ids[(a_pos + 1)..] {
+                let (lo, hi) = (a.min(b), a.max(b));
+                *shared.entry((lo, hi)).or_insert(0) += 1;
+            }
+        }
+    }
+
+    let mut pairs: Vec<(ElementId, ElementId, [f64; 3])> = Vec::new();
+    for ((lo, hi), count) in shared {
+        if count < 3 {
+            continue;
+        }
+        let (owner_a, ring_a) = &faces[lo];
+        let (owner_b, ring_b) = &faces[hi];
+        if owner_a == owner_b {
+            continue;
+        }
+        // A whole shared face is exactly a common node set; a partial one is not.
+        let mut ka = ring_a.clone();
+        ka.sort_unstable();
+        let mut kb = ring_b.clone();
+        kb.sort_unstable();
+        if ka == kb {
+            continue;
+        }
+        let pair = if owner_a < owner_b {
+            [*owner_a, *owner_b]
+        } else {
+            [*owner_b, *owner_a]
+        };
+        if seen.insert(pair, ()).is_some() {
+            continue;
+        }
+        let common: Vec<usize> = ring_a
+            .iter()
+            .copied()
+            .filter(|n| ring_b.contains(n))
+            .collect();
+        pairs.push((pair[0], pair[1], key_centroid(&coords, &common)));
     }
     pairs.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
     for (a, b, center) in pairs {
