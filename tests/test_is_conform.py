@@ -186,17 +186,16 @@ def test_rejects_poly_fixture():
 
 
 def test_rejects_simplify_fixture():
-    """`Mesh_non_conforme_simplify.med` folds its cells through near-coincident duplicate nodes.
+    """`Mesh_non_conforme_simplify.med` has a partially shared interface.
 
-    The pair of coincident nodes of each fold is about `8e-3` apart, so the default `1e-9`
-    tolerance does not see it; with a tolerance matching that spacing the folds are reported.
+    Two cells are in contact but spell the common interface with different face connectivity
+    (one side carries an extra node), so there is no identical shared face.
     """
     mesh = _phedron_only(_read("Mesh_non_conforme_simplify.med"))
-    assert mf.is_conform(mesh, _TOL).is_conform
-    report = mf.is_conform(mesh, 1e-2)
+    report = mf.is_conform(mesh, _TOL)
     assert not report.is_conform
-    assert set(_kinds(report)) == {"merged_nodes"}
-    assert report.n_issues == 4
+    assert set(_kinds(report)) == {"non_conforming_faces"}
+    assert report.n_issues == 1
 
 
 def test_fixtures_reject_non_poly_cells():
