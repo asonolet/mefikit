@@ -9,15 +9,15 @@ use crate::geometry::Convexity;
 pub enum Regularity {
     /// Element with a fixed number of nodes (e.g., TRI3, QUAD4, HEX8).
     Regular,
-    /// Element with a variable/arbitrary number of nodes (e.g., PGON, PHED, SPLINE).
+    /// Element with a variable/arbitrary number of nodes (e.g., PGON, PHED, PLINE).
     Poly,
 }
 
 /// Types of polyhedral/polygonal elements with arbitrary node counts.
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PolyElemType {
-    /// A spline curve element with arbitrary nodes.
-    Spline,
+    /// A poly-line element with arbitrary nodes (1D).
+    Pline,
     /// A polygon element with arbitrary nodes (2D).
     Pgon,
     /// A polyhedron element with arbitrary nodes (3D).
@@ -51,6 +51,10 @@ pub enum RegularElemType {
     Tet4,
     /// Quadratic tetrahedron (3D, 10 nodes).
     Tet10,
+    /// Linear Wedge (3D, 6 nodes).
+    Wedge6,
+    /// Quadratic wedge (3D, 15 nodes).
+    Wedge15,
     /// Linear hexahedron (3D, 8 nodes).
     Hex8,
     /// Tricubic hexahedron (3D, 21 nodes).
@@ -76,7 +80,7 @@ pub enum ElementType {
     SEG2,
     SEG3,
     SEG4,
-    SPLINE,
+    PLINE,
 
     // 2d
     TRI3,
@@ -92,6 +96,8 @@ pub enum ElementType {
     TET10,
     HEX8,
     HEX21,
+    WEDGE6,
+    WEDGE15,
     PHED,
 }
 
@@ -99,7 +105,7 @@ impl From<PolyElemType> for ElementType {
     fn from(cell: PolyElemType) -> Self {
         use PolyElemType::*;
         match cell {
-            Spline => Self::SPLINE,
+            Pline => Self::PLINE,
             Pgon => Self::PGON,
             Phed => Self::PHED,
         }
@@ -123,6 +129,8 @@ impl From<RegularElemType> for ElementType {
             Tet4 => Self::TET4,
             Tet10 => Self::TET10,
             Hex8 => Self::HEX8,
+            Wedge6 => Self::WEDGE6,
+            Wedge15 => Self::WEDGE15,
             Hex21 => Self::HEX21,
         }
     }
@@ -136,13 +144,13 @@ impl ElementType {
             VERTEX => Dimension::D0,
 
             // 1D
-            SEG2 | SEG3 | SEG4 | SPLINE => Dimension::D1,
+            SEG2 | SEG3 | SEG4 | PLINE => Dimension::D1,
 
             // 2D
             TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 | PGON => Dimension::D2,
 
             // 3D
-            TET4 | TET10 | HEX8 | HEX21 | PHED => Dimension::D3,
+            TET4 | TET10 | WEDGE6 | WEDGE15 | HEX8 | HEX21 | PHED => Dimension::D3,
         }
     }
 
@@ -150,7 +158,7 @@ impl ElementType {
         use ElementType::*;
         match self {
             // poly
-            SPLINE | PGON | PHED => Regularity::Poly,
+            PLINE | PGON | PHED => Regularity::Poly,
             // regular
             _ => Regularity::Regular,
         }
@@ -163,7 +171,7 @@ impl ElementType {
             SEG2 => Some(2),
             SEG3 => Some(3),
             SEG4 => Some(4),
-            SPLINE => None, // Spline can have arbitrary number of nodes
+            PLINE => None, // Polyline can have arbitrary number of nodes
             TRI3 => Some(3),
             TRI6 => Some(6),
             TRI7 => Some(7),
@@ -173,6 +181,8 @@ impl ElementType {
             PGON => None, // Polygon can have arbitrary number of nodes
             TET4 => Some(4),
             TET10 => Some(10),
+            WEDGE6 => Some(6),
+            WEDGE15 => Some(15),
             HEX8 => Some(8),
             HEX21 => Some(21),
             PHED => None, // Polyhedron can have arbitrary number of nodes

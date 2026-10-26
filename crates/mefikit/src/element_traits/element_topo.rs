@@ -107,6 +107,39 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     panic!("It is not possible to ask for codim diff from D1, D2 or D3 on TET")
                 }
             },
+            WEDGE6 => match codim {
+                Dimension::D1 => {
+                    let conn1 = arr2(&[[co[0], co[2], co[1]], [co[3], co[4], co[5]]]);
+                    let conn2 = arr2(&[
+                        [co[0], co[1], co[4], co[3]],
+                        [co[1], co[2], co[5], co[4]],
+                        [co[2], co[0], co[3], co[5]],
+                    ]);
+                    res.push((TRI3, Connectivity::new_regular(conn1.to_shared())));
+                    res.push((QUAD4, Connectivity::new_regular(conn2.to_shared())));
+                }
+                Dimension::D2 => {
+                    let conn = arr2(&[
+                        [co[0], co[1]],
+                        [co[0], co[2]],
+                        [co[0], co[3]],
+                        [co[1], co[2]],
+                        [co[1], co[4]],
+                        [co[2], co[5]],
+                        [co[3], co[4]],
+                        [co[3], co[5]],
+                        [co[4], co[5]],
+                    ]);
+                    res.push((SEG2, Connectivity::new_regular(conn.to_shared())));
+                }
+                Dimension::D3 => {
+                    let conn = arr2(&[[co[0]], [co[1]], [co[2]], [co[3]], [co[4]], [co[5]]]);
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => {
+                    panic!("It is not possible to ask for codim diff from D1, D2 or D3 on HEX")
+                }
+            },
             HEX8 => match codim {
                 Dimension::D1 => {
                     let conn = arr2(&[
@@ -209,8 +242,8 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         let co = self.connectivity();
         match self.element_type() {
             VERTEX => (VERTEX, co.to_vec()),
-            SEG2 | SEG3 | SEG4 => (SPLINE, co.to_vec()),
-            TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 => (PGON, co.to_vec()),
+            SEG2 => (PLINE, co.to_vec()),
+            TRI3 | TRI6 | QUAD4 => (PGON, co.to_vec()),
             TET4 => {
                 let m = usize::MAX;
                 (
@@ -221,15 +254,13 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     ],
                 )
             }
-            TET10 => {
-                // VTK TET10: 0-3 vertices, 4(0-1), 5(1-2), 6(0-2), 7(0-3), 8(1-3), 9(2-3)
+            WEDGE6 => {
                 let m = usize::MAX;
                 (
                     PHED,
                     vec![
-                        co[0], co[1], co[2], co[4], co[5], co[6], m, co[1], co[2], co[3], co[5],
-                        co[9], co[8], m, co[2], co[3], co[0], co[9], co[7], co[6], m, co[3], co[0],
-                        co[1], co[7], co[4], co[8],
+                        co[0], co[2], co[1], m, co[3], co[4], co[5], m, co[0], co[1], co[4], co[3],
+                        m, co[1], co[2], co[5], co[4], m, co[2], co[0], co[3], co[5],
                     ],
                 )
             }
@@ -244,29 +275,8 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     ],
                 )
             }
-            HEX21 => {
-                // VTK HEX21: 0-7 vertices, 8(0-1), 9(1-2), 10(2-3), 11(3-0),
-                //   12(4-5), 13(5-6), 14(6-7), 15(7-4), 16(0-4), 17(1-5), 18(2-6), 19(3-7)
-                let m = usize::MAX;
-                (
-                    PHED,
-                    vec![
-                        // bottom [0,3,2,1]
-                        co[0], co[3], co[2], co[1], co[8], co[9], co[10], co[11], m,
-                        // top [4,5,6,7]
-                        co[4], co[5], co[6], co[7], co[12], co[13], co[14], co[15], m,
-                        // front [0,1,5,4]
-                        co[0], co[1], co[5], co[4], co[8], co[17], co[12], co[16], m,
-                        // right [1,2,6,5]
-                        co[1], co[2], co[6], co[5], co[9], co[18], co[13], co[17], m,
-                        // back [2,3,7,6]
-                        co[2], co[3], co[7], co[6], co[10], co[19], co[14], co[18], m,
-                        // left [3,0,4,7]
-                        co[3], co[0], co[4], co[7], co[11], co[16], co[15], co[19],
-                    ],
-                )
-            }
-            SPLINE | PGON | PHED => (self.element_type(), co.to_vec()),
+            PLINE | PGON | PHED => (self.element_type(), co.to_vec()),
+            _ => todo!("Quadratic elements are not supported yet."),
         }
     }
 
@@ -284,8 +294,8 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         let co = self.connectivity();
         match self.element_type() {
             VERTEX | SEG2 | SEG3 | SEG4 | TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 | TET4
-            | TET10 | HEX8 | HEX21 => Ok((self.element_type(), co.to_vec())),
-            SPLINE => Err("SPLINE cannot be converted to a regular element".into()),
+            | TET10 | WEDGE6 | WEDGE15 | HEX8 | HEX21 => Ok((self.element_type(), co.to_vec())),
+            PLINE => Err("SPLINE cannot be converted to a regular element".into()),
             PGON => match co.len() {
                 3 => Ok((TRI3, co.to_vec())),
                 4 => Ok((QUAD4, co.to_vec())),
@@ -318,6 +328,11 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 (TRI3, vec![co[2], co[3], co[1]]),
             ],
             TET4 | TET10 => vec![(TET4, vec![co[0], co[1], co[2], co[3]])],
+            WEDGE6 | WEDGE15 => vec![
+                (TET4, vec![co[0], co[1], co[2], co[3]]),
+                (TET4, vec![co[1], co[2], co[3], co[4]]),
+                (TET4, vec![co[2], co[3], co[4], co[5]]),
+            ],
             HEX8 | HEX21 => vec![
                 (TET4, vec![co[0], co[1], co[3], co[4]]),
                 (TET4, vec![co[2], co[3], co[1], co[6]]),
@@ -654,7 +669,7 @@ mod tests {
         let groups = crate::mesh::ArcGroups::new();
         let elem = Element::new(0, coords.view(), &family, conn, ElementType::SEG2, &groups);
         let (et, poly_conn) = elem.to_poly();
-        assert_eq!(et, ElementType::SPLINE);
+        assert_eq!(et, ElementType::PLINE);
         assert_eq!(poly_conn, vec![0, 1]);
     }
 
@@ -750,16 +765,9 @@ mod tests {
         let conn = &[0, 1, 2];
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            &family,
-            conn,
-            ElementType::SPLINE,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::PLINE, &groups);
         let (et, poly_conn) = elem.to_poly();
-        assert_eq!(et, ElementType::SPLINE);
+        assert_eq!(et, ElementType::PLINE);
         assert_eq!(poly_conn, vec![0, 1, 2]);
     }
 
@@ -784,7 +792,7 @@ mod tests {
             coords.view(),
             &0,
             &[0, 1, 2],
-            ElementType::SPLINE,
+            ElementType::PLINE,
             &groups,
         );
         assert!(elem.from_poly().is_err());

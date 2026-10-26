@@ -219,10 +219,11 @@ mod element_types {
         assert_eq!(ElementType::TRI3.dimension(), Dimension::D2);
         assert_eq!(ElementType::QUAD4.dimension(), Dimension::D2);
         assert_eq!(ElementType::TET4.dimension(), Dimension::D3);
+        assert_eq!(ElementType::WEDGE6.dimension(), Dimension::D3);
         assert_eq!(ElementType::HEX8.dimension(), Dimension::D3);
         assert_eq!(ElementType::PGON.dimension(), Dimension::D2);
         assert_eq!(ElementType::PHED.dimension(), Dimension::D3);
-        assert_eq!(ElementType::SPLINE.dimension(), Dimension::D1);
+        assert_eq!(ElementType::PLINE.dimension(), Dimension::D1);
     }
 
     #[test]
@@ -231,7 +232,7 @@ mod element_types {
         assert_eq!(ElementType::QUAD4.regularity(), Regularity::Regular);
         assert_eq!(ElementType::PGON.regularity(), Regularity::Poly);
         assert_eq!(ElementType::PHED.regularity(), Regularity::Poly);
-        assert_eq!(ElementType::SPLINE.regularity(), Regularity::Poly);
+        assert_eq!(ElementType::PLINE.regularity(), Regularity::Poly);
     }
 
     #[test]
@@ -254,7 +255,7 @@ mod element_types {
     fn num_nodes_of_poly_elements() {
         assert_eq!(ElementType::PGON.num_nodes(), None);
         assert_eq!(ElementType::PHED.num_nodes(), None);
-        assert_eq!(ElementType::SPLINE.num_nodes(), None);
+        assert_eq!(ElementType::PLINE.num_nodes(), None);
     }
 
     #[test]
@@ -552,6 +553,7 @@ mod selection {
                 ElementType::TRI3,
                 ElementType::TET4,
                 ElementType::HEX8,
+                ElementType::WEDGE6,
             ]),
             None,
         );

@@ -100,7 +100,7 @@ mod tests {
         assert!(
             poly_mesh
                 .element_types()
-                .all(|&et| et == ElementType::SPLINE)
+                .all(|&et| et == ElementType::PLINE)
         );
     }
 
@@ -198,7 +198,7 @@ mod tests {
         assert_eq!(poly_mesh.num_elements(), 4);
         // All should be poly: 2 SPLINE + 1 PGON + 1 PGON
         let types: Vec<ElementType> = poly_mesh.element_types().copied().collect();
-        assert!(types.contains(&ElementType::SPLINE));
+        assert!(types.contains(&ElementType::PLINE));
         assert!(types.contains(&ElementType::PGON));
         assert!(!types.contains(&ElementType::SEG2));
         assert!(!types.contains(&ElementType::QUAD4));
@@ -398,7 +398,7 @@ mod tests {
         assert!(
             poly_mesh
                 .element_types()
-                .all(|&et| et == ElementType::SPLINE)
+                .all(|&et| et == ElementType::PLINE)
         );
 
         let result = unpolyze(&poly_mesh.view());
