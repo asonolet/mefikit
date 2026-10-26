@@ -16,8 +16,8 @@ mod select;
 mod sel {
     #[pymodule_export]
     use super::select::{
-        all, bbox, circle, exclude_group, group, ids, nbbox, ncircle, nids, nrect, nsphere, rect,
-        sphere, types,
+        all, bbox, circle, dim, dimensions, exclude_group, group, ids, nbbox, ncircle, nids, nrect,
+        nsphere, rect, sphere, types,
     };
 }
 
