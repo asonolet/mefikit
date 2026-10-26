@@ -226,24 +226,19 @@ where
     }
 
     /// Returns element IDs where a binary predicate holds.
-    pub fn map_zip_where<F>(&self, other: &Self, mut f: F) -> ElementIds
+    pub fn map_zip_where<F>(&self, other: &Self, f: F) -> ElementIds
     where
-        F: FnMut(f64, f64) -> bool,
+        F: Fn(f64, f64) -> bool + Copy,
     {
         self.panic_if_incompatible_with(other);
         let mut result = BTreeMap::new();
-        let greatest_dim = if self.ndim() > other.ndim() {
-            self.full_dim()
-        } else {
-            other.full_dim()
-        };
         for (elem_type, left_array) in &self.0 {
-            if let Some(right_array) = other.0.get(elem_type) {
-                let mut res = nd::ArrayD::<bool>::from_elem(greatest_dim, false);
-                nd::Zip::from(&mut res)
-                    .and_broadcast(left_array)
-                    .and_broadcast(right_array)
-                    .for_each(|a, &b, &c| *a = f(b, c));
+            if let Some(right_array) = other.0.get(dbg!(elem_type)) {
+                let mut res = broadcast_binary_op(
+                    &left_array.view().into_dyn(),
+                    &right_array.view().into_dyn(),
+                    f,
+                );
                 if res.ndim() == 1 {
                     res.insert_axis_inplace(Axis(1));
                 }
@@ -413,16 +408,16 @@ where
     }
 }
 
-fn broadcast_binary_op<S1, S2, T, F>(
+fn broadcast_binary_op<S1, S2, T, F, O>(
     lhs: &nd::ArrayBase<S1, nd::IxDyn>,
     rhs: &nd::ArrayBase<S2, nd::IxDyn>,
     op: F,
-) -> nd::ArrayD<T>
+) -> nd::ArrayD<O>
 where
     S1: nd::Data<Elem = T>,
     S2: nd::Data<Elem = T>,
     T: Clone,
-    F: Fn(T, T) -> T + Copy,
+    F: Fn(T, T) -> O + Copy,
 {
     if lhs.shape() == rhs.shape() {
         return nd::Zip::from(lhs)

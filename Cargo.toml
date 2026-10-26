@@ -47,7 +47,6 @@ opt-level = 3
 codegen-units = 1
 lto = "thin"
 debug = false
-strip = true
 
 [profile.flame]
 inherits = "bench"
