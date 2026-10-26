@@ -549,9 +549,16 @@ mod tests {
 
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TET4, &groups);
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &family,
+            conn,
+            ElementType::WEDGE6,
+            &groups,
+        );
         let mes = elem.measure3();
-        assert!(mes > 0.0);
+        assert_abs_diff_eq!(mes, 0.5, epsilon = 1e-10);
     }
 
     #[test]

@@ -309,6 +309,11 @@ fn extrude_connectivity(
                 extrude_inv_connectivity(&mesh.view(), et, n).into_shared(),
                 None,
             ),
+            TRI3 => extruded_mesh.add_regular_block(
+                WEDGE6,
+                extrude_dup_connectivity(&mesh.view(), et, n).into_shared(),
+                None,
+            ),
             QUAD4 => extruded_mesh.add_regular_block(
                 HEX8,
                 extrude_dup_connectivity(&mesh.view(), et, n).into_shared(),

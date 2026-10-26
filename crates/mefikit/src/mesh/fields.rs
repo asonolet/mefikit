@@ -233,7 +233,7 @@ where
         self.panic_if_incompatible_with(other);
         let mut result = BTreeMap::new();
         for (elem_type, left_array) in &self.0 {
-            if let Some(right_array) = other.0.get(dbg!(elem_type)) {
+            if let Some(right_array) = other.0.get(elem_type) {
                 let mut res = broadcast_binary_op(
                     &left_array.view().into_dyn(),
                     &right_array.view().into_dyn(),
