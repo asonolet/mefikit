@@ -8,7 +8,7 @@ use super::element_topo::ElementTopo;
 use crate::geometry::{
     Polygon, Polyhedron, Segment, area_polygon3, area_quad2, area_tri2, bounds_iter,
     convex_polygon_contains2, hex_contains, hex_volume, signed_area2, tet_contains, tet_volume,
-    vertex_centroid,
+    vertex_centroid, wedge_volume,
 };
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
@@ -184,6 +184,14 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 self.coord3_ref(2),
                 self.coord3_ref(3),
             ),
+            WEDGE6 => wedge_volume(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+                *self.coord3_ref(3),
+                *self.coord3_ref(4),
+                *self.coord3_ref(5),
+            ]),
             HEX8 => hex_volume(&[
                 *self.coord3_ref(0),
                 *self.coord3_ref(1),
@@ -366,6 +374,14 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord3_ref(2),
                 *self.coord3_ref(3),
             ]),
+            WEDGE6 => vertex_centroid(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+                *self.coord3_ref(3),
+                *self.coord3_ref(4),
+                *self.coord3_ref(5),
+            ]),
             HEX8 => vertex_centroid(&[
                 *self.coord3_ref(0),
                 *self.coord3_ref(1),
@@ -517,6 +533,25 @@ mod tests {
         assert_abs_diff_eq!(centroid[0], 0.25, epsilon = 1e-10);
         assert_abs_diff_eq!(centroid[1], 0.25, epsilon = 1e-10);
         assert_abs_diff_eq!(centroid[2], 0.25, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_measure3_wedge() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ];
+        let conn = &[0, 1, 2, 3, 4, 5];
+
+        let family = 0;
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::TET4, &groups);
+        let mes = elem.measure3();
+        assert!(mes > 0.0);
     }
 
     #[test]

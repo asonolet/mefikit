@@ -678,6 +678,9 @@ fn triple_product(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
     a[0] * cross[0] + a[1] * cross[1] + a[2] * cross[2]
 }
 
+/// The six quadrilateral faces of a WEDGE6 in `subentities(D1)` connectivity order (VTK convention).
+const WEDGE6_TET: [[usize; 4]; 3] = [[0, 1, 2, 3], [1, 2, 3, 4], [2, 3, 4, 5]];
+
 /// The six quadrilateral faces of a HEX8 in `subentities(D1)` connectivity order (VTK convention).
 const HEX8_FACES: [[usize; 4]; 6] = [
     [0, 3, 2, 1],
@@ -705,6 +708,15 @@ pub(crate) fn tet_volume(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3], d: &[f64; 3])
     let ac = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
     let ad = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
     triple_product(ab, ac, ad) / 6.0
+}
+
+/// Computes the volume of a Wedge.
+pub(crate) fn wedge_volume(p: &[[f64; 3]; 6]) -> f64 {
+    let mut v = 0.0;
+    for tet in WEDGE6_TET {
+        v += tet_volume(&p[tet[0]], &p[tet[1]], &p[tet[2]], &p[tet[3]]);
+    }
+    v
 }
 
 /// Computes the volume of a hexahedron.

@@ -57,4 +57,4 @@ pub(crate) use polygon::{
     area_polygon3, area_quad2, area_tri2, bounds_iter, convex_polygon_contains2, cross2, into_ccw2,
     newell_normal3, signed_area2, vertex_centroid,
 };
-pub(crate) use polyhedron::{hex_contains, hex_volume, tet_contains, tet_volume};
+pub(crate) use polyhedron::{hex_contains, hex_volume, tet_contains, tet_volume, wedge_volume};
