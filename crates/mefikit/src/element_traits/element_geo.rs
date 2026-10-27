@@ -253,6 +253,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                     *self.coord3_ref(7),
                 ]);
                 if v < 0.0 {
+                    // TODO: check this is enough
                     // Swap the two bottom corners and the matching top corners to undo
                     // the left-handed inversion (involution on the index order).
                     (

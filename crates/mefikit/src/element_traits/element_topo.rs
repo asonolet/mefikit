@@ -3,8 +3,13 @@
 //! Provides the [`ElementTopo`] trait for extracting subentities (faces, edges, vertices)
 //! and decomposing elements into simplexes.
 
+use itertools::Itertools;
 use ndarray::prelude::*;
+use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
+use std::collections::hash_map::Entry;
 
+use crate::element_traits::SortedVecKey;
 use crate::mesh::Connectivity;
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
@@ -295,7 +300,12 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         match self.element_type() {
             VERTEX | SEG2 | SEG3 | SEG4 | TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 | TET4
             | TET10 | WEDGE6 | WEDGE15 | HEX8 | HEX21 => Ok((self.element_type(), co.to_vec())),
-            PLINE => Err("SPLINE cannot be converted to a regular element".into()),
+            PLINE => match co.len() {
+                2 => Ok((SEG2, co.to_vec())),
+                n => Err(format!(
+                    "PLINE with {n} nodes cannot be converted to a regular element"
+                )),
+            },
             PGON => match co.len() {
                 3 => Ok((TRI3, co.to_vec())),
                 4 => Ok((QUAD4, co.to_vec())),
@@ -305,8 +315,22 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
             },
             PHED => {
                 let sub = self.subentities(Some(Dimension::D1));
-                let (_, face_conn) = &sub[0];
-                phed_to_regular(face_conn)
+                match sub.len() {
+                    1 => {
+                        let (_, face_conn) = &sub[0];
+                        phed_to_regular(face_conn)
+                    }
+                    2 => match &sub.as_slice() {
+                        &[(TRI3, tri_conn), (QUAD4, quad_conn)]
+                        | &[(QUAD4, quad_conn), (TRI3, tri_conn)] => {
+                            Ok((WEDGE6, phed_to_wedge(quad_conn, tri_conn)?))
+                        }
+                        _ => Err("Could not be matched to a regular element.".into()),
+                    },
+                    n => Err(format!(
+                        "A PHED with {n} different types of faces cannot be converted back to a regular element."
+                    )),
+                }
             }
         }
     }
@@ -347,16 +371,49 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
 
 impl<'a, T> ElementTopo<'a> for T where T: ElementLike<'a> {}
 
+/// Here the polyhedron must be well oriented for this operation to work
+fn phed_to_wedge(quad_conn: &Connectivity, tri_conn: &Connectivity) -> Result<Vec<usize>, String> {
+    let n_quads = quad_conn.len();
+    if n_quads != 3 {
+        return Err(format!(
+            "A phed with {n_quads} quads cannot be converted to a wedge."
+        ));
+    }
+    let n_tri = tri_conn.len();
+    if n_tri != 2 {
+        return Err(format!(
+            "A phed with {n_tri} triangles cannot be converted to a wedge."
+        ));
+    }
+    let (v0, v1) = (tri_conn[0][0], tri_conn[0][1]);
+    let v3 = get_first_opposite_triangle_node(v0, v1, quad_conn)?;
+    let (n3, _) = tri_conn[1].iter().find_position(|&x| *x == v3).unwrap();
+    let mut res = vec![];
+    res.extend_from_slice(&tri_conn[0]);
+    res.extend(tri_conn[1].iter().cycle().skip(n3 - 1).take(3));
+    Ok(res)
+}
+
+fn get_first_opposite_triangle_node(
+    v0: usize,
+    v1: usize,
+    quad_conn: &Connectivity,
+) -> Result<usize, String> {
+    for quad in quad_conn.iter() {
+        for ((i, &n0), (_, &n1)) in quad.iter().enumerate().circular_tuple_windows() {
+            if n0 == v0 && n1 == v1 {
+                return Ok(quad[(i + 3) % 4]);
+            }
+        }
+    }
+    Err("No match found while searching for matching first node of second triangle.".into())
+}
+
 /// Converts a PHED element's face connectivity to a regular element.
 ///
 /// Takes the `Connectivity::Poly` from `subentities(D1)` and determines node
 /// ordering purely from face adjacency without assuming any particular face order.
 fn phed_to_regular(face_conn: &Connectivity) -> Result<(ElementType, Vec<usize>), String> {
-    use rustc_hash::FxHashMap;
-    use smallvec::SmallVec;
-
-    use super::utils::SortedVecKey;
-
     let num_faces = face_conn.len();
     if num_faces == 0 {
         return Err("PHED has no faces".into());
@@ -429,11 +486,8 @@ fn from_phed_tet4(face_conn: &Connectivity) -> Result<(ElementType, Vec<usize>),
 /// 5. Return [a, b, c, d, e, f, g, h].
 fn from_phed_hex8(
     face_conn: &Connectivity,
-    edge_faces: &rustc_hash::FxHashMap<super::utils::SortedVecKey, Vec<usize>>,
+    edge_faces: &FxHashMap<SortedVecKey, Vec<usize>>,
 ) -> Result<(ElementType, Vec<usize>), String> {
-    use smallvec::SmallVec;
-
-    use super::utils::SortedVecKey;
     use ElementType::HEX8;
 
     let f0 = &face_conn[0];
@@ -455,7 +509,7 @@ fn from_phed_hex8(
 
     // For each edge of the bottom face, find the side face sharing that edge,
     // then determine which top node is "above" which bottom node.
-    let mut top_of: rustc_hash::FxHashMap<usize, usize> = rustc_hash::FxHashMap::default();
+    let mut top_of: FxHashMap<usize, usize> = FxHashMap::default();
 
     for j in 0..4 {
         let a = bottom[j];
@@ -479,7 +533,6 @@ fn from_phed_hex8(
         let n = side.len();
 
         // In the side face, find the node adjacent to `a` that is NOT a bottom node.
-        use std::collections::hash_map::Entry;
         if let Entry::Vacant(e) = top_of.entry(a) {
             let pos_a = side.iter().position(|&x| x == a).unwrap();
             let prev = side[(pos_a + n - 1) % n];
