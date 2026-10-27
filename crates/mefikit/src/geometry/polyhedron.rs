@@ -735,6 +735,31 @@ pub(crate) fn hex_volume(p: &[[f64; 3]; 8]) -> f64 {
 /// The four triangular faces of a TET4 in `subentities(D1)` connectivity order.
 const TET4_FACES: [[usize; 3]; 4] = [[0, 1, 3], [1, 2, 3], [2, 0, 3], [0, 2, 1]];
 
+/// The two triangular faces of a WEDGE6 in `subentities(D1)` connectivity order.
+const WEDGE6_TRI_FACES: [[usize; 3]; 2] = [[0, 2, 1], [3, 4, 5]];
+/// The 3 quadrangle faces of a WEDGE6 in `subentities(D1)` connectivity order.
+const WEDGE6_QUAD_FACES: [[usize; 4]; 3] = [[0, 1, 4, 3], [1, 2, 5, 4], [2, 0, 3, 5]];
+
+/// Returns `true` if `point` lies inside the wedge with vertices `a, b, c, d, e, f`.
+///
+/// Bit-exact with [`Polyhedron::contains`] on a wedge (same ray casting and plane tests over
+/// the face layout produced by `as_polyhedron`) but allocates nothing.
+#[inline(always)]
+pub(crate) fn wedge_contains(
+    point: &[f64; 3],
+    a: &[f64; 3],
+    b: &[f64; 3],
+    c: &[f64; 3],
+    d: &[f64; 3],
+    e: &[f64; 3],
+    f: &[f64; 3],
+) -> bool {
+    let coords = [*a, *b, *c, *d, *e, *f];
+    let even1 = even_odd_contains_phed(point, &coords, &WEDGE6_QUAD_FACES);
+    let even2 = even_odd_contains_phed(point, &coords, &WEDGE6_TRI_FACES);
+    (even1 & !even2) | (!even1 & even2)
+}
+
 /// Returns `true` if `point` lies inside the tetrahedron with vertices `a, b, c, d`.
 ///
 /// Bit-exact with [`Polyhedron::contains`] on a tetrahedron (same ray casting and plane tests over

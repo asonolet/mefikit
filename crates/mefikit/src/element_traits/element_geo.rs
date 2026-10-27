@@ -8,7 +8,7 @@ use super::element_topo::ElementTopo;
 use crate::geometry::{
     Polygon, Polyhedron, Segment, area_polygon3, area_quad2, area_tri2, bounds_iter,
     convex_polygon_contains2, hex_contains, hex_volume, signed_area2, tet_contains, tet_volume,
-    vertex_centroid, wedge_volume,
+    vertex_centroid, wedge_contains, wedge_volume,
 };
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
@@ -296,6 +296,15 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 self.coord3_ref(1),
                 self.coord3_ref(2),
                 self.coord3_ref(3),
+            ),
+            WEDGE6 => wedge_contains(
+                &[point[0], point[1], point[2]],
+                self.coord3_ref(0),
+                self.coord3_ref(1),
+                self.coord3_ref(2),
+                self.coord3_ref(3),
+                self.coord3_ref(4),
+                self.coord3_ref(5),
             ),
             HEX8 => hex_contains(
                 &[point[0], point[1], point[2]],
