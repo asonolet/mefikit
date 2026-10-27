@@ -389,8 +389,9 @@ fn phed_to_wedge(quad_conn: &Connectivity, tri_conn: &Connectivity) -> Result<Ve
     let v3 = get_first_opposite_triangle_node(v0, v1, quad_conn)?;
     let (n3, _) = tri_conn[1].iter().find_position(|&x| *x == v3).unwrap();
     let mut res = vec![];
-    res.extend_from_slice(&tri_conn[0]);
-    res.extend(tri_conn[1].iter().cycle().skip(n3 - 1).take(3));
+    let tri0 = &tri_conn[0];
+    res.extend_from_slice(&[tri0[0], tri0[2], tri0[1]]);
+    res.extend(tri_conn[1].iter().cycle().skip(n3).take(3));
     Ok(res)
 }
 
@@ -400,9 +401,9 @@ fn get_first_opposite_triangle_node(
     quad_conn: &Connectivity,
 ) -> Result<usize, String> {
     for quad in quad_conn.iter() {
-        for ((i, &n0), (_, &n1)) in quad.iter().enumerate().circular_tuple_windows() {
-            if n0 == v0 && n1 == v1 {
-                return Ok(quad[(i + 3) % 4]);
+        for ((_, &n0), (i, &n1)) in quad.iter().enumerate().circular_tuple_windows() {
+            if n0 == v1 && n1 == v0 {
+                return Ok(quad[(i + 1) % 4]);
             }
         }
     }
