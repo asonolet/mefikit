@@ -264,6 +264,23 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                     (et, co.to_vec())
                 }
             }
+            WEDGE6 => {
+                let v = wedge_volume(&[
+                    *self.coord3_ref(0),
+                    *self.coord3_ref(1),
+                    *self.coord3_ref(2),
+                    *self.coord3_ref(3),
+                    *self.coord3_ref(4),
+                    *self.coord3_ref(5),
+                ]);
+                if v < 0.0 {
+                    // Reverse both triangular faces (and keep the vertical pairing):
+                    // this reverses the winding of the whole closed surface.
+                    (et, vec![co[2], co[1], co[0], co[5], co[4], co[3]])
+                } else {
+                    (et, co.to_vec())
+                }
+            }
             _ => (et, co.to_vec()),
         }
     }
