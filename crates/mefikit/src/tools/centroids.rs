@@ -3,7 +3,6 @@
 //! Computes element measures (length, area, volume) and stores them as fields.
 
 use crate::element_traits::ElementGeo;
-use crate::mesh::ElementLike;
 use crate::mesh::ElementType;
 use crate::mesh::FieldOwned;
 use crate::mesh::UMesh;
@@ -13,6 +12,21 @@ use ndarray as nd;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 use std::collections::BTreeMap;
+
+/// Arithmetic mean of the `axis` coordinate over an element's nodes.
+///
+/// Face separators (`usize::MAX`) are not nodes and are ignored by `coords()`.
+fn vertex_mean_coord<'a, T: ElementGeo<'a>>(element: &T, axis: usize) -> f64 {
+    let mut n = 0usize;
+    let sum: f64 = element
+        .coords()
+        .map(|x| {
+            n += 1;
+            x[axis]
+        })
+        .sum();
+    sum / n as f64
+}
 
 /// Computes the geometric center of each element in the mesh.
 ///
@@ -30,7 +44,9 @@ pub fn centroids(
                 k,
                 match mesh.space_dimension() {
                     1 => {
-                        let a: Vec<f64> = v.par_iter(mesh.coords.view()).map(|e| e.coords().map(|x| x[0]).sum::<f64>() / (e.num_nodes() as f64)).collect();
+                        let a: Vec<f64> = v.par_iter(mesh.coords.view())
+                            .map(|e| vertex_mean_coord(&e, 0))
+                            .collect();
                         nd::Array2::from_shape_vec(
                             (v.len(), 1),
                             a
@@ -73,7 +89,7 @@ pub fn x_center(
             (k, {
                 let a: Vec<f64> = v
                     .par_iter(mesh.coords.view())
-                    .map(|e| e.coords().map(|x| x[0]).sum::<f64>() / (e.num_nodes() as f64))
+                    .map(|e| vertex_mean_coord(&e, 0))
                     .collect();
                 nd::Array1::from_shape_vec((v.len(),), a).unwrap()
             })
@@ -95,7 +111,7 @@ pub fn y_center(
             (k, {
                 let a: Vec<f64> = v
                     .par_iter(mesh.coords.view())
-                    .map(|e| e.coords().map(|x| x[1]).sum::<f64>() / (e.num_nodes() as f64))
+                    .map(|e| vertex_mean_coord(&e, 1))
                     .collect();
                 nd::Array1::from_shape_vec((v.len(),), a).unwrap()
             })
@@ -117,7 +133,7 @@ pub fn z_center(
             (k, {
                 let a: Vec<f64> = v
                     .par_iter(mesh.coords.view())
-                    .map(|e| e.coords().map(|x| x[2]).sum::<f64>() / (e.num_nodes() as f64))
+                    .map(|e| vertex_mean_coord(&e, 2))
                     .collect();
                 nd::Array1::from_shape_vec((v.len(),), a).unwrap()
             })

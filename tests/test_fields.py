@@ -230,6 +230,42 @@ def test_sel_all(quad2):
     assert len(quad2.select(mf.sel.all())) == 2
 
 
+def test_select_reductions_on_polyhedra():
+    # PHED connectivity contains usize::MAX face separators: reductions must ignore them
+    # instead of indexing the coordinate array with them.
+    mesh = mf.build_cmesh([0.0, 1.0, 2.0], [0.0, 1.0], [0.0, 1.0]).polyze()
+    assert set(mesh.block_types()) == {"PHED"}
+    result = mesh.select(mf.sel.all())
+    assert np.allclose(result.mean(mf.X), 1.0)
+    assert np.allclose(result.mean(mf.Y), 0.5)
+    assert np.allclose(result.mean(mf.Z), 0.5)
+
+
+def test_select_reductions_on_mixed_poly_mesh():
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+            [2.0, 0.0, 0.0],
+            [2.0, 1.0, 0.0],
+        ]
+    )
+    mesh = mf.UMesh(coords)
+    mesh.add_regular_block("HEX8", np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.uintp))
+    mesh.add_regular_block("QUAD4", np.array([[1, 8, 9, 2]], dtype=np.uintp))
+    mesh.add_regular_block("SEG2", np.array([[8, 9]], dtype=np.uintp))
+    poly = mesh.polyze()
+    assert set(poly.block_types()) == {"PLINE", "PGON", "PHED"}
+    # Reductions use the topological dimension (3D here), i.e. the PHED block.
+    assert np.allclose(poly.select(mf.sel.all()).mean(mf.X), 0.5)
+
+
 # --- expressions: pow / index ---
 
 

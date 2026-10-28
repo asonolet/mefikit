@@ -93,8 +93,13 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
     }
 
     /// Returns an iterator over all coordinates as slices.
-    fn coords(&self) -> impl ExactSizeIterator<Item = &[f64]> {
-        (0..self.connectivity().len()).map(|i| self.coord(i))
+    ///
+    /// Face separators (`usize::MAX`) in polyhedral connectivity are skipped.
+    fn coords(&self) -> impl Iterator<Item = &[f64]> {
+        let connectivity = self.connectivity();
+        (0..connectivity.len())
+            .filter(move |&i| connectivity[i] != usize::MAX)
+            .map(|i| self.coord(i))
     }
 
     /// Builds the element as a 2D polygon.
@@ -506,6 +511,29 @@ mod tests {
         let elem = Element::new(0, coords.view(), &family, conn, ElementType::TRI3, &groups);
         let coords: Vec<_> = elem.coords().collect();
         assert_eq!(coords.len(), 3);
+    }
+
+    #[test]
+    fn test_coords_skips_polyhedron_separators() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ];
+        let conn = &[0, 1, 2, 3, usize::MAX, 4, 5, 6, 7, usize::MAX];
+
+        let family = 0;
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::PHED, &groups);
+        let valid: Vec<_> = elem.coords().collect();
+        assert_eq!(valid.len(), 8);
+        assert_eq!(valid[0], &coords.row(0).to_vec());
+        assert_eq!(valid[7], &coords.row(7).to_vec());
     }
 
     #[test]

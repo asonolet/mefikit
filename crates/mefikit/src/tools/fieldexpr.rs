@@ -120,15 +120,15 @@ pub enum FieldExpr {
         operator: UnaryOp,
         expr: Arc<FieldExpr>,
     },
-    /// Element measure (not yet implemented).
+    /// Element measure.
     Measure,
-    /// Element centroids (not yet implemented).
+    /// Element centroids.
     Centroid,
-    /// X coordinate (not yet implemented).
+    /// X coordinate.
     X,
-    /// Y coordinate (not yet implemented).
+    /// Y coordinate.
     Y,
-    /// Z coordinate (not yet implemented).
+    /// Z coordinate.
     Z,
     /// Index into a multi-component field.
     Index(Arc<FieldExpr>, SmallVec<[usize; 2]>),
