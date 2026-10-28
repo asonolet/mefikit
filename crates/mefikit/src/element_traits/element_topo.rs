@@ -237,7 +237,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
     /// Converts the element to its polygonal/polyhedral equivalent.
     ///
     /// - 0D (VERTEX) is returned unchanged.
-    /// - 1D elements become SPLINE with the same node list.
+    /// - 1D elements become PLINE with the same node list.
     /// - 2D elements become PGON with the same node list.
     /// - 3D elements become PHED with face-based connectivity. Faces are
     ///   separated by `usize::MAX` sentinel values in the returned vector.
@@ -288,7 +288,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
     /// Converts a poly element back to its regular equivalent.
     ///
     /// - Regular elements (VERTEX, SEG*, TRI*, QUAD*, TET*, HEX*) are returned unchanged.
-    /// - SPLINE cannot be converted (ambiguous: could be SEG2, SEG3, or SEG4).
+    /// - PLINE with 2 nodes becomes SEG2.
     /// - PGON with 3 nodes becomes TRI3, with 4 nodes becomes QUAD4.
     /// - PHED with 4 triangular faces becomes TET4, with 6 quadrilateral faces becomes HEX8.
     ///   Face orientation is verified by checking that each edge is shared by exactly

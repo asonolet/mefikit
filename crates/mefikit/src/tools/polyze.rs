@@ -198,7 +198,7 @@ mod tests {
 
         let poly_mesh = polyze(&mesh.view());
         assert_eq!(poly_mesh.num_elements(), 4);
-        // All should be poly: 2 SPLINE + 1 PGON + 1 PGON
+        // All should be poly: 2 PLINE + 1 PGON + 1 PGON
         let types: Vec<ElementType> = poly_mesh.element_types().copied().collect();
         assert!(types.contains(&ElementType::PLINE));
         assert!(types.contains(&ElementType::PGON));
@@ -417,8 +417,7 @@ mod tests {
         let poly_mesh = polyze(&mesh.view());
         let result = unpolyze(&poly_mesh.view());
 
-        // SPLINE cannot be converted, so this should error.
-        assert!(result.is_err());
+        assert_eq!(result.unwrap().element_types().count(), 3);
     }
 
     #[test]

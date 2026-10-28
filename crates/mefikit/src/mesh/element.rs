@@ -69,7 +69,7 @@ pub enum RegularElemType {
 /// node fields for example. This can also be used to store nodes order, or duplicated nodes, etc.
 /// Some elements are not linear but of higher order such as SEG3, HEX21. The elements node
 /// connecivity follows a convention. Three kinds of elements can hold an abitrary number of nodes
-/// and are specials: SPLINE, PGON (Polygon), and PHED (Polyhedron).
+/// and are specials: PLINE (Polyline), PGON (Polygon), and PHED (Polyhedron).
 #[repr(u8)]
 #[derive(Debug, Eq, Hash, Copy, Clone, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ElementType {
@@ -192,7 +192,7 @@ impl ElementType {
     /// Returns the convexity known from the element type alone.
     ///
     /// Fixed-node element types are always convex; arbitrary polygon, polyhedron and spline
-    /// elements (PGON, PHED, SPLINE) can be concave and their convexity must be tested on demand.
+    /// elements (PGON, PHED, PLINE) can be concave and their convexity must be tested on demand.
     pub fn known_convexity(&self) -> Convexity {
         match self.regularity() {
             Regularity::Regular => Convexity::Convex,
