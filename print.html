@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-65b857ab.js";
+            window.path_to_searchindex_js = "searchindex-462d748f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-c7a05c98.js"></script>
@@ -478,16 +478,18 @@ element node ordering and face definitions.</p>
 <tr><td>QUAD9</td><td>2D</td><td>9</td><td>Regular</td><td>Biquadratic quadrilateral</td></tr>
 <tr><td>TET4</td><td>3D</td><td>4</td><td>Regular</td><td>Linear tetrahedron</td></tr>
 <tr><td>TET10</td><td>3D</td><td>10</td><td>Regular</td><td>Quadratic tetrahedron</td></tr>
+<tr><td>WEDGE6</td><td>3D</td><td>6</td><td>Regular</td><td>Linear wedge</td></tr>
+<tr><td>WEDGE15</td><td>3D</td><td>15</td><td>Regular</td><td>Quadratic wedge</td></tr>
 <tr><td>HEX8</td><td>3D</td><td>8</td><td>Regular</td><td>Linear hexahedron</td></tr>
 <tr><td>HEX21</td><td>3D</td><td>21</td><td>Regular</td><td>Tricubic hexahedron</td></tr>
-<tr><td>SPLINE</td><td>1D</td><td>var.</td><td>Poly</td><td>Polyline</td></tr>
+<tr><td>PLINE</td><td>1D</td><td>var.</td><td>Poly</td><td>Polyline</td></tr>
 <tr><td>PGON</td><td>2D</td><td>var.</td><td>Poly</td><td>Polygon</td></tr>
 <tr><td>PHED</td><td>3D</td><td>var.</td><td>Poly</td><td>Polyhedron</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="poly-element-representation"><a class="header" href="#poly-element-representation">Poly element representation</a></h2>
-<p>Poly elements (SPLINE, PGON, PHED) store their connectivity as a flat array of
+<p>Poly elements (PLINE, PGON, PHED) store their connectivity as a flat array of
 node indices. <strong>Faces are delimited by <code>usize::MAX</code> sentinel values.</strong></p>
 <ul>
 <li>
@@ -589,6 +591,37 @@ triangular faces (VTK convention):</p>
 in CCW order when viewed from outside the element.</p>
 <p>For <strong>TET10</strong>, the vertex convention is: nodes 0–3 vertices, mid-side nodes
 4 (edge 01), 5 (edge 12), 6 (edge 02), 7 (edge 03), 8 (edge 13), 9 (edge 23).</p>
+<h3 id="wedge6--wedge"><a class="header" href="#wedge6--wedge">WEDGE6 — Wedge</a></h3>
+<p>Nodes 0-5 are the 6 vertices of a unit wedge, numbered following the <strong>VTK</strong> convention:</p>
+<pre><code>    5 +----------+ 4
+      |\        /|
+      |  \     / |
+      |    \  /  |
+      |      + 3 |
+      |      |   |
+    2 + - - -|- -+ 1
+       \     |  /
+         \   | /
+           \ |/
+             + 0
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Face</th><th>Nodes</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>[0, 2, 1]</td><td>Bottom</td></tr>
+<tr><td>1</td><td>[3, 4, 5]</td><td>Top</td></tr>
+<tr><td>2</td><td>[0, 1, 4, 3]</td><td>Starting node 0</td></tr>
+<tr><td>3</td><td>[1, 2, 5, 4]</td><td>Starting node 1</td></tr>
+<tr><td>4</td><td>[2, 0, 3, 5]</td><td>Starting node 2</td></tr>
+</tbody>
+</table>
+</div>
+<p>For <strong>WEDGE15</strong>, the vertex convention is: nodes 0–5 vertices, mid-side nodes
+(bottom, top, middle): 6 (edge 01), 7 (edge 12), 8 (edge 02), 9 (edge 34), 10
+(edge 45), 11 (edge 35), 12 (edge 03), 13 (edge 14), 14 (edge 25).</p>
 <h3 id="hex8--hexahedron"><a class="header" href="#hex8--hexahedron">HEX8 — Hexahedron</a></h3>
 <p>Nodes 0–7 are the eight vertices of a unit cube, numbered following the
 <strong>VTK</strong> convention:</p>
