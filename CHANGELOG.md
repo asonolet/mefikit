@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## [0.6.0](https://github.com/asonolet/mefikit/compare/v0.5.1...v0.6.0) - 2026-10-28
+
+### Add
+
+- wedge support ([#52](https://github.com/asonolet/mefikit/pull/52))
+
+### Fix
+
+- PHED X, Y, Z computation (coords iterator skip usize::MAX)
+
+### Performance
+
+- do not build src_poly cache
+- multithreaded conservativeP0 3D transfer
+
 ## [0.5.1](https://github.com/asonolet/mefikit/compare/v0.5.0...v0.5.1) - 2026-10-14
 
 ### Fix
