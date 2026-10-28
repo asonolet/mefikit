@@ -28,11 +28,14 @@ def test_wedge_measure():
 
     tr = mf.transfer.ConservativeP0(w, w, def_val=0.0)
     w.fields["Mt"] = (tr(mf.M) / mf.M - 1.0) * 100.0
-    w.to_pyvista().plot(show_edges=True)
+    # w.to_pyvista().plot(show_edges=True)
 
     tr2 = mf.transfer.ConservativeP0(w, w2, def_val=0.0)
     w2.fields["Mt"] = tr2(mf.M)
-    w2.to_pyvista().plot(show_edges=True)
+    # w2.to_pyvista().plot(show_edges=True)
+    f = w2.fields["Mt"].numpy()
+    assert np.isclose(f[-1], 0.125)
+    assert np.isclose(f[-2], 0.375)
 
 
 if __name__ == "__main__":
