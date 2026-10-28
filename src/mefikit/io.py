@@ -10,6 +10,7 @@ type_order = [
     "VERTEX",
     "SEG2",
     "SEG3",
+    "PLINE",
     "TRI3",
     "TRI6",
     "QUAD4",
@@ -45,6 +46,7 @@ mf_types_dim = {
     "VERTEX": 0,
     "SEG2": 1,
     "SEG3": 1,
+    "PLINE": 1,
     "TRI3": 2,
     "TRI6": 2,
     "QUAD4": 2,
@@ -64,10 +66,13 @@ mf_types_num_node = {
     "VERTEX": 1,
     "SEG2": 2,
     "SEG3": 3,
+    "SEG4": 4,
     "TRI3": 3,
     "TRI6": 6,
+    "TRI7": 7,
     "QUAD4": 4,
     "QUAD8": 8,
+    "QUAD9": 9,
     "TET4": 4,
     "TET10": 10,
     "WEDGE6": 6,
@@ -180,6 +185,7 @@ def install_conversions():
             "VERTEX": pv.CellType.VERTEX,
             "SEG2": pv.CellType.LINE,
             "SEG3": pv.CellType.QUADRATIC_EDGE,
+            "PLINE": pv.CellType.POLY_LINE,
             "TRI3": pv.CellType.TRIANGLE,
             "TRI6": pv.CellType.QUADRATIC_TRIANGLE,
             "QUAD4": pv.CellType.QUAD,
@@ -346,24 +352,6 @@ def install_conversions():
 
         if isinstance(fields, mc.MEDCouplingFieldDouble):
             fields = (fields,)
-
-        mf_types_num_node = {
-            "VERTEX": 1,
-            "SEG2": 2,
-            "SEG3": 3,
-            "SEG4": 4,
-            "TRI3": 3,
-            "TRI6": 6,
-            "TRI7": 7,
-            "QUAD4": 4,
-            "QUAD8": 8,
-            "QUAD9": 9,
-            "TET4": 4,
-            "TET10": 10,
-            "WEDGE6": 6,
-            "WEDGE15": 15,
-            "HEX8": 8,
-        }
 
         _mf_permutations = {
             "TET4": (0, 1, 3, 2),
