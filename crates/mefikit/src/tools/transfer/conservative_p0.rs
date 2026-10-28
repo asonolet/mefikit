@@ -16,7 +16,7 @@ use rayon::prelude::*;
 
 use super::operator::{RowSparse, TransferMethod, TransferOperator, validated_dims};
 use crate::element_traits::ElementGeo;
-use crate::geometry::{Polyhedron, cross2, into_ccw2, signed_area2};
+use crate::geometry::{cross2, into_ccw2, signed_area2};
 use crate::mesh::{Dimension, Element, ElementBlockView, ElementId, ElementType, UMeshView};
 use crate::tools::spatial_index::{SpatialIndex, SpatiallyIndexable};
 
@@ -147,9 +147,6 @@ fn build_overlap_3d(
     src_offsets: &BTreeMap<ElementType, usize>,
 ) -> Vec<(ElementType, RowSparse)> {
     let index = mesh_src.bvh3();
-    // Each source cell may overlap several target cells; cache its polyhedron so it is only
-    // built once instead of once per overlapping target cell.
-    let src_polys = compute_src_polys(mesh_src, mesh_tgt, &index);
     let mut data = Vec::new();
     for (_, tgt_block) in mesh_tgt.blocks() {
         let tgt_et = tgt_block.element_type();
@@ -157,7 +154,7 @@ fn build_overlap_3d(
             continue;
         }
         let (target_measure, row_ptr, src_idx, weights) =
-            compute_block_overlap_parallel(mesh_tgt, src_offsets, &index, &src_polys, tgt_block);
+            compute_block_overlap_parallel(mesh_src, mesh_tgt, src_offsets, &index, tgt_block);
         data.push((
             tgt_et,
             RowSparse {
@@ -171,60 +168,6 @@ fn build_overlap_3d(
     data
 }
 
-fn compute_src_polys(
-    mesh_src: &UMeshView,
-    mesh_tgt: &UMeshView,
-    index: &SpatialIndex<3>,
-) -> BTreeMap<ElementType, Vec<Option<Polyhedron>>> {
-    let mut poly_cache = BTreeMap::new();
-    let src_block_len: BTreeMap<ElementType, usize> = mesh_src
-        .blocks()
-        .map(|(et, block)| (*et, block.len()))
-        .collect();
-    for (_, tgt_block) in mesh_tgt.blocks() {
-        let tgt_et = tgt_block.element_type();
-        if tgt_et.dimension() != Dimension::D3 {
-            continue;
-        }
-        let n = tgt_block.len();
-        let mut target_measure = nd::Array1::zeros(n);
-        let mut row_ptr = Vec::with_capacity(n + 1);
-        row_ptr.push(0);
-        for (j, elem) in tgt_block.iter(mesh_tgt.coords()).enumerate() {
-            let tgt_poly = elem.to_polyhedron();
-            target_measure[j] = tgt_poly.volume();
-
-            let [min, max] = tgt_poly.bounds();
-            let scale = min
-                .iter()
-                .chain(max.iter())
-                .fold(1.0_f64, |acc, &c| acc.max(c.abs()));
-            let eps = 1e-12 * scale;
-            let candidates = index.in_bounds(
-                [min[0] - eps, min[1] - eps, min[2] - eps],
-                [max[0] + eps, max[1] + eps, max[2] + eps],
-            );
-
-            for (src_et, indices) in candidates.0 {
-                if src_et.dimension() != Dimension::D3 {
-                    continue;
-                }
-                let n_src_et = src_block_len[&src_et];
-                let slots = poly_cache
-                    .entry(src_et)
-                    .or_insert_with(|| vec![None; n_src_et]);
-                for &i in &indices {
-                    if slots[i].is_none() {
-                        slots[i] =
-                            Some(mesh_src.element(ElementId::new(src_et, i)).to_polyhedron());
-                    }
-                }
-            }
-        }
-    }
-    poly_cache
-}
-
 struct OverlapRow {
     measure: f64,
     src_idx: Vec<usize>,
@@ -232,10 +175,10 @@ struct OverlapRow {
 }
 
 fn compute_block_overlap_parallel(
+    mesh_src: &UMeshView,
     mesh_tgt: &UMeshView,
     src_offsets: &BTreeMap<ElementType, usize>,
     index: &SpatialIndex<3>,
-    poly_cache: &BTreeMap<ElementType, Vec<Option<Polyhedron>>>,
     block: &ElementBlockView,
 ) -> (Array1<f64>, Vec<usize>, Vec<usize>, Vec<f64>) {
     let compute_row = |elem: Element| {
@@ -265,11 +208,11 @@ fn compute_block_overlap_parallel(
             let offset = src_offsets[&src_et];
 
             for &i in &indices {
-                let src_poly = poly_cache[&src_et][i].as_ref().unwrap();
+                let src_poly = mesh_src.element(ElementId::new(src_et, i)).to_polyhedron();
 
                 // Candidates already come from a BVH AABB query,
                 // so clip directly without another AABB rejection.
-                let vol = tgt_poly.convex_intersection_volume_impl(src_poly);
+                let vol = tgt_poly.convex_intersection_volume_impl(&src_poly);
 
                 if vol > 1e-16 {
                     src_idx.push(offset + i);
