@@ -1922,7 +1922,7 @@ mod tests {
             state ^= state << 17;
             (state as f64) / (u64::MAX as f64)
         };
-        let na = 4_000_000usize;
+        let na = 1_000_000usize;
         let mut hits = 0usize;
         for _ in 0..na {
             let pt = [next(), next(), next()];
@@ -1937,8 +1937,8 @@ mod tests {
         }
         let estimate = (hits as f64) / (na as f64);
         assert!(
-            (estimate - exact).abs() < 0.02,
-            "Monte-Carlo estimate {estimate} should be within 0.02 of exact {exact}"
+            (estimate - exact).abs() < 0.0005,
+            "Monte-Carlo estimate {estimate} should be within 0.0005 of exact {exact}"
         );
     }
 

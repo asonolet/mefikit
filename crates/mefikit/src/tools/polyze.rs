@@ -76,6 +76,7 @@ mod tests {
     use super::*;
     use crate::element_traits::ElementGeo;
     use crate::mesh::{ElementType, UMesh};
+    use itertools::Itertools;
     use ndarray as nd;
 
     #[test]
@@ -417,11 +418,11 @@ mod tests {
         let poly_mesh = polyze(&mesh.view());
         let result = unpolyze(&poly_mesh.view());
 
-        assert_eq!(result.unwrap().element_types().count(), 3);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn test_unpolyze_spline_error() {
+    fn test_unpolyze_pline_error() {
         let coords =
             nd::ArcArray2::from_shape_vec((3, 2), vec![0.0, 0.0, 1.0, 0.0, 2.0, 0.0]).unwrap();
         let mut mesh = UMesh::new(coords);
@@ -438,8 +439,12 @@ mod tests {
                 .all(|&et| et == ElementType::PLINE)
         );
 
-        let result = unpolyze(&poly_mesh.view());
-        assert!(result.is_err());
+        let result = unpolyze(&poly_mesh.view()).unwrap();
+        assert_eq!(
+            result.element_types().collect_vec(),
+            vec![&ElementType::SEG2]
+        );
+        assert_eq!(result.num_elements(), 2);
     }
 
     #[test]
