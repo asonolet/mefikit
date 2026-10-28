@@ -314,23 +314,32 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 )),
             },
             PHED => {
-                let sub = self.subentities(Some(Dimension::D1));
-                match sub.len() {
-                    1 => {
-                        let (_, face_conn) = &sub[0];
-                        phed_to_regular(face_conn)
-                    }
-                    2 => match &sub.as_slice() {
-                        &[(TRI3, tri_conn), (QUAD4, quad_conn)]
-                        | &[(QUAD4, quad_conn), (TRI3, tri_conn)] => {
-                            Ok((WEDGE6, phed_to_wedge(quad_conn, tri_conn)?))
-                        }
-                        _ => Err("Could not be matched to a regular element.".into()),
-                    },
-                    n => Err(format!(
-                        "A PHED with {n} different types of faces cannot be converted back to a regular element."
-                    )),
+                let co = self.subentities(Some(Dimension::D1)).pop().unwrap().1;
+                let s = co[0].len();
+                if co.iter().all(|c| c.len() == s) {
+                    return phed_to_regular(&co);
                 }
+                let counts = co.iter().map(|c| c.len()).counts();
+                if counts.len() != 2 {
+                    return Err("This element with faces of more than 2 different types cannot be converted to a regular element.".into());
+                }
+                if (counts[&3] == 2) && (counts[&4] == 3) {
+                    let mut tris = [[0; 3]; 2];
+                    let mut quads = [[0; 4]; 3];
+                    let mut ntri = 0;
+                    let mut nquad = 0;
+                    for c in co.iter() {
+                        if c.len() == 3 {
+                            tris[ntri].copy_from_slice(c);
+                            ntri += 1;
+                        } else {
+                            quads[nquad].copy_from_slice(c);
+                            nquad += 1;
+                        }
+                    }
+                    return Ok((WEDGE6, phed_to_wedge(&quads, &tris)?));
+                }
+                Err("Has faces that does not map to WEDGE6".into())
             }
         }
     }
@@ -372,7 +381,10 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
 impl<'a, T> ElementTopo<'a> for T where T: ElementLike<'a> {}
 
 /// Here the polyhedron must be well oriented for this operation to work
-fn phed_to_wedge(quad_conn: &Connectivity, tri_conn: &Connectivity) -> Result<Vec<usize>, String> {
+fn phed_to_wedge(
+    quad_conn: &[[usize; 4]; 3],
+    tri_conn: &[[usize; 3]; 2],
+) -> Result<Vec<usize>, String> {
     let n_quads = quad_conn.len();
     if n_quads != 3 {
         return Err(format!(
@@ -398,9 +410,9 @@ fn phed_to_wedge(quad_conn: &Connectivity, tri_conn: &Connectivity) -> Result<Ve
 fn get_first_opposite_triangle_node(
     v0: usize,
     v1: usize,
-    quad_conn: &Connectivity,
+    quad_conn: &[[usize; 4]; 3],
 ) -> Result<usize, String> {
-    for quad in quad_conn.iter() {
+    for quad in quad_conn {
         for ((_, &n0), (i, &n1)) in quad.iter().enumerate().circular_tuple_windows() {
             if n0 == v1 && n1 == v0 {
                 return Ok(quad[(i + 1) % 4]);
@@ -420,10 +432,6 @@ fn phed_to_regular(face_conn: &Connectivity) -> Result<(ElementType, Vec<usize>)
         return Err("PHED has no faces".into());
     }
     let nodes_per_face = face_conn[0].len();
-
-    if !face_conn.iter().all(|f| f.len() == nodes_per_face) {
-        return Err("PHED faces have inconsistent node counts".into());
-    }
 
     // Build edge→face map. Key: sorted edge, Value: list of face indices.
     let mut edge_faces: FxHashMap<SortedVecKey, Vec<usize>> = FxHashMap::default();
