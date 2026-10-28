@@ -81,15 +81,19 @@ pub fn sphere(center: [f64; 3], r: f64) -> PySelection {
 pub fn circle(center: [f64; 2], r: f64) -> PySelection {
     mf::sel::circle(center, r).into()
 }
-// TODO: Enable ElementType and Dimension exposure to Python
-// #[pyfunction]
-// pub fn types(elems: Vec<ElementType>) -> PySelection {
-//     mf::sel::types(elems).into()
-// }
-// #[pyfunction]
-// pub fn dimensions(dims: Vec<Dimension>) -> PySelection {
-//     mf::sel::dimensions(dims).into()
-// }
+#[pyfunction]
+pub fn dimensions(dims: Vec<i64>) -> PySelection {
+    let d: Vec<Dimension> = dims
+        .into_iter()
+        .map(|x| (x as usize).try_into().unwrap())
+        .collect();
+    mf::sel::dimensions(d).into()
+}
+#[pyfunction]
+pub fn dim(dim: i64) -> PySelection {
+    let d: Dimension = (dim as usize).try_into().unwrap();
+    mf::sel::dimensions(vec![d]).into()
+}
 #[pyfunction]
 pub fn all() -> PySelection {
     mf::sel::all().into()

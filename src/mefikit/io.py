@@ -10,6 +10,7 @@ type_order = [
     "VERTEX",
     "SEG2",
     "SEG3",
+    "PLINE",
     "TRI3",
     "TRI6",
     "QUAD4",
@@ -17,6 +18,8 @@ type_order = [
     "PGON",
     "TET4",
     "TET10",
+    "WEDGE6",
+    "WEDGE15",
     "HEX8",
     "HEX20",
 ]
@@ -31,6 +34,8 @@ meshio_to_mefikit_type = {
     "quad8": "QUAD8",
     "tetra": "TET4",
     "tetra10": "TET10",
+    "wedge": "WEDGE6",
+    "wedge15": "WEDGE15",
     "hexahedron": "HEX8",
     "hexahedron20": "HEX20",
 }
@@ -41,6 +46,7 @@ mf_types_dim = {
     "VERTEX": 0,
     "SEG2": 1,
     "SEG3": 1,
+    "PLINE": 1,
     "TRI3": 2,
     "TRI6": 2,
     "QUAD4": 2,
@@ -48,6 +54,8 @@ mf_types_dim = {
     "PGON": 2,
     "TET4": 3,
     "TET10": 3,
+    "WEDGE6": 3,
+    "WEDGE15": 3,
     "HEX8": 3,
     "HEX20": 3,
     "PHED": 3,
@@ -58,12 +66,17 @@ mf_types_num_node = {
     "VERTEX": 1,
     "SEG2": 2,
     "SEG3": 3,
+    "SEG4": 4,
     "TRI3": 3,
     "TRI6": 6,
+    "TRI7": 7,
     "QUAD4": 4,
     "QUAD8": 8,
+    "QUAD9": 9,
     "TET4": 4,
     "TET10": 10,
+    "WEDGE6": 6,
+    "WEDGE15": 15,
     "HEX8": 8,
     "HEX20": 20,
 }
@@ -97,6 +110,8 @@ def install_conversions():
             "QUAD8": 8,
             "TET4": 14,
             "TET10": 20,
+            "WEDGE6": 16,
+            "WEDGE15": 25,
             "HEX8": 18,
             "HEX20": 30,
         }
@@ -105,6 +120,8 @@ def install_conversions():
         _mf_permutations = {
             "TET4": [0, 1, 3, 2],
             "TET10": [0, 1, 3, 2, 4, 8, 7, 6, 5, 9],
+            "WEDGE6": [3, 4, 5, 0, 1, 2],
+            "WEDGE15": [3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8, 12, 13, 14],
             "HEX8": [4, 5, 6, 7, 0, 1, 2, 3],
         }
 
@@ -168,6 +185,7 @@ def install_conversions():
             "VERTEX": pv.CellType.VERTEX,
             "SEG2": pv.CellType.LINE,
             "SEG3": pv.CellType.QUADRATIC_EDGE,
+            "PLINE": pv.CellType.POLY_LINE,
             "TRI3": pv.CellType.TRIANGLE,
             "TRI6": pv.CellType.QUADRATIC_TRIANGLE,
             "QUAD4": pv.CellType.QUAD,
@@ -175,6 +193,8 @@ def install_conversions():
             "PGON": pv.CellType.POLYGON,
             "TET4": pv.CellType.TETRA,
             "TET10": pv.CellType.QUADRATIC_TETRA,
+            "WEDGE6": pv.CellType.WEDGE,
+            "WEDGE15": pv.CellType.QUADRATIC_WEDGE,
             "HEX8": pv.CellType.HEXAHEDRON,
             "HEX20": pv.CellType.QUADRATIC_HEXAHEDRON,
             "PHED": pv.CellType.POLYHEDRON,
@@ -333,25 +353,11 @@ def install_conversions():
         if isinstance(fields, mc.MEDCouplingFieldDouble):
             fields = (fields,)
 
-        mf_types_num_node = {
-            "VERTEX": 1,
-            "SEG2": 2,
-            "SEG3": 3,
-            "SEG4": 4,
-            "TRI3": 3,
-            "TRI6": 6,
-            "TRI7": 7,
-            "QUAD4": 4,
-            "QUAD8": 8,
-            "QUAD9": 9,
-            "TET4": 4,
-            "TET10": 10,
-            "HEX8": 8,
-        }
-
         _mf_permutations = {
             "TET4": (0, 1, 3, 2),
             "TET10": (0, 1, 3, 2, 4, 8, 7, 6, 5, 9),
+            "WEDGE6": (3, 4, 5, 0, 1, 2),
+            "WEDGE15": (3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8, 12, 13, 14),
             "HEX8": (4, 5, 6, 7, 0, 1, 2, 3),
         }
 
@@ -368,6 +374,8 @@ def install_conversions():
             9: "QUAD9",
             14: "TET4",
             20: "TET10",
+            16: "WEDGE6",
+            25: "WEDGE15",
             18: "HEX8",
             5: "PGON",
             31: "PHED",

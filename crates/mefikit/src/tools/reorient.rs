@@ -4,7 +4,7 @@
 //! linear cell types it understands:
 //! - 2D cells (TRI3, QUAD4, PGON) are rewound counter-clockwise in the xy plane
 //!   (`signed_area2` tells the sign, so the fix is translation/rotation independent);
-//! - TET4 and HEX8 are given positive signed volume.
+//! - TET4, WEDGE6 and HEX8 are given positive signed volume.
 //!
 //! Polyhedral (PHED) cells cannot be handled by that linear fixer (their node lists do not map
 //! one-to-one onto a regular base shape), so they are reoriented face by face with the same
@@ -33,7 +33,7 @@ use rustc_hash::FxHashMap;
 fn fixable(et: ElementType, space_dim: usize) -> bool {
     match et {
         ElementType::TRI3 | ElementType::QUAD4 | ElementType::PGON => space_dim == 2,
-        ElementType::TET4 | ElementType::HEX8 => space_dim == 3,
+        ElementType::TET4 | ElementType::WEDGE6 | ElementType::HEX8 => space_dim == 3,
         _ => false,
     }
 }
@@ -274,6 +274,18 @@ mod tests {
         total
     }
 
+    fn wedge_total_measure3(mesh: &UMesh) -> f64 {
+        let mut total = 0.0;
+        for (&et, block) in mesh.blocks() {
+            if et == ElementType::WEDGE6 {
+                for elem in block.iter(mesh.coords().view()) {
+                    total += elem.measure3();
+                }
+            }
+        }
+        total
+    }
+
     fn connectivity_snapshot(mesh: &UMesh) -> Vec<(ElementType, Vec<Vec<usize>>)> {
         mesh.blocks()
             .map(|(&et, b)| {
@@ -338,6 +350,33 @@ mod tests {
         let lefty = crate::tools::polyze::unpolyze(&mesh.view()).unwrap();
         assert!(hexa_total_measure3(&lefty) < 0.0);
         assert_abs_diff_eq!(hexa_total_measure3(&lefty.reorient()), 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn reversed_wedge6_winding_is_repaired() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0]
+        ]
+        .into_shared();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_regular_block(
+            ElementType::WEDGE6,
+            nd::arr2(&[[3, 4, 5, 0, 1, 2]]).to_shared(),
+            None,
+        );
+        assert!(wedge_total_measure3(&mesh) < 0.0);
+
+        let fixed = mesh.reorient();
+        assert_abs_diff_eq!(wedge_total_measure3(&fixed), 0.5, epsilon = 1e-12);
+        assert_eq!(
+            connectivity_snapshot(&fixed),
+            connectivity_snapshot(&fixed.reorient())
+        );
     }
 
     #[test]

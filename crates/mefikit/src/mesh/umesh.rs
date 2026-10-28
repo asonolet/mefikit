@@ -864,7 +864,6 @@ impl UMesh {
     #[cfg(feature = "rayon")]
     fn extract_impl(&self, ids: &ElementIds, with_fields: bool) -> UMesh {
         let mut extracted = UMesh::new(self.coords.clone());
-        // TODO: conditionnaly extract fields
         for (t, block) in ids.iter_blocks() {
             if !self.element_blocks.contains_key(t) {
                 continue;

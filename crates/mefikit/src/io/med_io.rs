@@ -227,9 +227,8 @@ impl ElementType {
 
             // ElementType::Pyramid5   => "PY5",
             // ElementType::Pyramid13  => "P13",
-
-            // ElementType::Wedge6     => "PE6",
-            // ElementType::Wedge15    => "P15",
+            ElementType::WEDGE6 => "PE6",
+            ElementType::WEDGE15 => "P15",
             ElementType::PGON => "POG",
             ElementType::PHED => "POE",
             _ => todo!(),
@@ -425,6 +424,8 @@ impl ElementType {
             // VTK→MED: MED node 0 is top-left-front, VTK node 0 is bottom-left-front.
             // Maps VTK bottom(0,1,2,3) → MED bottom(4,5,6,7), VTK top(4,5,6,7) → MED top(0,1,2,3).
             // Self-inverse.
+            ElementType::WEDGE6 => Some(&[3, 4, 5, 0, 1, 2]),
+            ElementType::WEDGE15 => Some(&[3, 4, 5, 0, 1, 2, 9, 10, 11, 6, 7, 8, 12, 13, 14]),
             ElementType::HEX8 => Some(&[4, 5, 6, 7, 0, 1, 2, 3]),
             _ => None,
         }
@@ -482,6 +483,8 @@ impl ElementType {
             ElementType::QUAD9 => 209,
             ElementType::TET4 => 304,
             ElementType::TET10 => 310,
+            ElementType::WEDGE6 => 306,
+            ElementType::WEDGE15 => 315,
             ElementType::HEX8 => 308,
             ElementType::PGON => 400,
             ElementType::PHED => 500,
@@ -937,6 +940,8 @@ fn med_name_to_element_type(name: &str) -> Option<ElementType> {
         "QU9" => Some(ElementType::QUAD9),
         "TE4" => Some(ElementType::TET4),
         "T10" => Some(ElementType::TET10),
+        "PE6" => Some(ElementType::WEDGE6),
+        "P15" => Some(ElementType::WEDGE15),
         "HE8" => Some(ElementType::HEX8),
         "POG" | "POG2" => Some(ElementType::PGON),
         "POE" => Some(ElementType::PHED),

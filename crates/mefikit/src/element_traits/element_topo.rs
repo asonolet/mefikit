@@ -3,8 +3,13 @@
 //! Provides the [`ElementTopo`] trait for extracting subentities (faces, edges, vertices)
 //! and decomposing elements into simplexes.
 
+use itertools::Itertools;
 use ndarray::prelude::*;
+use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
+use std::collections::hash_map::Entry;
 
+use crate::element_traits::SortedVecKey;
 use crate::mesh::Connectivity;
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
@@ -107,6 +112,39 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     panic!("It is not possible to ask for codim diff from D1, D2 or D3 on TET")
                 }
             },
+            WEDGE6 => match codim {
+                Dimension::D1 => {
+                    let conn1 = arr2(&[[co[0], co[2], co[1]], [co[3], co[4], co[5]]]);
+                    let conn2 = arr2(&[
+                        [co[0], co[1], co[4], co[3]],
+                        [co[1], co[2], co[5], co[4]],
+                        [co[2], co[0], co[3], co[5]],
+                    ]);
+                    res.push((TRI3, Connectivity::new_regular(conn1.to_shared())));
+                    res.push((QUAD4, Connectivity::new_regular(conn2.to_shared())));
+                }
+                Dimension::D2 => {
+                    let conn = arr2(&[
+                        [co[0], co[1]],
+                        [co[0], co[2]],
+                        [co[0], co[3]],
+                        [co[1], co[2]],
+                        [co[1], co[4]],
+                        [co[2], co[5]],
+                        [co[3], co[4]],
+                        [co[3], co[5]],
+                        [co[4], co[5]],
+                    ]);
+                    res.push((SEG2, Connectivity::new_regular(conn.to_shared())));
+                }
+                Dimension::D3 => {
+                    let conn = arr2(&[[co[0]], [co[1]], [co[2]], [co[3]], [co[4]], [co[5]]]);
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => {
+                    panic!("It is not possible to ask for codim diff from D1, D2 or D3 on HEX")
+                }
+            },
             HEX8 => match codim {
                 Dimension::D1 => {
                     let conn = arr2(&[
@@ -199,7 +237,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
     /// Converts the element to its polygonal/polyhedral equivalent.
     ///
     /// - 0D (VERTEX) is returned unchanged.
-    /// - 1D elements become SPLINE with the same node list.
+    /// - 1D elements become PLINE with the same node list.
     /// - 2D elements become PGON with the same node list.
     /// - 3D elements become PHED with face-based connectivity. Faces are
     ///   separated by `usize::MAX` sentinel values in the returned vector.
@@ -209,8 +247,8 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         let co = self.connectivity();
         match self.element_type() {
             VERTEX => (VERTEX, co.to_vec()),
-            SEG2 | SEG3 | SEG4 => (SPLINE, co.to_vec()),
-            TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 => (PGON, co.to_vec()),
+            SEG2 => (PLINE, co.to_vec()),
+            TRI3 | TRI6 | QUAD4 => (PGON, co.to_vec()),
             TET4 => {
                 let m = usize::MAX;
                 (
@@ -221,15 +259,13 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     ],
                 )
             }
-            TET10 => {
-                // VTK TET10: 0-3 vertices, 4(0-1), 5(1-2), 6(0-2), 7(0-3), 8(1-3), 9(2-3)
+            WEDGE6 => {
                 let m = usize::MAX;
                 (
                     PHED,
                     vec![
-                        co[0], co[1], co[2], co[4], co[5], co[6], m, co[1], co[2], co[3], co[5],
-                        co[9], co[8], m, co[2], co[3], co[0], co[9], co[7], co[6], m, co[3], co[0],
-                        co[1], co[7], co[4], co[8],
+                        co[0], co[2], co[1], m, co[3], co[4], co[5], m, co[0], co[1], co[4], co[3],
+                        m, co[1], co[2], co[5], co[4], m, co[2], co[0], co[3], co[5],
                     ],
                 )
             }
@@ -244,36 +280,15 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     ],
                 )
             }
-            HEX21 => {
-                // VTK HEX21: 0-7 vertices, 8(0-1), 9(1-2), 10(2-3), 11(3-0),
-                //   12(4-5), 13(5-6), 14(6-7), 15(7-4), 16(0-4), 17(1-5), 18(2-6), 19(3-7)
-                let m = usize::MAX;
-                (
-                    PHED,
-                    vec![
-                        // bottom [0,3,2,1]
-                        co[0], co[3], co[2], co[1], co[8], co[9], co[10], co[11], m,
-                        // top [4,5,6,7]
-                        co[4], co[5], co[6], co[7], co[12], co[13], co[14], co[15], m,
-                        // front [0,1,5,4]
-                        co[0], co[1], co[5], co[4], co[8], co[17], co[12], co[16], m,
-                        // right [1,2,6,5]
-                        co[1], co[2], co[6], co[5], co[9], co[18], co[13], co[17], m,
-                        // back [2,3,7,6]
-                        co[2], co[3], co[7], co[6], co[10], co[19], co[14], co[18], m,
-                        // left [3,0,4,7]
-                        co[3], co[0], co[4], co[7], co[11], co[16], co[15], co[19],
-                    ],
-                )
-            }
-            SPLINE | PGON | PHED => (self.element_type(), co.to_vec()),
+            PLINE | PGON | PHED => (self.element_type(), co.to_vec()),
+            _ => todo!("Quadratic elements are not supported yet."),
         }
     }
 
     /// Converts a poly element back to its regular equivalent.
     ///
     /// - Regular elements (VERTEX, SEG*, TRI*, QUAD*, TET*, HEX*) are returned unchanged.
-    /// - SPLINE cannot be converted (ambiguous: could be SEG2, SEG3, or SEG4).
+    /// - PLINE with 2 nodes becomes SEG2.
     /// - PGON with 3 nodes becomes TRI3, with 4 nodes becomes QUAD4.
     /// - PHED with 4 triangular faces becomes TET4, with 6 quadrilateral faces becomes HEX8.
     ///   Face orientation is verified by checking that each edge is shared by exactly
@@ -284,8 +299,13 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         let co = self.connectivity();
         match self.element_type() {
             VERTEX | SEG2 | SEG3 | SEG4 | TRI3 | TRI6 | TRI7 | QUAD4 | QUAD8 | QUAD9 | TET4
-            | TET10 | HEX8 | HEX21 => Ok((self.element_type(), co.to_vec())),
-            SPLINE => Err("SPLINE cannot be converted to a regular element".into()),
+            | TET10 | WEDGE6 | WEDGE15 | HEX8 | HEX21 => Ok((self.element_type(), co.to_vec())),
+            PLINE => match co.len() {
+                2 => Ok((SEG2, co.to_vec())),
+                n => Err(format!(
+                    "PLINE with {n} nodes cannot be converted to a regular element"
+                )),
+            },
             PGON => match co.len() {
                 3 => Ok((TRI3, co.to_vec())),
                 4 => Ok((QUAD4, co.to_vec())),
@@ -294,9 +314,32 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 )),
             },
             PHED => {
-                let sub = self.subentities(Some(Dimension::D1));
-                let (_, face_conn) = &sub[0];
-                phed_to_regular(face_conn)
+                let co = self.subentities(Some(Dimension::D1)).pop().unwrap().1;
+                let s = co[0].len();
+                if co.iter().all(|c| c.len() == s) {
+                    return phed_to_regular(&co);
+                }
+                let counts = co.iter().map(|c| c.len()).counts();
+                if counts.len() != 2 {
+                    return Err("This element with faces of more than 2 different types cannot be converted to a regular element.".into());
+                }
+                if (counts[&3] == 2) && (counts[&4] == 3) {
+                    let mut tris = [[0; 3]; 2];
+                    let mut quads = [[0; 4]; 3];
+                    let mut ntri = 0;
+                    let mut nquad = 0;
+                    for c in co.iter() {
+                        if c.len() == 3 {
+                            tris[ntri].copy_from_slice(c);
+                            ntri += 1;
+                        } else {
+                            quads[nquad].copy_from_slice(c);
+                            nquad += 1;
+                        }
+                    }
+                    return Ok((WEDGE6, phed_to_wedge(&quads, &tris)?));
+                }
+                Err("Has faces that does not map to WEDGE6".into())
             }
         }
     }
@@ -318,6 +361,11 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 (TRI3, vec![co[2], co[3], co[1]]),
             ],
             TET4 | TET10 => vec![(TET4, vec![co[0], co[1], co[2], co[3]])],
+            WEDGE6 | WEDGE15 => vec![
+                (TET4, vec![co[0], co[1], co[2], co[3]]),
+                (TET4, vec![co[1], co[2], co[3], co[4]]),
+                (TET4, vec![co[2], co[3], co[4], co[5]]),
+            ],
             HEX8 | HEX21 => vec![
                 (TET4, vec![co[0], co[1], co[3], co[4]]),
                 (TET4, vec![co[2], co[3], co[1], co[6]]),
@@ -332,25 +380,58 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
 
 impl<'a, T> ElementTopo<'a> for T where T: ElementLike<'a> {}
 
+/// Here the polyhedron must be well oriented for this operation to work
+fn phed_to_wedge(
+    quad_conn: &[[usize; 4]; 3],
+    tri_conn: &[[usize; 3]; 2],
+) -> Result<Vec<usize>, String> {
+    let n_quads = quad_conn.len();
+    if n_quads != 3 {
+        return Err(format!(
+            "A phed with {n_quads} quads cannot be converted to a wedge."
+        ));
+    }
+    let n_tri = tri_conn.len();
+    if n_tri != 2 {
+        return Err(format!(
+            "A phed with {n_tri} triangles cannot be converted to a wedge."
+        ));
+    }
+    let (v0, v1) = (tri_conn[0][0], tri_conn[0][1]);
+    let v3 = get_first_opposite_triangle_node(v0, v1, quad_conn)?;
+    let (n3, _) = tri_conn[1].iter().find_position(|&x| *x == v3).unwrap();
+    let mut res = vec![];
+    let tri0 = &tri_conn[0];
+    res.extend_from_slice(&[tri0[0], tri0[2], tri0[1]]);
+    res.extend(tri_conn[1].iter().cycle().skip(n3).take(3));
+    Ok(res)
+}
+
+fn get_first_opposite_triangle_node(
+    v0: usize,
+    v1: usize,
+    quad_conn: &[[usize; 4]; 3],
+) -> Result<usize, String> {
+    for quad in quad_conn {
+        for ((_, &n0), (i, &n1)) in quad.iter().enumerate().circular_tuple_windows() {
+            if n0 == v1 && n1 == v0 {
+                return Ok(quad[(i + 1) % 4]);
+            }
+        }
+    }
+    Err("No match found while searching for matching first node of second triangle.".into())
+}
+
 /// Converts a PHED element's face connectivity to a regular element.
 ///
 /// Takes the `Connectivity::Poly` from `subentities(D1)` and determines node
 /// ordering purely from face adjacency without assuming any particular face order.
 fn phed_to_regular(face_conn: &Connectivity) -> Result<(ElementType, Vec<usize>), String> {
-    use rustc_hash::FxHashMap;
-    use smallvec::SmallVec;
-
-    use super::utils::SortedVecKey;
-
     let num_faces = face_conn.len();
     if num_faces == 0 {
         return Err("PHED has no faces".into());
     }
     let nodes_per_face = face_conn[0].len();
-
-    if !face_conn.iter().all(|f| f.len() == nodes_per_face) {
-        return Err("PHED faces have inconsistent node counts".into());
-    }
 
     // Build edge→face map. Key: sorted edge, Value: list of face indices.
     let mut edge_faces: FxHashMap<SortedVecKey, Vec<usize>> = FxHashMap::default();
@@ -414,11 +495,8 @@ fn from_phed_tet4(face_conn: &Connectivity) -> Result<(ElementType, Vec<usize>),
 /// 5. Return [a, b, c, d, e, f, g, h].
 fn from_phed_hex8(
     face_conn: &Connectivity,
-    edge_faces: &rustc_hash::FxHashMap<super::utils::SortedVecKey, Vec<usize>>,
+    edge_faces: &FxHashMap<SortedVecKey, Vec<usize>>,
 ) -> Result<(ElementType, Vec<usize>), String> {
-    use smallvec::SmallVec;
-
-    use super::utils::SortedVecKey;
     use ElementType::HEX8;
 
     let f0 = &face_conn[0];
@@ -440,7 +518,7 @@ fn from_phed_hex8(
 
     // For each edge of the bottom face, find the side face sharing that edge,
     // then determine which top node is "above" which bottom node.
-    let mut top_of: rustc_hash::FxHashMap<usize, usize> = rustc_hash::FxHashMap::default();
+    let mut top_of: FxHashMap<usize, usize> = FxHashMap::default();
 
     for j in 0..4 {
         let a = bottom[j];
@@ -464,7 +542,6 @@ fn from_phed_hex8(
         let n = side.len();
 
         // In the side face, find the node adjacent to `a` that is NOT a bottom node.
-        use std::collections::hash_map::Entry;
         if let Entry::Vacant(e) = top_of.entry(a) {
             let pos_a = side.iter().position(|&x| x == a).unwrap();
             let prev = side[(pos_a + n - 1) % n];
@@ -654,7 +731,7 @@ mod tests {
         let groups = crate::mesh::ArcGroups::new();
         let elem = Element::new(0, coords.view(), &family, conn, ElementType::SEG2, &groups);
         let (et, poly_conn) = elem.to_poly();
-        assert_eq!(et, ElementType::SPLINE);
+        assert_eq!(et, ElementType::PLINE);
         assert_eq!(poly_conn, vec![0, 1]);
     }
 
@@ -750,16 +827,9 @@ mod tests {
         let conn = &[0, 1, 2];
         let family = 0;
         let groups = crate::mesh::ArcGroups::new();
-        let elem = Element::new(
-            0,
-            coords.view(),
-            &family,
-            conn,
-            ElementType::SPLINE,
-            &groups,
-        );
+        let elem = Element::new(0, coords.view(), &family, conn, ElementType::PLINE, &groups);
         let (et, poly_conn) = elem.to_poly();
-        assert_eq!(et, ElementType::SPLINE);
+        assert_eq!(et, ElementType::PLINE);
         assert_eq!(poly_conn, vec![0, 1, 2]);
     }
 
@@ -784,7 +854,7 @@ mod tests {
             coords.view(),
             &0,
             &[0, 1, 2],
-            ElementType::SPLINE,
+            ElementType::PLINE,
             &groups,
         );
         assert!(elem.from_poly().is_err());

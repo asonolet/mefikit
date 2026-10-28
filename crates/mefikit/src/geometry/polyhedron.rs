@@ -678,6 +678,9 @@ fn triple_product(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> f64 {
     a[0] * cross[0] + a[1] * cross[1] + a[2] * cross[2]
 }
 
+/// The six quadrilateral faces of a WEDGE6 in `subentities(D1)` connectivity order (VTK convention).
+const WEDGE6_TET: [[usize; 4]; 3] = [[0, 1, 2, 3], [1, 2, 3, 4], [2, 3, 4, 5]];
+
 /// The six quadrilateral faces of a HEX8 in `subentities(D1)` connectivity order (VTK convention).
 const HEX8_FACES: [[usize; 4]; 6] = [
     [0, 3, 2, 1],
@@ -707,6 +710,15 @@ pub(crate) fn tet_volume(a: &[f64; 3], b: &[f64; 3], c: &[f64; 3], d: &[f64; 3])
     triple_product(ab, ac, ad) / 6.0
 }
 
+/// Computes the volume of a Wedge.
+pub(crate) fn wedge_volume(p: &[[f64; 3]; 6]) -> f64 {
+    let mut v = 0.0;
+    for tet in WEDGE6_TET {
+        v += tet_volume(&p[tet[0]], &p[tet[1]], &p[tet[2]], &p[tet[3]]);
+    }
+    v
+}
+
 /// Computes the volume of a hexahedron.
 ///
 /// Bit-exact with [`Polyhedron::volume`] on a hexahedron: each of the six quad faces is
@@ -722,6 +734,31 @@ pub(crate) fn hex_volume(p: &[[f64; 3]; 8]) -> f64 {
 
 /// The four triangular faces of a TET4 in `subentities(D1)` connectivity order.
 const TET4_FACES: [[usize; 3]; 4] = [[0, 1, 3], [1, 2, 3], [2, 0, 3], [0, 2, 1]];
+
+/// The two triangular faces of a WEDGE6 in `subentities(D1)` connectivity order.
+const WEDGE6_TRI_FACES: [[usize; 3]; 2] = [[0, 2, 1], [3, 4, 5]];
+/// The 3 quadrangle faces of a WEDGE6 in `subentities(D1)` connectivity order.
+const WEDGE6_QUAD_FACES: [[usize; 4]; 3] = [[0, 1, 4, 3], [1, 2, 5, 4], [2, 0, 3, 5]];
+
+/// Returns `true` if `point` lies inside the wedge with vertices `a, b, c, d, e, f`.
+///
+/// Bit-exact with [`Polyhedron::contains`] on a wedge (same ray casting and plane tests over
+/// the face layout produced by `as_polyhedron`) but allocates nothing.
+#[inline(always)]
+pub(crate) fn wedge_contains(
+    point: &[f64; 3],
+    a: &[f64; 3],
+    b: &[f64; 3],
+    c: &[f64; 3],
+    d: &[f64; 3],
+    e: &[f64; 3],
+    f: &[f64; 3],
+) -> bool {
+    let coords = [*a, *b, *c, *d, *e, *f];
+    let even1 = even_odd_contains_phed(point, &coords, &WEDGE6_QUAD_FACES);
+    let even2 = even_odd_contains_phed(point, &coords, &WEDGE6_TRI_FACES);
+    (even1 & !even2) | (!even1 & even2)
+}
 
 /// Returns `true` if `point` lies inside the tetrahedron with vertices `a, b, c, d`.
 ///
@@ -1885,7 +1922,7 @@ mod tests {
             state ^= state << 17;
             (state as f64) / (u64::MAX as f64)
         };
-        let na = 4_000_000usize;
+        let na = 1_000_000usize;
         let mut hits = 0usize;
         for _ in 0..na {
             let pt = [next(), next(), next()];
@@ -1900,8 +1937,8 @@ mod tests {
         }
         let estimate = (hits as f64) / (na as f64);
         assert!(
-            (estimate - exact).abs() < 0.02,
-            "Monte-Carlo estimate {estimate} should be within 0.02 of exact {exact}"
+            (estimate - exact).abs() < 0.0005,
+            "Monte-Carlo estimate {estimate} should be within 0.0005 of exact {exact}"
         );
     }
 

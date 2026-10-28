@@ -2,7 +2,7 @@
 //!
 //! This module converts all elements of a `UMeshView` into their poly equivalents:
 //! - 0D elements (VERTEX) stay unchanged.
-//! - 1D elements become SPLINE.
+//! - 1D elements become PLINE.
 //! - 2D elements become PGON.
 //! - 3D elements become PHED with face-based connectivity.
 //!
@@ -15,10 +15,10 @@ use crate::mesh::{Dimension, UMesh, UMeshView};
 ///
 /// Returns a new `UMesh` where:
 /// - 0D elements (VERTEX) are preserved as-is.
-/// - 1D elements (SEG2, SEG3, SEG4) become SPLINE.
+/// - 1D elements (SEG2, SEG3, SEG4) become PLINE.
 /// - 2D elements (TRI3, TRI6, TRI7, QUAD4, QUAD8, QUAD9) become PGON.
-/// - 3D elements (TET4, TET10, HEX8, HEX21) become PHED.
-/// - Already-poly elements (SPLINE, PGON, PHED) are preserved.
+/// - 3D elements (TET4, TET10, WEDGE6, HEX8, HEX21) become PHED.
+/// - Already-poly elements (PLINE, PGON, PHED) are preserved.
 ///
 /// Fields and groups are not transferred.
 pub fn polyze(mesh: &UMeshView) -> UMesh {
@@ -34,9 +34,10 @@ pub fn polyze(mesh: &UMeshView) -> UMesh {
 
 /// Converts poly elements back to their regular equivalents.
 ///
-/// - SPLINE cannot be converted (ambiguous).
+/// - PLINE cannot be converted (ambiguous).
 /// - PGON with 3 nodes becomes TRI3, with 4 nodes becomes QUAD4.
-/// - PHED with 4 triangular faces becomes TET4, with 6 quadrilateral faces becomes HEX8.
+/// - PHED with 4 triangular faces becomes TET4, with 6 quadrilateral faces becomes HEX8,
+///   and with 2 triangular plus 3 quadrilateral faces becomes WEDGE6.
 /// - Already-regular elements are copied unchanged.
 ///
 /// Returns `Err` on the first element that cannot be converted.
@@ -73,7 +74,9 @@ pub fn polyze_dim(mesh: &UMeshView, dim: Dimension) -> UMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::element_traits::ElementGeo;
     use crate::mesh::{ElementType, UMesh};
+    use itertools::Itertools;
     use ndarray as nd;
 
     #[test]
@@ -100,7 +103,7 @@ mod tests {
         assert!(
             poly_mesh
                 .element_types()
-                .all(|&et| et == ElementType::SPLINE)
+                .all(|&et| et == ElementType::PLINE)
         );
     }
 
@@ -196,9 +199,9 @@ mod tests {
 
         let poly_mesh = polyze(&mesh.view());
         assert_eq!(poly_mesh.num_elements(), 4);
-        // All should be poly: 2 SPLINE + 1 PGON + 1 PGON
+        // All should be poly: 2 PLINE + 1 PGON + 1 PGON
         let types: Vec<ElementType> = poly_mesh.element_types().copied().collect();
-        assert!(types.contains(&ElementType::SPLINE));
+        assert!(types.contains(&ElementType::PLINE));
         assert!(types.contains(&ElementType::PGON));
         assert!(!types.contains(&ElementType::SEG2));
         assert!(!types.contains(&ElementType::QUAD4));
@@ -357,6 +360,42 @@ mod tests {
     }
 
     #[test]
+    fn test_unpolyze_wedge6_roundtrip() {
+        let coords = nd::ArcArray2::from_shape_vec(
+            (6, 3),
+            vec![
+                0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 0.0,
+                1.0, 1.0,
+            ],
+        )
+        .unwrap();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_regular_block(
+            ElementType::WEDGE6,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5]]).to_shared(),
+            None,
+        );
+
+        let poly_mesh = polyze(&mesh.view());
+        assert!(poly_mesh.element_types().all(|&et| et == ElementType::PHED));
+        let unpoly_mesh = unpolyze(&poly_mesh.view()).unwrap();
+
+        assert_eq!(unpoly_mesh.num_elements(), 1);
+        let types: Vec<ElementType> = unpoly_mesh.element_types().copied().collect();
+        assert_eq!(types, vec![ElementType::WEDGE6]);
+        let conn = unpoly_mesh
+            .regular_connectivity(ElementType::WEDGE6)
+            .unwrap();
+        let conn = conn.row(0);
+        assert_eq!(conn.len(), 6);
+        let mut sorted: Vec<usize> = conn.iter().copied().collect();
+        sorted.sort();
+        assert_eq!(sorted, vec![0, 1, 2, 3, 4, 5]);
+        let elem = unpoly_mesh.elements().next().unwrap();
+        assert!((elem.measure3().abs() - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
     fn test_unpolyze_mixed_mesh() {
         let coords = nd::ArcArray2::from_shape_vec(
             (5, 2),
@@ -379,12 +418,11 @@ mod tests {
         let poly_mesh = polyze(&mesh.view());
         let result = unpolyze(&poly_mesh.view());
 
-        // SPLINE cannot be converted, so this should error.
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_unpolyze_spline_error() {
+    fn test_unpolyze_pline_error() {
         let coords =
             nd::ArcArray2::from_shape_vec((3, 2), vec![0.0, 0.0, 1.0, 0.0, 2.0, 0.0]).unwrap();
         let mut mesh = UMesh::new(coords);
@@ -398,11 +436,15 @@ mod tests {
         assert!(
             poly_mesh
                 .element_types()
-                .all(|&et| et == ElementType::SPLINE)
+                .all(|&et| et == ElementType::PLINE)
         );
 
-        let result = unpolyze(&poly_mesh.view());
-        assert!(result.is_err());
+        let result = unpolyze(&poly_mesh.view()).unwrap();
+        assert_eq!(
+            result.element_types().collect_vec(),
+            vec![&ElementType::SEG2]
+        );
+        assert_eq!(result.num_elements(), 2);
     }
 
     #[test]

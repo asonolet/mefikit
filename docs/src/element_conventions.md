@@ -8,29 +8,31 @@ element node ordering and face definitions.
 
 ## Element types
 
-| Type   | Dim | Nodes | Regularity | Description                           |
-| ------ | --- | ----- | ---------- | ------------------------------------- |
-| VERTEX | 0D  | 1     | Regular    | Point                                 |
-| SEG2   | 1D  | 2     | Regular    | Linear segment                        |
-| SEG3   | 1D  | 3     | Regular    | Quadratic segment                     |
-| SEG4   | 1D  | 4     | Regular    | Cubic segment                         |
-| TRI3   | 2D  | 3     | Regular    | Linear triangle                       |
-| TRI6   | 2D  | 6     | Regular    | Quadratic triangle                    |
-| TRI7   | 2D  | 7     | Regular    | Quadratic triangle + centroid         |
-| QUAD4  | 2D  | 4     | Regular    | Linear quadrilateral                  |
-| QUAD8  | 2D  | 8     | Regular    | Quadratic quadrilateral (serendipity) |
-| QUAD9  | 2D  | 9     | Regular    | Biquadratic quadrilateral             |
-| TET4   | 3D  | 4     | Regular    | Linear tetrahedron                    |
-| TET10  | 3D  | 10    | Regular    | Quadratic tetrahedron                 |
-| HEX8   | 3D  | 8     | Regular    | Linear hexahedron                     |
-| HEX21  | 3D  | 21    | Regular    | Tricubic hexahedron                   |
-| SPLINE | 1D  | var.  | Poly       | Polyline                              |
-| PGON   | 2D  | var.  | Poly       | Polygon                               |
-| PHED   | 3D  | var.  | Poly       | Polyhedron                            |
+| Type    | Dim | Nodes | Regularity | Description                           |
+| ------- | --- | ----- | ---------- | ------------------------------------- |
+| VERTEX  | 0D  | 1     | Regular    | Point                                 |
+| SEG2    | 1D  | 2     | Regular    | Linear segment                        |
+| SEG3    | 1D  | 3     | Regular    | Quadratic segment                     |
+| SEG4    | 1D  | 4     | Regular    | Cubic segment                         |
+| TRI3    | 2D  | 3     | Regular    | Linear triangle                       |
+| TRI6    | 2D  | 6     | Regular    | Quadratic triangle                    |
+| TRI7    | 2D  | 7     | Regular    | Quadratic triangle + centroid         |
+| QUAD4   | 2D  | 4     | Regular    | Linear quadrilateral                  |
+| QUAD8   | 2D  | 8     | Regular    | Quadratic quadrilateral (serendipity) |
+| QUAD9   | 2D  | 9     | Regular    | Biquadratic quadrilateral             |
+| TET4    | 3D  | 4     | Regular    | Linear tetrahedron                    |
+| TET10   | 3D  | 10    | Regular    | Quadratic tetrahedron                 |
+| WEDGE6  | 3D  | 6     | Regular    | Linear wedge                          |
+| WEDGE15 | 3D  | 15    | Regular    | Quadratic wedge                       |
+| HEX8    | 3D  | 8     | Regular    | Linear hexahedron                     |
+| HEX21   | 3D  | 21    | Regular    | Tricubic hexahedron                   |
+| PLINE   | 1D  | var.  | Poly       | Polyline                              |
+| PGON    | 2D  | var.  | Poly       | Polygon                               |
+| PHED    | 3D  | var.  | Poly       | Polyhedron                            |
 
 ## Poly element representation
 
-Poly elements (SPLINE, PGON, PHED) store their connectivity as a flat array of
+Poly elements (PLINE, PGON, PHED) store their connectivity as a flat array of
 node indices. **Faces are delimited by `usize::MAX` sentinel values.**
 
 - **PGON**: nodes form a single face, no sentinel needed.
@@ -132,6 +134,36 @@ in CCW order when viewed from outside the element.
 
 For **TET10**, the vertex convention is: nodes 0–3 vertices, mid-side nodes
 4 (edge 01), 5 (edge 12), 6 (edge 02), 7 (edge 03), 8 (edge 13), 9 (edge 23).
+
+### WEDGE6 — Wedge
+
+Nodes 0-5 are the 6 vertices of a unit wedge, numbered following the **VTK** convention:
+
+```
+    5 +----------+ 4
+      |\        /|
+      |  \     / |
+      |    \  /  |
+      |      + 3 |
+      |      |   |
+    2 + - - -|- -+ 1
+       \     |  /
+         \   | /
+           \ |/
+             + 0
+```
+
+| Face | Nodes        | Description       |
+| ---- | ------------ | ----------------- |
+| 0    | [0, 2, 1]    | Bottom            |
+| 1    | [3, 4, 5]    | Top               |
+| 2    | [0, 1, 4, 3] | Starting node 0   |
+| 3    | [1, 2, 5, 4] | Starting node 1   |
+| 4    | [2, 0, 3, 5] | Starting node 2   |
+
+For **WEDGE15**, the vertex convention is: nodes 0–5 vertices, mid-side nodes
+(bottom, top, middle): 6 (edge 01), 7 (edge 12), 8 (edge 02), 9 (edge 34), 10
+(edge 45), 11 (edge 35), 12 (edge 03), 13 (edge 14), 14 (edge 25).
 
 ### HEX8 — Hexahedron
 

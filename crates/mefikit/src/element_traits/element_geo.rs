@@ -8,7 +8,7 @@ use super::element_topo::ElementTopo;
 use crate::geometry::{
     Polygon, Polyhedron, Segment, area_polygon3, area_quad2, area_tri2, bounds_iter,
     convex_polygon_contains2, hex_contains, hex_volume, signed_area2, tet_contains, tet_volume,
-    vertex_centroid,
+    vertex_centroid, wedge_contains, wedge_volume,
 };
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
@@ -184,6 +184,14 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 self.coord3_ref(2),
                 self.coord3_ref(3),
             ),
+            WEDGE6 => wedge_volume(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+                *self.coord3_ref(3),
+                *self.coord3_ref(4),
+                *self.coord3_ref(5),
+            ]),
             HEX8 => hex_volume(&[
                 *self.coord3_ref(0),
                 *self.coord3_ref(1),
@@ -245,12 +253,30 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                     *self.coord3_ref(7),
                 ]);
                 if v < 0.0 {
+                    // TODO: check this is enough
                     // Swap the two bottom corners and the matching top corners to undo
                     // the left-handed inversion (involution on the index order).
                     (
                         et,
                         vec![co[0], co[3], co[2], co[1], co[4], co[7], co[6], co[5]],
                     )
+                } else {
+                    (et, co.to_vec())
+                }
+            }
+            WEDGE6 => {
+                let v = wedge_volume(&[
+                    *self.coord3_ref(0),
+                    *self.coord3_ref(1),
+                    *self.coord3_ref(2),
+                    *self.coord3_ref(3),
+                    *self.coord3_ref(4),
+                    *self.coord3_ref(5),
+                ]);
+                if v < 0.0 {
+                    // Reverse both triangular faces (and keep the vertical pairing):
+                    // this reverses the winding of the whole closed surface.
+                    (et, vec![co[2], co[1], co[0], co[5], co[4], co[3]])
                 } else {
                     (et, co.to_vec())
                 }
@@ -288,6 +314,15 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 self.coord3_ref(1),
                 self.coord3_ref(2),
                 self.coord3_ref(3),
+            ),
+            WEDGE6 => wedge_contains(
+                &[point[0], point[1], point[2]],
+                self.coord3_ref(0),
+                self.coord3_ref(1),
+                self.coord3_ref(2),
+                self.coord3_ref(3),
+                self.coord3_ref(4),
+                self.coord3_ref(5),
             ),
             HEX8 => hex_contains(
                 &[point[0], point[1], point[2]],
@@ -365,6 +400,14 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord3_ref(1),
                 *self.coord3_ref(2),
                 *self.coord3_ref(3),
+            ]),
+            WEDGE6 => vertex_centroid(&[
+                *self.coord3_ref(0),
+                *self.coord3_ref(1),
+                *self.coord3_ref(2),
+                *self.coord3_ref(3),
+                *self.coord3_ref(4),
+                *self.coord3_ref(5),
             ]),
             HEX8 => vertex_centroid(&[
                 *self.coord3_ref(0),
@@ -517,6 +560,32 @@ mod tests {
         assert_abs_diff_eq!(centroid[0], 0.25, epsilon = 1e-10);
         assert_abs_diff_eq!(centroid[1], 0.25, epsilon = 1e-10);
         assert_abs_diff_eq!(centroid[2], 0.25, epsilon = 1e-10);
+    }
+
+    #[test]
+    fn test_measure3_wedge() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ];
+        let conn = &[0, 1, 2, 3, 4, 5];
+
+        let family = 0;
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &family,
+            conn,
+            ElementType::WEDGE6,
+            &groups,
+        );
+        let mes = elem.measure3();
+        assert_abs_diff_eq!(mes, 0.5, epsilon = 1e-10);
     }
 
     #[test]
