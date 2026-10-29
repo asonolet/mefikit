@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## [0.6.1](https://github.com/asonolet/mefikit/compare/v0.6.0...v0.6.1) - 2026-10-29
+
+### Other
+
+- update deps
+- update Cargo.toml dependencies
+
 ## [0.6.0](https://github.com/asonolet/mefikit/compare/v0.5.1...v0.6.0) - 2026-10-28
 
 ### Add
