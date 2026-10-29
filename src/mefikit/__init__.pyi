@@ -1,6 +1,6 @@
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from types import EllipsisType
-from typing import Callable, TypeAlias, final
+from typing import TypeAlias, final
 
 import medcoupling as mc
 import meshio as mio
