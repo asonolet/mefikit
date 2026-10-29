@@ -9,7 +9,7 @@ license = { text = "MIT OR Apache-2.0" }
 readme = "README.md"
 description = "High-performance library for unstructured mesh and field manipulation, designed for scientific computing, mesh processing, and multi-physics workflows."
 keywords = ["science", "simulation", "mesh", "cfd", "geometry", "hpc"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [{ name = "Aymeric SONOLET", email = "aymeric.sonolet@cea.fr" }]
 dependencies = ["numpy>=1.21"]
 classifiers = [
