@@ -198,12 +198,170 @@ def test_rejects_simplify_fixture():
     assert report.n_issues == 1
 
 
-def test_fixtures_reject_non_poly_cells():
-    """A whole fixture mixing polyhedral, polygonal and simplex cells is reported as unsupported.
+def test_mixed_dimensional_fixture_is_diagnosed():
+    """Lower-dimensional elements are ignored: the top-dimensional cells are diagnosed.
 
-    `conformize` only handles volume cells, so a mesh holding polygonal or simplex cells is
-    rejected up front rather than silently diagnosed.
+    `Mesh_poly_non_conforme.med` also carries triangles, quads and polygons next to its
+    polyhedra. They do not make the input unsupported; the polyhedral interfaces are checked.
     """
     report = mf.is_conform(_read("Mesh_poly_non_conforme.med"), _TOL)
     assert not report.is_conform
-    assert set(_kinds(report)) == {"unsupported_cells"}
+    assert "non_conforming_faces" in _kinds(report)
+    assert "unsupported_cells" not in _kinds(report)
+
+
+def _regular(coords, et, conn):
+    mesh = mf.UMesh(np.asarray(coords, dtype=float))
+    mesh.add_regular_block(et, np.asarray(conn, dtype=np.uintp))
+    return mesh
+
+
+def _hex8(coords, conn):
+    return _regular(coords, "HEX8", conn)
+
+
+def test_rejects_butterfly_hex():
+    """A HEX8 whose top ring is a bow tie crosses itself, so it is not conformal."""
+    coords = _unit_cube_coords()
+    # The top ring of the HEX8 is nodes 4, 5, 7, 6; swapping 6 and 7 makes it self-cross.
+    coords[6] = [1.0, 1.0, 1.0]
+    coords[7] = [0.0, 1.0, 1.0]
+    mesh = _hex8(coords, [[0, 1, 3, 2, 4, 5, 7, 6]])
+
+    report = mf.is_conform(mesh, _TOL)
+    assert not report.is_conform
+    assert set(_kinds(report)) == {"butterfly_cell"}
+    assert report.issues[0]["cells"] == {"HEX8": [0]}
+
+
+def test_accepts_warped_hex():
+    """A mildly warped but simple HEX8 is still conformal."""
+    coords = _unit_cube_coords()
+    coords[6] = [0.0, 1.0, 1.1]
+    mesh = _hex8(coords, [[0, 1, 3, 2, 4, 5, 7, 6]])
+    assert mf.is_conform(mesh, _TOL).is_conform
+
+
+def test_rejects_butterfly_phed():
+    """A PHED whose top face is a bow tie is reported as a butterfly cell."""
+    faces = _unit_cube_faces()
+    # The top face is 4, 5, 7, 6; swapping the last two nodes makes it self-cross.
+    faces[1] = [4, 5, 6, 7]
+    mesh = _phed(_unit_cube_coords(), [faces])
+
+    report = mf.is_conform(mesh, _TOL)
+    assert not report.is_conform
+    assert set(_kinds(report)) == {"butterfly_cell"}
+    assert report.issues[0]["cells"] == {"PHED": [0]}
+
+
+def test_accepts_valid_phed():
+    """A regular six-face PHED cell is not a butterfly."""
+    mesh = _phed(_unit_cube_coords(), [_unit_cube_faces()])
+    assert mf.is_conform(mesh, _TOL).is_conform
+
+
+def test_accepts_conformal_quad_grid():
+    """A regular 2D quad grid is conformal: every interior edge is shared whole."""
+    coords = [
+        [0.0, 0.0],
+        [0.5, 0.0],
+        [1.0, 0.0],
+        [0.0, 0.5],
+        [0.5, 0.5],
+        [1.0, 0.5],
+        [0.0, 1.0],
+        [0.5, 1.0],
+        [1.0, 1.0],
+    ]
+    mesh = _regular(
+        coords,
+        "QUAD4",
+        [[0, 1, 4, 3], [1, 2, 5, 4], [3, 4, 7, 6], [4, 5, 8, 7]],
+    )
+    assert mf.is_conform(mesh, _TOL).is_conform
+
+
+def test_rejects_butterfly_quad():
+    """A bow-tie quad crosses itself, so it is reported as a butterfly cell."""
+    coords = [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]
+    mesh = _regular(coords, "QUAD4", [[0, 1, 2, 3]])
+
+    report = mf.is_conform(mesh, _TOL)
+    assert not report.is_conform
+    assert set(_kinds(report)) == {"butterfly_cell"}
+    assert report.issues[0]["cells"] == {"QUAD4": [0]}
+
+
+def test_rejects_quad_t_junction():
+    """A quad edge running past a smaller neighbour's endpoint is only partially shared."""
+    coords = [
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+        [2.0, 0.0],
+        [2.0, 0.5],
+        [2.0, 1.0],
+        [1.0, 0.5],
+    ]
+    mesh = _regular(
+        coords,
+        "QUAD4",
+        [[0, 1, 2, 3], [1, 4, 5, 7], [7, 5, 6, 2]],
+    )
+
+    report = mf.is_conform(mesh, _TOL)
+    assert not report.is_conform
+    assert "non_conforming_faces" in _kinds(report)
+
+
+def test_rejects_overlapping_quads():
+    """Two quads sharing an area overlap, which a conformal surface mesh forbids."""
+    coords = [
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+        [0.5, 0.5],
+        [1.5, 0.5],
+        [1.5, 1.5],
+        [0.5, 1.5],
+    ]
+    mesh = _regular(coords, "QUAD4", [[0, 1, 2, 3], [4, 5, 6, 7]])
+
+    report = mf.is_conform(mesh, _TOL)
+    assert not report.is_conform
+    assert "intersecting_cells" in _kinds(report)
+
+
+def test_accepts_valid_wedge():
+    """A regular WEDGE6 is a valid volume cell and is now diagnosed by `is_conform`."""
+    coords = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [0.0, 1.0, 1.0],
+    ]
+    mesh = _regular(coords, "WEDGE6", [[0, 1, 2, 3, 4, 5]])
+    assert mf.is_conform(mesh, _TOL).is_conform
+
+
+def test_rejects_butterfly_wedge():
+    """A WEDGE6 with a bow-tie side face is reported as a butterfly cell."""
+    coords = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.5, 0.5, -1.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.5, 0.5, 1.0],
+    ]
+    mesh = _regular(coords, "WEDGE6", [[0, 1, 2, 3, 4, 5]])
+
+    report = mf.is_conform(mesh, _TOL)
+    assert not report.is_conform
+    assert set(_kinds(report)) == {"butterfly_cell"}
+    assert report.issues[0]["cells"] == {"WEDGE6": [0]}

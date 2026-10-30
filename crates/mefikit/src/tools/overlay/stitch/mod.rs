@@ -648,7 +648,15 @@ fn weld_points(points: &[[f64; 3]], tol: f64) -> (Vec<[f64; 3]>, Vec<usize>) {
 }
 
 fn point3<S: nd::Data<Elem = f64>>(coords: &nd::ArrayBase<S, nd::Ix2>, i: usize) -> [f64; 3] {
-    [coords[(i, 0)], coords[(i, 1)], coords[(i, 2)]]
+    [
+        coords[(i, 0)],
+        coords[(i, 1)],
+        if coords.ncols() > 2 {
+            coords[(i, 2)]
+        } else {
+            0.0
+        },
+    ]
 }
 
 fn dot3(a: &[f64; 3], b: &[f64; 3]) -> f64 {

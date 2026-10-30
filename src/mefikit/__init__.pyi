@@ -237,9 +237,11 @@ class SurfaceOverlay:
 @final
 class ConformanceReport:
     # Result of `is_conform`: whether the mesh is conformal, and if not, why and where.
-    # Each issue is a dict: `kind` (merged_nodes, overlapping_faces, invalid_space_dimension,
+    # The check follows the topological dimension (3D faces, 2D edges); lower-dimensional
+    # elements are ignored. Each issue is a dict: `kind` (butterfly_cell, merged_nodes,
+    # overlapping_faces, non_conforming_faces, intersecting_cells, invalid_space_dimension,
     # unsupported_cells, no_volume_cells), the variant fields (`center`, `nodes`, `cells` /
-    # `cells_a` / `cells_b`), and a human-readable `message`.
+    # `cells_a` / `cells_b` / `volume`, an area for 2D overlaps), and `message`.
     @property
     def is_conform(self) -> bool: ...
     @property
