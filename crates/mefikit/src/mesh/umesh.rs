@@ -285,6 +285,55 @@ where
         used_nodes
     }
 
+    /// Returns a new mesh with only the coordinates referenced by elements.
+    ///
+    /// Connectivity is renumbered onto the compact coordinate indices. Fields, groups and
+    /// families are carried over unchanged.
+    pub fn remove_unused_coords(&self) -> UMesh {
+        let used_nodes = self.used_nodes();
+        let coords = self
+            .coords
+            .select(nd::Axis(0), used_nodes.as_slice())
+            .into_shared();
+        let mut renumber = vec![0usize; self.coords.nrows()];
+        for (new_index, &old_index) in used_nodes.iter().enumerate() {
+            renumber[old_index] = new_index;
+        }
+        let remap = |node: usize| {
+            if node < renumber.len() {
+                renumber[node]
+            } else {
+                node
+            }
+        };
+
+        let mut result = UMesh::new(coords);
+        for (&et, block) in &self.element_blocks {
+            let connectivity = match &block.connectivity {
+                ConnectivityBase::Regular(conn) => {
+                    Connectivity::new_regular(conn.mapv(remap).into_shared())
+                }
+                ConnectivityBase::Poly(conn) => Connectivity::new_poly(
+                    conn.data.mapv(remap).into_shared(),
+                    conn.offsets.to_shared(),
+                ),
+            };
+            let fields = block
+                .fields
+                .iter()
+                .map(|(name, field)| (name.clone(), field.to_owned().into_shared()))
+                .collect();
+            result.insert_block(ElementBlock::new_with_metadata(
+                et,
+                connectivity,
+                block.families().to_owned().into_shared(),
+                fields,
+                block.arc_groups().clone(),
+            ));
+        }
+        result
+    }
+
     /// Get a view of a field if it exists in mesh.
     /// By default (dim=None), the field is searched at the higher topological dimension of the
     /// mesh. That means that if you query a field on a lower dimension you must give it
@@ -1131,7 +1180,7 @@ impl UMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mesh::ElementType;
+    use crate::mesh::{ArcGroups, ElementType};
     use crate::mesh_examples as me;
 
     #[test]
@@ -1187,6 +1236,86 @@ mod tests {
     //     assert!(sub_mesh.element_blocks().contains_key(&ElementType::QUAD4));
     //     assert_eq!(sub_mesh.coords().shape(), &[4, 2]);
     // }
+
+    #[test]
+    fn test_remove_unused_coords() {
+        use std::sync::Arc;
+
+        let coords = nd::Array2::from_shape_vec(
+            (5, 2),
+            vec![
+                10.0, 10.0, // unused
+                0.0, 0.0, // -> 0
+                20.0, 20.0, // unused
+                1.0, 0.0, // -> 1
+                0.0, 1.0, // -> 2
+            ],
+        )
+        .unwrap();
+        let connectivity =
+            Connectivity::new_regular(nd::arr2(&[[1, 3, 4], [3, 4, 1]]).into_shared());
+        let fields = BTreeMap::from([(
+            "tag".to_string(),
+            nd::array![[1.0, 2.0], [3.0, 4.0]].into_dyn().into_shared(),
+        )]);
+        let families = nd::array![7usize, 8].into_shared();
+        let groups = ArcGroups(Arc::new(BTreeMap::from([(
+            "left".to_string(),
+            BTreeSet::from([0usize]),
+        )])));
+        let mut mesh = UMesh::new(coords.into_shared());
+        mesh.insert_block(ElementBlock::new_with_metadata(
+            ElementType::TRI3,
+            connectivity,
+            families,
+            fields,
+            groups,
+        ));
+
+        let compacted = mesh.remove_unused_coords();
+
+        assert_eq!(
+            compacted.coords(),
+            nd::arr2(&[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+        );
+        let element = compacted.element(ElementId::new(ElementType::TRI3, 0));
+        assert_eq!(element.connectivity, &[0, 1, 2]);
+        let block = compacted.block(ElementType::TRI3).unwrap();
+        assert_eq!(block.families(), nd::array![7, 8].view());
+        assert_eq!(
+            block.fields["tag"],
+            nd::array![[1.0, 2.0], [3.0, 4.0]].into_dyn()
+        );
+        assert!(block.groups()["left"].contains(&0));
+    }
+
+    #[test]
+    fn test_remove_unused_coords_poly() {
+        let coords = nd::arr2(&[
+            [10.0, 10.0],
+            [0.0, 0.0],
+            [20.0, 20.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+        ]);
+        let mut mesh = UMesh::new(coords.into_shared());
+        mesh.add_poly_block(
+            ElementType::PGON,
+            nd::arr1(&[1, 3, 4, 5]).into_shared(),
+            nd::arr1(&[4]).into_shared(),
+            None,
+        );
+
+        let compacted = mesh.remove_unused_coords();
+
+        let element = compacted.element(ElementId::new(ElementType::PGON, 0));
+        assert_eq!(element.connectivity, &[0, 1, 2, 3]);
+        assert_eq!(
+            compacted.coords(),
+            nd::arr2(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]])
+        );
+    }
 
     #[test]
     fn test_umesh_view() {
