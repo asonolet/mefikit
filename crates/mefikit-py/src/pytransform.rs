@@ -216,15 +216,17 @@ pub fn conformize(mesh: &PyUMesh, tol: f64) -> PyResult<PyUMesh> {
 
 /// Checks whether a mesh is conformal and, when it is not, reports why and where.
 ///
-/// A mesh is conformal when its cells do not intersect one another and two neighbour cells that
-/// share any node share a whole common face, so that the descending connectivity holds a single
-/// face rather than two coincident copies.
+/// The check follows the mesh's topological dimension. In 3D a mesh is conformal when its cells
+/// do not intersect one another and two neighbour cells that share any node share a whole common
+/// face; in 2D the same rule applies to common edges. Lower-dimensional elements are ignored when
+/// higher-dimensional ones are present, so a volume mesh may carry its boundary surface.
 ///
-/// Reported defects: cells overlapping in volume, a face shared by more than two cells, two nodes
-/// within `tol` that are not the same node while the cells using them do not meet through a full
-/// common face (a cell folding onto itself, or a partially shared interface — the case
-/// `conformize` repairs), and input `conformize` would reject (not embedded in 3D, no volume
-/// cell, unsupported cell type).
+/// Reported defects: cells whose boundary crosses itself (a "butterfly" cell, e.g. an edge
+/// passing through a face), cells overlapping in volume (3D) or area (2D), a face/edge shared by
+/// more than two cells, two nodes within `tol` that are not the same node while the cells using
+/// them do not meet through a full common face (a cell folding onto itself, or a partially shared
+/// interface — the case `conformize` repairs), and input that cannot be diagnosed (too few
+/// coordinate dimensions, no cell, or a cell type without a polyhedral form).
 ///
 /// `max_issues` caps the length of `report.issues` (10 by default, `None` keeps everything);
 /// `report.n_issues` always holds the true total. Raises `ValueError` on an invalid tolerance.
@@ -289,6 +291,11 @@ impl PyConformanceReport {
                 dict.set_item("center", center.to_vec())?;
                 dict.set_item("cells", cells_to_dict(py, cells))?;
             }
+            ConformanceIssue::ButterflyCell { center, cell } => {
+                dict.set_item("kind", "butterfly_cell")?;
+                dict.set_item("center", center.to_vec())?;
+                dict.set_item("cells", cells_to_dict(py, std::slice::from_ref(cell)))?;
+            }
             ConformanceIssue::IntersectingCells {
                 center,
                 cells,
@@ -338,7 +345,8 @@ impl PyConformanceReport {
 
     /// The problems found, ordered from the most structural to the most numerical. Each issue is
     /// a dict: `kind` (`merged_nodes`, `overlapping_faces`, `non_conforming_faces`,
-    /// `intersecting_cells`, `invalid_space_dimension`, `unsupported_cells`, `no_volume_cells`),
+    /// `butterfly_cell`, `intersecting_cells`, `invalid_space_dimension`, `unsupported_cells`,
+    /// `no_volume_cells`),
     /// the variant fields
     /// (`center` as `xyz` coordinates,
     /// `nodes`, `cells` / `cells_a` / `cells_b` as `{element type: indices}` mappings), and

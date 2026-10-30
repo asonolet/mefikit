@@ -1215,3 +1215,69 @@ fn is_conform_rejects_volume_overlap() {
         "{report:?}"
     );
 }
+
+/// A `HEX8` whose top face is spelled as a bow tie is reported as a butterfly cell.
+#[test]
+fn is_conform_rejects_butterfly_hex() {
+    let mut coords = unit_cube_coords();
+    // The top ring of a `HEX8` is nodes `4, 5, 7, 6`; swapping 6 and 7 makes it cross itself.
+    coords[6] = [1.0, 1.0, 1.0];
+    coords[7] = [0.0, 1.0, 1.0];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::HEX8, &[0, 1, 3, 2, 4, 5, 7, 6], None);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(!report.is_conform());
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|i| matches!(i, ConformanceIssue::ButterflyCell { .. })),
+        "{report:?}"
+    );
+}
+
+/// A `PHED` whose top face is spelled as a bow tie is reported as a butterfly cell.
+#[test]
+fn is_conform_rejects_butterfly_phed() {
+    let mut faces = unit_cube_faces();
+    // The top face is `4, 5, 7, 6`; swapping the last two nodes makes it cross itself.
+    faces[1] = vec![4, 5, 6, 7];
+    let mesh = phed_mesh(unit_cube_coords(), &[faces]);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(!report.is_conform());
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|i| matches!(i, ConformanceIssue::ButterflyCell { .. })),
+        "{report:?}"
+    );
+}
+
+/// A mildly warped but non-self-intersecting `HEX8` stays conformal.
+#[test]
+fn is_conform_accepts_warped_hex() {
+    let mut coords = unit_cube_coords();
+    coords[6] = [0.0, 1.0, 1.1];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::HEX8, &[0, 1, 3, 2, 4, 5, 7, 6], None);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
