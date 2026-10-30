@@ -480,6 +480,28 @@ fn wedge_simplexization(co: &[usize], global_min: usize) -> Vec<(ElementType, Ve
     }
 }
 
+fn hexa_to_simplexes(co: &[usize], global_min: usize) -> Vec<(ElementType, Vec<usize>)> {
+    use ElementType::*;
+    match global_min {
+        0 => {
+            let secondary_min = [co[1], co[2], co[5], co[4]].iter().position_min().unwrap();
+            match secondary_min {
+                0 | 2 => vec![
+                    (TET4, vec![co[0], co[4], co[5], co[3]]),
+                    (TET4, vec![co[0], co[1], co[5], co[4]]),
+                    (TET4, vec![co[0], co[5], co[1], co[2]]),
+                ],
+                _ => vec![
+                    (TET4, vec![co[0], co[4], co[5], co[3]]),
+                    (TET4, vec![co[0], co[2], co[4], co[1]]),
+                    (TET4, vec![co[0], co[4], co[2], co[5]]),
+                ],
+            }
+        }
+        _ => todo!(),
+    }
+}
+
 impl<'a, T> ElementTopo<'a> for T where T: ElementLike<'a> {}
 
 /// Here the polyhedron must be well oriented for this operation to work
