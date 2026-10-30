@@ -176,7 +176,7 @@ reallocation of connectivity tables or geometry arrays.
 | Operation                  | Description |
 |----------------------------|-------------|
 | `merge_close_nodes()`        | Mutates connectivity to merge nearby points |
-| `zip_coords()`               | Mutates coods to remove useless coords |
+| `remove_unused_coords()`     | Returns a new mesh with unused coordinates removed |
 | `renumber_cells()`         | In-place reordering of cells. Out-of-place because of Poly |
 | `build_descend()`          | Returns a new mesh composed of subentities depending on codim |
 | `stitch(meshes, tol)`      | Makes several volume meshes conformal at their common boundaries |
