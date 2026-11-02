@@ -372,13 +372,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
             },
             TET4 | TET10 => vec![(TET4, vec![co[0], co[1], co[2], co[3]])],
             WEDGE6 | WEDGE15 => wedge_simplexization(co, global_min),
-            HEX8 | HEX21 => vec![
-                (TET4, vec![co[0], co[1], co[3], co[4]]),
-                (TET4, vec![co[2], co[3], co[1], co[6]]),
-                (TET4, vec![co[7], co[6], co[4], co[3]]),
-                (TET4, vec![co[5], co[4], co[6], co[1]]),
-                (TET4, vec![co[4], co[6], co[3], co[1]]),
-            ],
+            HEX8 | HEX21 => hexa_to_simplexes1(co, global_min),
             _ => todo!(),
         }
     }
@@ -583,26 +577,27 @@ fn hexa_to_simplexes1(co: &[usize], global_min: usize) -> Vec<(ElementType, Vec<
         (1 | 3, 1 | 3, 0 | 2) => vec![
             // 57 25 27
             (TET4, vec![rco[0], rco[5], rco[7], rco[4]]),
-            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
-            (TET4, vec![rco[0], rco[6], rco[7], rco[5]]),
-            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
-            (TET4, vec![rco[0], rco[7], rco[2], rco[3]]),
+            (TET4, vec![rco[0], rco[1], rco[2], rco[5]]),
+            (TET4, vec![rco[2], rco[6], rco[7], rco[5]]),
+            (TET4, vec![rco[0], rco[2], rco[3], rco[7]]),
+            (TET4, vec![rco[0], rco[5], rco[2], rco[7]]),
         ],
         _ => vec![
             // 57 25 36
             // 1st wedge
             (TET4, vec![rco[0], rco[5], rco[7], rco[4]]),
-            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
-            (TET4, vec![rco[0], rco[6], rco[7], rco[5]]),
-            // 2nd wedge
-            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
+            (TET4, vec![rco[0], rco[5], rco[6], rco[7]]),
             (TET4, vec![rco[0], rco[6], rco[3], rco[7]]),
-            (TET4, vec![rco[0], rco[2], rco[3], rco[6]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[1], rco[2], rco[5]]),
+            (TET4, vec![rco[0], rco[6], rco[5], rco[2]]),
+            (TET4, vec![rco[0], rco[3], rco[6], rco[2]]),
         ],
     }
 }
 
 /// Return the minimum number of tetras (5 if possible, otherwise 6)
+#[allow(unused)]
 fn hexa_to_simplexes2(co: &[usize], global_min: usize) -> Vec<(ElementType, Vec<usize>)> {
     use ElementType::*;
     //    7           6
