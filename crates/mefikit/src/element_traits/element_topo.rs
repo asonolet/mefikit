@@ -557,10 +557,48 @@ fn hexa_to_simplexes1(co: &[usize], global_min: usize) -> Vec<(ElementType, Vec<
             (TET4, vec![rco[0], rco[6], rco[3], rco[7]]),
             (TET4, vec![rco[0], rco[2], rco[3], rco[6]]),
         ],
-        (1 | 3, 0 | 2, 0 | 2) => todo!(),
-        (1 | 3, 0 | 2, 1 | 3) => todo!(),
-        (1 | 3, 1 | 3, 0 | 2) => todo!(),
-        _ => todo!(),
+        (1 | 3, 0 | 2, 0 | 2) => vec![
+            // 57 16 27
+            // 1st wedge
+            (TET4, vec![rco[0], rco[5], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
+            (TET4, vec![rco[0], rco[6], rco[7], rco[5]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
+            (TET4, vec![rco[0], rco[7], rco[2], rco[3]]),
+            (TET4, vec![rco[0], rco[7], rco[6], rco[2]]),
+        ],
+        (1 | 3, 0 | 2, 1 | 3) => vec![
+            // 57 16 36
+            // 1st wedge
+            (TET4, vec![rco[0], rco[5], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
+            (TET4, vec![rco[0], rco[6], rco[7], rco[5]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
+            (TET4, vec![rco[0], rco[6], rco[3], rco[7]]),
+            (TET4, vec![rco[0], rco[2], rco[3], rco[6]]),
+        ],
+        // TODO
+        (1 | 3, 1 | 3, 0 | 2) => vec![
+            // 57 25 27
+            (TET4, vec![rco[0], rco[5], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
+            (TET4, vec![rco[0], rco[6], rco[7], rco[5]]),
+            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
+            (TET4, vec![rco[0], rco[7], rco[2], rco[3]]),
+        ],
+        _ => vec![
+            // 57 25 36
+            // 1st wedge
+            (TET4, vec![rco[0], rco[5], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
+            (TET4, vec![rco[0], rco[6], rco[7], rco[5]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
+            (TET4, vec![rco[0], rco[6], rco[3], rco[7]]),
+            (TET4, vec![rco[0], rco[2], rco[3], rco[6]]),
+        ],
     }
 }
 
