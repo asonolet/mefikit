@@ -380,16 +380,40 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
 
 fn wedge_simplexization(co: &[usize], global_min: usize) -> Vec<(ElementType, Vec<usize>)> {
     use ElementType::*;
+    // 5 +------+ 4
+    //   |\    /|
+    //   | \  / |
+    //   |  \/3 |
+    //   |  |   |
+    //   |  |   |
+    // 2 + -| - + 1
+    //    \ |  /
+    //     \| /
+    //      +  0
+    //
     match global_min {
         0 => {
+            // 5 +------+ 4  5 +------+ 4
+            //   |\     |      |     /|
+            //   |\\   ||      |\   /||
+            //   |\ \  /|      |\  | /|
+            //   | \ \| |      | \ || |
+            //   | \  |\|      | \/ | |
+            // 2 +-\--|-+ 1  2 +-\--|-+ 1
+            //    \\ / /        \\ / /
+            //     \| /          \| /
+            //      +  0          +  0
+            //
             let secondary_min = [co[1], co[2], co[5], co[4]].iter().position_min().unwrap();
             match secondary_min {
                 0 | 2 => vec![
+                    // 04 05 15
                     (TET4, vec![co[0], co[4], co[5], co[3]]),
                     (TET4, vec![co[0], co[1], co[5], co[4]]),
                     (TET4, vec![co[0], co[5], co[1], co[2]]),
                 ],
                 _ => vec![
+                    // 04 05 24
                     (TET4, vec![co[0], co[4], co[5], co[3]]),
                     (TET4, vec![co[0], co[2], co[4], co[1]]),
                     (TET4, vec![co[0], co[4], co[2], co[5]]),
@@ -397,44 +421,83 @@ fn wedge_simplexization(co: &[usize], global_min: usize) -> Vec<(ElementType, Ve
             }
         }
         1 => {
+            // 5 +
+            //   |\
+            //   | \
+            //   |  + 3
+            //   |  |\
+            //   |  |  \
+            // 2 + -| - + 1
+            //    \ |  /
+            //     \| /
+            //      +  0
+            //
             let secondary_min = [co[2], co[0], co[3], co[5]].iter().position_min().unwrap();
             match secondary_min {
                 0 | 2 => vec![
+                    // 13 15 23
                     (TET4, vec![co[1], co[5], co[3], co[4]]),
                     (TET4, vec![co[1], co[2], co[3], co[5]]),
                     (TET4, vec![co[1], co[3], co[2], co[0]]),
                 ],
                 _ => vec![
+                    // 13 15 05
                     (TET4, vec![co[1], co[5], co[3], co[4]]),
-                    (TET4, vec![co[1], co[3], co[5], co[2]]),
+                    (TET4, vec![co[1], co[0], co[5], co[2]]),
                     (TET4, vec![co[1], co[5], co[0], co[3]]),
                 ],
             }
         }
         2 => {
+            //          + 4
+            //        //|
+            //      / / |
+            //     / /3 |
+            //    | +   |
+            //    |/|   |
+            // 2 + -| - + 1
+            //    \ |  /
+            //     \| /
+            //      +  0
+            //
             let secondary_min = [co[0], co[1], co[4], co[3]].iter().position_min().unwrap();
             match secondary_min {
                 0 | 2 => vec![
+                    // 23 24 04
                     (TET4, vec![co[2], co[3], co[4], co[5]]),
                     (TET4, vec![co[2], co[0], co[4], co[3]]),
                     (TET4, vec![co[2], co[4], co[0], co[1]]),
                 ],
                 _ => vec![
+                    // 23 24 13
                     (TET4, vec![co[2], co[3], co[4], co[5]]),
-                    (TET4, vec![co[2], co[4], co[3], co[0]]),
+                    (TET4, vec![co[2], co[4], co[3], co[1]]),
                     (TET4, vec![co[2], co[3], co[1], co[4]]),
                 ],
             }
         }
         3 => {
+            // 5 +------+ 4
+            //   |\    /|
+            //   | \  / |
+            //   |  \/3 |
+            //   |  |   |
+            //   |  |   |
+            // 2 + -| - + 1
+            //    \ |  /
+            //     \| /
+            //      +  0
+            //
             let secondary_min = [co[1], co[2], co[5], co[4]].iter().position_min().unwrap();
             match secondary_min {
                 0 | 2 => vec![
+                    // 12 13 15
                     (TET4, vec![co[3], co[2], co[1], co[0]]),
                     (TET4, vec![co[3], co[1], co[5], co[4]]),
                     (TET4, vec![co[3], co[5], co[1], co[2]]),
                 ],
                 _ => vec![
+                    // 12 13 24
                     (TET4, vec![co[3], co[2], co[1], co[0]]),
                     (TET4, vec![co[3], co[2], co[4], co[1]]),
                     (TET4, vec![co[3], co[4], co[2], co[5]]),
@@ -442,14 +505,27 @@ fn wedge_simplexization(co: &[usize], global_min: usize) -> Vec<(ElementType, Ve
             }
         }
         4 => {
+            // 5 +------+ 4
+            //   |\    /|
+            //   | \  / |
+            //   |  \/3 |
+            //   |  |   |
+            //   |  |   |
+            // 2 + -| - + 1
+            //    \ |  /
+            //     \| /
+            //      +  0
+            //
             let secondary_min = [co[2], co[0], co[3], co[5]].iter().position_min().unwrap();
             match secondary_min {
                 0 | 2 => vec![
+                    // 04 24 23
                     (TET4, vec![co[4], co[0], co[2], co[1]]),
                     (TET4, vec![co[4], co[2], co[3], co[5]]),
                     (TET4, vec![co[4], co[3], co[2], co[0]]),
                 ],
                 _ => vec![
+                    // 04 24 05
                     (TET4, vec![co[4], co[0], co[2], co[1]]),
                     (TET4, vec![co[4], co[0], co[5], co[2]]),
                     (TET4, vec![co[4], co[5], co[0], co[3]]),
@@ -457,14 +533,27 @@ fn wedge_simplexization(co: &[usize], global_min: usize) -> Vec<(ElementType, Ve
             }
         }
         _ => {
+            // 5 +------+ 4
+            //   |\    /|
+            //   | \  / |
+            //   |  \/3 |
+            //   |  |   |
+            //   |  |   |
+            // 2 + -| - + 1
+            //    \ |  /
+            //     \| /
+            //      +  0
+            //
             let secondary_min = [co[0], co[1], co[4], co[3]].iter().position_min().unwrap();
             match secondary_min {
                 0 | 2 => vec![
+                    // 05 15 04
                     (TET4, vec![co[5], co[1], co[0], co[2]]),
                     (TET4, vec![co[5], co[0], co[4], co[3]]),
                     (TET4, vec![co[5], co[4], co[0], co[1]]),
                 ],
                 _ => vec![
+                    // 05 15 13
                     (TET4, vec![co[5], co[1], co[0], co[2]]),
                     (TET4, vec![co[5], co[1], co[3], co[0]]),
                     (TET4, vec![co[5], co[3], co[1], co[4]]),
