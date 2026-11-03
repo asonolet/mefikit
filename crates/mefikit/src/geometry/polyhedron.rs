@@ -103,6 +103,14 @@ impl Polyhedron {
         bounds_iter(self.points.iter().copied())
     }
 
+    pub fn scale(&self) -> f64 {
+        let b = self.bounds();
+        (b[1][0] - b[0][0])
+            .max(b[1][1] - b[0][1])
+            .max(b[1][2] - b[0][2])
+            .max(1.0)
+    }
+
     /// Returns the `i`-th face as a 3D polygon.
     pub fn face(&self, i: usize) -> Polygon<3> {
         Polygon::unknown(self.faces[i].iter().map(|&j| self.points[j]))
@@ -333,13 +341,7 @@ impl Polyhedron {
     /// by AABB (e.g. a BVH-driven boundary-element search) should call this to avoid the redundant
     /// work. The inputs are still assumed convex and the clip itself is unchanged.
     pub(crate) fn convex_intersection_volume_impl(&self, other: &Self) -> f64 {
-        let scale = self
-            .points
-            .iter()
-            .chain(other.points.iter())
-            .map(|p| p[0].abs().max(p[1].abs()).max(p[2].abs()))
-            .fold(0.0_f64, f64::max)
-            .max(1.0);
+        let scale = self.scale();
         let eps = 64.0 * f64::EPSILON * scale;
 
         // Translation-invariant length scale: the maximum distance of any vertex from the centroid
