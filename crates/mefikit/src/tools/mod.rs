@@ -43,6 +43,8 @@ pub mod polyze;
 pub mod reorient;
 /// Element and node selection utilities.
 pub mod selector;
+/// Simplexization (triangles or tetrahedra)
+pub mod simplexize;
 /// Node snapping to merge nearby nodes.
 pub mod snap;
 pub mod spatial_index;
