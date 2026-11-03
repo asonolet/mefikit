@@ -352,29 +352,299 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
     fn to_simplexes(&self) -> Vec<(ElementType, Vec<usize>)> {
         use ElementType::*;
         let co = self.connectivity();
+        let global_min = co.iter().position_min().unwrap();
         match self.element_type() {
             VERTEX => vec![(VERTEX, vec![co[0]])],
-            SEG2 | SEG3 | SEG4 => vec![(SEG2, vec![co[0], co[1]])],
+            SEG2 | SEG3 | SEG4 => match global_min {
+                0 => vec![(SEG2, vec![co[0], co[1]])],
+                _ => vec![(SEG2, vec![co[1], co[0]])],
+            },
             TRI3 | TRI6 | TRI7 => vec![(TRI3, vec![co[0], co[1], co[2]])],
-            QUAD4 | QUAD8 | QUAD9 => vec![
-                (TRI3, vec![co[0], co[1], co[3]]),
-                (TRI3, vec![co[2], co[3], co[1]]),
-            ],
+            QUAD4 | QUAD8 | QUAD9 => match global_min {
+                1 | 3 => vec![
+                    (TRI3, vec![co[0], co[1], co[3]]),
+                    (TRI3, vec![co[2], co[3], co[1]]),
+                ],
+                _ => vec![
+                    (TRI3, vec![co[0], co[2], co[3]]),
+                    (TRI3, vec![co[0], co[1], co[2]]),
+                ],
+            },
             TET4 | TET10 => vec![(TET4, vec![co[0], co[1], co[2], co[3]])],
-            WEDGE6 | WEDGE15 => vec![
-                (TET4, vec![co[0], co[1], co[2], co[3]]),
-                (TET4, vec![co[1], co[2], co[3], co[4]]),
-                (TET4, vec![co[2], co[3], co[4], co[5]]),
-            ],
-            HEX8 | HEX21 => vec![
-                (TET4, vec![co[0], co[1], co[3], co[4]]),
-                (TET4, vec![co[2], co[3], co[1], co[6]]),
-                (TET4, vec![co[7], co[6], co[4], co[3]]),
-                (TET4, vec![co[5], co[4], co[6], co[1]]),
-                (TET4, vec![co[4], co[6], co[3], co[1]]),
-            ],
+            WEDGE6 | WEDGE15 => wedge_simplexization(co, global_min),
+            HEX8 | HEX21 => hexa_to_simplexes1(co, global_min),
             _ => todo!(),
         }
+    }
+}
+
+fn wedge_simplexization(co: &[usize], global_min: usize) -> Vec<(ElementType, Vec<usize>)> {
+    use ElementType::*;
+    match global_min {
+        0 => {
+            let secondary_min = [co[1], co[2], co[5], co[4]].iter().position_min().unwrap();
+            match secondary_min {
+                0 | 2 => vec![
+                    (TET4, vec![co[0], co[4], co[5], co[3]]),
+                    (TET4, vec![co[0], co[1], co[5], co[4]]),
+                    (TET4, vec![co[0], co[5], co[1], co[2]]),
+                ],
+                _ => vec![
+                    (TET4, vec![co[0], co[4], co[5], co[3]]),
+                    (TET4, vec![co[0], co[2], co[4], co[1]]),
+                    (TET4, vec![co[0], co[4], co[2], co[5]]),
+                ],
+            }
+        }
+        1 => {
+            let secondary_min = [co[2], co[0], co[3], co[5]].iter().position_min().unwrap();
+            match secondary_min {
+                0 | 2 => vec![
+                    (TET4, vec![co[1], co[5], co[3], co[4]]),
+                    (TET4, vec![co[1], co[2], co[3], co[5]]),
+                    (TET4, vec![co[1], co[3], co[2], co[0]]),
+                ],
+                _ => vec![
+                    (TET4, vec![co[1], co[5], co[3], co[4]]),
+                    (TET4, vec![co[1], co[3], co[5], co[2]]),
+                    (TET4, vec![co[1], co[5], co[0], co[3]]),
+                ],
+            }
+        }
+        2 => {
+            let secondary_min = [co[0], co[1], co[4], co[3]].iter().position_min().unwrap();
+            match secondary_min {
+                0 | 2 => vec![
+                    (TET4, vec![co[2], co[3], co[4], co[5]]),
+                    (TET4, vec![co[2], co[0], co[4], co[3]]),
+                    (TET4, vec![co[2], co[4], co[0], co[1]]),
+                ],
+                _ => vec![
+                    (TET4, vec![co[2], co[3], co[4], co[5]]),
+                    (TET4, vec![co[2], co[4], co[3], co[0]]),
+                    (TET4, vec![co[2], co[3], co[1], co[4]]),
+                ],
+            }
+        }
+        3 => {
+            let secondary_min = [co[1], co[2], co[5], co[4]].iter().position_min().unwrap();
+            match secondary_min {
+                0 | 2 => vec![
+                    (TET4, vec![co[3], co[2], co[1], co[0]]),
+                    (TET4, vec![co[3], co[1], co[5], co[4]]),
+                    (TET4, vec![co[3], co[5], co[1], co[2]]),
+                ],
+                _ => vec![
+                    (TET4, vec![co[3], co[2], co[1], co[0]]),
+                    (TET4, vec![co[3], co[2], co[4], co[1]]),
+                    (TET4, vec![co[3], co[4], co[2], co[5]]),
+                ],
+            }
+        }
+        4 => {
+            let secondary_min = [co[2], co[0], co[3], co[5]].iter().position_min().unwrap();
+            match secondary_min {
+                0 | 2 => vec![
+                    (TET4, vec![co[4], co[0], co[2], co[1]]),
+                    (TET4, vec![co[4], co[2], co[3], co[5]]),
+                    (TET4, vec![co[4], co[3], co[2], co[0]]),
+                ],
+                _ => vec![
+                    (TET4, vec![co[4], co[0], co[2], co[1]]),
+                    (TET4, vec![co[4], co[0], co[5], co[2]]),
+                    (TET4, vec![co[4], co[5], co[0], co[3]]),
+                ],
+            }
+        }
+        _ => {
+            let secondary_min = [co[0], co[1], co[4], co[3]].iter().position_min().unwrap();
+            match secondary_min {
+                0 | 2 => vec![
+                    (TET4, vec![co[5], co[1], co[0], co[2]]),
+                    (TET4, vec![co[5], co[0], co[4], co[3]]),
+                    (TET4, vec![co[5], co[4], co[0], co[1]]),
+                ],
+                _ => vec![
+                    (TET4, vec![co[5], co[1], co[0], co[2]]),
+                    (TET4, vec![co[5], co[1], co[3], co[0]]),
+                    (TET4, vec![co[5], co[3], co[1], co[4]]),
+                ],
+            }
+        }
+    }
+}
+
+/// Always returns 6 tetras
+fn hexa_to_simplexes1(co: &[usize], global_min: usize) -> Vec<(ElementType, Vec<usize>)> {
+    use ElementType::*;
+    //    7           6
+    //   +-----------+
+    // 4/'          /|
+    // +-----------+5|
+    // | '         | |
+    // | +3- - - - |-+ 2
+    // |/          |/
+    // +-----------+
+    // 0           1
+    let rco = match global_min {
+        0 => [co[0], co[1], co[2], co[3], co[4], co[5], co[6], co[7]],
+        1 => [co[1], co[2], co[3], co[0], co[5], co[6], co[7], co[4]],
+        2 => [co[2], co[3], co[0], co[1], co[6], co[7], co[4], co[5]],
+        3 => [co[3], co[0], co[1], co[2], co[7], co[4], co[5], co[6]],
+        4 => [co[4], co[7], co[6], co[5], co[0], co[3], co[2], co[1]],
+        5 => [co[5], co[4], co[7], co[6], co[1], co[0], co[3], co[2]],
+        6 => [co[6], co[5], co[4], co[7], co[2], co[1], co[0], co[3]],
+        _ => [co[7], co[6], co[5], co[4], co[3], co[2], co[1], co[0]],
+    };
+
+    let min_f4567 = rco[4..8].iter().position_min().unwrap();
+    let min_f1265 = [rco[1], rco[2], rco[6], rco[5]]
+        .iter()
+        .position_min()
+        .unwrap();
+    let min_f2376 = [rco[2], rco[3], rco[7], rco[6]]
+        .iter()
+        .position_min()
+        .unwrap();
+    match (min_f4567, min_f1265, min_f2376) {
+        (0 | 2, 0 | 2, 0 | 2) => vec![
+            // 46 16 27
+            // 1st wedge
+            (TET4, vec![rco[0], rco[5], rco[6], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
+            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[6], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[2], rco[3], rco[7]]),
+            (TET4, vec![rco[0], rco[2], rco[7], rco[6]]),
+        ],
+        (0 | 2, 0 | 2, 1 | 3) => vec![
+            // 46 16 36
+            // 1st wedge
+            (TET4, vec![rco[0], rco[5], rco[6], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
+            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[6], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[6], rco[3], rco[7]]),
+            (TET4, vec![rco[0], rco[2], rco[3], rco[6]]),
+        ],
+        (0 | 2, 1 | 3, 0 | 2) => vec![
+            // 46 25 27
+            // 1st wedge
+            (TET4, vec![rco[0], rco[5], rco[6], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[2], rco[5]]),
+            (TET4, vec![rco[0], rco[5], rco[2], rco[6]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[6], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[2], rco[3], rco[7]]),
+            (TET4, vec![rco[0], rco[2], rco[7], rco[6]]),
+        ],
+        (0 | 2, 1 | 3, 1 | 3) => vec![
+            // 46 25 36
+            // 1st wedge
+            (TET4, vec![rco[0], rco[5], rco[6], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[2], rco[5]]),
+            (TET4, vec![rco[0], rco[5], rco[2], rco[6]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[6], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[6], rco[3], rco[7]]),
+            (TET4, vec![rco[0], rco[2], rco[3], rco[6]]),
+        ],
+        (1 | 3, 0 | 2, 0 | 2) => vec![
+            // 57 16 27
+            // 1st wedge
+            (TET4, vec![rco[0], rco[5], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
+            (TET4, vec![rco[0], rco[6], rco[7], rco[5]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
+            (TET4, vec![rco[0], rco[7], rco[2], rco[3]]),
+            (TET4, vec![rco[0], rco[7], rco[6], rco[2]]),
+        ],
+        (1 | 3, 0 | 2, 1 | 3) => vec![
+            // 57 16 36
+            // 1st wedge
+            (TET4, vec![rco[0], rco[5], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
+            (TET4, vec![rco[0], rco[6], rco[7], rco[5]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
+            (TET4, vec![rco[0], rco[6], rco[3], rco[7]]),
+            (TET4, vec![rco[0], rco[2], rco[3], rco[6]]),
+        ],
+        // TODO
+        (1 | 3, 1 | 3, 0 | 2) => vec![
+            // 57 25 27
+            (TET4, vec![rco[0], rco[5], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[2], rco[5]]),
+            (TET4, vec![rco[2], rco[6], rco[7], rco[5]]),
+            (TET4, vec![rco[0], rco[2], rco[3], rco[7]]),
+            (TET4, vec![rco[0], rco[5], rco[2], rco[7]]),
+        ],
+        _ => vec![
+            // 57 25 36
+            // 1st wedge
+            (TET4, vec![rco[0], rco[5], rco[7], rco[4]]),
+            (TET4, vec![rco[0], rco[5], rco[6], rco[7]]),
+            (TET4, vec![rco[0], rco[6], rco[3], rco[7]]),
+            // 2nd wedge
+            (TET4, vec![rco[0], rco[1], rco[2], rco[5]]),
+            (TET4, vec![rco[0], rco[6], rco[5], rco[2]]),
+            (TET4, vec![rco[0], rco[3], rco[6], rco[2]]),
+        ],
+    }
+}
+
+/// Return the minimum number of tetras (5 if possible, otherwise 6)
+#[allow(unused)]
+fn hexa_to_simplexes2(co: &[usize], global_min: usize) -> Vec<(ElementType, Vec<usize>)> {
+    use ElementType::*;
+    //    7           6
+    //   +-----------+
+    // 4/'          /|
+    // +-----------+5|
+    // | '         | |
+    // | +3- - - - |-+ 2
+    // |/          |/
+    // +-----------+
+    // 0           1
+    let rco = match global_min {
+        0 => [co[0], co[1], co[2], co[3], co[4], co[5], co[6], co[7]],
+        1 => [co[1], co[2], co[3], co[0], co[5], co[6], co[7], co[4]],
+        2 => [co[2], co[3], co[0], co[1], co[6], co[7], co[4], co[5]],
+        3 => [co[3], co[0], co[1], co[2], co[7], co[4], co[5], co[6]],
+        4 => [co[4], co[7], co[6], co[5], co[0], co[3], co[2], co[1]],
+        5 => [co[5], co[4], co[7], co[6], co[1], co[0], co[3], co[2]],
+        6 => [co[6], co[5], co[4], co[7], co[2], co[1], co[0], co[3]],
+        _ => [co[7], co[6], co[5], co[4], co[3], co[2], co[1], co[0]],
+    };
+
+    let min_f4567 = rco[4..8].iter().position_min().unwrap();
+    let min_f1265 = [rco[1], rco[2], rco[6], rco[5]]
+        .iter()
+        .position_min()
+        .unwrap();
+    let min_f2376 = [rco[2], rco[3], rco[7], rco[6]]
+        .iter()
+        .position_min()
+        .unwrap();
+    match (min_f4567, min_f1265, min_f2376) {
+        (0 | 2, 0 | 2, 0 | 2) => vec![
+            (TET4, vec![rco[0], rco[1], rco[6], rco[5]]),
+            (TET4, vec![rco[0], rco[5], rco[6], rco[4]]),
+            (TET4, vec![rco[0], rco[1], rco[2], rco[6]]),
+            (TET4, vec![rco[0], rco[4], rco[6], rco[7]]),
+            (TET4, vec![rco[0], rco[7], rco[2], rco[3]]),
+            (TET4, vec![rco[0], rco[2], rco[7], rco[6]]),
+        ],
+        (0 | 2, 0 | 2, 1 | 3) => todo!(),
+        (0 | 2, 1 | 3, 0 | 2) => todo!(),
+        (0 | 2, 1 | 3, 1 | 3) => todo!(),
+        (1 | 3, 0 | 2, 0 | 2) => todo!(),
+        (1 | 3, 0 | 2, 1 | 3) => todo!(),
+        (1 | 3, 1 | 3, 0 | 2) => todo!(),
+        _ => todo!(),
     }
 }
 

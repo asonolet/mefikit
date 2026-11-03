@@ -382,6 +382,11 @@ impl PyUMesh {
         Ok(new_mesh.into())
     }
 
+    fn simplexize(&self) -> PyResult<Self> {
+        let new_mesh = mf::simplexize::simplexize(&self.inner.view(), None);
+        Ok(new_mesh.into())
+    }
+
     fn reorient(&self) -> Self {
         // Use the owned trait path so that coords, families, fields and groups are carried
         // over by `Arc` sharing instead of being deep-copied through the view-based free
