@@ -727,7 +727,7 @@ pub fn in_bezier_polygon(x: &[f64; 2], pgon: &[[f64; 2]]) -> bool {
         let by = 2.0 * (p1[1] - p0[1]);
         let cy = p0[1] - py;
 
-        let scale = ay.abs().max(by.abs()).max(cy.abs()).max(1.0);
+        let scale = ay.abs().max(by.abs()).max(cy.abs());
         let eps = 32.0 * f64::EPSILON * scale;
 
         // Solve ay*t^2 + by*t + cy = 0
