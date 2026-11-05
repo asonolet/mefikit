@@ -447,7 +447,7 @@ def install_conversions():
                     nn = mf_types_num_node[et]
                     block = conn[starts[sel][:, None] + np.arange(nn)]
                     if et in _mf_permutations:
-                        block = block[:, _mf_permutations[et]]
+                        block = block[:, _mf_permutations[et]].copy()
                     res.add_regular_block(et, block.astype(np.uintp))
 
         if isinstance(mesh, mc.MEDFileUMesh):
