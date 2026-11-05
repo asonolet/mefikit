@@ -130,6 +130,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
+name = "block2"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdeb9d870516001442e364c5220d3574d2da8dc765554b4a617230d33fa58ef5"
+dependencies = [
+ "objc2",
+]
+
+[[package]]
 name = "borsh"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -385,6 +394,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
+name = "ctrlc"
+version = "3.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0b1fab2ae45819af2d0731d60f2afe17227ebb1a1538a236da84c93e9a60162"
+dependencies = [
+ "dispatch2",
+ "nix",
+ "windows-sys",
+]
+
+[[package]]
 name = "derive-where"
 version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -414,6 +434,18 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "dispatch2"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38"
+dependencies = [
+ "bitflags",
+ "block2",
+ "libc",
+ "objc2",
 ]
 
 [[package]]
@@ -683,21 +715,28 @@ checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
 
 [[package]]
 name = "gungraun"
-version = "0.19.4"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9300d38d30facf6870c15bc9e243edcc47e5ddc270c9d2c1ae824a00b1faea79"
+checksum = "c041375e48b8ef7cd2d0e70715598154af627c1a551e41c35fdb4a2b3910831a"
 dependencies = [
  "bincode-next",
  "derive_more",
+ "gungraun-common",
  "gungraun-macros",
  "gungraun-runner",
 ]
 
 [[package]]
-name = "gungraun-macros"
-version = "0.9.1"
+name = "gungraun-common"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7f3214bae6cfd6739f4f29edb262bae439c6393a7b7b12c4eeb96417c2e50df"
+checksum = "bc270ba55639babb5806b62d4bfbc35e15ca15791e3ec00c7b92b39c62a9d8eb"
+
+[[package]]
+name = "gungraun-macros"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08472a9e996a98a5b4274dd342fb32ebe1a5cfeb2662b6578d0c7bf1dd203129"
 dependencies = [
  "derive_more",
  "proc-macro-error3",
@@ -706,14 +745,14 @@ dependencies = [
  "rustc_version",
  "serde",
  "serde_json",
- "syn 2.0.119",
+ "syn 3.0.4",
 ]
 
 [[package]]
 name = "gungraun-runner"
-version = "0.19.4"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47c68c92812da579a2510a2cc702d5aa3251992b9662d4a98502ca46e0cbe16e"
+checksum = "1e1460377fe936c3efbe8e27c422b745fa54ebaea81ffe4a53a6f17c7a478683"
 dependencies = [
  "either-or-both",
  "serde",
@@ -825,6 +864,15 @@ checksum = "07aa2048142242915a31d35844fb311e0e53fcca590c3a0a40dcf1b841fa09eb"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.1",
+]
+
+[[package]]
+name = "inventory"
+version = "0.3.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6928282826c822ad91bf1c9a1cb90a30ba1c26770749929b4656cd6be829cd7c"
+dependencies = [
+ "rustversion",
 ]
 
 [[package]]
@@ -1082,6 +1130,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
+
+[[package]]
 name = "nom"
 version = "8.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1171,6 +1231,21 @@ dependencies = [
  "pyo3-build-config",
  "rustc-hash",
 ]
+
+[[package]]
+name = "objc2"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08849bbd4767dfae9457696856ae1c84fe4e0281bbe4a7abff2d0e06fb7981f8"
+dependencies = [
+ "objc2-encode",
+]
+
+[[package]]
+name = "objc2-encode"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
 
 [[package]]
 name = "once_cell"
@@ -1629,9 +1704,26 @@ dependencies = [
 
 [[package]]
 name = "scaling"
-version = "0.1.3"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdae3600851ce884c21967661b682951ff63475e891c819e5609c5643cc1be2f"
+checksum = "d4403e146656964361e62529522fc3c3dc7a38ec51c2780248b2b0dcf3124047"
+dependencies = [
+ "ctrlc",
+ "inventory",
+ "libc",
+ "scaling-macros",
+]
+
+[[package]]
+name = "scaling-macros"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "981b1d659118104ce3f7f26030b826c3208db9b38e9deb930d6f547e44afe07c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
 
 [[package]]
 name = "scopeguard"
