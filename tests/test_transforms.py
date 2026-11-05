@@ -89,6 +89,31 @@ def test_transform_then_and_inverse():
     assert np.allclose(restored.coords(), m.coords(), atol=1e-9)
 
 
+def test_remove_unused_coords():
+    coords = np.array(
+        [
+            [10.0, 10.0],  # unused
+            [0.0, 0.0],
+            [20.0, 20.0],  # unused
+            [1.0, 0.0],
+            [0.0, 1.0],
+        ]
+    )
+    m = mf.UMesh(coords)
+    m.add_regular_block("TRI3", np.array([[1, 3, 4]], dtype=np.uint))
+    m.set_field("tag", {"TRI3": np.array([[42.0]])})
+    m.groups["all"] = mf.sel.ids({"TRI3": [0]})
+
+    compact = m.remove_unused_coords()
+
+    np.testing.assert_allclose(compact.coords(), [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
+    np.testing.assert_array_equal(compact.blocks()["TRI3"], [[0, 1, 2]])
+    np.testing.assert_array_equal(compact.fields["tag"].values()["TRI3"], [[42.0]])
+    assert len(compact.groups["all"]) == 1
+    # The input mesh is unchanged.
+    assert m.coords().shape == (5, 2)
+
+
 def test_duplicate():
     m = _quad_mesh()
     dup = m.duplicate(mf.Transform.translation([0.0, 3.0, 0.0]), 3)

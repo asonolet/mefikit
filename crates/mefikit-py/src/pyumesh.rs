@@ -315,6 +315,11 @@ impl PyUMesh {
         merged.into()
     }
 
+    /// Returns a new mesh with unused coordinates removed and connectivity renumbered.
+    fn remove_unused_coords(&self) -> Self {
+        self.inner.remove_unused_coords().into()
+    }
+
     fn extrude(&self, along: &Bound<'_, PyAny>) -> PyResult<Self> {
         let along: Vec<f64> = along.extract()?;
         let new_mesh = mf::extrude(&self.inner.view(), &along);

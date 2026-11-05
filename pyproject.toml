@@ -33,6 +33,7 @@ python-source = "src"
 manifest-path = "crates/mefikit-py/Cargo.toml"
 module-name = "mefikit.mefipy"
 include = ["LICENSE-*"]
+features = ["pyo3/extension-module"]
 
 [tool.ruff.lint]
 preview = true

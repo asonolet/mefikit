@@ -5,3 +5,7 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 7f151f65863486f175bafaa671435478f465d0f0435d50b78f32f218bb97fdbe # shrinks to tx = 252853.3427058359, ty = 442723.9264790824, tz = -475212.7381599579, angle = 0.0, sx = 0.1, sy = 0.1, sz = 0.1
+cc 0cc3dc87b45f25cfe64335dd9e6eb24beedbabc22d07a59ff3ced69e07bd86ed # shrinks to tx = 363722.4320986566, ty = 785634.4812260703, tz = -169029.0649734092, angle = 2.392034320640087, sx = 5.685407225783823, sy = 0.10932140857877681, sz = 4.549465104177392
+cc 906601fc2ca461591a99c52a96852979f3e9cc1ba7a0c08423e02d5b8cb151fb # shrinks to tx = 0.0, ty = 0.0, tz = 0.0, angle = 0.0, sx = 1e-5, sy = 1e-5, sz = 8033.068560854052
+cc 47ff5fa2f37631511c14c3fa5d86f60bcefb8a947ebec8d6485fe038cc82d3d6 # shrinks to tx = 0.0, ty = 0.0, tz = 0.0, angle = 0.0, sx = 1e-5, sy = 9770.257238972528, sz = 1e-5
+cc 1e99e2724a202c95fd6d63df7928460d099055baf63365941f1d9a94d568d8c0 # shrinks to delta_rel = 1e-12, tx = 0.0, ty = 0.0, tz = 0.0, angle = 1.302971433939504, sx = 1e-5, sy = 1e-5, sz = 0.5496147382659413

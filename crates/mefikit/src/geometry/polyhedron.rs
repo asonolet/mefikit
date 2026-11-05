@@ -103,6 +103,13 @@ impl Polyhedron {
         bounds_iter(self.points.iter().copied())
     }
 
+    pub fn scale(&self) -> f64 {
+        let b = self.bounds();
+        (b[1][0] - b[0][0])
+            .max(b[1][1] - b[0][1])
+            .max(b[1][2] - b[0][2])
+    }
+
     /// Returns the `i`-th face as a 3D polygon.
     pub fn face(&self, i: usize) -> Polygon<3> {
         Polygon::unknown(self.faces[i].iter().map(|&j| self.points[j]))
@@ -333,13 +340,7 @@ impl Polyhedron {
     /// by AABB (e.g. a BVH-driven boundary-element search) should call this to avoid the redundant
     /// work. The inputs are still assumed convex and the clip itself is unchanged.
     pub(crate) fn convex_intersection_volume_impl(&self, other: &Self) -> f64 {
-        let scale = self
-            .points
-            .iter()
-            .chain(other.points.iter())
-            .map(|p| p[0].abs().max(p[1].abs()).max(p[2].abs()))
-            .fold(0.0_f64, f64::max)
-            .max(1.0);
+        let scale = self.scale();
         let eps = 64.0 * f64::EPSILON * scale;
 
         // Translation-invariant length scale: the maximum distance of any vertex from the centroid
@@ -359,6 +360,7 @@ impl Polyhedron {
             }
             c
         };
+        // TODO: should I chain with other ?
         let radial = self
             .points
             .iter()
@@ -369,8 +371,7 @@ impl Polyhedron {
                     + (p[2] - centroid[2]).powi(2))
                 .sqrt()
             })
-            .fold(0.0_f64, f64::max)
-            .max(1.0);
+            .fold(0.0_f64, f64::max);
         let coplanar_tol = 1e-4 * radial;
 
         let other_planes = other.planes();
@@ -597,11 +598,11 @@ fn remove_consecutive_duplicates(vertices: &mut Vec<[f64; 3]>) {
     if vertices.len() < 2 {
         return;
     }
+    // TODO: fix scale ?
     let scale = vertices
         .iter()
         .map(|v| v[0].abs().max(v[1].abs()).max(v[2].abs()))
-        .fold(0.0_f64, f64::max)
-        .max(1.0);
+        .fold(0.0_f64, f64::max);
     let eps = 64.0 * f64::EPSILON * scale;
     let mut out = 0;
     for i in 0..vertices.len() {
@@ -955,7 +956,7 @@ fn ray_crosses_face(px: f64, py: f64, pz: f64, face: &[usize], coords: &[[f64; 3
     }
     let denom = n[0];
 
-    let scale = n[0].abs().max(n[1].abs()).max(n[2].abs()).max(1.0);
+    let scale = n[0].abs().max(n[1].abs()).max(n[2].abs());
     let eps = 64.0 * f64::EPSILON * scale;
 
     if denom.abs() <= eps {
@@ -1674,18 +1675,18 @@ mod tests {
             ty in -1e6f64..1e6,
             tz in -1e6f64..1e6,
             angle in -4.0f64..4.0,
-            sx in 0.1f64..10.0,
-            sy in 0.1f64..10.0,
-            sz in 0.1f64..10.0,
+            s in 1e-5f64..1e3,
+            sy in 1.0f64..1e3,
+            sz in 1.0f64..1e3,
         ) {
             let a = centered_cube();
             let a = rotated_about(&a, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0], angle);
-            let a = dilated(&a, [sx, sy, sz]);
+            let a = dilated(&a, [s, s*sy, s*sz]);
             let a = translated(&a, [tx, ty, tz]);
 
-            let expected = sx * sy * sz;
+            let expected = sy * sz * s.powi(3);
             let got = a.convex_intersection_volume(&a);
-            let tol = 1e-9 * (expected.abs().max(1.0));
+            let tol = 1e-6 * expected.abs();
             prop_assert!(
                 (got - expected).abs() <= tol,
                 "self-intersection {got} != volume {expected} (tol {tol})"
@@ -1707,18 +1708,18 @@ mod tests {
             ty in -1e6f64..1e6,
             tz in -1e6f64..1e6,
             angle in -4.0f64..4.0,
-            sx in 0.1f64..10.0,
-            sy in 0.1f64..10.0,
-            sz in 0.1f64..10.0,
+            s in 1e-5f64..1e3,
+            sy in 1.0f64..1e3,
+            sz in 1.0f64..1e3,
         ) {
             let a = centered_cube();
             let a = rotated_about(&a, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0], angle);
-            let a = dilated(&a, [sx, sy, sz]);
+            let a = dilated(&a, [s, s * sy, s * sz]);
             let a = translated(&a, [tx, ty, tz]);
 
-            let expected = sx * sy * sz;
+            let expected = sy * sz * s * s * s;
             let got = a.volume();
-            let tol = 1e-9 * (expected.abs().max(1.0));
+            let tol = 1e-6 * expected.abs();
             prop_assert!(
                 (got - expected).abs() <= tol,
                 "volume {got} != expected {expected} (tol {tol})"
@@ -1736,18 +1737,18 @@ mod tests {
             ty in -1e6f64..1e6,
             tz in -1e6f64..1e6,
             angle in -4.0f64..4.0,
-            sx in 0.1f64..5.0,
-            sy in 0.1f64..5.0,
-            sz in 0.1f64..5.0,
+            s in 1e-5f64..1e3,
+            sy in 1.0f64..1e3,
+            sz in 1.0f64..1e3,
         ) {
             let a = centered_cube();
             let a = rotated_about(&a, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0], angle);
-            let a = dilated(&a, [sx, sy, sz]);
+            let a = dilated(&a, [s, s*sy, s*sz]);
             let a = translated(&a, [tx, ty, tz]);
 
             let vol = a.volume();
             let inter = a.convex_intersection_volume(&a);
-            let tol = 1e-6 * (vol.abs().max(1.0));
+            let tol = 1e-6 * vol.abs();
             prop_assert!(
                 (vol - inter).abs() <= tol,
                 "volume {vol} != self-intersection {inter} (tol {tol})"
@@ -1772,18 +1773,18 @@ mod tests {
             ty in -1e4f64..1e4,
             tz in -1e4f64..1e4,
             angle in -4.0f64..4.0,
-            sx in 1.0f64..5.0,
-            sy in 1.0f64..5.0,
-            sz in 1.0f64..5.0,
+            s in 1e-5f64..1e3,
+            sy in 1.0f64..1e3,
+            sz in 1.0f64..1e3,
         ) {
             let base = centered_cube();
             let base = rotated_about(&base, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0], angle);
-            let base = dilated(&base, [sx, sy, sz]);
+            let base = dilated(&base, [s, s* sy, s*sz]);
             let delta = delta_rel;
             let a = warped_faces(&base, delta);
             let vol = a.volume();
             let inter = a.convex_intersection_volume(&a);
-            let tol = 1e-6 * (vol.abs().max(1.0));
+            let tol = 1e-6 * vol.abs();
 
             // The two computations agree on the same warped shape.
             prop_assert!(

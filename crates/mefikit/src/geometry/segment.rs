@@ -108,11 +108,10 @@ impl Segment<2> {
             .abs()
             .max(v1[1].abs())
             .max(v2[0].abs())
-            .max(v2[1].abs())
-            .max(1.0);
+            .max(v2[1].abs());
         // As this error is used on cross or dot product, it should scale with the length of the
         // segments.
-        let eps = 64.0 * scale * f64::EPSILON;
+        let eps = 64.0 * scale.powi(2) * f64::EPSILON;
 
         // If one of the edges is degenerated, there is no intersection. This is simplist, but there
         // should be no degenerated segments in a proper mesh.
@@ -217,7 +216,7 @@ mod tests {
     fn points_close(p1: [f64; 2], p2: [f64; 2], scale: f64) -> bool {
         let p1 = Point2::from(p1);
         let p2 = Point2::from(p2);
-        let eps = 64.0 * scale * f64::EPSILON;
+        let eps = 64.0 * scale.powi(2) * f64::EPSILON;
         let v = p1 - p2;
         v.norm_squared() <= eps
     }
@@ -285,7 +284,6 @@ mod tests {
             .max(v1[1].abs())
             .max(v2[0].abs())
             .max(v2[1].abs())
-            .max(1.0)
     }
 
     fn is_symmetric(int1: Intersections, int2: Intersections, scale: f64) -> bool {
