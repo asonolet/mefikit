@@ -1,5 +1,20 @@
 # CHANGELOG
 
+## [0.6.2](https://github.com/asonolet/mefikit/compare/v0.6.1...v0.6.2) - 2026-11-05
+
+### Add
+
+- simplexization ([#55](https://github.com/asonolet/mefikit/pull/55))
+
+### Fix
+
+- tolerance issue in polyhedron ([#57](https://github.com/asonolet/mefikit/pull/57))
+- wedge tetrahedrize
+
+### Other
+
+- update dependencies
+
 ## [0.6.1](https://github.com/asonolet/mefikit/compare/v0.6.0...v0.6.1) - 2026-10-29
 
 ### Other
