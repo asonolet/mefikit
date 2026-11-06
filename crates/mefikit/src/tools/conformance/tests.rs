@@ -4,6 +4,8 @@ use super::*;
 use crate::mesh::{ElementType, UMesh};
 use crate::tools::test_helpers::{box_mesh, hex_block};
 use ndarray as nd;
+use proptest::prelude::*;
+use std::f64::consts::PI;
 
 /// Builds a `PHED` mesh from full face rings, each `Vec<usize>` a face in winding order.
 fn phed_mesh(coords: Vec<[f64; 3]>, cells: &[Vec<Vec<usize>>]) -> UMesh {
@@ -116,6 +118,34 @@ fn is_conform_accepts_vertex_touching_cells() {
     assert!(report.is_conform(), "{report:?}");
 }
 
+/// Two tetrahedra linked by one node, each with a face on the same plane. The faces share only
+/// that node and do not overlap, so the mesh is conformal.
+#[test]
+fn is_conform_accepts_tets_sharing_one_node_with_coplanar_faces() {
+    let coords: Vec<[f64; 3]> = vec![
+        [0.0, 0.0, 0.0], // shared node
+        [1.0, 0.0, 0.0], // first face
+        [0.0, 1.0, 0.0],
+        [0.2, 0.2, 1.0],
+        [-1.0, 0.0, 0.0], // second face
+        [0.0, -1.0, 0.0],
+        [-0.2, -0.2, 1.0],
+    ];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::TET4, &[0, 1, 2, 3], None);
+    mesh.add_element(ElementType::TET4, &[0, 4, 5, 6], None);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
+
 /// The reported false negative: one cell that spells part of its boundary with coincident
 /// duplicate nodes, so it folds onto itself. This mesh is *not* conformal.
 #[test]
@@ -137,6 +167,44 @@ fn is_conform_rejects_folded_cell() {
         .filter(|i| matches!(i, ConformanceIssue::MergedNodes { .. }))
         .count();
     assert!(merged >= 2, "{report:?}");
+}
+
+/// Two stacked `HEX8` cells whose complete interface is spelled with separate node ids are
+/// conformal. This is the case the canonical-node map must reduce back to actual node ids, not
+/// dense cluster ids.
+#[test]
+fn is_conform_accepts_stacked_hexes_with_duplicate_interface_nodes() {
+    let coords: Vec<[f64; 3]> = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [0.0, 1.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [0.0, 1.0, 1.0],
+        [0.0, 0.0, 2.0],
+        [1.0, 0.0, 2.0],
+        [1.0, 1.0, 2.0],
+        [0.0, 1.0, 2.0],
+    ];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::HEX8, &[0, 1, 2, 3, 4, 5, 6, 7], None);
+    mesh.add_element(ElementType::HEX8, &[8, 9, 10, 11, 12, 13, 14, 15], None);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
 }
 
 /// Two cells whose interface is only *partially* shared (some ids in common, some duplicated)
@@ -681,4 +749,232 @@ fn triangle_half_of_a_quad_is_a_coplanar_overlap() {
     ]);
     let triangle = flat_face(&[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]]);
     assert!(faces_overlap(&quad, &triangle, 1e-9).is_some());
+}
+
+// ---------------------------------------------------------------------------
+// Property-based checks
+// ---------------------------------------------------------------------------
+
+struct TwoCellFixture {
+    coords: Vec<[f64; 3]>,
+    conns: Vec<Vec<usize>>,
+    second_start: usize,
+    offset_axis: usize,
+    et: ElementType,
+}
+
+/// Two regular cells sharing a complete interface, with the interface nodes duplicated. The
+/// second cell starts at `second_start`; moving it along `offset_axis` makes the interface
+/// partial.
+fn two_cell_fixture(kind: usize) -> TwoCellFixture {
+    match kind {
+        0 => TwoCellFixture {
+            coords: vec![
+                [0.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [0.2, 0.2, -1.0],
+                [0.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [0.2, 0.2, 1.0],
+            ],
+            conns: vec![vec![0, 2, 1, 3], vec![4, 5, 6, 7]],
+            second_start: 4,
+            offset_axis: 0,
+            et: ElementType::TET4,
+        },
+        1 => TwoCellFixture {
+            coords: vec![
+                [0.0, 0.0, -1.0],
+                [2.0, 0.0, -1.0],
+                [0.0, 2.0, -1.0],
+                [0.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [2.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [2.0, 0.0, 1.0],
+                [0.0, 2.0, 1.0],
+            ],
+            conns: vec![vec![0, 1, 2, 3, 4, 5], vec![6, 7, 8, 9, 10, 11]],
+            second_start: 6,
+            offset_axis: 0,
+            et: ElementType::WEDGE6,
+        },
+        2 => TwoCellFixture {
+            coords: vec![
+                [0.0, 0.0, -1.0],
+                [1.0, 0.0, -1.0],
+                [1.0, 1.0, -1.0],
+                [0.0, 1.0, -1.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+                [1.0, 0.0, 1.0],
+                [1.0, 1.0, 1.0],
+                [0.0, 1.0, 1.0],
+            ],
+            conns: vec![
+                vec![0, 1, 2, 3, 4, 5, 6, 7],
+                vec![8, 9, 10, 11, 12, 13, 14, 15],
+            ],
+            second_start: 8,
+            offset_axis: 0,
+            et: ElementType::HEX8,
+        },
+        3 => TwoCellFixture {
+            coords: vec![
+                [0.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [-2.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [2.0, 1.0, 0.0],
+            ],
+            conns: vec![vec![0, 1, 2], vec![3, 5, 4]],
+            second_start: 3,
+            offset_axis: 1,
+            et: ElementType::TRI3,
+        },
+        _ => TwoCellFixture {
+            coords: vec![
+                [-1.0, 0.0, 0.0],
+                [-1.0, 2.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0],
+                [0.0, 2.0, 0.0],
+                [1.0, 2.0, 0.0],
+                [1.0, 0.0, 0.0],
+            ],
+            conns: vec![vec![0, 1, 2, 3], vec![4, 5, 6, 7]],
+            second_start: 4,
+            offset_axis: 1,
+            et: ElementType::QUAD4,
+        },
+    }
+}
+
+/// Applies a node-id permutation to both the coordinates and the connectivity, so the mesh is
+/// only relabeled and its geometry is unchanged.
+fn shuffled_mesh(
+    coords: &[[f64; 3]],
+    conns: &[Vec<usize>],
+    seed: u64,
+) -> (Vec<[f64; 3]>, Vec<Vec<usize>>) {
+    let n = coords.len();
+    let mut perm: Vec<usize> = (0..n).collect();
+    let mut state = seed | 1;
+    for i in (1..n).rev() {
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        let j = (state as usize) % (i + 1);
+        perm.swap(i, j);
+    }
+    let mut relabeled = vec![[0.0; 3]; n];
+    for (old, &new) in perm.iter().enumerate() {
+        relabeled[new] = coords[old];
+    }
+    let conns = conns
+        .iter()
+        .map(|conn| conn.iter().map(|&node| perm[node]).collect())
+        .collect();
+    (relabeled, conns)
+}
+
+fn fixture_mesh(
+    fixture: &TwoCellFixture,
+    offset: f64,
+    angle: f64,
+    scale: f64,
+    translation: [f64; 3],
+    seed: Option<u64>,
+) -> UMesh {
+    let mut coords = fixture.coords.clone();
+    for point in &mut coords[fixture.second_start..] {
+        point[fixture.offset_axis] += offset;
+    }
+    let (sin, cos) = angle.sin_cos();
+    for point in &mut coords {
+        let x = scale * (cos * point[0] - sin * point[1]) + translation[0];
+        let y = scale * (sin * point[0] + cos * point[1]) + translation[1];
+        let z = scale * point[2] + translation[2];
+        *point = [x, y, z];
+    }
+    let conns = match seed {
+        Some(seed) => {
+            let (relabeled, conns) = shuffled_mesh(&coords, &fixture.conns, seed);
+            coords = relabeled;
+            conns
+        }
+        None => fixture.conns.clone(),
+    };
+    let flat: Vec<f64> = coords.iter().flatten().copied().collect();
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec((coords.len(), 3), flat)
+            .unwrap()
+            .into_shared(),
+    );
+    for conn in conns {
+        mesh.add_element(fixture.et, &conn, None);
+    }
+    mesh
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    /// A complete duplicated interface must stay conformal under rigid motion, scaling and node
+    /// relabeling. This covers every regular 2D/3D cell kind and the canonical-node mapping.
+    #[test]
+    fn regular_duplicate_interface_is_conformal_under_motion(
+        kind in 0usize..5,
+        angle in -PI..PI,
+        scale in 0.1f64..10.0,
+        tx in -10.0f64..10.0,
+        ty in -10.0f64..10.0,
+        tz in -10.0f64..10.0,
+        seed in any::<u64>(),
+    ) {
+        let fixture = two_cell_fixture(kind);
+        let mesh = fixture_mesh(&fixture, 0.0, angle, scale, [tx, ty, tz], Some(seed));
+        let tol = 1e-9 * scale.max(1.0);
+        let report = is_conform(&mesh.view(), tol, None).unwrap();
+        prop_assert!(
+            report.is_conform(),
+            "kind={kind} angle={angle} scale={scale} report={report:?}"
+        );
+    }
+
+    /// Moving one side of a duplicated interface makes it partial; every regular 2D/3D cell
+    /// kind must be rejected.
+    #[test]
+    fn regular_partial_interface_is_rejected(
+        kind in 0usize..5,
+        offset in 0.1f64..0.8,
+        angle in -PI..PI,
+        scale in 0.5f64..2.0,
+        tx in -5.0f64..5.0,
+        ty in -5.0f64..5.0,
+        tz in -5.0f64..5.0,
+    ) {
+        let fixture = two_cell_fixture(kind);
+        let mesh = fixture_mesh(&fixture, offset, angle, scale, [tx, ty, tz], None);
+        let tol = 1e-9 * scale.max(1.0);
+        let report = is_conform(&mesh.view(), tol, None).unwrap();
+        prop_assert!(
+            !report.is_conform(),
+            "kind={kind} offset={offset} angle={angle} scale={scale} report={report:?}"
+        );
+    }
 }

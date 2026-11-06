@@ -81,6 +81,48 @@ def test_simplexize_shared_hex_face_is_conformal():
     assert mf.is_conform(tets, _TOL).is_conform
 
 
+def test_accepts_stacked_hexes_with_duplicate_interface_nodes():
+    """A complete interface spelled with separate node ids is still conformal."""
+    coords = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [0.0, 1.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [0.0, 1.0, 1.0],
+        [0.0, 0.0, 2.0],
+        [1.0, 0.0, 2.0],
+        [1.0, 1.0, 2.0],
+        [0.0, 1.0, 2.0],
+    ]
+    mesh = _hex8(coords, [[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13, 14, 15]])
+    assert mf.is_conform(mesh, _TOL).is_conform
+
+
+def test_accepts_tets_sharing_one_node_with_coplanar_faces():
+    """Two tets linked by one node, with one face each on the same plane, are conformal.
+
+    The two coplanar faces share only that node and do not overlap.
+    """
+    coords = [
+        [0.0, 0.0, 0.0],  # shared node
+        [1.0, 0.0, 0.0],  # first face
+        [0.0, 1.0, 0.0],
+        [0.2, 0.2, 1.0],
+        [-1.0, 0.0, 0.0],  # second face
+        [0.0, -1.0, 0.0],
+        [-0.2, -0.2, 1.0],
+    ]
+    mesh = _regular(coords, "TET4", [[0, 1, 2, 3], [0, 4, 5, 6]])
+    assert mf.is_conform(mesh, _TOL).is_conform
+
+
 def test_rejects_cell_folded_by_coincident_duplicates():
     """The reported false negative: a cell spells part of its boundary with coincident duplicates.
 

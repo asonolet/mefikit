@@ -592,6 +592,7 @@ pub fn is_conform_with(
             non_conforming_faces(
                 mesh,
                 tol,
+                &canonical,
                 &butterfly_cells,
                 &cell_faces,
                 &mut non_conf_pairs,
@@ -1689,6 +1690,7 @@ fn volume_eps(scale: f64) -> f64 {
 fn non_conforming_faces(
     mesh: &UMeshView,
     tol: f64,
+    canonical: &[usize],
     butterfly: &FxHashSet<ElementId>,
     cell_faces: &[VolumeCellFaces],
     seen: &mut FxHashMap<[ElementId; 2], ()>,
@@ -1702,8 +1704,11 @@ fn non_conforming_faces(
         for ring in &cell.rings {
             faces.add_element(ElementType::PGON, ring, None);
             owner.push(cell.id);
-            let mut key = ring.clone();
+            // Compare identified nodes: a complete interface spelled with separate coincident
+            // ids is still one face, while a partial interface keeps a different node set.
+            let mut key: Vec<usize> = ring.iter().map(|&n| canonical[n]).collect();
             key.sort_unstable();
+            key.dedup();
             keys.push(key);
         }
     }
@@ -1997,7 +2002,7 @@ fn poly_centroid(poly: &Polyhedron) -> [f64; 3] {
     [acc[0] / n, acc[1] / n, acc[2] / n]
 }
 
-/// Maps every node of `mesh` to the representative of its coincident cluster.
+/// Maps every node of `mesh` to the node id representing its coincident cluster.
 ///
 /// Nodes at most `tol` apart (Chebyshev distance) share a representative. With `tol == 0`, every
 /// node is its own representative.
@@ -2007,8 +2012,19 @@ fn canonical_nodes(mesh: &UMeshView, tol: f64) -> Vec<usize> {
         return (0..n).collect();
     }
     let points: Vec<[f64; 3]> = (0..n).map(|i| point3(&mesh.coords(), i)).collect();
-    let (_, cluster_of) = weld_points(&points, tol);
+    let (unique, cluster_of) = weld_points(&points, tol);
+
+    // `weld_points` numbers clusters densely, so its cluster ids are not node ids. Map each
+    // cluster back to its representative node (the lowest input index), which is what the
+    // face-based checks need.
+    let mut representative = vec![usize::MAX; unique.len()];
+    for (node, &cluster) in cluster_of.iter().enumerate() {
+        representative[cluster] = representative[cluster].min(node);
+    }
     cluster_of
+        .iter()
+        .map(|&cluster| representative[cluster])
+        .collect()
 }
 
 /// Midpoint of two nodes.
