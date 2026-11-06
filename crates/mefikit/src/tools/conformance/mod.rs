@@ -1610,6 +1610,23 @@ fn cross3(a: &[f64; 3], b: &[f64; 3]) -> [f64; 3] {
     ]
 }
 
+/// Builds a cell polyhedron with outward face winding when the cell is convex and inverted.
+///
+/// The intersection-volume algorithm assumes outward-oriented faces. Orientation is not part of
+/// conformance, so an otherwise valid but inverted cell must not produce a false intersection.
+fn oriented_polyhedron(mesh: &UMeshView, cell: ElementId) -> Polyhedron {
+    let elem = mesh.element(cell);
+    let mut poly = elem.to_polyhedron();
+    let inverted = match elem.element_type() {
+        ElementType::TET4 | ElementType::WEDGE6 | ElementType::HEX8 => elem.measure3() < 0.0,
+        _ => poly.is_convex() && poly.signed_volume() < 0.0,
+    };
+    if inverted {
+        poly.into_ccw();
+    }
+    poly
+}
+
 /// Appends one [`ConformanceIssue::IntersectingCells`] per pair of volume cells that overlap.
 ///
 /// A bounding-volume hierarchy rejects the pairs that cannot touch; the remaining pairs are
@@ -1629,7 +1646,7 @@ fn intersecting_cells(
         FxHashMap::with_capacity_and_hasher(cells.len(), FxBuildHasher);
     let mut pairs: Vec<(ElementId, ElementId, f64, [f64; 3])> = Vec::new();
     for &cell in &cells {
-        let poly = mesh.element(cell).to_polyhedron();
+        let poly = oriented_polyhedron(mesh, cell);
         let [min, max] = poly.bounds();
         let scale = min
             .iter()
@@ -1651,7 +1668,7 @@ fn intersecting_cells(
                 }
                 let poly_b = polys
                     .entry(other)
-                    .or_insert_with(|| mesh.element(other).to_polyhedron());
+                    .or_insert_with(|| oriented_polyhedron(mesh, other));
                 let vol = poly.convex_intersection_volume_impl(poly_b);
                 if vol > volume_eps(scale) {
                     let c = poly_centroid(&poly);
@@ -1712,9 +1729,16 @@ fn non_conforming_faces(
             keys.push(key);
         }
     }
-    let Ok(fdata) = collect_surface_faces(&faces.view()) else {
+    let Ok(mut fdata) = collect_surface_faces(&faces.view()) else {
         return;
     };
+    // Use identified node ids for the shared-endpoint test, matching the rest of the diagnostic:
+    // coincident nodes within `tol` are the same node, while nodes farther apart remain distinct.
+    for face in &mut fdata {
+        for node in &mut face.ring {
+            *node = canonical[*node];
+        }
+    }
     let index = faces.view().bvh3();
 
     let mut pairs: Vec<(ElementId, ElementId, [f64; 3])> = Vec::new();

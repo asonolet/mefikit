@@ -207,6 +207,44 @@ fn is_conform_accepts_stacked_hexes_with_duplicate_interface_nodes() {
     assert!(report.is_conform(), "{report:?}");
 }
 
+/// An inverted cell is still geometrically conformal; orientation must not create a false
+/// intersection with its neighbour.
+#[test]
+fn is_conform_accepts_inverted_adjacent_hexes() {
+    let coords: Vec<[f64; 3]> = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [0.0, 1.0, 1.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+        [0.0, 1.0, 1.0],
+        [0.0, 0.0, 2.0],
+        [1.0, 0.0, 2.0],
+        [1.0, 1.0, 2.0],
+        [0.0, 1.0, 2.0],
+    ];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    // The first cell is inverted (same node set, reversed winding).
+    mesh.add_element(ElementType::HEX8, &[3, 2, 1, 0, 7, 6, 5, 4], None);
+    mesh.add_element(ElementType::HEX8, &[8, 9, 10, 11, 12, 13, 14, 15], None);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
+
 /// Two cells whose interface is only *partially* shared (some ids in common, some duplicated)
 /// is not conformal.
 #[test]
@@ -723,6 +761,134 @@ fn flat_face(points: &[[f64; 3]]) -> FaceData {
 }
 
 #[test]
+fn is_conform_accepts_duplicate_shared_vertex_with_nearly_collinear_faces() {
+    // The same two TET4 faces as `conform_tet_false_positive.med`, but the shared vertex is a
+    // separate node id at the same coordinate. Identification within `tol` must make the edge
+    // incident to that vertex a shared endpoint, not a proper crossing.
+    let coords: Vec<[f64; 3]> = vec![
+        [
+            -0.011777945491468371,
+            -0.0035999999999999904,
+            0.0030279492260965064,
+        ],
+        [
+            -0.011678971159607306,
+            -0.0037714285714285384,
+            0.0033743593808772104,
+        ],
+        [
+            -0.0115502714227063,
+            -0.00345009302042465,
+            0.00326306186051616,
+        ],
+        [
+            -0.01187691982332946,
+            -0.0034285714285714024,
+            0.0033743593808771843,
+        ],
+        [
+            -0.011481022495885156,
+            -0.004114285714285671,
+            0.0033743593808771843,
+        ],
+        [
+            -0.011579996827746231,
+            -0.003942857142857102,
+            0.0037207695356578988,
+        ],
+        [
+            -0.0114426531316044,
+            -0.00371145775224367,
+            0.00356788909232578,
+        ],
+        [
+            -0.011678971159607306,
+            -0.0037714285714285384,
+            0.0033743593808772104,
+        ],
+    ];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::TET4, &[0, 1, 2, 3], None);
+    mesh.add_element(ElementType::TET4, &[4, 5, 6, 7], None);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
+
+#[test]
+fn is_conform_accepts_distinct_close_vertices_without_overlap() {
+    let mut coords: Vec<[f64; 3]> = vec![
+        [
+            -0.011777945491468371,
+            -0.0035999999999999904,
+            0.0030279492260965064,
+        ],
+        [
+            -0.011678971159607306,
+            -0.0037714285714285384,
+            0.0033743593808772104,
+        ],
+        [
+            -0.0115502714227063,
+            -0.00345009302042465,
+            0.00326306186051616,
+        ],
+        [
+            -0.01187691982332946,
+            -0.0034285714285714024,
+            0.0033743593808771843,
+        ],
+        [
+            -0.011481022495885156,
+            -0.004114285714285671,
+            0.0033743593808771843,
+        ],
+        [
+            -0.011579996827746231,
+            -0.003942857142857102,
+            0.0037207695356578988,
+        ],
+        [
+            -0.0114426531316044,
+            -0.00371145775224367,
+            0.00356788909232578,
+        ],
+        [
+            -0.011678971159607306,
+            -0.0037714285714285384,
+            0.0033743593808772104,
+        ],
+    ];
+    let delta = [
+        1e-8 * (coords[4][0] - coords[7][0]),
+        1e-8 * (coords[4][1] - coords[7][1]),
+        1e-8 * (coords[4][2] - coords[7][2]),
+    ];
+    for k in 0..3 {
+        coords[7][k] += delta[k];
+    }
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::TET4, &[0, 1, 2, 3], None);
+    mesh.add_element(ElementType::TET4, &[4, 5, 6, 7], None);
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
+
+#[test]
 fn distinct_close_vertices_can_still_overlap() {
     // The faces share a vertex coordinate but not a node id: that is not a shared node, so the
     // positive-area overlap must still be reported.
@@ -909,6 +1075,7 @@ fn fixture_mesh(
     scale: f64,
     translation: [f64; 3],
     seed: Option<u64>,
+    flip: usize,
 ) -> UMesh {
     let mut coords = fixture.coords.clone();
     for point in &mut coords[fixture.second_start..] {
@@ -921,7 +1088,7 @@ fn fixture_mesh(
         let z = scale * point[2] + translation[2];
         *point = [x, y, z];
     }
-    let conns = match seed {
+    let mut conns = match seed {
         Some(seed) => {
             let (relabeled, conns) = shuffled_mesh(&coords, &fixture.conns, seed);
             coords = relabeled;
@@ -929,6 +1096,23 @@ fn fixture_mesh(
         }
         None => fixture.conns.clone(),
     };
+    for (i, conn) in conns.iter_mut().enumerate() {
+        if flip & (1 << i) != 0 {
+            match fixture.et {
+                ElementType::TET4 => conn.swap(2, 3),
+                ElementType::WEDGE6 => {
+                    conn.swap(0, 2);
+                    conn.swap(3, 5);
+                }
+                ElementType::HEX8 => {
+                    conn.swap(1, 3);
+                    conn.swap(5, 7);
+                }
+                ElementType::TRI3 | ElementType::QUAD4 => conn.reverse(),
+                _ => {}
+            }
+        }
+    }
     let flat: Vec<f64> = coords.iter().flatten().copied().collect();
     let mut mesh = UMesh::new(
         nd::Array2::from_shape_vec((coords.len(), 3), flat)
@@ -955,9 +1139,18 @@ proptest! {
         ty in -10.0f64..10.0,
         tz in -10.0f64..10.0,
         seed in any::<u64>(),
+        flip in 0usize..4,
     ) {
         let fixture = two_cell_fixture(kind);
-        let mesh = fixture_mesh(&fixture, 0.0, angle, scale, [tx, ty, tz], Some(seed));
+        let mesh = fixture_mesh(
+            &fixture,
+            0.0,
+            angle,
+            scale,
+            [tx, ty, tz],
+            Some(seed),
+            flip,
+        );
         let tol = 1e-9 * scale.max(1.0);
         let report = is_conform(&mesh.view(), tol, None).unwrap();
         prop_assert!(
@@ -979,7 +1172,7 @@ proptest! {
         tz in -5.0f64..5.0,
     ) {
         let fixture = two_cell_fixture(kind);
-        let mesh = fixture_mesh(&fixture, offset, angle, scale, [tx, ty, tz], None);
+        let mesh = fixture_mesh(&fixture, offset, angle, scale, [tx, ty, tz], None, 0);
         let tol = 1e-9 * scale.max(1.0);
         let report = is_conform(&mesh.view(), tol, None).unwrap();
         prop_assert!(
