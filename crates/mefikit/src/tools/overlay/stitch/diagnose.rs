@@ -372,6 +372,7 @@ pub fn is_conform(
     // along an edge or a vertex share fewer than three nodes and are left alone.
     partially_shared_faces(
         mesh,
+        tol,
         &butterfly_cells,
         &mut issues,
         &mut n_issues,
@@ -1522,15 +1523,19 @@ fn non_conforming_faces(
 }
 
 /// Appends one [`ConformanceIssue::NonConformingFaces`] per pair of distinct cells that share
-/// three nodes or more without sharing a whole face.
+/// three non-collinear nodes or more without sharing a whole face.
 ///
 /// Two cells meeting along a full face spell it with the same node set; two cells meeting only
 /// along an edge or a vertex share two nodes or one. Any pair in between shares a *part* of a
 /// face — the interface is only partially shared, and one side carries a node the other lacks —
 /// so the mesh is not conformal. Node ids are compared as given: coincident-but-distinct ids are
 /// handled by the geometric check, this one catches the case the two sides share ids.
+///
+/// Three shared nodes on one line are only a shared edge, with an extra midpoint on it; that is
+/// still conformal. A partial face needs the common nodes to span a positive area.
 fn partially_shared_faces(
     mesh: &UMeshView,
+    tol: f64,
     butterfly: &FxHashSet<ElementId>,
     issues: &mut Vec<ConformanceIssue>,
     n_issues: &mut usize,
@@ -1600,6 +1605,9 @@ fn partially_shared_faces(
             .copied()
             .filter(|n| ring_b.contains(n))
             .collect();
+        if !common_nodes_span_area(&coords, &common, tol) {
+            continue;
+        }
         pairs.push((pair[0], pair[1], key_centroid(&coords, &common)));
     }
     pairs.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
@@ -1733,6 +1741,46 @@ fn midpoint<S: nd::Data<Elem = f64>>(
         (coords[(a, 1)] + coords[(b, 1)]) / 2.0,
         z,
     ]
+}
+
+/// Whether the given nodes span a positive area, i.e. are not all collinear.
+///
+/// Used to tell a partially shared face from a shared edge that merely carries an extra
+/// collinear node. The tolerance is a length: a deviation from the line below `tol` is ignored.
+fn common_nodes_span_area<S: nd::Data<Elem = f64>>(
+    coords: &nd::ArrayBase<S, nd::Ix2>,
+    nodes: &[usize],
+    tol: f64,
+) -> bool {
+    if nodes.len() < 3 {
+        return false;
+    }
+    let origin = point3(coords, nodes[0]);
+    let diffs: Vec<[f64; 3]> = nodes[1..]
+        .iter()
+        .map(|&n| sub3(&point3(coords, n), &origin))
+        .collect();
+    let scale = nodes
+        .iter()
+        .map(|&n| point3(coords, n))
+        .flat_map(|p| p.into_iter())
+        .fold(1.0_f64, |acc, c| acc.max(c.abs()));
+    let eps = tol.max(64.0 * f64::EPSILON * scale);
+    let extent = diffs
+        .iter()
+        .map(|d| dot3v(d, d).sqrt())
+        .fold(0.0_f64, f64::max);
+    if extent <= eps {
+        return false;
+    }
+    let Some(dir) = diffs.iter().find(|d| dot3v(d, d).sqrt() > eps) else {
+        return false;
+    };
+    let area_eps = eps * extent;
+    diffs.iter().any(|d| {
+        let n = cross3(dir, d);
+        dot3v(&n, &n).sqrt() > area_eps
+    })
 }
 
 /// Centroid of a set of node ids.

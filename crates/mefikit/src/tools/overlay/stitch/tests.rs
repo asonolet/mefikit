@@ -1242,6 +1242,42 @@ fn is_conform_rejects_mismatched_tet_interface() {
     );
 }
 
+/// Two tetrahedra on opposite sides of a plane whose interface triangles share an edge but not
+/// their third vertex have a non-conforming interface: the triangles overlap over a positive
+/// area without being the same face.
+#[test]
+fn is_conform_rejects_two_tets_with_mismatched_interface_triangles() {
+    let coords: Vec<[f64; 3]> = vec![
+        [0.0, 0.0, 0.0], // shared interface edge
+        [1.0, 0.0, 0.0], // shared interface edge
+        [0.5, 1.0, 0.0], // first interface apex
+        [0.5, 0.5, 0.0], // second interface apex, inside the first triangle
+        [0.5, 0.5, -1.0],
+        [0.5, 0.5, 1.0],
+    ];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::TET4, &[0, 2, 1, 4], None);
+    mesh.add_element(ElementType::TET4, &[0, 1, 3, 5], None);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(!report.is_conform(), "{report:?}");
+    assert_eq!(report.issues.len(), 1, "{report:?}");
+    assert!(
+        matches!(
+            report.issues[0],
+            ConformanceIssue::NonConformingFaces { .. }
+        ),
+        "{report:?}"
+    );
+}
+
 /// Two cells overlapping in volume are reported as intersecting.
 #[test]
 fn is_conform_rejects_volume_overlap() {

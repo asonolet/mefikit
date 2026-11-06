@@ -72,6 +72,15 @@ def test_accepts_two_stacked_hexes():
     assert mf.is_conform(mesh, _TOL).is_conform
 
 
+def test_simplexize_shared_hex_face_is_conformal():
+    """Simplexizing two hexes sharing a face produces a conforming tetrahedral mesh."""
+    mesh = mf.build_cmesh([0.0, 1.0, 2.0], [0.0, 1.0], [0.0, 1.0])
+    tets = mesh.simplexize()
+    assert tets.block_types() == ["TET4"]
+    assert tets.num_elements() == 12
+    assert mf.is_conform(tets, _TOL).is_conform
+
+
 def test_rejects_cell_folded_by_coincident_duplicates():
     """The reported false negative: a cell spells part of its boundary with coincident duplicates.
 
@@ -451,3 +460,57 @@ def test_rejects_mismatched_tet_interface():
     report = mf.is_conform(mesh, _TOL)
     assert not report.is_conform
     assert "non_conforming_faces" in _kinds(report)
+
+
+def test_rejects_two_tets_with_mismatched_interface_triangles():
+    """Two tets on opposite sides of a plane have different triangles on that plane.
+
+    The interface triangles share edge ``0-1``, but the second one's third vertex lies inside
+    the first one. Their boundary faces therefore overlap over a positive area without being
+    the same face, which is the defect a failed tetrahedralization of two neighbouring cells
+    can leave.
+    """
+    coords = [
+        [0.0, 0.0, 0.0],  # shared interface edge
+        [1.0, 0.0, 0.0],  # shared interface edge
+        [0.5, 1.0, 0.0],  # first interface apex
+        [0.5, 0.5, 0.0],  # second interface apex, inside the first triangle
+        [0.5, 0.5, -1.0],
+        [0.5, 0.5, 1.0],
+    ]
+    mesh = _regular(coords, "TET4", [[0, 2, 1, 4], [0, 1, 3, 5]])
+
+    report = mf.is_conform(mesh, _TOL)
+    assert not report.is_conform
+    assert set(_kinds(report)) == {"non_conforming_faces"}
+
+
+def test_accepts_shared_edge_with_extra_collinear_node():
+    """A shared edge carrying a midpoint on both sides is still conformal.
+
+    The two faces that contain the edge are perpendicular, so only the node-sharing check can
+    mistake their three common collinear nodes for a partially shared face.
+    """
+    coords = _unit_cube_coords() + [[1.0, 1.0, 0.5]]
+    a_faces = _unit_cube_faces()
+    # A's x = 1 face carries the midpoint 8 on its edge 3-7.
+    a_faces[3] = [1, 3, 8, 7, 5]
+
+    # B is the cube [1, 2] x [1, 2] x [0, 1]; local nodes 0 and 4 are A's 3 and 7.
+    b_local = [
+        [1.0 + i, 1.0 + j, float(k)]
+        for k in range(2)
+        for j in range(2)
+        for i in range(2)
+    ]
+    remap = {0: 3, 4: 7}
+    for n, point in enumerate(b_local):
+        if n not in remap:
+            remap[n] = len(coords)
+            coords.append(point)
+    b_faces = [[remap[n] for n in face] for face in _unit_cube_faces()]
+    # B's y = 1 face carries the same midpoint 8 on its edge 3-7.
+    b_faces[2] = [3, remap[1], remap[5], 7, 8]
+
+    mesh = _phed(coords, [a_faces, b_faces])
+    assert mf.is_conform(mesh, _TOL).is_conform
