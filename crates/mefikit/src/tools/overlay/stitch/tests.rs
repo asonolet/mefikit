@@ -1278,6 +1278,123 @@ fn is_conform_rejects_two_tets_with_mismatched_interface_triangles() {
     );
 }
 
+/// The fast checks skip the expensive cell-pair intersection search.
+#[test]
+fn is_conform_checks_can_skip_cell_intersections() {
+    let coords: Vec<[f64; 3]> = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.1, 0.1, 0.1],
+        [0.2, 0.1, 0.1],
+        [0.1, 0.2, 0.1],
+        [0.1, 0.1, 0.2],
+    ];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::TET4, &[0, 1, 2, 3], None);
+    mesh.add_element(ElementType::TET4, &[4, 5, 6, 7], None);
+
+    let fast = is_conform_with(&mesh.view(), 1e-9, ConformanceOptions::fast()).unwrap();
+    assert!(fast.is_conform(), "{fast:?}");
+
+    let intersections = is_conform_with(
+        &mesh.view(),
+        1e-9,
+        ConformanceOptions::new(ConformanceChecks::INTERSECTIONS),
+    )
+    .unwrap();
+    assert!(
+        intersections
+            .issues
+            .iter()
+            .any(|i| matches!(i, ConformanceIssue::IntersectingCells { .. })),
+        "{intersections:?}"
+    );
+}
+
+/// The fast checks skip the geometric face-overlap search.
+#[test]
+fn is_conform_checks_can_skip_geometric_face_overlap() {
+    let coords: Vec<[f64; 3]> = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.5, 1.0, 0.0],
+        [0.5, 0.5, 0.0],
+        [0.5, 0.5, -1.0],
+        [0.5, 0.5, 1.0],
+    ];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::TET4, &[0, 2, 1, 4], None);
+    mesh.add_element(ElementType::TET4, &[0, 1, 3, 5], None);
+
+    let fast = is_conform_with(&mesh.view(), 1e-9, ConformanceOptions::fast()).unwrap();
+    assert!(fast.is_conform(), "{fast:?}");
+
+    let faces = is_conform_with(
+        &mesh.view(),
+        1e-9,
+        ConformanceOptions::new(ConformanceChecks::FACE_OVERLAP),
+    )
+    .unwrap();
+    assert_eq!(faces.issues.len(), 1, "{faces:?}");
+    assert!(
+        matches!(faces.issues[0], ConformanceIssue::NonConformingFaces { .. }),
+        "{faces:?}"
+    );
+}
+
+/// The butterfly check is selectable on its own.
+#[test]
+fn is_conform_butterfly_check_is_selectable() {
+    let mut coords = unit_cube_coords();
+    coords[6] = [1.0, 1.0, 1.0];
+    coords[7] = [0.0, 1.0, 1.0];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::HEX8, &[0, 1, 3, 2, 4, 5, 7, 6], None);
+
+    let topology = is_conform_with(
+        &mesh.view(),
+        1e-9,
+        ConformanceOptions::new(ConformanceChecks::TOPOLOGY),
+    )
+    .unwrap();
+    assert!(topology.is_conform(), "{topology:?}");
+
+    let butterfly = is_conform_with(
+        &mesh.view(),
+        1e-9,
+        ConformanceOptions::new(ConformanceChecks::BUTTERFLY),
+    )
+    .unwrap();
+    assert_eq!(butterfly.issues.len(), 1, "{butterfly:?}");
+    assert!(
+        matches!(butterfly.issues[0], ConformanceIssue::ButterflyCell { .. }),
+        "{butterfly:?}"
+    );
+}
+
 /// Two cells overlapping in volume are reported as intersecting.
 #[test]
 fn is_conform_rejects_volume_overlap() {

@@ -172,6 +172,117 @@ impl ConformanceReport {
     }
 }
 
+/// Which conformance checks [`is_conform_with`] runs.
+///
+/// The checks are independent groups; [`Self::FAST`] runs the cheap structural and per-cell
+/// checks, while [`Self::FULL`] adds the two geometric searches over cell pairs. Combine them
+/// with `|`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConformanceChecks(u8);
+
+impl ConformanceChecks {
+    /// Run no check beyond input validation.
+    pub const NONE: Self = Self(0);
+    /// Overlapping faces, partially shared faces, and merged nodes.
+    pub const TOPOLOGY: Self = Self(1 << 0);
+    /// Self-intersecting (butterfly) cells.
+    pub const BUTTERFLY: Self = Self(1 << 1);
+    /// Cells whose volumes (3D) or areas (2D) overlap.
+    pub const INTERSECTIONS: Self = Self(1 << 2);
+    /// Coplanar faces (3D) or edges (2D) that overlap without being the same face.
+    pub const FACE_OVERLAP: Self = Self(1 << 3);
+    /// The fast checks: structural topology and butterfly cells.
+    pub const FAST: Self = Self(Self::TOPOLOGY.0 | Self::BUTTERFLY.0);
+    /// Every check.
+    pub const FULL: Self = Self(Self::FAST.0 | Self::INTERSECTIONS.0 | Self::FACE_OVERLAP.0);
+
+    /// The raw bits, for bindings.
+    pub const fn bits(self) -> u8 {
+        self.0
+    }
+
+    /// Builds a set from raw bits, dropping unknown bits.
+    pub const fn from_bits_truncate(bits: u8) -> Self {
+        Self(bits & Self::FULL.0)
+    }
+
+    /// Whether every check in `other` is enabled.
+    pub const fn contains(self, other: Self) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Whether any check in `other` is enabled.
+    pub const fn intersects(self, other: Self) -> bool {
+        self.0 & other.0 != 0
+    }
+
+    /// The union of two check sets.
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    /// Whether no check is enabled.
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl Default for ConformanceChecks {
+    fn default() -> Self {
+        Self::FULL
+    }
+}
+
+impl std::ops::BitOr for ConformanceChecks {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self.union(rhs)
+    }
+}
+
+impl std::ops::BitOrAssign for ConformanceChecks {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = self.union(rhs);
+    }
+}
+
+/// Options for [`is_conform_with`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConformanceOptions {
+    /// The checks to run.
+    pub checks: ConformanceChecks,
+    /// Cap on `issues.len()`, or `None` to keep every issue.
+    pub max_issues: Option<usize>,
+}
+
+impl ConformanceOptions {
+    /// The given checks, with no issue cap.
+    pub const fn new(checks: ConformanceChecks) -> Self {
+        Self {
+            checks,
+            max_issues: None,
+        }
+    }
+
+    /// The fast checks, with no issue cap.
+    pub const fn fast() -> Self {
+        Self::new(ConformanceChecks::FAST)
+    }
+
+    /// Sets the issue cap.
+    pub const fn with_max_issues(mut self, max_issues: Option<usize>) -> Self {
+        self.max_issues = max_issues;
+        self
+    }
+}
+
+impl Default for ConformanceOptions {
+    fn default() -> Self {
+        Self::new(ConformanceChecks::FULL)
+    }
+}
+
 /// Ranks an issue so that the report is deterministic and the most structural problems come
 /// first: an input that cannot be conformized at all is more useful to report than a couple of
 /// duplicated nodes.
@@ -194,6 +305,42 @@ struct NodeDuplicate {
     nodes: [usize; 2],
     cells_a: Vec<ElementId>,
     cells_b: Vec<ElementId>,
+}
+
+/// The boundary faces of one volume cell, collected once and shared by every check that needs
+/// them.
+struct VolumeCellFaces {
+    id: ElementId,
+    rings: Vec<Vec<usize>>,
+}
+
+fn collect_volume_faces(mesh: &UMeshView) -> Vec<VolumeCellFaces> {
+    mesh.elements_of_dim(Dimension::D3)
+        .map(|cell| {
+            let (_, conn) = cell.to_poly();
+            let rings = split_phed(&conn).into_iter().map(|r| r.to_vec()).collect();
+            VolumeCellFaces {
+                id: cell.id(),
+                rings,
+            }
+        })
+        .collect()
+}
+
+/// Shared accumulator for the issue list and its uncapped count.
+struct IssueSink<'a> {
+    issues: &'a mut Vec<ConformanceIssue>,
+    n_issues: &'a mut usize,
+    cap: usize,
+}
+
+impl IssueSink<'_> {
+    fn push(&mut self, issue: ConformanceIssue) {
+        *self.n_issues += 1;
+        if self.issues.len() < self.cap {
+            self.issues.push(issue);
+        }
+    }
 }
 
 /// Checks whether `mesh` is conformal and, when it is not, reports why and where.
@@ -233,10 +380,31 @@ pub fn is_conform(
     tol: f64,
     max_issues: Option<usize>,
 ) -> Result<ConformanceReport, StitchError> {
+    is_conform_with(
+        mesh,
+        tol,
+        ConformanceOptions {
+            checks: ConformanceChecks::FULL,
+            max_issues,
+        },
+    )
+}
+
+/// Like [`is_conform`], but chooses which checks to run.
+///
+/// [`ConformanceOptions::default`] runs every check, so this is the general entry point when
+/// only a subset is needed. Use [`ConformanceOptions::fast`] for the structural and per-cell
+/// checks without the two geometric searches over cell pairs.
+pub fn is_conform_with(
+    mesh: &UMeshView,
+    tol: f64,
+    options: ConformanceOptions,
+) -> Result<ConformanceReport, StitchError> {
     if !(tol.is_finite() && tol >= 0.0) {
         return Err(StitchError::InvalidTolerance { tol });
     }
-    let cap = max_issues.unwrap_or(usize::MAX);
+    let checks = options.checks;
+    let cap = options.max_issues.unwrap_or(usize::MAX);
 
     let Some(top) = mesh.topological_dimension() else {
         return Ok(single_issue(ConformanceIssue::NoVolumeCells));
@@ -268,16 +436,46 @@ pub fn is_conform(
         }));
     }
 
+    if checks.is_empty() {
+        return Ok(ConformanceReport {
+            issues: Vec::new(),
+            n_issues: 0,
+            truncated: false,
+        });
+    }
+
     let coords = mesh.coords();
     let mut issues: Vec<ConformanceIssue> = Vec::new();
     let mut n_issues = 0usize;
 
+    let need_faces = checks.intersects(
+        ConformanceChecks::TOPOLOGY
+            | ConformanceChecks::BUTTERFLY
+            | ConformanceChecks::FACE_OVERLAP,
+    );
+    let cell_faces = if need_faces && top == Dimension::D3 {
+        collect_volume_faces(mesh)
+    } else {
+        Vec::new()
+    };
+
     // Node identification: every node is replaced by the representative of its coincident
     // cluster, so that a cell using two ids for the same location is detected as a fold.
-    let canonical = canonical_nodes(mesh, tol);
+    // Surface cells always need it; volume cells only for the checks that inspect faces.
+    let need_canonical = top == Dimension::D2
+        || checks.intersects(
+            ConformanceChecks::TOPOLOGY
+                | ConformanceChecks::BUTTERFLY
+                | ConformanceChecks::FACE_OVERLAP,
+        );
+    let canonical = if need_canonical {
+        canonical_nodes(mesh, tol)
+    } else {
+        Vec::new()
+    };
 
     if top == Dimension::D2 {
-        return Ok(is_conform_surface(mesh, tol, cap, &canonical));
+        return Ok(is_conform_surface(mesh, tol, cap, &canonical, checks));
     }
     if top != Dimension::D3 {
         // 1D and 0D meshes have no self-intersection or shared-facet notion to check here.
@@ -290,65 +488,92 @@ pub fn is_conform(
 
     // Butterfly detection works on the identified nodes, so that a fold spelled with coincident
     // duplicate ids is left to the `MergedNodes` diagnostic instead of being reported as a
-    // self-intersection.
-    let butterfly_cells = butterfly_cells(mesh, tol, &canonical, &mut issues, &mut n_issues, cap);
-    intersecting_cells(mesh, &mut issues, &mut n_issues, cap);
+    // self-intersection. The set is also needed by the face checks, which skip self-intersecting
+    // cells, even when the butterfly issues themselves are not requested.
+    let need_butterfly = checks.intersects(
+        ConformanceChecks::TOPOLOGY
+            | ConformanceChecks::BUTTERFLY
+            | ConformanceChecks::FACE_OVERLAP,
+    );
+    let found_butterflies = if need_butterfly {
+        find_butterfly_cells(mesh, tol, &canonical, &cell_faces)
+    } else {
+        Vec::new()
+    };
+    let butterfly_cells: FxHashSet<ElementId> =
+        found_butterflies.iter().map(|(cell, _)| *cell).collect();
+    if checks.contains(ConformanceChecks::BUTTERFLY) {
+        for (cell, center) in found_butterflies {
+            n_issues += 1;
+            if issues.len() < cap {
+                issues.push(ConformanceIssue::ButterflyCell { center, cell });
+            }
+        }
+    }
+
+    if checks.contains(ConformanceChecks::INTERSECTIONS) {
+        intersecting_cells(mesh, &mut issues, &mut n_issues, cap);
+    }
 
     // Cells that fold onto themselves: two of their nodes are coincident but distinct.
     let mut merged: Vec<NodeDuplicate> = Vec::new();
-    for cell in mesh.elements_of_dim(Dimension::D3) {
-        let conn = cell.connectivity();
-        let mut seen: FxHashMap<usize, usize> =
-            FxHashMap::with_capacity_and_hasher(conn.len(), FxBuildHasher);
-        let mut repeats: Vec<[usize; 2]> = Vec::new();
-        for (pos, &node) in conn.iter().enumerate() {
-            if node == usize::MAX {
-                continue;
-            }
-            if let Some(prev) = seen.insert(canonical[node], pos) {
-                let (a, b) = (conn[prev].min(node), conn[prev].max(node));
-                if a != b {
-                    repeats.push([a, b]);
+    if checks.contains(ConformanceChecks::TOPOLOGY) {
+        for cell in mesh.elements_of_dim(Dimension::D3) {
+            let conn = cell.connectivity();
+            let mut seen: FxHashMap<usize, usize> =
+                FxHashMap::with_capacity_and_hasher(conn.len(), FxBuildHasher);
+            let mut repeats: Vec<[usize; 2]> = Vec::new();
+            for (pos, &node) in conn.iter().enumerate() {
+                if node == usize::MAX {
+                    continue;
+                }
+                if let Some(prev) = seen.insert(canonical[node], pos) {
+                    let (a, b) = (conn[prev].min(node), conn[prev].max(node));
+                    if a != b {
+                        repeats.push([a, b]);
+                    }
                 }
             }
-        }
-        repeats.sort_unstable();
-        repeats.dedup();
-        for [a, b] in repeats {
-            let cells = vec![cell.id()];
-            merged.push(NodeDuplicate {
-                center: midpoint(&coords, a, b),
-                nodes: [a, b],
-                cells_a: cells.clone(),
-                cells_b: cells,
-            });
+            repeats.sort_unstable();
+            repeats.dedup();
+            for [a, b] in repeats {
+                let cells = vec![cell.id()];
+                merged.push(NodeDuplicate {
+                    center: midpoint(&coords, a, b),
+                    nodes: [a, b],
+                    cells_a: cells.clone(),
+                    cells_b: cells,
+                });
+            }
         }
     }
 
     // A face spelled with the very same node ids by more than two cells cannot be reconciled by
     // refining: report it first, as it hides whatever happens on that face.
-    let mut face_cells: FxHashMap<Vec<usize>, Vec<ElementId>> = FxHashMap::with_capacity_and_hasher(
-        mesh.elements_of_dim(Dimension::D3).count() * 6,
-        FxBuildHasher,
-    );
-    for cell in mesh.elements_of_dim(Dimension::D3) {
-        let (_, conn) = cell.to_poly();
-        for ring in split_phed(&conn) {
-            let mut key = ring.to_vec();
-            key.sort_unstable();
-            face_cells.entry(key).or_default().push(cell.id());
+    if checks.contains(ConformanceChecks::TOPOLOGY) {
+        let mut face_cells: FxHashMap<Vec<usize>, Vec<ElementId>> =
+            FxHashMap::with_capacity_and_hasher(
+                mesh.elements_of_dim(Dimension::D3).count() * 6,
+                FxBuildHasher,
+            );
+        for cell in &cell_faces {
+            for ring in &cell.rings {
+                let mut key = ring.clone();
+                key.sort_unstable();
+                face_cells.entry(key).or_default().push(cell.id);
+            }
         }
-    }
-    let mut overlapping: Vec<(&Vec<usize>, &Vec<ElementId>)> =
-        face_cells.iter().filter(|(_, cs)| cs.len() > 2).collect();
-    overlapping.sort_by_key(|(_, cs)| cs[0]);
-    for (key, cs) in overlapping {
-        n_issues += 1;
-        if issues.len() < cap {
-            issues.push(ConformanceIssue::OverlappingFaces {
-                center: key_centroid(&coords, key),
-                cells: cs.clone(),
-            });
+        let mut overlapping: Vec<(&Vec<usize>, &Vec<ElementId>)> =
+            face_cells.iter().filter(|(_, cs)| cs.len() > 2).collect();
+        overlapping.sort_by_key(|(_, cs)| cs[0]);
+        for (key, cs) in overlapping {
+            n_issues += 1;
+            if issues.len() < cap {
+                issues.push(ConformanceIssue::OverlappingFaces {
+                    center: key_centroid(&coords, key),
+                    cells: cs.clone(),
+                });
+            }
         }
     }
 
@@ -356,29 +581,39 @@ pub fn is_conform(
     // face have a non-conforming interface (a T-junction, or two different tessellations of the
     // same interface). This is the case the topological checks above cannot see.
     let mut non_conf_pairs: FxHashMap<[ElementId; 2], ()> = FxHashMap::default();
-    non_conforming_faces(
-        mesh,
-        tol,
-        &butterfly_cells,
-        &mut issues,
-        &mut n_issues,
-        cap,
-        &mut non_conf_pairs,
-    );
+    if checks.intersects(ConformanceChecks::TOPOLOGY | ConformanceChecks::FACE_OVERLAP) {
+        let mut sink = IssueSink {
+            issues: &mut issues,
+            n_issues: &mut n_issues,
+            cap,
+        };
+        if checks.contains(ConformanceChecks::FACE_OVERLAP) {
+            non_conforming_faces(
+                mesh,
+                tol,
+                &butterfly_cells,
+                &cell_faces,
+                &mut non_conf_pairs,
+                &mut sink,
+            );
+        }
 
-    // Two cells that share three nodes or more but have no face in common meet through a face
-    // that is only partially shared: one side spells the interface with a node the other side
-    // does not have (a "descending face" T-junction that shares node ids). Two cells touching
-    // along an edge or a vertex share fewer than three nodes and are left alone.
-    partially_shared_faces(
-        mesh,
-        tol,
-        &butterfly_cells,
-        &mut issues,
-        &mut n_issues,
-        cap,
-        &mut non_conf_pairs,
-    );
+        // Two cells that share three nodes or more but have no face in common meet through a
+        // face that is only partially shared: one side spells the interface with a node the
+        // other side does not have (a "descending face" T-junction that shares node ids). Two
+        // cells touching along an edge or a vertex share fewer than three nodes and are left
+        // alone.
+        if checks.contains(ConformanceChecks::TOPOLOGY) {
+            partially_shared_faces(
+                mesh,
+                tol,
+                &butterfly_cells,
+                &cell_faces,
+                &mut non_conf_pairs,
+                &mut sink,
+            );
+        }
+    }
 
     for dup in merged {
         n_issues += 1;
@@ -643,8 +878,10 @@ fn is_conform_surface(
     tol: f64,
     cap: usize,
     canonical: &[usize],
+    checks: ConformanceChecks,
 ) -> ConformanceReport {
     let coords = mesh.coords();
+    let space = mesh.space_dimension();
     let mut issues: Vec<ConformanceIssue> = Vec::new();
     let mut n_issues = 0usize;
     let cells: Vec<SurfaceCell> = mesh
@@ -655,281 +892,295 @@ fn is_conform_surface(
         })
         .collect();
 
-    // A surface cell is a polygon; it is a butterfly when its boundary crosses itself.
+    // A surface cell is a polygon; it is a butterfly when its boundary crosses itself. The set
+    // is needed to suppress cascading face reports even when butterfly issues are not requested.
     let mut butterfly_ids: FxHashSet<ElementId> = FxHashSet::default();
     for cell in &cells {
         if cell_is_butterfly(&coords, std::slice::from_ref(&cell.ring), tol) {
             butterfly_ids.insert(cell.id);
-            n_issues += 1;
-            if issues.len() < cap {
-                issues.push(ConformanceIssue::ButterflyCell {
-                    center: cell_centroid(&coords, &cell.raw),
-                    cell: cell.id,
-                });
+            if checks.contains(ConformanceChecks::BUTTERFLY) {
+                n_issues += 1;
+                if issues.len() < cap {
+                    issues.push(ConformanceIssue::ButterflyCell {
+                        center: cell_centroid(&coords, &cell.raw),
+                        cell: cell.id,
+                    });
+                }
             }
         }
     }
 
     // A cell that uses two ids for one location folds onto itself.
     let mut merged: Vec<NodeDuplicate> = Vec::new();
-    for cell in &cells {
-        let mut seen: FxHashMap<usize, usize> =
-            FxHashMap::with_capacity_and_hasher(cell.raw.len(), FxBuildHasher);
-        let mut repeats: Vec<[usize; 2]> = Vec::new();
-        for (pos, &node) in cell.raw.iter().enumerate() {
-            if let Some(prev) = seen.insert(cell.ring[pos], pos) {
-                let other = cell.raw[prev];
-                let (a, b) = (other.min(node), other.max(node));
-                if a != b {
-                    repeats.push([a, b]);
+    if checks.contains(ConformanceChecks::TOPOLOGY) {
+        for cell in &cells {
+            let mut seen: FxHashMap<usize, usize> =
+                FxHashMap::with_capacity_and_hasher(cell.raw.len(), FxBuildHasher);
+            let mut repeats: Vec<[usize; 2]> = Vec::new();
+            for (pos, &node) in cell.raw.iter().enumerate() {
+                if let Some(prev) = seen.insert(cell.ring[pos], pos) {
+                    let other = cell.raw[prev];
+                    let (a, b) = (other.min(node), other.max(node));
+                    if a != b {
+                        repeats.push([a, b]);
+                    }
+                }
+            }
+            repeats.sort_unstable();
+            repeats.dedup();
+            for [a, b] in repeats {
+                let ids = vec![cell.id];
+                merged.push(NodeDuplicate {
+                    center: midpoint(&coords, a, b),
+                    nodes: [a, b],
+                    cells_a: ids.clone(),
+                    cells_b: ids,
+                });
+            }
+        }
+    }
+
+    let mut seen: FxHashMap<[ElementId; 2], ()> = FxHashMap::default();
+    let mut partial: Vec<(ElementId, ElementId, [f64; 3])> = Vec::new();
+
+    // Topological census of the boundary edges.
+    if checks.contains(ConformanceChecks::TOPOLOGY) {
+        let mut facet_cells: FxHashMap<[usize; 2], Vec<ElementId>> =
+            FxHashMap::with_capacity_and_hasher(cells.len() * 4, FxBuildHasher);
+        let mut cell_edges: Vec<Vec<[usize; 2]>> = Vec::with_capacity(cells.len());
+        for cell in &cells {
+            let mut edges = Vec::with_capacity(cell.ring.len());
+            for i in 0..cell.ring.len() {
+                let a = cell.ring[i];
+                let b = cell.ring[(i + 1) % cell.ring.len()];
+                let key = if a <= b { [a, b] } else { [b, a] };
+                edges.push(key);
+                facet_cells.entry(key).or_default().push(cell.id);
+            }
+            cell_edges.push(edges);
+        }
+        let mut overlapping: Vec<(&[usize; 2], &Vec<ElementId>)> =
+            facet_cells.iter().filter(|(_, cs)| cs.len() > 2).collect();
+        overlapping.sort_by_key(|(key, _)| **key);
+        for (key, cs) in overlapping {
+            n_issues += 1;
+            if issues.len() < cap {
+                issues.push(ConformanceIssue::OverlappingFaces {
+                    center: key_centroid(&coords, key),
+                    cells: cs.clone(),
+                });
+            }
+        }
+
+        // Two cells sharing at least two nodes must share a whole edge; otherwise an edge is only
+        // partially shared (a T-junction).
+        let mut node_cells: FxHashMap<usize, Vec<usize>> =
+            FxHashMap::with_capacity_and_hasher(coords.nrows(), FxBuildHasher);
+        for (ci, cell) in cells.iter().enumerate() {
+            let mut unique = cell.ring.clone();
+            unique.sort_unstable();
+            unique.dedup();
+            for &n in &unique {
+                node_cells.entry(n).or_default().push(ci);
+            }
+        }
+        let mut shared: FxHashMap<(usize, usize), usize> = FxHashMap::default();
+        for bucket in node_cells.values() {
+            for (pos, &a) in bucket.iter().enumerate() {
+                for &b in &bucket[(pos + 1)..] {
+                    *shared.entry((a.min(b), a.max(b))).or_insert(0) += 1;
                 }
             }
         }
-        repeats.sort_unstable();
-        repeats.dedup();
-        for [a, b] in repeats {
-            let ids = vec![cell.id];
-            merged.push(NodeDuplicate {
-                center: midpoint(&coords, a, b),
-                nodes: [a, b],
-                cells_a: ids.clone(),
-                cells_b: ids,
-            });
-        }
-    }
-
-    // Topological census of the boundary edges.
-    let mut facet_cells: FxHashMap<[usize; 2], Vec<ElementId>> =
-        FxHashMap::with_capacity_and_hasher(cells.len() * 4, FxBuildHasher);
-    let mut cell_edges: Vec<Vec<[usize; 2]>> = Vec::with_capacity(cells.len());
-    for cell in &cells {
-        let mut edges = Vec::with_capacity(cell.ring.len());
-        for i in 0..cell.ring.len() {
-            let a = cell.ring[i];
-            let b = cell.ring[(i + 1) % cell.ring.len()];
-            let key = if a <= b { [a, b] } else { [b, a] };
-            edges.push(key);
-            facet_cells.entry(key).or_default().push(cell.id);
-        }
-        cell_edges.push(edges);
-    }
-    let mut overlapping: Vec<(&[usize; 2], &Vec<ElementId>)> =
-        facet_cells.iter().filter(|(_, cs)| cs.len() > 2).collect();
-    overlapping.sort_by_key(|(key, _)| **key);
-    for (key, cs) in overlapping {
-        n_issues += 1;
-        if issues.len() < cap {
-            issues.push(ConformanceIssue::OverlappingFaces {
-                center: key_centroid(&coords, key),
-                cells: cs.clone(),
-            });
-        }
-    }
-
-    // Two cells sharing at least two nodes must share a whole edge; otherwise an edge is only
-    // partially shared (a T-junction).
-    let mut node_cells: FxHashMap<usize, Vec<usize>> =
-        FxHashMap::with_capacity_and_hasher(coords.nrows(), FxBuildHasher);
-    for (ci, cell) in cells.iter().enumerate() {
-        let mut unique = cell.ring.clone();
-        unique.sort_unstable();
-        unique.dedup();
-        for &n in &unique {
-            node_cells.entry(n).or_default().push(ci);
-        }
-    }
-    let mut shared: FxHashMap<(usize, usize), usize> = FxHashMap::default();
-    for bucket in node_cells.values() {
-        for (pos, &a) in bucket.iter().enumerate() {
-            for &b in &bucket[(pos + 1)..] {
-                *shared.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+        for ((a, b), count) in shared {
+            if count < 2 {
+                continue;
             }
+            if cell_edges[a].iter().any(|e| cell_edges[b].contains(e)) {
+                continue;
+            }
+            let common: Vec<usize> = cells[a]
+                .ring
+                .iter()
+                .copied()
+                .filter(|n| cells[b].ring.contains(n))
+                .collect();
+            let pair = if cells[a].id < cells[b].id {
+                [cells[a].id, cells[b].id]
+            } else {
+                [cells[b].id, cells[a].id]
+            };
+            seen.insert(pair, ());
+            partial.push((pair[0], pair[1], key_centroid(&coords, &common)));
         }
-    }
-    let mut seen: FxHashMap<[ElementId; 2], ()> = FxHashMap::default();
-    let mut partial: Vec<(ElementId, ElementId, [f64; 3])> = Vec::new();
-    for ((a, b), count) in shared {
-        if count < 2 {
-            continue;
-        }
-        if cell_edges[a].iter().any(|e| cell_edges[b].contains(e)) {
-            continue;
-        }
-        let common: Vec<usize> = cells[a]
-            .ring
-            .iter()
-            .copied()
-            .filter(|n| cells[b].ring.contains(n))
-            .collect();
-        let pair = if cells[a].id < cells[b].id {
-            [cells[a].id, cells[b].id]
-        } else {
-            [cells[b].id, cells[a].id]
-        };
-        seen.insert(pair, ());
-        partial.push((pair[0], pair[1], key_centroid(&coords, &common)));
     }
 
     // An edge that only partially overlaps another cell's edge is a T-junction, even when the
     // two cells share only one of the large edge's endpoints. Edges are compared geometrically
     // through a small BVH over the boundary segments.
-    let space = mesh.space_dimension();
-    let mut edge_mesh = UMesh::new(coords.to_shared());
-    let mut edge_geo: Vec<SurfaceEdge> = Vec::new();
-    for cell in &cells {
-        for i in 0..cell.ring.len() {
-            let a = cell.ring[i];
-            let b = cell.ring[(i + 1) % cell.ring.len()];
-            let key = if a <= b { [a, b] } else { [b, a] };
-            edge_mesh.add_element(ElementType::PLINE, &[a, b], None);
-            edge_geo.push(SurfaceEdge {
-                owner: cell.id,
-                key,
-                a: point3(&coords, a),
-                b: point3(&coords, b),
-            });
-        }
-    }
-    let edge_index2;
-    let edge_index3;
-    let edge_index = if space == 2 {
-        edge_index2 = edge_mesh.view().bvh2();
-        Some(EdgeIndex::D2(&edge_index2))
-    } else {
-        edge_index3 = edge_mesh.view().bvh3();
-        Some(EdgeIndex::D3(&edge_index3))
-    };
-    let mut geometric: Vec<(ElementId, ElementId, [f64; 3])> = Vec::new();
-    for (i, edge) in edge_geo.iter().enumerate() {
-        let pad = tol.max(f64::EPSILON);
-        let [min, max] = segment_bounds(&edge.a, &edge.b);
-        let found = match edge_index {
-            Some(EdgeIndex::D2(index)) => {
-                index.in_bounds([min[0] - pad, min[1] - pad], [max[0] + pad, max[1] + pad])
+    if checks.contains(ConformanceChecks::FACE_OVERLAP) {
+        let mut edge_mesh = UMesh::new(coords.to_shared());
+        let mut edge_geo: Vec<SurfaceEdge> = Vec::new();
+        for cell in &cells {
+            for i in 0..cell.ring.len() {
+                let a = cell.ring[i];
+                let b = cell.ring[(i + 1) % cell.ring.len()];
+                let key = if a <= b { [a, b] } else { [b, a] };
+                edge_mesh.add_element(ElementType::PLINE, &[a, b], None);
+                edge_geo.push(SurfaceEdge {
+                    owner: cell.id,
+                    key,
+                    a: point3(&coords, a),
+                    b: point3(&coords, b),
+                });
             }
-            Some(EdgeIndex::D3(index)) => index.in_bounds(
-                [min[0] - pad, min[1] - pad, min[2] - pad],
-                [max[0] + pad, max[1] + pad, max[2] + pad],
-            ),
-            None => continue,
+        }
+        let edge_index2;
+        let edge_index3;
+        let edge_index = if space == 2 {
+            edge_index2 = edge_mesh.view().bvh2();
+            Some(EdgeIndex::D2(&edge_index2))
+        } else {
+            edge_index3 = edge_mesh.view().bvh3();
+            Some(EdgeIndex::D3(&edge_index3))
         };
-        for other in found.iter() {
-            if other.element_type() != ElementType::PLINE {
-                continue;
-            }
-            let j = other.index();
-            if j <= i {
-                continue;
-            }
-            let other_edge = &edge_geo[j];
-            if edge.owner == other_edge.owner || edge.key == other_edge.key {
-                continue;
-            }
-            let Some(center) =
-                segments_overlap_center(&edge.a, &edge.b, &other_edge.a, &other_edge.b, tol)
-            else {
-                continue;
+        let mut geometric: Vec<(ElementId, ElementId, [f64; 3])> = Vec::new();
+        for (i, edge) in edge_geo.iter().enumerate() {
+            let pad = tol.max(f64::EPSILON);
+            let [min, max] = segment_bounds(&edge.a, &edge.b);
+            let found = match edge_index {
+                Some(EdgeIndex::D2(index)) => {
+                    index.in_bounds([min[0] - pad, min[1] - pad], [max[0] + pad, max[1] + pad])
+                }
+                Some(EdgeIndex::D3(index)) => index.in_bounds(
+                    [min[0] - pad, min[1] - pad, min[2] - pad],
+                    [max[0] + pad, max[1] + pad, max[2] + pad],
+                ),
+                None => continue,
             };
-            let pair = if edge.owner < other_edge.owner {
-                [edge.owner, other_edge.owner]
-            } else {
-                [other_edge.owner, edge.owner]
-            };
-            if seen.insert(pair, ()).is_some() {
-                continue;
+            for other in found.iter() {
+                if other.element_type() != ElementType::PLINE {
+                    continue;
+                }
+                let j = other.index();
+                if j <= i {
+                    continue;
+                }
+                let other_edge = &edge_geo[j];
+                if edge.owner == other_edge.owner || edge.key == other_edge.key {
+                    continue;
+                }
+                let Some(center) =
+                    segments_overlap_center(&edge.a, &edge.b, &other_edge.a, &other_edge.b, tol)
+                else {
+                    continue;
+                };
+                let pair = if edge.owner < other_edge.owner {
+                    [edge.owner, other_edge.owner]
+                } else {
+                    [other_edge.owner, edge.owner]
+                };
+                if seen.insert(pair, ()).is_some() {
+                    continue;
+                }
+                geometric.push((pair[0], pair[1], center));
             }
-            geometric.push((pair[0], pair[1], center));
         }
+        partial.extend(geometric);
     }
-    partial.extend(geometric);
-    partial.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
-    for (a, b, center) in partial {
-        if butterfly_ids.contains(&a) || butterfly_ids.contains(&b) {
-            continue;
-        }
-        n_issues += 1;
-        if issues.len() < cap {
-            issues.push(ConformanceIssue::NonConformingFaces {
-                center,
-                cells: [a, b],
-            });
+
+    if checks.intersects(ConformanceChecks::TOPOLOGY | ConformanceChecks::FACE_OVERLAP) {
+        partial.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
+        for (a, b, center) in partial {
+            if butterfly_ids.contains(&a) || butterfly_ids.contains(&b) {
+                continue;
+            }
+            n_issues += 1;
+            if issues.len() < cap {
+                issues.push(ConformanceIssue::NonConformingFaces {
+                    center,
+                    cells: [a, b],
+                });
+            }
         }
     }
 
     // Coplanar cells overlapping with a positive area are intersecting. Non-coplanar surface
     // cells are left to the butterfly/edge checks; a surface folded through itself is reported
     // by the cells it crosses.
-    let index_by_id: FxHashMap<ElementId, usize> =
-        cells.iter().enumerate().map(|(i, c)| (c.id, i)).collect();
-    let bvh2;
-    let bvh3;
-    let index2 = if space == 2 {
-        bvh2 = mesh.bvh2();
-        Some(&bvh2)
-    } else {
-        None
-    };
-    let index3 = if space == 3 {
-        bvh3 = mesh.bvh3();
-        Some(&bvh3)
-    } else {
-        None
-    };
-    let mut pairs: Vec<(ElementId, ElementId, f64, [f64; 3])> = Vec::new();
-    for (i, cell) in cells.iter().enumerate() {
-        let pad = tol.max(f64::EPSILON);
-        let found = if let Some(index) = index2 {
-            index.in_bounds(
-                [cell.face.bounds[0][0] - pad, cell.face.bounds[0][1] - pad],
-                [cell.face.bounds[1][0] + pad, cell.face.bounds[1][1] + pad],
-            )
-        } else if let Some(index) = index3 {
-            index.in_bounds(
-                [
-                    cell.face.bounds[0][0] - pad,
-                    cell.face.bounds[0][1] - pad,
-                    cell.face.bounds[0][2] - pad,
-                ],
-                [
-                    cell.face.bounds[1][0] + pad,
-                    cell.face.bounds[1][1] + pad,
-                    cell.face.bounds[1][2] + pad,
-                ],
-            )
+    if checks.contains(ConformanceChecks::INTERSECTIONS) {
+        let index_by_id: FxHashMap<ElementId, usize> =
+            cells.iter().enumerate().map(|(i, c)| (c.id, i)).collect();
+        let bvh2;
+        let bvh3;
+        let index2 = if space == 2 {
+            bvh2 = mesh.bvh2();
+            Some(&bvh2)
         } else {
-            continue;
+            None
         };
-        for other in found.iter() {
-            if other.element_type().dimension() != Dimension::D2 {
-                continue;
-            }
-            let Some(&j) = index_by_id.get(&other) else {
+        let index3 = if space == 3 {
+            bvh3 = mesh.bvh3();
+            Some(&bvh3)
+        } else {
+            None
+        };
+        let mut pairs: Vec<(ElementId, ElementId, f64, [f64; 3])> = Vec::new();
+        for (i, cell) in cells.iter().enumerate() {
+            let pad = tol.max(f64::EPSILON);
+            let found = if let Some(index) = index2 {
+                index.in_bounds(
+                    [cell.face.bounds[0][0] - pad, cell.face.bounds[0][1] - pad],
+                    [cell.face.bounds[1][0] + pad, cell.face.bounds[1][1] + pad],
+                )
+            } else if let Some(index) = index3 {
+                index.in_bounds(
+                    [
+                        cell.face.bounds[0][0] - pad,
+                        cell.face.bounds[0][1] - pad,
+                        cell.face.bounds[0][2] - pad,
+                    ],
+                    [
+                        cell.face.bounds[1][0] + pad,
+                        cell.face.bounds[1][1] + pad,
+                        cell.face.bounds[1][2] + pad,
+                    ],
+                )
+            } else {
                 continue;
             };
-            if j <= i {
-                continue;
-            }
-            if butterfly_ids.contains(&cell.id) || butterfly_ids.contains(&cells[j].id) {
-                continue;
-            }
-            if !planes_coincident(&cell.face, &cells[j].face, tol) {
-                continue;
-            }
-            if let Some(center) = faces_overlap(&cell.face, &cells[j].face, tol) {
-                let area = coplanar_overlap_area(&cell.face, &cells[j].face);
-                pairs.push((cell.id, cells[j].id, area, center));
+            for other in found.iter() {
+                if other.element_type().dimension() != Dimension::D2 {
+                    continue;
+                }
+                let Some(&j) = index_by_id.get(&other) else {
+                    continue;
+                };
+                if j <= i {
+                    continue;
+                }
+                if butterfly_ids.contains(&cell.id) || butterfly_ids.contains(&cells[j].id) {
+                    continue;
+                }
+                if !planes_coincident(&cell.face, &cells[j].face, tol) {
+                    continue;
+                }
+                if let Some(center) = faces_overlap(&cell.face, &cells[j].face, tol) {
+                    let area = coplanar_overlap_area(&cell.face, &cells[j].face);
+                    pairs.push((cell.id, cells[j].id, area, center));
+                }
             }
         }
-    }
-    pairs.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
-    for (a, b, measure, center) in pairs {
-        n_issues += 1;
-        if issues.len() < cap {
-            issues.push(ConformanceIssue::IntersectingCells {
-                center,
-                cells: [a, b],
-                volume: measure,
-            });
+        pairs.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
+        for (a, b, measure, center) in pairs {
+            n_issues += 1;
+            if issues.len() < cap {
+                issues.push(ConformanceIssue::IntersectingCells {
+                    center,
+                    cells: [a, b],
+                    volume: measure,
+                });
+            }
         }
     }
 
@@ -979,36 +1230,26 @@ fn cell_centroid<S: nd::Data<Elem = f64>>(
 ///
 /// Returns the self-intersecting cells. Their faces are not simple polygons, so the face-based
 /// checks skip them instead of reporting cascading false overlaps next to the real defect.
-fn butterfly_cells(
+fn find_butterfly_cells(
     mesh: &UMeshView,
     tol: f64,
     canonical: &[usize],
-    issues: &mut Vec<ConformanceIssue>,
-    n_issues: &mut usize,
-    cap: usize,
-) -> FxHashSet<ElementId> {
+    cell_faces: &[VolumeCellFaces],
+) -> Vec<(ElementId, [f64; 3])> {
     let coords = mesh.coords();
     let mut found: Vec<(ElementId, [f64; 3])> = Vec::new();
-    for cell in mesh.elements_of_dim(Dimension::D3) {
-        let (_, conn) = cell.to_poly();
-        let rings: Vec<Vec<usize>> = split_phed(&conn)
-            .into_iter()
+    for cell in cell_faces {
+        let rings: Vec<Vec<usize>> = cell
+            .rings
+            .iter()
             .map(|r| r.iter().map(|&n| canonical[n]).collect())
             .collect();
         if cell_is_butterfly(&coords, &rings, tol) {
-            found.push((cell.id(), cell.centroid3()));
+            found.push((cell.id, mesh.element(cell.id).centroid3()));
         }
     }
     found.sort_by_key(|(id, _)| *id);
-    let mut butterfly = FxHashSet::default();
-    for (cell, center) in found {
-        butterfly.insert(cell);
-        *n_issues += 1;
-        if issues.len() < cap {
-            issues.push(ConformanceIssue::ButterflyCell { center, cell });
-        }
-    }
-    butterfly
+    found
 }
 
 /// Precomputed geometry of one face of a cell, shared by every edge-versus-face test.
@@ -1448,21 +1689,19 @@ fn non_conforming_faces(
     mesh: &UMeshView,
     tol: f64,
     butterfly: &FxHashSet<ElementId>,
-    issues: &mut Vec<ConformanceIssue>,
-    n_issues: &mut usize,
-    cap: usize,
+    cell_faces: &[VolumeCellFaces],
     seen: &mut FxHashMap<[ElementId; 2], ()>,
+    sink: &mut IssueSink<'_>,
 ) {
     let coords = mesh.coords();
     let mut faces = UMesh::new(coords.to_shared());
     let mut owner: Vec<ElementId> = Vec::new();
     let mut keys: Vec<Vec<usize>> = Vec::new();
-    for cell in mesh.elements_of_dim(Dimension::D3) {
-        let (_, conn) = cell.to_poly();
-        for ring in split_phed(&conn) {
-            faces.add_element(ElementType::PGON, &ring, None);
-            owner.push(cell.id());
-            let mut key = ring.to_vec();
+    for cell in cell_faces {
+        for ring in &cell.rings {
+            faces.add_element(ElementType::PGON, ring, None);
+            owner.push(cell.id);
+            let mut key = ring.clone();
             key.sort_unstable();
             keys.push(key);
         }
@@ -1512,13 +1751,10 @@ fn non_conforming_faces(
     }
     pairs.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
     for (a, b, center) in pairs {
-        *n_issues += 1;
-        if issues.len() < cap {
-            issues.push(ConformanceIssue::NonConformingFaces {
-                center,
-                cells: [a, b],
-            });
-        }
+        sink.push(ConformanceIssue::NonConformingFaces {
+            center,
+            cells: [a, b],
+        });
     }
 }
 
@@ -1537,47 +1773,93 @@ fn partially_shared_faces(
     mesh: &UMeshView,
     tol: f64,
     butterfly: &FxHashSet<ElementId>,
-    issues: &mut Vec<ConformanceIssue>,
-    n_issues: &mut usize,
-    cap: usize,
+    cell_faces: &[VolumeCellFaces],
     seen: &mut FxHashMap<[ElementId; 2], ()>,
+    sink: &mut IssueSink<'_>,
 ) {
     let coords = mesh.coords();
-    // The faces of every cell, and the cells reaching every node.
-    let mut faces: Vec<(ElementId, Vec<usize>)> = Vec::new();
+    // The faces of every cell, indexed both by node and by node triple. Which index gives the
+    // smaller candidate set depends on the mesh: isolated polyhedra have almost no shared nodes,
+    // while a fine hex/wedge grid has many faces around each node. Build the cheap node index
+    // first, then choose the strategy with the lower estimated pair count.
+    let n_faces: usize = cell_faces.iter().map(|cell| cell.rings.len()).sum();
+    let mut faces: Vec<(ElementId, Vec<usize>)> = Vec::with_capacity(n_faces);
+    let mut face_nodes: Vec<Vec<usize>> = Vec::with_capacity(n_faces);
     let mut node_faces: FxHashMap<usize, Vec<usize>> =
         FxHashMap::with_capacity_and_hasher(coords.nrows(), FxBuildHasher);
-    for cell in mesh.elements_of_dim(Dimension::D3) {
-        let (_, conn) = cell.to_poly();
-        for ring in split_phed(&conn) {
+    let mut triple_work = 0usize;
+    for cell in cell_faces {
+        for ring in &cell.rings {
             let idx = faces.len();
-            for &n in &ring {
+            let mut nodes = ring.clone();
+            nodes.sort_unstable();
+            nodes.dedup();
+            for &n in &nodes {
                 node_faces.entry(n).or_default().push(idx);
             }
-            faces.push((cell.id(), ring.to_vec()));
+            let k = nodes.len();
+            if k >= 3 {
+                triple_work =
+                    triple_work.saturating_add(k.saturating_mul(k - 1).saturating_mul(k - 2) / 6);
+            }
+            faces.push((cell.id, ring.clone()));
+            face_nodes.push(nodes);
         }
     }
+    let node_work: usize = node_faces
+        .values()
+        .map(|bucket| bucket.len().saturating_mul(bucket.len().saturating_sub(1)) / 2)
+        .sum();
 
-    // Count the nodes every pair of faces shares. A pair reaching three nodes from distinct cells
-    // is a partial interface; its two faces necessarily have different node sets.
-    let mut shared: FxHashMap<(usize, usize), usize> =
-        FxHashMap::with_capacity_and_hasher(faces.len(), FxBuildHasher);
-    for face_ids in node_faces.values() {
-        for (a_pos, &a) in face_ids.iter().enumerate() {
-            for &b in &face_ids[(a_pos + 1)..] {
-                let (lo, hi) = (a.min(b), a.max(b));
-                *shared.entry((lo, hi)).or_insert(0) += 1;
+    // A triple insertion allocates a bucket and is more expensive than a node-pair count, so
+    // prefer the node index unless it is much larger. The factor was measured on a PHED mesh
+    // with isolated cells and on a fine wedge grid with many faces per node.
+    let mut candidates: Vec<(usize, usize)> = if node_work <= triple_work.saturating_mul(4) {
+        let mut shared: FxHashMap<(usize, usize), usize> =
+            FxHashMap::with_capacity_and_hasher(faces.len(), FxBuildHasher);
+        for bucket in node_faces.values() {
+            for (pos, &a) in bucket.iter().enumerate() {
+                for &b in &bucket[(pos + 1)..] {
+                    *shared.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+                }
             }
         }
-    }
+        shared
+            .into_iter()
+            .filter(|(_, count)| *count >= 3)
+            .map(|(pair, _)| pair)
+            .collect()
+    } else {
+        let mut triple_faces: FxHashMap<[usize; 3], Vec<usize>> =
+            FxHashMap::with_capacity_and_hasher(triple_work, FxBuildHasher);
+        for (idx, nodes) in face_nodes.iter().enumerate() {
+            for i in 0..nodes.len().saturating_sub(2) {
+                for j in (i + 1)..nodes.len().saturating_sub(1) {
+                    for k in (j + 1)..nodes.len() {
+                        triple_faces
+                            .entry([nodes[i], nodes[j], nodes[k]])
+                            .or_default()
+                            .push(idx);
+                    }
+                }
+            }
+        }
+        let mut candidate_pairs: FxHashSet<(usize, usize)> = FxHashSet::default();
+        for bucket in triple_faces.values() {
+            for (pos, &a) in bucket.iter().enumerate() {
+                for &b in &bucket[(pos + 1)..] {
+                    candidate_pairs.insert((a.min(b), a.max(b)));
+                }
+            }
+        }
+        candidate_pairs.into_iter().collect()
+    };
+    candidates.sort_unstable();
 
     let mut pairs: Vec<(ElementId, ElementId, [f64; 3])> = Vec::new();
-    for ((lo, hi), count) in shared {
-        if count < 3 {
-            continue;
-        }
-        let (owner_a, ring_a) = &faces[lo];
-        let (owner_b, ring_b) = &faces[hi];
+    for (lo, hi) in candidates {
+        let (owner_a, _) = &faces[lo];
+        let (owner_b, _) = &faces[hi];
         if owner_a == owner_b {
             continue;
         }
@@ -1585,11 +1867,25 @@ fn partially_shared_faces(
             continue;
         }
         // A whole shared face is exactly a common node set; a partial one is not.
-        let mut ka = ring_a.clone();
-        ka.sort_unstable();
-        let mut kb = ring_b.clone();
-        kb.sort_unstable();
-        if ka == kb {
+        let nodes_a = &face_nodes[lo];
+        let nodes_b = &face_nodes[hi];
+        if nodes_a == nodes_b {
+            continue;
+        }
+        let mut common: Vec<usize> = Vec::with_capacity(nodes_a.len().min(nodes_b.len()));
+        let (mut ia, mut ib) = (0, 0);
+        while ia < nodes_a.len() && ib < nodes_b.len() {
+            match nodes_a[ia].cmp(&nodes_b[ib]) {
+                std::cmp::Ordering::Less => ia += 1,
+                std::cmp::Ordering::Greater => ib += 1,
+                std::cmp::Ordering::Equal => {
+                    common.push(nodes_a[ia]);
+                    ia += 1;
+                    ib += 1;
+                }
+            }
+        }
+        if common.len() < 3 || !common_nodes_span_area(&coords, &common, tol) {
             continue;
         }
         let pair = if owner_a < owner_b {
@@ -1600,25 +1896,14 @@ fn partially_shared_faces(
         if seen.insert(pair, ()).is_some() {
             continue;
         }
-        let common: Vec<usize> = ring_a
-            .iter()
-            .copied()
-            .filter(|n| ring_b.contains(n))
-            .collect();
-        if !common_nodes_span_area(&coords, &common, tol) {
-            continue;
-        }
         pairs.push((pair[0], pair[1], key_centroid(&coords, &common)));
     }
     pairs.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
     for (a, b, center) in pairs {
-        *n_issues += 1;
-        if issues.len() < cap {
-            issues.push(ConformanceIssue::NonConformingFaces {
-                center,
-                cells: [a, b],
-            });
-        }
+        sink.push(ConformanceIssue::NonConformingFaces {
+            center,
+            cells: [a, b],
+        });
     }
 }
 

@@ -229,16 +229,23 @@ pub fn conformize(mesh: &PyUMesh, tol: f64) -> PyResult<PyUMesh> {
 /// coordinate dimensions, no cell, or a cell type without a polyhedral form).
 ///
 /// `max_issues` caps the length of `report.issues` (10 by default, `None` keeps everything);
-/// `report.n_issues` always holds the true total. Raises `ValueError` on an invalid tolerance.
+/// `report.n_issues` always holds the true total. `checks` selects which checks to run; pass
+/// `ConformanceChecks.FAST` to skip the expensive cell-pair searches. Raises `ValueError` on an
+/// invalid tolerance.
 #[pyfunction]
-#[pyo3(signature = (mesh, tol=1e-9, max_issues=10))]
+#[pyo3(signature = (mesh, tol=1e-9, max_issues=10, checks=15))]
 pub fn is_conform(
     mesh: &PyUMesh,
     tol: f64,
     max_issues: Option<usize>,
+    checks: u8,
 ) -> PyResult<PyConformanceReport> {
-    let report =
-        mf::is_conform(&mesh.inner.view(), tol, max_issues).map_err(|e| map_err(e.to_string()))?;
+    let options = mf::ConformanceOptions {
+        checks: mf::ConformanceChecks::from_bits_truncate(checks),
+        max_issues,
+    };
+    let report = mf::is_conform_with(&mesh.inner.view(), tol, options)
+        .map_err(|e| map_err(e.to_string()))?;
     Ok(PyConformanceReport { inner: report })
 }
 

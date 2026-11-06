@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator, Sequence
+from enum import IntFlag
 from types import EllipsisType
 from typing import TypeAlias, final
 
@@ -27,6 +28,15 @@ from .transfer import (
 from .transfer import (
     MovingLeastSquares as MovingLeastSquares,
 )
+
+class ConformanceChecks(IntFlag):
+    NONE = 0
+    TOPOLOGY = 1
+    BUTTERFLY = 2
+    INTERSECTIONS = 4
+    FACE_OVERLAP = 8
+    FAST = 3
+    FULL = 15
 
 class DistanceWeighting:
     Constant: Callable[[], DistanceWeighting]
@@ -454,7 +464,10 @@ def concat(a: UMesh, b: UMesh) -> UMesh: ...
 def stitch(meshes: Sequence[UMesh], tol: float = ...) -> UMesh: ...
 def conformize(mesh: UMesh, tol: float = ...) -> UMesh: ...
 def is_conform(
-    mesh: UMesh, tol: float = ..., max_issues: int | None = ...
+    mesh: UMesh,
+    tol: float = ...,
+    max_issues: int | None = ...,
+    checks: ConformanceChecks | int = ...,
 ) -> ConformanceReport: ...
 def build_cmesh(*axes: Sequence[float]) -> UMesh: ...
 def has(name: str) -> bool: ...

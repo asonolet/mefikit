@@ -40,7 +40,10 @@ mod diagnose;
 #[cfg(test)]
 mod tests;
 
-pub use diagnose::{ConformanceIssue, ConformanceReport, is_conform};
+pub use diagnose::{
+    ConformanceChecks, ConformanceIssue, ConformanceOptions, ConformanceReport, is_conform,
+    is_conform_with,
+};
 
 use std::collections::BTreeMap;
 use std::collections::hash_map::Entry;

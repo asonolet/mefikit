@@ -485,6 +485,67 @@ def test_rejects_two_tets_with_mismatched_interface_triangles():
     assert set(_kinds(report)) == {"non_conforming_faces"}
 
 
+def test_check_selection_can_skip_cell_intersections():
+    """The FAST checks skip the expensive cell-pair intersection search."""
+    coords = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.1, 0.1, 0.1],
+        [0.2, 0.1, 0.1],
+        [0.1, 0.2, 0.1],
+        [0.1, 0.1, 0.2],
+    ]
+    mesh = _regular(coords, "TET4", [[0, 1, 2, 3], [4, 5, 6, 7]])
+
+    fast = mf.is_conform(mesh, _TOL, checks=mf.ConformanceChecks.FAST)
+    assert fast.is_conform
+
+    intersections = mf.is_conform(mesh, _TOL, checks=mf.ConformanceChecks.INTERSECTIONS)
+    assert set(_kinds(intersections)) == {"intersecting_cells"}
+
+
+def test_check_selection_can_skip_surface_intersections():
+    """The FAST checks also skip the 2D coplanar-area search."""
+    coords = [
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+        [0.5, 0.5],
+        [1.5, 0.5],
+        [1.5, 1.5],
+        [0.5, 1.5],
+    ]
+    mesh = _regular(coords, "QUAD4", [[0, 1, 2, 3], [4, 5, 6, 7]])
+
+    fast = mf.is_conform(mesh, _TOL, checks=mf.ConformanceChecks.FAST)
+    assert fast.is_conform
+
+    intersections = mf.is_conform(mesh, _TOL, checks=mf.ConformanceChecks.INTERSECTIONS)
+    assert set(_kinds(intersections)) == {"intersecting_cells"}
+
+
+def test_check_selection_can_skip_geometric_face_overlap():
+    """The FAST checks skip the expensive geometric face-overlap search."""
+    coords = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.5, 1.0, 0.0],
+        [0.5, 0.5, 0.0],
+        [0.5, 0.5, -1.0],
+        [0.5, 0.5, 1.0],
+    ]
+    mesh = _regular(coords, "TET4", [[0, 2, 1, 4], [0, 1, 3, 5]])
+
+    fast = mf.is_conform(mesh, _TOL, checks=mf.ConformanceChecks.FAST)
+    assert fast.is_conform
+
+    faces = mf.is_conform(mesh, _TOL, checks=mf.ConformanceChecks.FACE_OVERLAP)
+    assert set(_kinds(faces)) == {"non_conforming_faces"}
+
+
 def test_accepts_shared_edge_with_extra_collinear_node():
     """A shared edge carrying a midpoint on both sides is still conformal.
 

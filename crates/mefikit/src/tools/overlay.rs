@@ -30,7 +30,8 @@ mod stitch;
 mod surface;
 
 pub use stitch::{
-    ConformanceIssue, ConformanceReport, StitchError, conformize, is_conform, stitch,
+    ConformanceChecks, ConformanceIssue, ConformanceOptions, ConformanceReport, StitchError,
+    conformize, is_conform, is_conform_with, stitch,
 };
 pub use surface::{SurfaceOverlay, SurfaceOverlayError, overlay_surfaces};
 
