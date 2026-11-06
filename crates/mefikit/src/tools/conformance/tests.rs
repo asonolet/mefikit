@@ -723,6 +723,16 @@ fn flat_face(points: &[[f64; 3]]) -> FaceData {
 }
 
 #[test]
+fn distinct_close_vertices_can_still_overlap() {
+    // The faces share a vertex coordinate but not a node id: that is not a shared node, so the
+    // positive-area overlap must still be reported.
+    let a = flat_face(&[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]);
+    let mut b = flat_face(&[[0.0, 0.0, 0.0], [0.5, 0.0, 0.0], [0.0, 0.5, 0.0]]);
+    b.ring = vec![3, 4, 5];
+    assert!(faces_overlap(&a, &b, 1e-9).is_some());
+}
+
+#[test]
 fn shared_edge_is_not_a_coplanar_overlap() {
     let a = flat_face(&[
         [0.0, 0.0, 0.0],
@@ -1001,7 +1011,7 @@ fn coplanar_triangles_sharing_vertex_do_not_overlap() {
             0.0030279492260965064,
         ],
     ]);
-    let b = flat_face(&[
+    let mut b = flat_face(&[
         [
             -0.011579996827746231,
             -0.003942857142857102,
@@ -1018,6 +1028,8 @@ fn coplanar_triangles_sharing_vertex_do_not_overlap() {
             0.0033743593808771843,
         ],
     ]);
+    // The faces share only the middle node, as in the fixture.
+    b.ring = vec![3, 1, 4];
     assert!(faces_overlap(&a, &b, 1e-9).is_none());
     assert_eq!(coplanar_overlap_area(&a, &b), 0.0);
 }
