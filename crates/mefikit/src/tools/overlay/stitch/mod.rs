@@ -36,14 +36,8 @@
 //! - Fields and groups are not propagated to the output.
 //! - Overlapping volumes are not detected: the result may contain overlapping cells.
 
-mod diagnose;
 #[cfg(test)]
 mod tests;
-
-pub use diagnose::{
-    ConformanceChecks, ConformanceIssue, ConformanceOptions, ConformanceReport, is_conform,
-    is_conform_with,
-};
 
 use std::collections::BTreeMap;
 use std::collections::hash_map::Entry;
@@ -215,7 +209,7 @@ struct FaceUse {
 ///
 /// Rings of at most [`RING_INLINE`] nodes, which covers every face of a `TET4` or `HEX8` cell,
 /// are held inline so that walking the faces of a volume mesh allocates nothing.
-fn split_phed(conn: &[usize]) -> Vec<SmallVec<[usize; RING_INLINE]>> {
+pub(crate) fn split_phed(conn: &[usize]) -> Vec<SmallVec<[usize; RING_INLINE]>> {
     let mut faces = Vec::new();
     let mut cur: SmallVec<[usize; RING_INLINE]> = SmallVec::new();
     for &n in conn {
@@ -584,7 +578,7 @@ fn process_region(
 ///
 /// Returns the unique coordinates together with, for every input point, the index of its
 /// representative in the unique array.
-fn weld_points(points: &[[f64; 3]], tol: f64) -> (Vec<[f64; 3]>, Vec<usize>) {
+pub(crate) fn weld_points(points: &[[f64; 3]], tol: f64) -> (Vec<[f64; 3]>, Vec<usize>) {
     let n = points.len();
 
     let close = |a: &[f64; 3], b: &[f64; 3]| {
@@ -650,7 +644,10 @@ fn weld_points(points: &[[f64; 3]], tol: f64) -> (Vec<[f64; 3]>, Vec<usize>) {
     (canonical.iter().map(|&i| points[i]).collect(), clusters)
 }
 
-fn point3<S: nd::Data<Elem = f64>>(coords: &nd::ArrayBase<S, nd::Ix2>, i: usize) -> [f64; 3] {
+pub(crate) fn point3<S: nd::Data<Elem = f64>>(
+    coords: &nd::ArrayBase<S, nd::Ix2>,
+    i: usize,
+) -> [f64; 3] {
     [
         coords[(i, 0)],
         coords[(i, 1)],
@@ -677,7 +674,7 @@ fn supported_cell_type(et: ElementType) -> bool {
 /// Checks that `mesh` (mesh number `k` of the operation) can be stitched: embedded in 3D space
 /// and made only of supported volume cells.
 ///
-/// Shared by [`stitch`] and [`conformize`]; [`is_conform`] reports the same conditions as
+/// Shared by [`stitch`] and [`conformize`]; [`crate::tools::conformance::is_conform`] reports the same conditions as
 /// issues of the report instead of raising them.
 fn check_volume_mesh(mesh: &UMeshView, k: usize) -> Result<(), StitchError> {
     if mesh.space_dimension() != 3 {
@@ -915,8 +912,8 @@ fn polyze_all(
 }
 
 // ------------------------------------------------------------------------------------------
-// Shared face accounting, used by `stitch`, by `conformize` below, and by the `diagnose`
-// submodule, followed by `conformize`: `stitch` applied to a single mesh split into its parts.
+// Shared face accounting, used by `stitch`, by `conformize` below, and by the conformance
+// diagnostics.
 // ------------------------------------------------------------------------------------------
 
 /// Uses of every face, keyed by the sorted (global) node ids of the face.
@@ -930,8 +927,8 @@ type PartMap = FxHashMap<ElementId, usize>;
 /// Node ids are shifted by `node_offset[k]` so that the faces of distinct meshes stay distinct,
 /// which makes the map the shared face index of the whole operation: [`stitch`] takes the
 /// boundary from it (a face used once), [`count_volume_faces`] the interfaces (a face used
-/// twice) and [`is_conform`] the defects (a face used more than twice). A `TET4` or `HEX8` cell
-/// has six faces, which sizes the map well.
+/// twice) and [`crate::tools::conformance::is_conform`] the defects (a face used more than
+/// twice). A `TET4` or `HEX8` cell has six faces, which sizes the map well.
 fn count_face_uses(meshes: &[UMeshView], node_offset: &[usize]) -> FaceMap {
     let n_cells: usize = meshes.iter().map(|m| m.num_elements()).sum();
     let mut uses: FaceMap = FxHashMap::with_capacity_and_hasher(6 * n_cells, FxBuildHasher);
@@ -969,8 +966,8 @@ fn count_face_uses(meshes: &[UMeshView], node_offset: &[usize]) -> FaceMap {
 ///
 /// A part is a group of cells linked by a chain of conformal faces, i.e. what is left of the mesh
 /// once every interface that still has to be conformized is cut. [`conformize`] stitches the
-/// parts, and [`is_conform`] compares nodes across them. Cells sharing no face with any other
-/// cell form a part of their own.
+/// parts, and [`crate::tools::conformance::is_conform`] compares nodes across them. Cells
+/// sharing no face with any other cell form a part of their own.
 fn count_volume_faces(mesh: &UMeshView) -> (FaceMap, PartMap) {
     let n_cells = mesh.elements_of_dim(Dimension::D3).count();
     let uses = count_face_uses(std::slice::from_ref(mesh), &[0]);
@@ -1052,8 +1049,9 @@ fn count_volume_faces(mesh: &UMeshView) -> (FaceMap, PartMap) {
 ///
 /// Like [`stitch`], the result is a single `PHED` mesh whose families are relabeled (per part),
 /// with fields and groups dropped; interfaces are imprinted only, so overlapping volumes are not
-/// detected and faces shared by more than two cells are not repaired. See [`is_conform`] for the
-/// diagnostic and the module documentation for the algorithm, guarantees and limitations.
+/// detected and faces shared by more than two cells are not repaired. See
+/// [`crate::tools::conformance::is_conform`] for the diagnostic and the module documentation for
+/// the algorithm, guarantees and limitations.
 pub fn conformize(mesh: &UMeshView, tol: f64) -> Result<UMesh, StitchError> {
     if !(tol.is_finite() && tol >= 0.0) {
         return Err(StitchError::InvalidTolerance { tol });

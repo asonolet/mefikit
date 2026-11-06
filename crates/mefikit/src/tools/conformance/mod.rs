@@ -1,21 +1,22 @@
-//! The conformance diagnostic of [`stitch`](super): [`is_conform`], the [`ConformanceReport`]
-//! it returns, and the [`ConformanceIssue`]s that carry the findings.
+//! Mesh conformance diagnostics: [`is_conform`], the [`ConformanceReport`] it returns, and the
+//! [`ConformanceIssue`]s that carry the findings.
 //!
 //! Everything in this file is about *telling* whether a mesh needs conformizing, never about
-//! conformizing it; the operation itself is [`super::conformize`].
+//! conformizing it; the operation itself is [`crate::tools::overlay::conformize`].
 
 use std::fmt;
 
 use ndarray as nd;
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
-use super::super::surface::{FaceData, PARALLEL_NORMAL_COS_EPS, collect_surface_faces};
-use super::{StitchError, point3, split_phed, weld_points};
 use crate::element_traits::{ElementGeo, ElementTopo};
 use crate::geometry::{
     Intersection, Intersections, PlaneFrame, Polygon, Polyhedron, Segment, into_ccw2, signed_area2,
 };
 use crate::mesh::{Dimension, ElementId, ElementLike, ElementType, UMesh, UMeshView};
+use crate::tools::overlay::StitchError;
+use crate::tools::overlay::stitch::{point3, split_phed, weld_points};
+use crate::tools::overlay::surface::{FaceData, PARALLEL_NORMAL_COS_EPS, collect_surface_faces};
 use crate::tools::spatial_index::SpatiallyIndexable;
 
 /// Why a mesh is not conformal, and where.
@@ -75,7 +76,7 @@ pub enum ConformanceIssue {
         /// The spatial dimension that was found.
         found: usize,
     },
-    /// The mesh holds a cell that [conformize](super::conformize) cannot handle.
+    /// The mesh holds a cell that [conformize](crate::tools::overlay::conformize) cannot handle.
     UnsupportedCells {
         /// The offending cells. More than one entry is reported.
         cells: Vec<ElementId>,
@@ -374,7 +375,7 @@ impl IssueSink<'_> {
 /// `max_issues` caps the length of the report so that a large mesh cannot produce an unbounded
 /// one; `None` keeps everything. [`ConformanceReport::n_issues`] always holds the true total.
 ///
-/// The mesh is only read. See [conformize](super::conformize) for the corresponding operation.
+/// The mesh is only read. See [conformize](crate::tools::overlay::conformize) for the corresponding operation.
 pub fn is_conform(
     mesh: &UMeshView,
     tol: f64,
@@ -2085,216 +2086,4 @@ fn key_centroid<S: nd::Data<Elem = f64>>(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn coords(points: &[[f64; 3]]) -> nd::Array2<f64> {
-        nd::Array2::from_shape_vec(
-            (points.len(), 3),
-            points.iter().flatten().copied().collect(),
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn quad4_bow_tie_is_butterfly() {
-        let c = coords(&[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0],
-        ]);
-        assert!(cell_is_butterfly(&c, &[vec![0, 1, 2, 3]], 1e-9));
-    }
-
-    #[test]
-    fn quad4_convex_is_not_butterfly() {
-        let c = coords(&[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ]);
-        assert!(!cell_is_butterfly(&c, &[vec![0, 1, 2, 3]], 1e-9));
-    }
-
-    #[test]
-    fn quad4_concave_is_not_butterfly() {
-        // A simple, non-convex quad: one vertex is pulled inside the triangle of the other three.
-        let c = coords(&[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.3, 0.3, 0.0],
-        ]);
-        assert!(!cell_is_butterfly(&c, &[vec![0, 1, 2, 3]], 1e-9));
-    }
-
-    #[test]
-    fn collinear_edges_overlapping_in_the_middle_are_non_conforming() {
-        let center = segments_overlap_center(
-            &[0.0, 0.0, 0.0],
-            &[1.0, 0.0, 0.0],
-            &[0.0, 0.0, 0.0],
-            &[0.5, 0.0, 0.0],
-            1e-9,
-        )
-        .expect("a half-edge is a T-junction");
-        assert!((center[0] - 0.25).abs() < 1e-12);
-    }
-
-    #[test]
-    fn edges_touching_at_a_shared_vertex_are_conforming() {
-        assert!(
-            segments_overlap_center(
-                &[0.0, 0.0, 0.0],
-                &[1.0, 0.0, 0.0],
-                &[0.0, 0.0, 0.0],
-                &[0.0, 1.0, 0.0],
-                1e-9,
-            )
-            .is_none()
-        );
-    }
-
-    #[test]
-    fn wedge6_valid_is_not_butterfly() {
-        let c = coords(&[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
-            [1.0, 0.0, 1.0],
-            [0.0, 1.0, 1.0],
-        ]);
-        let rings = [
-            vec![0, 2, 1],
-            vec![3, 4, 5],
-            vec![0, 1, 4, 3],
-            vec![1, 2, 5, 4],
-            vec![2, 0, 3, 5],
-        ];
-        assert!(!cell_is_butterfly(&c, &rings, 1e-9));
-    }
-
-    #[test]
-    fn wedge6_with_a_bow_tie_face_is_butterfly() {
-        // The side face [0, 1, 4, 3] is a bow tie in the z = 0 plane; the two remaining nodes
-        // give the wedge a non-zero height.
-        let c = coords(&[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.5, 0.5, -1.0],
-            [1.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.5, 0.5, 1.0],
-        ]);
-        let rings = [
-            vec![0, 2, 1],
-            vec![3, 4, 5],
-            vec![0, 1, 4, 3],
-            vec![1, 2, 5, 4],
-            vec![2, 0, 3, 5],
-        ];
-        assert!(cell_is_butterfly(&c, &rings, 1e-9));
-    }
-
-    #[test]
-    fn edge_through_face_is_detected() {
-        let c = coords(&[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ]);
-        let face = FaceGeom::new(&c, &[0, 1, 2, 3]);
-        assert!(edge_pierces_face(
-            &[0.5, 0.5, -1.0],
-            &[0.5, 0.5, 1.0],
-            &face,
-            1e-9
-        ));
-        assert!(!edge_pierces_face(
-            &[2.0, 0.5, -1.0],
-            &[2.0, 0.5, 1.0],
-            &face,
-            1e-9
-        ));
-    }
-    #[test]
-    fn coplanar_t_junction_is_not_butterfly() {
-        let c = coords(&[
-            [0.0, -0.3, 0.0],
-            [1.0, -0.3, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0],
-            [0.3, 0.0, 0.0],
-            [0.7, 0.0, 0.0],
-            [0.7, 0.3, 0.0],
-            [0.3, 0.3, 0.0],
-        ]);
-        let rings = [vec![0, 1, 2, 3], vec![4, 5, 6, 7]];
-        assert!(!cell_is_butterfly(&c, &rings, 1e-9));
-    }
-
-    #[test]
-    fn coplanar_edge_crossing_face_is_detected() {
-        let c = coords(&[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [-0.5, 0.5, 0.0],
-            [1.5, 0.5, 0.0],
-            [0.5, 2.0, 0.0],
-        ]);
-        let rings = [vec![0, 1, 2, 3], vec![4, 5, 6]];
-        assert!(cell_is_butterfly(&c, &rings, 1e-9));
-    }
-    fn flat_face(points: &[[f64; 3]]) -> FaceData {
-        let mut bounds = [[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]];
-        for p in points {
-            for k in 0..3 {
-                bounds[0][k] = bounds[0][k].min(p[k]);
-                bounds[1][k] = bounds[1][k].max(p[k]);
-            }
-        }
-        FaceData {
-            id: ElementId::new(ElementType::QUAD4, 0),
-            et: ElementType::QUAD4,
-            ring: (0..points.len()).collect(),
-            pts: points.to_vec(),
-            normal: [0.0, 0.0, 1.0],
-            bounds,
-        }
-    }
-
-    #[test]
-    fn shared_edge_is_not_a_coplanar_overlap() {
-        let a = flat_face(&[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ]);
-        let b = flat_face(&[
-            [1.0, 0.0, 0.0],
-            [2.0, 0.0, 0.0],
-            [2.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0],
-        ]);
-        assert!(faces_overlap(&a, &b, 1e-9).is_none());
-    }
-
-    #[test]
-    fn triangle_half_of_a_quad_is_a_coplanar_overlap() {
-        let quad = flat_face(&[
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [1.0, 1.0, 0.0],
-            [0.0, 1.0, 0.0],
-        ]);
-        let triangle = flat_face(&[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]]);
-        assert!(faces_overlap(&quad, &triangle, 1e-9).is_some());
-    }
-}
+mod tests;

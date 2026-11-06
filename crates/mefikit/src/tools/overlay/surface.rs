@@ -70,7 +70,7 @@ use crate::tools::Descendable;
 use crate::tools::spatial_index::{SpIdx3, SpatiallyIndexable};
 
 /// Cosine threshold above which two normals are considered parallel.
-pub(super) const PARALLEL_NORMAL_COS_EPS: f64 = 1e-8;
+pub(crate) const PARALLEL_NORMAL_COS_EPS: f64 = 1e-8;
 /// Relative area threshold under which a face is flagged degenerate (w.r.t. its max edge
 /// length squared).
 const DEGENERATE_AREA_EPS: f64 = 1e-16;
@@ -489,15 +489,15 @@ impl RegionOutput {
 }
 
 /// Per-face geometric data collected once per surface.
-pub(super) struct FaceData {
-    pub(super) id: ElementId,
-    pub(super) et: ElementType,
+pub(crate) struct FaceData {
+    pub(crate) id: ElementId,
+    pub(crate) et: ElementType,
     /// Node ring in the surface coordinate space.
-    pub(super) ring: Vec<usize>,
-    pub(super) pts: Vec<[f64; 3]>,
+    pub(crate) ring: Vec<usize>,
+    pub(crate) pts: Vec<[f64; 3]>,
     /// Unit Newell normal.
-    pub(super) normal: [f64; 3],
-    pub(super) bounds: [[f64; 3]; 2],
+    pub(crate) normal: [f64; 3],
+    pub(crate) bounds: [[f64; 3]; 2],
 }
 
 /// A maximal coplanar group of faces of one surface.
@@ -508,7 +508,7 @@ pub(super) struct Patch {
 }
 
 /// Collects the D2 faces of `view`, rejecting unsupported or degenerate ones.
-pub(super) fn collect_surface_faces(
+pub(crate) fn collect_surface_faces(
     view: &UMeshView,
 ) -> Result<Vec<FaceData>, SurfaceOverlayError> {
     let mut faces = Vec::new();

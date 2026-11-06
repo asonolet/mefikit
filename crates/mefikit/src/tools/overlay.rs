@@ -23,16 +23,13 @@
 //! the `surface` submodule.
 //!
 //! Assembling several 3D volume meshes into a single conforming polyhedral mesh is handled by
-//! [`stitch`], and conformizing one mesh with itself (plus the [`is_conform`] diagnostic), by
-//! [`conformize`]; see the `stitch` submodule.
+//! [`stitch`], and conformizing one mesh with itself by [`conformize`]; see the `stitch`
+//! submodule. Mesh conformance diagnostics live in [`crate::tools::conformance`].
 
-mod stitch;
-mod surface;
+pub(crate) mod stitch;
+pub(crate) mod surface;
 
-pub use stitch::{
-    ConformanceChecks, ConformanceIssue, ConformanceOptions, ConformanceReport, StitchError,
-    conformize, is_conform, is_conform_with, stitch,
-};
+pub use stitch::{StitchError, conformize, stitch};
 pub use surface::{SurfaceOverlay, SurfaceOverlayError, overlay_surfaces};
 
 use rustc_hash::FxHashMap;
