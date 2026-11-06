@@ -30,9 +30,18 @@ def test_reorient_hexa_fixes_reversed_axis():
 
 def test_reorient_tet4_reversed_winding_is_fixed():
     pts = np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+
+    # VTK order: base 0-1-2 is counter-clockwise seen from apex 3, so the signed volume is
+    # positive. Reorienting an already canonical tet must leave it unchanged.
+    canonical = mf.UMesh(pts)
+    canonical.add_regular_block("TET4", np.array([[0, 1, 2, 3]], dtype=np.uint))
+    assert np.isclose(canonical.measure()["TET4"][0], 1.0 / 6.0)
+    assert np.isclose(canonical.reorient().measure()["TET4"][0], 1.0 / 6.0)
+
+    # Swapping two nodes flips the winding: negative signed volume, repaired by reorient.
     m = mf.UMesh(pts)
     m.add_regular_block("TET4", np.array([[0, 2, 1, 3]], dtype=np.uint))
-    assert m.measure()["TET4"].sum() < 0.0
+    assert np.isclose(m.measure()["TET4"][0], -1.0 / 6.0)
 
     fixed = m.reorient()
     assert np.isclose(fixed.measure()["TET4"].sum(), 1.0 / 6.0)
