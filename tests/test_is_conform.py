@@ -200,6 +200,21 @@ def _read(name):
     return mf.UMesh.read(str(_FIXTURES / name))
 
 
+def test_conform_tet_fixture_has_no_tet_false_positives():
+    """The TET4 cells in this fixture are conformal; only the two WEDGE6 cells are not."""
+    mesh = mf.UMesh.read(
+        str(Path(__file__).parent / "data" / "conform_tet_false_positive.med")
+    )
+    report = mf.is_conform(mesh, _TOL)
+    tet_issues = [
+        issue
+        for issue in report.issues
+        if any(element_type == "TET4" for element_type in issue["cells"])
+    ]
+    assert not tet_issues, tet_issues
+    assert "butterfly_cell" in _kinds(report)
+
+
 def test_non_conform_fixture_reports_butterflies_without_face_cascade():
     """Both butterfly WEDGE6 cells are found, and their faces do not cascade into more issues.
 

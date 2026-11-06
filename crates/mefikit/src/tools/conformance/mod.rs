@@ -1962,10 +1962,26 @@ fn faces_overlap(a: &FaceData, b: &FaceData, tol: f64) -> Option<[f64; 3]> {
     if let Some(p) = pa.iter().find(|p| strictly_inside(&poly_b, &pb, p, eps)) {
         return Some(frame.deproject(p));
     }
+    let same_point = |p: [f64; 2], q: [f64; 2]| {
+        let dx = p[0] - q[0];
+        let dy = p[1] - q[1];
+        dx * dx + dy * dy <= eps * eps
+    };
     for i in 0..pa.len() {
-        let s1 = Segment::new(pa[i], pa[(i + 1) % pa.len()]);
+        let a0 = pa[i];
+        let a1 = pa[(i + 1) % pa.len()];
+        let s1 = Segment::new(a0, a1);
         for j in 0..pb.len() {
-            let s2 = Segment::new(pb[j], pb[(j + 1) % pb.len()]);
+            let b0 = pb[j];
+            let b1 = pb[(j + 1) % pb.len()];
+            // Edges sharing an endpoint meet at that endpoint, not at a proper crossing. The
+            // intersection computation is ill-conditioned for nearly collinear edges, so relying
+            // on its endpoint classification alone produces false crossings.
+            if same_point(a0, b0) || same_point(a0, b1) || same_point(a1, b0) || same_point(a1, b1)
+            {
+                continue;
+            }
+            let s2 = Segment::new(b0, b1);
             if let Intersections::One(Intersection::New(p)) = s1.intersect(s2) {
                 return Some(frame.deproject(&p));
             }

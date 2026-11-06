@@ -978,3 +978,46 @@ proptest! {
         );
     }
 }
+
+#[test]
+fn coplanar_triangles_sharing_vertex_do_not_overlap() {
+    // Two TET4 faces from `conform_tet_false_positive.med`. They are coplanar, share one vertex,
+    // and have nearly collinear edges leaving it. Their edge intersection is numerically near the
+    // shared endpoint and must not be mistaken for a proper crossing.
+    let a = flat_face(&[
+        [
+            -0.01187691982332946,
+            -0.0034285714285714024,
+            0.0033743593808771843,
+        ],
+        [
+            -0.011678971159607306,
+            -0.0037714285714285384,
+            0.0033743593808772104,
+        ],
+        [
+            -0.011777945491468371,
+            -0.0035999999999999904,
+            0.0030279492260965064,
+        ],
+    ]);
+    let b = flat_face(&[
+        [
+            -0.011579996827746231,
+            -0.003942857142857102,
+            0.0037207695356578988,
+        ],
+        [
+            -0.011678971159607306,
+            -0.0037714285714285384,
+            0.0033743593808772104,
+        ],
+        [
+            -0.011481022495885156,
+            -0.004114285714285671,
+            0.0033743593808771843,
+        ],
+    ]);
+    assert!(faces_overlap(&a, &b, 1e-9).is_none());
+    assert_eq!(coplanar_overlap_area(&a, &b), 0.0);
+}
