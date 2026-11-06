@@ -149,6 +149,32 @@ def _read(name):
     return mf.UMesh.read(str(_FIXTURES / name))
 
 
+def test_non_conform_fixture_reports_butterflies_without_face_cascade():
+    """Both butterfly WEDGE6 cells are found, and their faces do not cascade into more issues.
+
+    The fixture also has one genuine coplanar face overlap between cells 0 and 2. Faces of the
+    bow-tie cells 1 and 6 are not simple polygons, so they must not be compared geometrically.
+    """
+    mesh = mf.UMesh.read(str(Path(__file__).parent / "data" / "non_conform.med"))
+    report = mf.is_conform(mesh, _TOL)
+    assert not report.is_conform
+
+    butterfly = sorted(
+        int(cell)
+        for issue in report.issues
+        if issue["kind"] == "butterfly_cell"
+        for cell in issue["cells"]["WEDGE6"]
+    )
+    assert butterfly == [1, 6]
+
+    non_conforming = [
+        sorted(int(cell) for cell in issue["cells"]["WEDGE6"])
+        for issue in report.issues
+        if issue["kind"] == "non_conforming_faces"
+    ]
+    assert non_conforming == [[0, 2]]
+
+
 def _phedron_only(mesh):
     return mesh.select(mf.sel.types(["PHED"])).to_mesh()
 
@@ -182,7 +208,8 @@ def test_rejects_poly_fixture():
     report = mf.is_conform(_phedron_only(_read("Mesh_poly_non_conforme.med")), _TOL)
     assert not report.is_conform
     assert set(_kinds(report)) == {"non_conforming_faces"}
-    assert report.n_issues == 3
+    # Two real partial interfaces; a third touch along a face boundary is not an overlap.
+    assert report.n_issues == 2
 
 
 def test_rejects_simplify_fixture():
@@ -365,3 +392,62 @@ def test_rejects_butterfly_wedge():
     assert not report.is_conform
     assert set(_kinds(report)) == {"butterfly_cell"}
     assert report.issues[0]["cells"] == {"WEDGE6": [0]}
+
+
+def test_accepts_coplanar_hex_faces_touching_along_an_edge():
+    """Two hexes meeting only along an edge are conformal.
+
+    Their faces on the two contact planes are coplanar and share the edge's node ids. A shared
+    edge is not a positive-area overlap, so neither a merged node nor a non-conforming face is
+    reported.
+    """
+    coords = _unit_cube_coords()
+    # Cell B occupies [1, 2] x [1, 2] x [0, 1]; its x = 1, y = 1 edge is A's edge 3-7.
+    b_local = [
+        [1.0 + i, 1.0 + j, float(k)]
+        for k in range(2)
+        for j in range(2)
+        for i in range(2)
+    ]
+    remap = {0: 3, 4: 7}
+    for n, point in enumerate(b_local):
+        if n not in remap:
+            remap[n] = len(coords)
+            coords.append(point)
+    conn_b = [remap[n] for n in [0, 1, 3, 2, 4, 5, 7, 6]]
+    mesh = _hex8(coords, [[0, 1, 3, 2, 4, 5, 7, 6], conn_b])
+
+    assert mf.is_conform(mesh, _TOL).is_conform
+
+
+def test_rejects_mismatched_tet_interface():
+    """Two hexes split into tets with opposite diagonals have a non-conforming interface.
+
+    Both sides cover the same quad x = 1, but the triangles on the interface overlap without
+    sharing whole faces, which is exactly the defect left by independently tetrahedralizing
+    neighbouring hexahedra.
+    """
+    coords = [
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [1.0, 1.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 1.0],
+        [2.0, 0.0, 0.0],
+        [2.0, 1.0, 1.0],
+    ]
+    mesh = _regular(
+        coords,
+        "TET4",
+        [
+            [0, 1, 2, 4],
+            [0, 2, 3, 5],
+            [0, 1, 3, 6],
+            [1, 2, 3, 7],
+        ],
+    )
+
+    report = mf.is_conform(mesh, _TOL)
+    assert not report.is_conform
+    assert "non_conforming_faces" in _kinds(report)

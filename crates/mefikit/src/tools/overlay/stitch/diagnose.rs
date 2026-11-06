@@ -7,7 +7,7 @@
 use std::fmt;
 
 use ndarray as nd;
-use rustc_hash::{FxBuildHasher, FxHashMap};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 
 use super::super::surface::{FaceData, PARALLEL_NORMAL_COS_EPS, collect_surface_faces};
 use super::{StitchError, point3, split_phed, weld_points};
@@ -291,7 +291,7 @@ pub fn is_conform(
     // Butterfly detection works on the identified nodes, so that a fold spelled with coincident
     // duplicate ids is left to the `MergedNodes` diagnostic instead of being reported as a
     // self-intersection.
-    butterfly_cells(mesh, tol, &canonical, &mut issues, &mut n_issues, cap);
+    let butterfly_cells = butterfly_cells(mesh, tol, &canonical, &mut issues, &mut n_issues, cap);
     intersecting_cells(mesh, &mut issues, &mut n_issues, cap);
 
     // Cells that fold onto themselves: two of their nodes are coincident but distinct.
@@ -359,6 +359,7 @@ pub fn is_conform(
     non_conforming_faces(
         mesh,
         tol,
+        &butterfly_cells,
         &mut issues,
         &mut n_issues,
         cap,
@@ -369,7 +370,14 @@ pub fn is_conform(
     // that is only partially shared: one side spells the interface with a node the other side
     // does not have (a "descending face" T-junction that shares node ids). Two cells touching
     // along an edge or a vertex share fewer than three nodes and are left alone.
-    partially_shared_faces(mesh, &mut issues, &mut n_issues, cap, &mut non_conf_pairs);
+    partially_shared_faces(
+        mesh,
+        &butterfly_cells,
+        &mut issues,
+        &mut n_issues,
+        cap,
+        &mut non_conf_pairs,
+    );
 
     for dup in merged {
         n_issues += 1;
@@ -647,8 +655,10 @@ fn is_conform_surface(
         .collect();
 
     // A surface cell is a polygon; it is a butterfly when its boundary crosses itself.
+    let mut butterfly_ids: FxHashSet<ElementId> = FxHashSet::default();
     for cell in &cells {
         if cell_is_butterfly(&coords, std::slice::from_ref(&cell.ring), tol) {
+            butterfly_ids.insert(cell.id);
             n_issues += 1;
             if issues.len() < cap {
                 issues.push(ConformanceIssue::ButterflyCell {
@@ -833,6 +843,9 @@ fn is_conform_surface(
     partial.extend(geometric);
     partial.sort_by(|x, y| x.0.cmp(&y.0).then_with(|| x.1.cmp(&y.1)));
     for (a, b, center) in partial {
+        if butterfly_ids.contains(&a) || butterfly_ids.contains(&b) {
+            continue;
+        }
         n_issues += 1;
         if issues.len() < cap {
             issues.push(ConformanceIssue::NonConformingFaces {
@@ -895,10 +908,13 @@ fn is_conform_surface(
             if j <= i {
                 continue;
             }
+            if butterfly_ids.contains(&cell.id) || butterfly_ids.contains(&cells[j].id) {
+                continue;
+            }
             if !planes_coincident(&cell.face, &cells[j].face, tol) {
                 continue;
             }
-            if let Some(center) = faces_overlap(&cell.face, &cells[j].face) {
+            if let Some(center) = faces_overlap(&cell.face, &cells[j].face, tol) {
                 let area = coplanar_overlap_area(&cell.face, &cells[j].face);
                 pairs.push((cell.id, cells[j].id, area, center));
             }
@@ -959,6 +975,9 @@ fn cell_centroid<S: nd::Data<Elem = f64>>(
 /// each face is checked on its own (a bow-tie quad) and every edge is tested against the faces it
 /// does not touch. Adjacent faces and edges are skipped topologically, so a shared vertex or a
 /// shared edge is never reported.
+///
+/// Returns the self-intersecting cells. Their faces are not simple polygons, so the face-based
+/// checks skip them instead of reporting cascading false overlaps next to the real defect.
 fn butterfly_cells(
     mesh: &UMeshView,
     tol: f64,
@@ -966,7 +985,7 @@ fn butterfly_cells(
     issues: &mut Vec<ConformanceIssue>,
     n_issues: &mut usize,
     cap: usize,
-) {
+) -> FxHashSet<ElementId> {
     let coords = mesh.coords();
     let mut found: Vec<(ElementId, [f64; 3])> = Vec::new();
     for cell in mesh.elements_of_dim(Dimension::D3) {
@@ -980,12 +999,15 @@ fn butterfly_cells(
         }
     }
     found.sort_by_key(|(id, _)| *id);
+    let mut butterfly = FxHashSet::default();
     for (cell, center) in found {
+        butterfly.insert(cell);
         *n_issues += 1;
         if issues.len() < cap {
             issues.push(ConformanceIssue::ButterflyCell { center, cell });
         }
     }
+    butterfly
 }
 
 /// Precomputed geometry of one face of a cell, shared by every edge-versus-face test.
@@ -1424,6 +1446,7 @@ fn volume_eps(scale: f64) -> f64 {
 fn non_conforming_faces(
     mesh: &UMeshView,
     tol: f64,
+    butterfly: &FxHashSet<ElementId>,
     issues: &mut Vec<ConformanceIssue>,
     n_issues: &mut usize,
     cap: usize,
@@ -1464,11 +1487,14 @@ fn non_conforming_faces(
                 if j <= i || owner[i] == owner[j] || keys[i] == keys[j] {
                     continue;
                 }
+                if butterfly.contains(&owner[i]) || butterfly.contains(&owner[j]) {
+                    continue;
+                }
                 let fj = &fdata[j];
                 if !planes_coincident(fi, fj, tol) {
                     continue;
                 }
-                let Some(center) = faces_overlap(fi, fj) else {
+                let Some(center) = faces_overlap(fi, fj, tol) else {
                     continue;
                 };
                 let pair = if owner[i] < owner[j] {
@@ -1505,6 +1531,7 @@ fn non_conforming_faces(
 /// handled by the geometric check, this one catches the case the two sides share ids.
 fn partially_shared_faces(
     mesh: &UMeshView,
+    butterfly: &FxHashSet<ElementId>,
     issues: &mut Vec<ConformanceIssue>,
     n_issues: &mut usize,
     cap: usize,
@@ -1547,6 +1574,9 @@ fn partially_shared_faces(
         let (owner_a, ring_a) = &faces[lo];
         let (owner_b, ring_b) = &faces[hi];
         if owner_a == owner_b {
+            continue;
+        }
+        if butterfly.contains(owner_a) || butterfly.contains(owner_b) {
             continue;
         }
         // A whole shared face is exactly a common node set; a partial one is not.
@@ -1602,25 +1632,36 @@ fn planes_coincident(a: &FaceData, b: &FaceData, tol: f64) -> bool {
 
 /// Returns a point inside the geometric overlap of two coplanar faces, or `None` when they do
 /// not overlap with a positive area. Both faces are projected on the first face's plane.
-fn faces_overlap(a: &FaceData, b: &FaceData) -> Option<[f64; 3]> {
+///
+/// A shared vertex or edge alone is not an overlap: the witness must be a vertex strictly inside
+/// the other face, away from its boundary, or a proper crossing of two edges. Boundary-sensitive
+/// containment alone is not enough here, because two neighbouring faces naturally share an edge
+/// and a face of a self-intersecting cell can make an outside vertex look contained.
+///
+/// A face can also lie inside another one with all its vertices on the other's boundary (for
+/// example a triangle tiling half of a quad). There is no interior witness and no proper edge
+/// crossing then, so convex pairs fall back to their clipped area.
+fn faces_overlap(a: &FaceData, b: &FaceData, tol: f64) -> Option<[f64; 3]> {
     let frame = PlaneFrame::from_points(&a.pts);
-    let pa: Vec<[f64; 2]> = a.pts.iter().map(|p| frame.project(p)).collect();
-    let pb: Vec<[f64; 2]> = b.pts.iter().map(|p| frame.project(p)).collect();
+    let mut pa: Vec<[f64; 2]> = a.pts.iter().map(|p| frame.project(p)).collect();
+    let mut pb: Vec<[f64; 2]> = b.pts.iter().map(|p| frame.project(p)).collect();
+    into_ccw2(&mut pa);
+    into_ccw2(&mut pb);
+    let scale = a
+        .pts
+        .iter()
+        .chain(&b.pts)
+        .flat_map(|p| p.iter())
+        .fold(1.0_f64, |acc, &c| acc.max(c.abs()));
+    let eps = tol.max(64.0 * f64::EPSILON * scale);
 
-    // A shared vertex or edge alone is not a non-conforming interface: require a positive-area
-    // overlap, witnessed by a strictly-interior vertex or a proper edge crossing. Both polygons
-    // are made counter-clockwise, as `contains_stable` assumes that winding.
-    let poly_a = Polygon::unknown(pa.iter().copied()).into_ccw();
-    let poly_b = Polygon::unknown(pb.iter().copied()).into_ccw();
-    for p in &pb {
-        if poly_a.contains_stable(p) {
-            return Some(frame.deproject(p));
-        }
+    let poly_a = Polygon::unknown(pa.iter().copied());
+    let poly_b = Polygon::unknown(pb.iter().copied());
+    if let Some(p) = pb.iter().find(|p| strictly_inside(&poly_a, &pa, p, eps)) {
+        return Some(frame.deproject(p));
     }
-    for p in &pa {
-        if poly_b.contains_stable(p) {
-            return Some(frame.deproject(p));
-        }
+    if let Some(p) = pa.iter().find(|p| strictly_inside(&poly_b, &pb, p, eps)) {
+        return Some(frame.deproject(p));
     }
     for i in 0..pa.len() {
         let s1 = Segment::new(pa[i], pa[(i + 1) % pa.len()]);
@@ -1631,7 +1672,23 @@ fn faces_overlap(a: &FaceData, b: &FaceData) -> Option<[f64; 3]> {
             }
         }
     }
+    if poly_a.is_convex() && poly_b.is_convex() {
+        let clipped = clip_convex(&pa, &pb);
+        if clipped.len() >= 3 && signed_area2(&clipped).abs() > 1e-12 * scale * scale {
+            let center = Polygon::unknown(clipped.iter().copied()).geometric_centroid();
+            return Some(frame.deproject(&center));
+        }
+    }
     None
+}
+
+/// Whether `p` is inside `poly` and farther than `eps` from every edge of `ring`.
+fn strictly_inside(poly: &Polygon<2>, ring: &[[f64; 2]], p: &[f64; 2], eps: f64) -> bool {
+    if !poly.contains(p) {
+        return false;
+    }
+    let n = ring.len();
+    (0..n).all(|i| point_segment_distance2(*p, ring[i], ring[(i + 1) % n]) > eps * eps)
 }
 
 /// Centroid of a polyhedron, averaging its vertices.
@@ -1860,5 +1917,51 @@ mod tests {
         ]);
         let rings = [vec![0, 1, 2, 3], vec![4, 5, 6]];
         assert!(cell_is_butterfly(&c, &rings, 1e-9));
+    }
+    fn flat_face(points: &[[f64; 3]]) -> FaceData {
+        let mut bounds = [[f64::INFINITY; 3], [f64::NEG_INFINITY; 3]];
+        for p in points {
+            for k in 0..3 {
+                bounds[0][k] = bounds[0][k].min(p[k]);
+                bounds[1][k] = bounds[1][k].max(p[k]);
+            }
+        }
+        FaceData {
+            id: ElementId::new(ElementType::QUAD4, 0),
+            et: ElementType::QUAD4,
+            ring: (0..points.len()).collect(),
+            pts: points.to_vec(),
+            normal: [0.0, 0.0, 1.0],
+            bounds,
+        }
+    }
+
+    #[test]
+    fn shared_edge_is_not_a_coplanar_overlap() {
+        let a = flat_face(&[
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]);
+        let b = flat_face(&[
+            [1.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [2.0, 1.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ]);
+        assert!(faces_overlap(&a, &b, 1e-9).is_none());
+    }
+
+    #[test]
+    fn triangle_half_of_a_quad_is_a_coplanar_overlap() {
+        let quad = flat_face(&[
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]);
+        let triangle = flat_face(&[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]]);
+        assert!(faces_overlap(&quad, &triangle, 1e-9).is_some());
     }
 }

@@ -1188,6 +1188,60 @@ fn is_conform_rejects_partial_interface() {
     assert!(!report.is_conform(), "{report:?}");
 }
 
+/// Two cells whose faces are coplanar but meet only along an edge are conformal. A shared edge
+/// is not a positive-area overlap, even though its nodes lie on both face boundaries.
+#[test]
+fn is_conform_accepts_coplanar_faces_touching_along_an_edge() {
+    let mesh = hex_block(
+        &[0.0, 1.0, 2.0],
+        &[0.0, 1.0, 2.0],
+        &[0.0, 1.0],
+        &[(0, 0, 0), (1, 1, 0)],
+    );
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
+
+/// Two hexahedra sharing a quad but split into tetrahedra with opposite diagonals have a
+/// non-conforming interface: the triangles overlap without sharing whole faces.
+#[test]
+fn is_conform_rejects_mismatched_tet_interface() {
+    let coords: Vec<[f64; 3]> = vec![
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [1.0, 1.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 1.0],
+        [2.0, 0.0, 0.0],
+        [2.0, 1.0, 1.0],
+    ];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    // Left side, diagonal 0-2 on the shared quad x = 1.
+    mesh.add_element(ElementType::TET4, &[0, 1, 2, 4], None);
+    mesh.add_element(ElementType::TET4, &[0, 2, 3, 5], None);
+    // Right side, diagonal 1-3 on the same quad.
+    mesh.add_element(ElementType::TET4, &[0, 1, 3, 6], None);
+    mesh.add_element(ElementType::TET4, &[1, 2, 3, 7], None);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(!report.is_conform(), "{report:?}");
+    assert!(
+        report
+            .issues
+            .iter()
+            .any(|i| matches!(i, ConformanceIssue::NonConformingFaces { .. })),
+        "{report:?}"
+    );
+}
+
 /// Two cells overlapping in volume are reported as intersecting.
 #[test]
 fn is_conform_rejects_volume_overlap() {
