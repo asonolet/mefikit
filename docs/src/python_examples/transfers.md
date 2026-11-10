@@ -67,10 +67,9 @@ Some shared rules:
 - Target cells covered by **no** source cell keep the **default value**
   `def_val` (defaults to `0.0`; `np.nan` makes the uncovered cells explicit).
 - All operators share one calling convention: build them with
-  `tr = mf.transfer.Op(src, tgt, ...)`, then call `tr(expr)` (returns a field
-  on `tgt`), `tr.eval(expr)` (returns per-type arrays), or
-  `tr.apply_update(src, name, tgt, ...)` to write into a target field in
-  place.
+  `tr = mf.transfer.Op(src, tgt, ...)`, then assign the lazy result to a
+  target field with `tgt.fields[name] = tr(expr)`. `tr.eval(expr)` returns the
+  per-type arrays directly.
 
 ### Cross-dimensional `ConservativeP0`
 
@@ -118,13 +117,13 @@ m_tgt = mf.build_cmesh(np.linspace(0.0, 1.5, 20), np.linspace(0.0, 1.5, 20))
 
 # The transfer is computed between source and target geometry.
 # This step is computationnaly heavy, but done once.
-cpt = mf.transfer.ConstantPiecewise(m_src, m_tgt)
+cpt = mf.transfer.ConstantPiecewise(m_src, m_tgt, def_val=np.nan)
 ```
 
 
 ```python
 # The transfer is applied. This step is much faster.
-cpt.apply_update(m_src, "Measure", m_tgt, tgt_field_name="Projection", def_val=np.nan)
+m_tgt.fields["Projection"] = cpt("Measure")
 ```
 
 
@@ -187,13 +186,13 @@ m_tgt = mf.build_cmesh(np.linspace(0.0, 1.5, 20), np.linspace(0.0, 1.5, 20))
 
 # The transfer is computed between source and target geometry.
 # This step is computationnaly heavy, but done once.
-mlsqt = mf.transfer.MovingLeastSquares(m_src, m_tgt, k=10)
+mlsqt = mf.transfer.MovingLeastSquares(m_src, m_tgt, k=10, def_val=np.nan)
 ```
 
 
 ```python
 # The transfer is applied. This step is much faster.
-mlsqt.apply_update(m_src, "Measure", m_tgt, tgt_field_name="Projection", def_val=np.nan)
+m_tgt.fields["Projection"] = mlsqt("Measure")
 ```
 
 
@@ -379,7 +378,7 @@ fine.to_pyvista().plot(show_edges=True)
 
 ```python
 tr = mf.transfer.InverseDistance(coarse, fine)
-tr.apply_update(coarse, "Measure", fine)
+fine.fields["Measure"] = tr("Measure")
 ```
 
 
@@ -414,7 +413,7 @@ m_src.fields["Measure"] = mf.M
 t0 = time.time()
 tr = mf.transfer.ConservativeP0(m_src, m_tgt)
 t1 = time.time()
-tr.apply_update(m_src, "Measure", m_tgt)
+m_tgt.fields["Measure"] = tr("Measure")
 t2 = time.time()
 
 mf_prepare = t1 - t0
@@ -480,7 +479,8 @@ m_tgt.fields["temp"] = trsf(rho * cp)
 > m_tgt.fields["temp"] = trsf(rho)   # uncovered cells -> NaN, covered cells -> rho
 > ```
 >
-> Cells covered by the source are transferred correctly and match `apply_update` exactly.
+> Cells covered by the source are transferred correctly; only the uncovered cells
+> differ because of the chosen default value.
 
 
 

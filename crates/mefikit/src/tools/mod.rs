@@ -5,6 +5,7 @@
 //! - Connected component analysis
 //! - Mesh cracking (splitting shared nodes/faces)
 //! - Mesh extrusion (raising dimension)
+//! - Mesh slicing (lowering dimension)
 //! - Field expressions and evaluation
 //! - Structured grid generation
 //! - Mesh overlay operations
@@ -48,6 +49,8 @@ pub mod reorient;
 pub mod selector;
 /// Simplexization (triangles or tetrahedra)
 pub mod simplexize;
+/// Slicing a mesh with a plane (3D) or a line (2D or 3D).
+pub mod slice;
 /// Node snapping to merge nearby nodes.
 pub mod snap;
 pub mod spatial_index;
@@ -77,6 +80,7 @@ pub use overlay::*;
 pub use polyze::*;
 pub use reorient::*;
 pub use selector::*;
+pub use slice::*;
 pub use snap::*;
 pub use split_cells::*;
 pub use timeseries::*;

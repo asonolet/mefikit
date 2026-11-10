@@ -156,8 +156,7 @@ grad_curve.shape
 
 Because `grad("f")` returns a lazy `Field`, it composes with the rest of the
 expression system: index the components with `[0]` / `[1]`, combine them into
-derived quantities, and store them. `apply_update` writes the gradient into a
-named target field in a single call.
+derived quantities, and assign them to named target fields.
 
 
 ```python
@@ -165,7 +164,7 @@ tgt.fields["dfdx"] = grad_tgt("f")[0]
 tgt.fields["dfdy"] = grad_tgt("f")[1]
 tgt.fields["grad_mag"] = (grad_tgt("f")[0].square() + grad_tgt("f")[1].square()).sqrt()
 
-grad_tgt.apply_update(src, "f", tgt, "grad_f")
+tgt.fields["grad_f"] = grad_tgt("f")
 tgt.fields["grad_f"].numpy().shape
 ```
 
