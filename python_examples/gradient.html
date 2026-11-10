@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b515501e.js";
+            window.path_to_searchindex_js = "../searchindex-d5930ea5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-c7a05c98.js"></script>
+        <script src="../toc-67ea746a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -276,13 +276,12 @@ grad_curve.shape
 <h3 id="lazy-fields-components-and-in-place-results"><a class="header" href="#lazy-fields-components-and-in-place-results">Lazy fields, components and in-place results</a></h3>
 <p>Because <code>grad("f")</code> returns a lazy <code>Field</code>, it composes with the rest of the
 expression system: index the components with <code>[0]</code> / <code>[1]</code>, combine them into
-derived quantities, and store them. <code>apply_update</code> writes the gradient into a
-named target field in a single call.</p>
+derived quantities, and assign them to named target fields.</p>
 <pre><code class="language-python">tgt.fields["dfdx"] = grad_tgt("f")[0]
 tgt.fields["dfdy"] = grad_tgt("f")[1]
 tgt.fields["grad_mag"] = (grad_tgt("f")[0].square() + grad_tgt("f")[1].square()).sqrt()
 
-grad_tgt.apply_update(src, "f", tgt, "grad_f")
+tgt.fields["grad_f"] = grad_tgt("f")
 tgt.fields["grad_f"].numpy().shape
 </code></pre>
 <pre><code>(196, 2)

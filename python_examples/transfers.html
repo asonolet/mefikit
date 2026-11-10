@@ -35,10 +35,10 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b515501e.js";
+            window.path_to_searchindex_js = "../searchindex-d5930ea5.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-c7a05c98.js"></script>
+        <script src="../toc-67ea746a.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -238,10 +238,9 @@ cell measure afterwards — enough to behave like an interpolation — while
 <li>Target cells covered by <strong>no</strong> source cell keep the <strong>default value</strong>
 <code>def_val</code> (defaults to <code>0.0</code>; <code>np.nan</code> makes the uncovered cells explicit).</li>
 <li>All operators share one calling convention: build them with
-<code>tr = mf.transfer.Op(src, tgt, ...)</code>, then call <code>tr(expr)</code> (returns a field
-on <code>tgt</code>), <code>tr.eval(expr)</code> (returns per-type arrays), or
-<code>tr.apply_update(src, name, tgt, ...)</code> to write into a target field in
-place.</li>
+<code>tr = mf.transfer.Op(src, tgt, ...)</code>, then assign the lazy result to a
+target field with <code>tgt.fields[name] = tr(expr)</code>. <code>tr.eval(expr)</code> returns the
+per-type arrays directly.</li>
 </ul>
 <h3 id="cross-dimensional-conservativep0"><a class="header" href="#cross-dimensional-conservativep0">Cross-dimensional <code>ConservativeP0</code></a></h3>
 <p><code>ConservativeP0</code> also transfers from higher- to lower-dimensional cells in the
@@ -284,10 +283,10 @@ m_tgt = mf.build_cmesh(np.linspace(0.0, 1.5, 20), np.linspace(0.0, 1.5, 20))
 
 # The transfer is computed between source and target geometry.
 # This step is computationnaly heavy, but done once.
-cpt = mf.transfer.ConstantPiecewise(m_src, m_tgt)
+cpt = mf.transfer.ConstantPiecewise(m_src, m_tgt, def_val=np.nan)
 </code></pre>
 <pre><code class="language-python"># The transfer is applied. This step is much faster.
-cpt.apply_update(m_src, "Measure", m_tgt, tgt_field_name="Projection", def_val=np.nan)
+m_tgt.fields["Projection"] = cpt("Measure")
 </code></pre>
 <pre><code class="language-python">m_tgt.to_pyvista().plot(show_edges=True)
 </code></pre>
@@ -332,10 +331,10 @@ m_tgt = mf.build_cmesh(np.linspace(0.0, 1.5, 20), np.linspace(0.0, 1.5, 20))
 
 # The transfer is computed between source and target geometry.
 # This step is computationnaly heavy, but done once.
-mlsqt = mf.transfer.MovingLeastSquares(m_src, m_tgt, k=10)
+mlsqt = mf.transfer.MovingLeastSquares(m_src, m_tgt, k=10, def_val=np.nan)
 </code></pre>
 <pre><code class="language-python"># The transfer is applied. This step is much faster.
-mlsqt.apply_update(m_src, "Measure", m_tgt, tgt_field_name="Projection", def_val=np.nan)
+m_tgt.fields["Projection"] = mlsqt("Measure")
 </code></pre>
 <pre><code class="language-python">m_tgt.to_pyvista().plot(show_edges=True)
 </code></pre>
@@ -392,7 +391,7 @@ fine.to_pyvista().plot(show_edges=True)
 </code></pre>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_27_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_27_0.png" alt="png"></span></label></p>
 <pre><code class="language-python">tr = mf.transfer.InverseDistance(coarse, fine)
-tr.apply_update(coarse, "Measure", fine)
+fine.fields["Measure"] = tr("Measure")
 </code></pre>
 <pre><code class="language-python">fine.to_pyvista().plot()
 </code></pre>
@@ -412,7 +411,7 @@ m_src.fields["Measure"] = mf.M
 t0 = time.time()
 tr = mf.transfer.ConservativeP0(m_src, m_tgt)
 t1 = time.time()
-tr.apply_update(m_src, "Measure", m_tgt)
+m_tgt.fields["Measure"] = tr("Measure")
 t2 = time.time()
 
 mf_prepare = t1 - t0
@@ -454,7 +453,8 @@ m_tgt.fields["temp"] = trsf(rho * cp)
 <pre><code class="language-python">trsf = mf.transfer.ConservativeP0(m_src, m_tgt, def_val=np.nan)
 m_tgt.fields["temp"] = trsf(rho)   # uncovered cells -&gt; NaN, covered cells -&gt; rho
 </code></pre>
-<p>Cells covered by the source are transferred correctly and match <code>apply_update</code> exactly.</p>
+<p>Cells covered by the source are transferred correctly; only the uncovered cells
+differ because of the chosen default value.</p>
 </blockquote>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_40_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_40_0.png" alt="png"></span></label></p>
 
