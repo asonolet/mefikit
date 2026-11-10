@@ -214,25 +214,38 @@ pub fn conformize(mesh: &PyUMesh, tol: f64) -> PyResult<PyUMesh> {
         .map(Into::into)
 }
 
-/// Checks whether a mesh is internally conformal and, when it is not, reports why and where.
+/// Checks whether a mesh is conformal and, when it is not, reports why and where.
 ///
-/// Reported defects: a face shared by more than two cells, two nodes within `tol` that cells
-/// meeting only through those nodes should have shared (the case `conformize` repairs), and
-/// input `conformize` would reject (not embedded in 3D, no volume cell, unsupported cell type).
-/// Interfaces that overlap without sharing any coincident node are not detected: recognizing
-/// them costs the geometric imprinting `conformize` performs.
+/// The check follows the mesh's topological dimension. In 3D a mesh is conformal when its cells
+/// do not intersect one another and two neighbour cells that share any node share a whole common
+/// face; in 2D the same rule applies to common edges. Lower-dimensional elements are ignored when
+/// higher-dimensional ones are present, so a volume mesh may carry its boundary surface.
+///
+/// Reported defects: cells whose boundary crosses itself (a "butterfly" cell, e.g. an edge
+/// passing through a face), cells overlapping in volume (3D) or area (2D), a face/edge shared by
+/// more than two cells, two nodes within `tol` that are not the same node while the cells using
+/// them do not meet through a full common face (a cell folding onto itself, or a partially shared
+/// interface — the case `conformize` repairs), and input that cannot be diagnosed (too few
+/// coordinate dimensions, no cell, or a cell type without a polyhedral form).
 ///
 /// `max_issues` caps the length of `report.issues` (10 by default, `None` keeps everything);
-/// `report.n_issues` always holds the true total. Raises `ValueError` on an invalid tolerance.
+/// `report.n_issues` always holds the true total. `checks` selects which checks to run; pass
+/// `ConformanceChecks.FAST` to skip the expensive cell-pair searches. Raises `ValueError` on an
+/// invalid tolerance.
 #[pyfunction]
-#[pyo3(signature = (mesh, tol=1e-9, max_issues=10))]
+#[pyo3(signature = (mesh, tol=1e-9, max_issues=10, checks=15))]
 pub fn is_conform(
     mesh: &PyUMesh,
     tol: f64,
     max_issues: Option<usize>,
+    checks: u8,
 ) -> PyResult<PyConformanceReport> {
-    let report =
-        mf::is_conform(&mesh.inner.view(), tol, max_issues).map_err(|e| map_err(e.to_string()))?;
+    let options = mf::ConformanceOptions {
+        checks: mf::ConformanceChecks::from_bits_truncate(checks),
+        max_issues,
+    };
+    let report = mf::is_conform_with(&mesh.inner.view(), tol, options)
+        .map_err(|e| map_err(e.to_string()))?;
     Ok(PyConformanceReport { inner: report })
 }
 
@@ -280,6 +293,26 @@ impl PyConformanceReport {
                 dict.set_item("center", center.to_vec())?;
                 dict.set_item("cells", cells_to_dict(py, cells))?;
             }
+            ConformanceIssue::NonConformingFaces { center, cells } => {
+                dict.set_item("kind", "non_conforming_faces")?;
+                dict.set_item("center", center.to_vec())?;
+                dict.set_item("cells", cells_to_dict(py, cells))?;
+            }
+            ConformanceIssue::ButterflyCell { center, cell } => {
+                dict.set_item("kind", "butterfly_cell")?;
+                dict.set_item("center", center.to_vec())?;
+                dict.set_item("cells", cells_to_dict(py, std::slice::from_ref(cell)))?;
+            }
+            ConformanceIssue::IntersectingCells {
+                center,
+                cells,
+                volume,
+            } => {
+                dict.set_item("kind", "intersecting_cells")?;
+                dict.set_item("center", center.to_vec())?;
+                dict.set_item("cells", cells_to_dict(py, cells))?;
+                dict.set_item("volume", *volume)?;
+            }
             ConformanceIssue::InvalidSpaceDimension { found } => {
                 dict.set_item("kind", "invalid_space_dimension")?;
                 dict.set_item("found", found)?;
@@ -318,8 +351,11 @@ impl PyConformanceReport {
     }
 
     /// The problems found, ordered from the most structural to the most numerical. Each issue is
-    /// a dict: `kind` (`merged_nodes`, `overlapping_faces`, `invalid_space_dimension`,
-    /// `unsupported_cells`, `no_volume_cells`), the variant fields (`center` as `xyz` coordinates,
+    /// a dict: `kind` (`merged_nodes`, `overlapping_faces`, `non_conforming_faces`,
+    /// `butterfly_cell`, `intersecting_cells`, `invalid_space_dimension`, `unsupported_cells`,
+    /// `no_volume_cells`),
+    /// the variant fields
+    /// (`center` as `xyz` coordinates,
     /// `nodes`, `cells` / `cells_a` / `cells_b` as `{element type: indices}` mappings), and
     /// `message`.
     #[getter]

@@ -177,6 +177,11 @@ impl Polyhedron {
         self.signed_volume6().abs() / 6.0
     }
 
+    /// Signed volume, positive when the face winding is outward.
+    pub(crate) fn signed_volume(&self) -> f64 {
+        self.signed_volume6() / 6.0
+    }
+
     /// Triangulates every face into triangles that exactly tile the face, so the signed volume
     /// and geometric centroid are correct even for concave faces.
     fn face_triangles(&self) -> Vec<[usize; 3]> {

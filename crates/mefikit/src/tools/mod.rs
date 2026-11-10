@@ -1,6 +1,7 @@
 //! Mesh manipulation tools and algorithms.
 //!
 //! This module provides various utilities for mesh operations including:
+//! - Mesh conformance diagnostics
 //! - Connected component analysis
 //! - Mesh cracking (splitting shared nodes/faces)
 //! - Mesh extrusion (raising dimension)
@@ -15,6 +16,8 @@
 
 /// Centroids of meshes.
 pub mod centroids;
+/// Conformance diagnostics for volume and surface meshes.
+pub mod conformance;
 /// Connected component analysis for meshes.
 pub mod connected_components;
 /// Crack along shared faces/nodes to separate mesh regions.
@@ -57,7 +60,11 @@ pub mod transfer;
 /// Coordinate transforms, duplication and concatenation.
 pub mod transforms;
 
+#[cfg(test)]
+pub(crate) mod test_helpers;
+
 pub use centroids::*;
+pub use conformance::*;
 pub use connected_components::*;
 pub use crack::*;
 pub use extrude::*;

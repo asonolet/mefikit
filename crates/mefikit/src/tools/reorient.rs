@@ -274,6 +274,18 @@ mod tests {
         total
     }
 
+    fn tet_total_measure3(mesh: &UMesh) -> f64 {
+        let mut total = 0.0;
+        for (&et, block) in mesh.blocks() {
+            if et == ElementType::TET4 {
+                for elem in block.iter(mesh.coords().view()) {
+                    total += elem.measure3();
+                }
+            }
+        }
+        total
+    }
+
     fn wedge_total_measure3(mesh: &UMesh) -> f64 {
         let mut total = 0.0;
         for (&et, block) in mesh.blocks() {
@@ -350,6 +362,47 @@ mod tests {
         let lefty = crate::tools::polyze::unpolyze(&mesh.view()).unwrap();
         assert!(hexa_total_measure3(&lefty) < 0.0);
         assert_abs_diff_eq!(hexa_total_measure3(&lefty.reorient()), 1.0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn tet4_measure_sign_matches_vtk_and_reorient_repairs_it() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0]
+        ]
+        .into_shared();
+
+        // VTK order: the base 0-1-2 is counter-clockwise seen from the apex 3, so the signed
+        // volume is positive.
+        let mut canonical = UMesh::new(coords.clone());
+        canonical.add_regular_block(
+            ElementType::TET4,
+            nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
+            None,
+        );
+        assert_abs_diff_eq!(tet_total_measure3(&canonical), 1.0 / 6.0, epsilon = 1e-12);
+        assert_eq!(
+            connectivity_snapshot(&canonical),
+            connectivity_snapshot(&canonical.reorient())
+        );
+
+        // Swapping two nodes flips the winding: the signed volume is negative and reorient
+        // repairs it without changing the node set.
+        let mut reversed = UMesh::new(coords);
+        reversed.add_regular_block(
+            ElementType::TET4,
+            nd::arr2(&[[0, 2, 1, 3]]).to_shared(),
+            None,
+        );
+        assert_abs_diff_eq!(tet_total_measure3(&reversed), -1.0 / 6.0, epsilon = 1e-12);
+        let fixed = reversed.reorient();
+        assert_abs_diff_eq!(tet_total_measure3(&fixed), 1.0 / 6.0, epsilon = 1e-12);
+        assert_eq!(
+            connectivity_snapshot(&fixed),
+            connectivity_snapshot(&fixed.reorient())
+        );
     }
 
     #[test]

@@ -1,4 +1,5 @@
 import importlib.util
+from enum import IntFlag
 
 from . import data as data
 from . import io
@@ -46,6 +47,22 @@ ConservativeP0 = transfer.ConservativeP0
 Gradient = gradient.Gradient
 
 
+class ConformanceChecks(IntFlag):
+    """Which checks :func:`is_conform` runs.
+
+    ``FAST`` runs the structural and per-cell checks; ``FULL`` adds the expensive
+    cell-pair searches.
+    """
+
+    NONE = 0
+    TOPOLOGY = 1
+    BUTTERFLY = 2
+    INTERSECTIONS = 4
+    FACE_OVERLAP = 8
+    FAST = TOPOLOGY | BUTTERFLY
+    FULL = TOPOLOGY | BUTTERFLY | INTERSECTIONS | FACE_OVERLAP
+
+
 def has(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
 
@@ -56,6 +73,7 @@ del io
 
 __all__ = (
     "C",
+    "ConformanceChecks",
     "ConformanceReport",
     "ConservativeP0",
     "ConstantPiecewise",

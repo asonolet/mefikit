@@ -122,3 +122,7 @@ harness = false
 [[bench]]
 name = "stitch"
 harness = false
+
+[[bench]]
+name = "is_conform"
+harness = false

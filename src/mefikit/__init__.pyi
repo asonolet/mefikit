@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator, Sequence
+from enum import IntFlag
 from types import EllipsisType
 from typing import TypeAlias, final
 
@@ -27,6 +28,15 @@ from .transfer import (
 from .transfer import (
     MovingLeastSquares as MovingLeastSquares,
 )
+
+class ConformanceChecks(IntFlag):
+    NONE = 0
+    TOPOLOGY = 1
+    BUTTERFLY = 2
+    INTERSECTIONS = 4
+    FACE_OVERLAP = 8
+    FAST = 3
+    FULL = 15
 
 class DistanceWeighting:
     Constant: Callable[[], DistanceWeighting]
@@ -237,9 +247,11 @@ class SurfaceOverlay:
 @final
 class ConformanceReport:
     # Result of `is_conform`: whether the mesh is conformal, and if not, why and where.
-    # Each issue is a dict: `kind` (merged_nodes, overlapping_faces, invalid_space_dimension,
+    # The check follows the topological dimension (3D faces, 2D edges); lower-dimensional
+    # elements are ignored. Each issue is a dict: `kind` (butterfly_cell, merged_nodes,
+    # overlapping_faces, non_conforming_faces, intersecting_cells, invalid_space_dimension,
     # unsupported_cells, no_volume_cells), the variant fields (`center`, `nodes`, `cells` /
-    # `cells_a` / `cells_b`), and a human-readable `message`.
+    # `cells_a` / `cells_b` / `volume`, an area for 2D overlaps), and `message`.
     @property
     def is_conform(self) -> bool: ...
     @property
@@ -452,7 +464,10 @@ def concat(a: UMesh, b: UMesh) -> UMesh: ...
 def stitch(meshes: Sequence[UMesh], tol: float = ...) -> UMesh: ...
 def conformize(mesh: UMesh, tol: float = ...) -> UMesh: ...
 def is_conform(
-    mesh: UMesh, tol: float = ..., max_issues: int | None = ...
+    mesh: UMesh,
+    tol: float = ...,
+    max_issues: int | None = ...,
+    checks: ConformanceChecks | int = ...,
 ) -> ConformanceReport: ...
 def build_cmesh(*axes: Sequence[float]) -> UMesh: ...
 def has(name: str) -> bool: ...
