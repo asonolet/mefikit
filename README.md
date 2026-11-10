@@ -121,12 +121,12 @@ close to the data, while remaining concise and expressive.
     `InverseDistance(exponent)`, `Gaussian`)
 
   The transfers separate the (potentially expensive) geometric precompute
-  performed when the operator is constructed from the `apply_update` call that
-  transfers a field:
+  performed when the operator is constructed from the field evaluation that
+  transfers it:
 
   ```python
   op = mf.transfer.MovingLeastSquares(m_src, m_tgt, k=10)
-  op.apply_update(m_src, "temperature", m_tgt)
+  m_tgt.fields["temperature"] = op("temperature")
   ```
 
 - 📈 Field gradients

@@ -158,6 +158,8 @@ in-place and return a new mesh only when the result displaced elements
 | connected parts | `mesh.connected_components(src_dim, link_dim, with_fields)` |
 | crack / snap / merge nodes | `mesh.crack(cut)`, `mesh.snap(ref, eps)`, `mesh.merge_nodes(eps)` |
 | extrude | `mesh.extrude(along)`, `extrude_parallel(...)`, `extrude_curv(...)` |
+| slice by a plane (3D) or line (2D) | `mesh.slice(origin, normal)` |
+| slice by a line (2D or 3D) | `mesh.slice_line(origin, direction)` |
 | split / polygonize | `mesh.split()`, `mesh.polyze()` / `unpolyze()` |
 | boolean overlay | `mesh.overlay(mesh2, operation=None)` |
 | surface imprint in 3D | `mesh.overlay_surfaces(mesh2, tol=1e-9)` → `mf.SurfaceOverlay` |
@@ -182,6 +184,17 @@ The result is a single polyhedral mesh: interface nodes exist once, families are
 relabeled per input mesh, and fields and groups are dropped. Coincident interfaces
 must be piecewise planar within `tol`. This is an *imprint only* operation:
 overlapping volumes are not detected, so the output may contain overlapping cells.
+
+`mesh.slice(origin, normal)` cuts a 3D mesh with the plane through `origin` with
+normal `normal`, producing a 2D `PGON` mesh embedded in 3D. On a 2D mesh the
+hyperplane is the line through `origin` normal to `normal`, and the result is a
+1D `SEG2` mesh. `mesh.slice_line(origin, direction)` cuts a 2D or 3D mesh with
+the line through `origin` along `direction`; both produce a 1D `SEG2` mesh (in
+3D the line is embedded in 3D). Quadrangular sections are kept as `PGON` (they
+are not converted to `QUAD4`). Slicing does not copy fields; remap them with a
+transfer operator, for example
+`sliced.fields["T"] = mf.transfer.ConstantPiecewise(src, sliced)("T")` (see the
+[Slicing](./python_examples/slicing.md) notebook).
 
 ## Geometric transforms
 
@@ -251,10 +264,9 @@ and `Gaussian()`.
 
 Once built, every operator is used the same way:
 
-- `tr(expr, extensive=False)` → the transferred field, as a `Field` on `tgt`
+- `tr(expr, extensive=False)` → the transferred field, as a `Field` on `tgt`;
+  store it with `tgt.fields[name] = tr(expr)`
 - `tr.eval(expr, extensive=False)` → `{etype: array}`
-- `tr.apply_update(src, name, tgt, tgt_field_name=None, def_val=0.0, extensive=False)`
-  writes the result into a target field in place
 
 `extensive=True` treats the field as extensive (mass, energy): `ConservativeP0`
 then keeps the raw measure-weighted sum, whereas intensive fields are
@@ -295,13 +307,11 @@ Usage mirrors the transfers:
 | `grad(expr)` | the gradient as a lazy vector `Field` on the target; index components with `grad(expr)[0]`, … |
 | `grad.eval(expr)` | `{etype: array}`, shape `(n_tgt, d)` |
 | `grad.eval_points(expr)` | `(n_points, d)` array (point operators only) |
-| `grad.apply_update(src, field_name, tgt, tgt_field_name=None, def_val=0.0)` | writes the gradient into a target field in place |
 
 ```python
 grad = mf.Gradient(src, tgt, k=12)
 tgt.fields["grad_T"] = grad("T")  # lazy vector field
 tgt.fields["dTdx"] = grad("T")[0]  # one component
-grad.apply_update(src, "T", tgt, "grad_T")  # in place
 ```
 
 The [Field gradients](./python_examples/gradient.md) notebook validates the

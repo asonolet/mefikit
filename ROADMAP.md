@@ -72,7 +72,7 @@
 | Mesh Bounding Box                      | ✔️         | ✔️          | Global extent for visualization, filtering, etc.         |
 | 2D Mesh-Mesh Overlay                   | ✔️         | ✔️          | `overlay` + `OverlayOperation` (IMPRINT, UNION, INTERSECTION, DIFFERENCE, SYMMETRIC_DIFFERENCE) |
 | 2D Manifold Mesh-Mesh Overlay          | ✔️         | ✔️          | `overlay_surfaces` (IMPRINT): imprints coincident piecewise-planar surfaces in 3D, sharing intersection nodes |
-| 3D Cell Slicing with Plane             | ⏳         | ✔️          | Module stub only                                         |
+| Cell Slicing (plane / line)            | ✔️         | ✔️          | `slice` and `slice_line`; outputs `PGON` or `SEG2`       |
 | 3D mesh_mesh conformization             | 🚧         | ✔️          | `stitch`: conforms shared boundaries of 2+ volume meshes into one PHED mesh; imprint only (no volume overlap detection), triangular faces hit an unfinished case of the 2D cutter |
 | Cell-to-Cell Intersection Measure      | ✔️         | ✔️          | Partial: 3D `Polyhedron::convex_intersection_volume` |
 | Distance to Point / Nearest Cell       | 🚧         | ✔️          | Partial: BVH spatial index / kNN used internally         |

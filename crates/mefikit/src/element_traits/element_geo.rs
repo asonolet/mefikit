@@ -183,6 +183,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord3_ref(2),
                 *self.coord3_ref(3),
             ]),
+            PGON => area_polygon3(&self.coords3().copied().collect::<Vec<_>>()),
             TET4 => tet_volume(
                 self.coord3_ref(0),
                 self.coord3_ref(1),
@@ -400,6 +401,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord3_ref(2),
                 *self.coord3_ref(3),
             ]),
+            PGON => vertex_centroid(&self.coords3().copied().collect::<Vec<_>>()),
             TET4 => vertex_centroid(&[
                 *self.coord3_ref(0),
                 *self.coord3_ref(1),

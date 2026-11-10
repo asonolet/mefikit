@@ -341,8 +341,8 @@ print("identical (unit) area: OK")
 The flagship operation: transfer a cell field from a source mesh to a target
 mesh, conserving mass. Same prepare / apply split on both sides:
 
-- mefikit: build the operator once (`mf.transfer.ConservativeP0`), then call
-  `apply_update`.
+- mefikit: build the operator once (`mf.transfer.ConservativeP0`), then assign
+  its result with `tgt.fields["T"] = op("T")`.
 - medcoupling: `MEDCouplingRemapper`, `prepare("P0P0")`, then `transferField`.
 
 The transferred fields match to machine precision.
@@ -363,7 +363,7 @@ tgt2 = mf.build_cmesh(np.linspace(0.0, 1.0, 24), np.linspace(0.0, 1.0, 24))
 src2.fields["T"] = 1.0 + (mf.X - 0.5) ** 2 + 0.5 * mf.Y
 
 op = mf.transfer.ConservativeP0(src2, tgt2)  # prepare once
-op.apply_update(src2, "T", tgt2, "T", def_val=0.0)
+tgt2.fields["T"] = op("T")
 mf_tgt_vals = tgt2.fields["T"].numpy()
 
 # --- medcoupling -------------------------------------------------------------
@@ -503,7 +503,11 @@ def bench_poly_once(n, data):
 
     mf_prepare = median_ms(lambda: mf.transfer.ConservativeP0(p_src, p_tgt))
     op = mf.transfer.ConservativeP0(p_src, p_tgt)
-    mf_apply = median_ms(lambda: op.apply_update(p_src, "T", p_tgt, "T", def_val=0.0))
+
+    def apply_mf():
+        p_tgt.fields["T"] = op("T")
+
+    mf_apply = median_ms(apply_mf)
 
     c_src = poly_subset(data / "mesh_36.med", n, True)
     c_tgt = poly_subset(data / "mesh_27.med", n, True)
@@ -515,7 +519,7 @@ def bench_poly_once(n, data):
     mc_prepare = median_ms(lambda: remap.prepare(c_src, c_tgt, "P0P0"))
     mc_apply = median_ms(lambda: remap.transferField(f_src, 0.0))
 
-    op.apply_update(p_src, "T", p_tgt, "T", def_val=0.0)
+    p_tgt.fields["T"] = op("T")
     out_mf = p_tgt.fields["T"].numpy()
     remap.prepare(c_src, c_tgt, "P0P0")
     out_mc = remap.transferField(f_src, 0.0).getArray().toNumPyArray()

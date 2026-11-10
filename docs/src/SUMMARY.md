@@ -14,6 +14,7 @@
 # Building and transforming meshes
 
 - [Extrusions](./python_examples/extrusions.md)
+- [Slicing](./python_examples/slicing.md)
 - [Geometric transforms](./python_examples/geometric_transforms.md)
 - [Topological tools](./python_examples/topological_tools.md)
 - [Geometric tools](./python_examples/geometric_tools.md)

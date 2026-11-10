@@ -336,6 +336,33 @@ impl PyUMesh {
         new_mesh.into()
     }
 
+    /// Slices the mesh with a plane (3D) or a line (2D).
+    ///
+    /// The hyperplane is defined by a point `origin` and a `normal`: in 3D it is the
+    /// plane through `origin` with normal `normal`; in 2D it is the line through
+    /// `origin` normal to `normal`. A 3D mesh produces a 2D `PGON` mesh embedded in
+    /// 3D, a 2D mesh produces a 1D `SEG2` mesh.
+    #[pyo3(signature = (origin, normal))]
+    fn slice(&self, origin: Vec<f64>, normal: Vec<f64>) -> PyResult<Self> {
+        check_slice_args(self.inner.space_dimension(), &origin, &normal, "normal")?;
+        Ok(mf::slice(&self.inner.view(), &origin, &normal).into())
+    }
+
+    /// Slices the mesh with a line through `origin` with direction `direction`.
+    ///
+    /// A 3D mesh produces a 1D `SEG2` mesh embedded in 3D, and a 2D mesh produces a 1D
+    /// `SEG2` mesh embedded in 2D. The direction does not need to be normalized.
+    #[pyo3(signature = (origin, direction))]
+    fn slice_line(&self, origin: Vec<f64>, direction: Vec<f64>) -> PyResult<Self> {
+        check_slice_args(
+            self.inner.space_dimension(),
+            &origin,
+            &direction,
+            "direction",
+        )?;
+        Ok(mf::slice_line(&self.inner.view(), &origin, &direction).into())
+    }
+
     #[pyo3(signature = (expr, dim=None))]
     fn select(
         slf: &Bound<'_, Self>,
@@ -505,6 +532,30 @@ impl PyUMesh {
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(out.into())
     }
+}
+
+fn check_slice_args(
+    space_dim: usize,
+    origin: &[f64],
+    vector: &[f64],
+    vector_name: &str,
+) -> PyResult<()> {
+    if !(space_dim == 2 || space_dim == 3) {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Slicing requires a 2D or 3D mesh, got a {space_dim}D mesh."
+        )));
+    }
+    if origin.len() != space_dim || vector.len() != space_dim {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "origin and {vector_name} must have {space_dim} components."
+        )));
+    }
+    if vector.iter().map(|x| x * x).sum::<f64>() == 0.0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "{vector_name} must not be zero."
+        )));
+    }
+    Ok(())
 }
 
 pub fn into_view(mesh: &PyUMesh) -> mf::UMeshView<'_> {
