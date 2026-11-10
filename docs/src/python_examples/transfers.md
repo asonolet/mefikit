@@ -52,7 +52,7 @@ obtained*:
 | `ConstantPiecewise` | cell-based | target cell center located in a source cell (centroid) | no | faithful piecewise-constant copy, coarsening |
 | `InverseDistance` | meshless | `k` nearest source cell centers, weights `1 / r**exponent` | no | cheap local fallback, unrelated point clouds |
 | `MovingLeastSquares` | meshless | `k` nearest source cell centers, local fit with a distance kernel | no | smooth fields, trend reconstruction |
-| `ConservativeP0` | overlap | volumetric intersection with source cells | **yes** | keep mass / energy exact (ALE, coupling) |
+| `ConservativeP0` | overlap | measure-weighted intersection (same-dim and downcast) | **yes** | keep the target integral exact, ALE / coupling, volume → surface / line |
 
 Some shared rules:
 
@@ -71,6 +71,41 @@ Some shared rules:
   on `tgt`), `tr.eval(expr)` (returns per-type arrays), or
   `tr.apply_update(src, name, tgt, ...)` to write into a target field in
   place.
+
+### Cross-dimensional `ConservativeP0`
+
+`ConservativeP0` also transfers from higher- to lower-dimensional cells in the
+same space:
+
+| Source | Target | Intersection measure |
+|---|---|---|
+| 3D volume | 2D surface | area |
+| 3D volume | 1D line | length |
+| 3D volume | 0D point | 1 if the point is in the cell |
+| 2D surface (2D or 3D space) | 1D line | length |
+| 2D surface (2D or 3D space) | 0D point | 1 if the point is in the cell |
+| 1D line | 0D point | 1 if the point is on the segment |
+
+The class, signature and prepare / apply split are unchanged:
+
+```python
+# src is a volume mesh, tgt a surface mesh (for example a cutting plane)
+tr = mf.transfer.ConservativeP0(src, tgt)
+tr.apply_update(src, "T", tgt, "T")
+```
+
+For an **intensive** field the result is the area- (or length-) weighted average
+over the target cell, normalized by the **whole** target measure: a target cell
+that is only half covered by the source mesh is attenuated by one half. For an
+**extensive** field the raw measure-weighted sum is kept, i.e. the integral of
+the source field over the target cell. For point targets the target measure is
+the counting measure (`1`), and each point is assigned to a single source cell
+(on a conforming interface the lowest source index wins).
+
+The usual assumptions apply: convex, first-order cells (`TET4`, `HEX8`,
+`WEDGE6`, `PHED`, `TRI3`, `QUAD4`, `PGON`, `SEG2`, `VERTEX`), and 2D cells
+embedded in 3D are planar up to a small tolerance. Same-dimensional transfers
+still require both meshes to be full-dimensional.
 
 ### ConstantPiecewise Transfer
 

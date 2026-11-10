@@ -247,6 +247,19 @@ impl PyMovingLeastSquares {
 // ConservativeP0
 // ---------------------------------------------------------------------------
 
+/// Measure-weighted conservative transfer between source and target cells.
+///
+/// The source cells may have the same topological dimension as the target cells (2D→2D or
+/// 3D→3D) or a higher one: 3D volume→2D surface/1D line/0D point, 2D surface→1D line/0D point,
+/// 1D line→0D point. The weight of a source/target pair is the measure of their intersection in
+/// the target dimension (area for a surface target, length for a line target, counting measure
+/// for points).
+///
+/// Intensive fields (default) are normalized by the target cell measure; extensive fields keep
+/// the raw measure-weighted sum. Uncovered target cells keep `def_val`.
+///
+/// A point target is assigned to a single source cell; when it lies exactly on a conforming
+/// interface the cell with the lowest global source index wins.
 #[pyclass(str)]
 #[pyo3(name = "ConservativeP0")]
 pub struct PyConservativeP0 {
@@ -278,9 +291,11 @@ impl PyConservativeP0 {
         }
     }
 
-    /// Transfers a field defined on 2D source cells to the 2D target cells, weighted by the cell
-    /// intersection measures. By default the transferred values are intensive (integral over the
-    /// target cell divided by its measure); set `extensive=True` to keep the raw summed values.
+    /// Transfers a field defined on the source cells to the target cells, weighted by the
+    /// measure of their intersection in the target dimension (area for a 2D target, length for
+    /// a 1D target, counting measure for point targets). By default the transferred values are
+    /// intensive (integral over the target cell divided by its measure); set `extensive=True`
+    /// to keep the raw summed values.
     #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0, extensive=false))]
     fn apply_update(
         &self,

@@ -347,6 +347,13 @@ mesh, conserving mass. Same prepare / apply split on both sides:
 
 The transferred fields match to machine precision.
 
+`ConservativeP0` also handles volume → surface/line/point downcasts. For the
+comparison: MEDCoupling's `P0P0` supports `3D → 2D` directly, and `2D → 1D` in
+a 2D space after `setIntersectionType(mc.Geometric2D)`. MEDCoupling has no
+measure-based `P0P0` for `3D → 1D`, `3D → 0D` or `2D → 1D` in 3D space (its
+`PointLocator` option is point location, not an intersection measure), so those
+pairs are checked against exact analytic references in the tests.
+
 
 
 ```python
@@ -706,6 +713,7 @@ adds ergonomics of its own — most of it already exercised in this notebook.
 | Read / write `.med`                              | `ReadMeshFromFile` / `write`                   | `UMesh.read` / `write` (same format)         |
 | Per-cell measure                                 | `getMeasureField` + field plumbing             | `mf.M` — symbolic, evaluated on demand       |
 | P0/P0 conservative remap (quad / hex)            | `MEDCouplingRemapper.prepare("P0P0")`          | `mf.transfer.ConservativeP0`                 |
+| P0/P0 volume → surface remap                     | `MEDCouplingRemapper.prepare("P0P0")`          | `mf.transfer.ConservativeP0`                 |
 | Polyhedral remap                                 | `MEDCouplingRemapper.prepare("P0P0")`          | `mf.transfer.ConservativeP0`                 |
 | Faces of a volume mesh                           | `buildDescendingConnectivity`                  | `descend()`                                  |
 | Merge duplicated nodes                           | `mergeNodes`                                   | `merge_nodes()`                              |

@@ -6,9 +6,9 @@
 //! operator is constructed, so the same operator can be reused to evaluate many fields (for
 //! example across time steps) as long as the meshes do not change.
 //!
-//! A transfer may downcast: a field defined on the cells of a full-dimensional source mesh can
-//! be transferred onto the cells of a lower-dimensional target mesh embedded in the same space
-//! (for example a 3D volume mesh onto a 2D manifold in 3D space).
+//! A transfer may downcast: a field defined on the cells of a source mesh can be transferred
+//! onto the cells of a lower-dimensional target mesh embedded in the same space (for example a
+//! 3D volume mesh onto a 2D manifold in 3D space, or onto a 1D line or a point cloud).
 
 use crate::mesh::{Dimension, FieldArcD, FieldOwnedD, FieldViewD, UMesh};
 
@@ -17,7 +17,12 @@ use crate::mesh::{Dimension, FieldArcD, FieldOwnedD, FieldViewD, UMesh};
 pub enum FieldNature {
     /// Per-unit-measure field (temperature, density, pressure).
     Intensive,
-    /// Total-quantity field (mass, energy).
+    /// Integrated quantity (mass, energy).
+    ///
+    /// For [`TransferMethod::ConservativeP0`](crate::tools::transfer::TransferMethod::ConservativeP0)
+    /// the source value is treated as a per-unit-measure density and the result is the integral
+    /// over each target cell (the raw measure-weighted sum). The interpolation methods copy or
+    /// interpolate the values unchanged.
     Extensive,
 }
 

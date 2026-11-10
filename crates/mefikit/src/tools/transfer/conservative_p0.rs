@@ -1,12 +1,20 @@
-//! Conservative P0 transfer between full-dimensional meshes of the same space dimension.
+//! Conservative P0 transfer between meshes of the same 2D/3D space.
 //!
-//! Each target cell value is the measure-weighted average of the source cell values it overlaps,
-//! so the transferred field is exactly conservative: for an intensive field the integral of the
-//! target field over the covered target cells equals the integral of the source field over the
-//! source cells, and for an extensive field the per-cell values sum to the source total.
+//! Each target cell value is the measure-weighted average of the source cell values it overlaps.
+//! The source cells may have the same dimension as the target cells (full-dimensional remap) or
+//! a higher dimension (downcast): `3D → 2D`, `3D → 1D`, `3D → 0D`, `2D → 1D`, `2D → 0D` and
+//! `1D → 0D`. The weight of a source/target pair is the measure of their intersection **in the
+//! target dimension** (area for 2D targets, length for 1D targets, counting measure for 0D
+//! targets).
 //!
-//! The overlap precompute lives in this module ([`prepare`] and its helpers) and the apply-time
-//! sparse product is handled by the shared [`super::operator::TransferOperator`].
+//! For an intensive field the accumulated overlap is divided by the target cell measure, so a
+//! constant field is reproduced exactly on fully covered target cells (and homogenized over the
+//! whole target cell when it is only partially covered). For an extensive field the raw
+//! measure-weighted sum is kept: it is the integral of the source field over the target cell.
+//!
+//! The same-dimensional overlap precompute lives in this module ([`prepare`] and its helpers);
+//! the downcast precompute lives in [`super::conservative_downcast`]. The apply-time sparse
+//! product is handled by the shared [`super::operator::TransferOperator`].
 
 use std::collections::BTreeMap;
 
@@ -22,42 +30,58 @@ use crate::tools::spatial_index::{SpatialIndex, SpatiallyIndexable};
 
 /// Builds the conservative P0 operator by intersecting every source/target cell pair.
 ///
-/// Both meshes must be full-dimensional (their topological dimension must match the space
-/// dimension `D`, which must be 2 or 3): the transfer computes the intersection area (in 2D)
-/// or intersection volume (in 3D) of the source and target cells, so every cell must be a full
-/// `D`-dimensional region (the intersection of a full-dimensional cell with a lower-dimensional
-/// cell has zero measure). The cells must be convex: this is always the case for `TRI3`,
-/// `QUAD4`, `TET4` and `HEX8` elements, while `PGON` and `PHED` cells are assumed convex.
+/// When the source and target topological dimensions are equal, both meshes must be
+/// full-dimensional (their topological dimension must match the space dimension `D`, which must
+/// be 2 or 3): the transfer computes the intersection area (in 2D) or intersection volume (in
+/// 3D) of the source and target cells. When the source dimension is greater than the target
+/// dimension, the intersection is measured in the target dimension (area for a surface target,
+/// length for a line target, counting measure for a point target).
+///
+/// The cells must be convex: this is always the case for `TRI3`, `QUAD4`, `TET4` and `HEX8`
+/// elements, while `PGON` and `PHED` cells are assumed convex. 2D cells embedded in 3D space are
+/// assumed planar up to a small tolerance.
 ///
 /// # Panics
 ///
 /// - If `mesh_src` and `mesh_tgt` do not share the same space dimension, or if it is not 2 or 3.
-/// - If either mesh is empty or not full-dimensional.
+/// - If the source dimension is lower than the target dimension (upcast is not conservative).
+/// - If both dimensions are equal but a mesh is not full-dimensional.
+/// - If a source or target cell type is not supported by the cross-dimensional path.
 pub(crate) fn prepare(mesh_src: &UMeshView, mesh_tgt: &UMeshView) -> TransferOperator {
-    let (src_dim, tgt_dim, src_space) = validated_dims(mesh_src, mesh_tgt, "Conservative P0");
-    let src_dim_usize = u8::from(src_dim) as usize;
-    assert_eq!(
-        src_dim_usize, src_space,
-        "Source mesh should be full-dimensional (topological dimension = space dimension), got topological {src_dim:?} in a {src_space}D space"
+    let (src_dim, tgt_dim, space) = validated_dims(mesh_src, mesh_tgt, "Conservative P0");
+    assert!(
+        u8::from(src_dim) >= u8::from(tgt_dim),
+        "Conservative P0 cannot transfer from lower-dimensional source cells ({src_dim:?}) to higher-dimensional target cells ({tgt_dim:?}): the source dimension must be greater than or equal to the target dimension"
     );
-    let tgt_dim_usize = u8::from(tgt_dim) as usize;
-    assert_eq!(
-        tgt_dim_usize, src_space,
-        "Target mesh should be full-dimensional (topological dimension = space dimension), got topological {tgt_dim:?} in a {src_space}D space"
-    );
-
-    // Flatten the source cells in BTreeMap element-type order, so the global index stored in
-    // the overlap matrix matches the concatenation of the field arrays done at apply time.
-    let mut src_offsets: BTreeMap<ElementType, usize> = BTreeMap::new();
-    let mut n_src = 0;
-    for (et, block) in mesh_src.blocks() {
-        if u8::from(et.dimension()) as usize == src_space {
-            src_offsets.insert(*et, n_src);
-            n_src += block.len();
-        }
+    if src_dim == tgt_dim {
+        prepare_same_dim(mesh_src, mesh_tgt, src_dim, space)
+    } else {
+        super::conservative_downcast::prepare(mesh_src, mesh_tgt, src_dim, tgt_dim, space)
     }
+}
 
-    let data = match src_space {
+/// Builds the conservative P0 operator for full-dimensional meshes of the same dimension.
+fn prepare_same_dim(
+    mesh_src: &UMeshView,
+    mesh_tgt: &UMeshView,
+    src_dim: Dimension,
+    space: usize,
+) -> TransferOperator {
+    assert_eq!(
+        u8::from(src_dim) as usize,
+        space,
+        "Source mesh should be full-dimensional (topological dimension = space dimension), got topological {src_dim:?} in a {space}D space"
+    );
+    assert_eq!(
+        u8::from(mesh_tgt.topological_dimension().unwrap()) as usize,
+        space,
+        "Target mesh should be full-dimensional (topological dimension = space dimension), got topological {:?} in a {space}D space",
+        mesh_tgt.topological_dimension().unwrap()
+    );
+
+    let (src_offsets, n_src) = source_offsets(mesh_src, src_dim);
+
+    let data = match space {
         2 => build_overlap_2d(mesh_src, mesh_tgt, &src_offsets),
         3 => build_overlap_3d(mesh_src, mesh_tgt, &src_offsets),
         _ => unreachable!(),
@@ -65,10 +89,30 @@ pub(crate) fn prepare(mesh_src: &UMeshView, mesh_tgt: &UMeshView) -> TransferOpe
     TransferOperator::build(
         TransferMethod::ConservativeP0,
         src_dim,
-        tgt_dim,
+        src_dim,
         n_src,
         data,
     )
+}
+
+/// Flattens the source blocks of topological dimension `src_dim` in `BTreeMap` element-type
+/// order, which is the order used to concatenate the source field arrays at apply time.
+///
+/// Returns the first global index of each element type together with the total number of source
+/// cells.
+pub(crate) fn source_offsets(
+    mesh_src: &UMeshView,
+    src_dim: Dimension,
+) -> (BTreeMap<ElementType, usize>, usize) {
+    let mut src_offsets: BTreeMap<ElementType, usize> = BTreeMap::new();
+    let mut n_src = 0;
+    for (et, block) in mesh_src.blocks() {
+        if et.dimension() == src_dim {
+            src_offsets.insert(*et, n_src);
+            n_src += block.len();
+        }
+    }
+    (src_offsets, n_src)
 }
 
 /// Builds the source-pair overlap areas for all target cells of a 2D mesh.
@@ -1045,10 +1089,11 @@ mod tests {
         );
     }
 
-    /// A lower-dimensional source mesh in 3D space fails with a clear message.
+    /// An upcast (lower-dimensional source to higher-dimensional target) fails with a clear
+    /// message: the conservative transfer cannot invent a measure.
     #[test]
-    #[should_panic(expected = "Source mesh should be full-dimensional")]
-    fn transfer3d_source_not_full_dimensional_panics() {
+    #[should_panic(expected = "cannot transfer from lower-dimensional source cells")]
+    fn transfer_upcast_panics() {
         let mut source = UMesh::new(nd::ArcArray2::from_shape_vec((4, 3), vec![0.0; 12]).unwrap());
         source.add_regular_block(
             ElementType::QUAD4,
@@ -1077,14 +1122,23 @@ mod tests {
         let _ = cp0(&source.view(), &target.view());
     }
 
-    /// A lower-dimensional target mesh fails with a clear message.
+    /// An equal-dimensional but non-full-dimensional transfer (a 2D surface in 3D) is still
+    /// rejected: only full-dimensional equal-dimensional transfers use the volumetric path.
     #[test]
-    #[should_panic(expected = "Target mesh should be full-dimensional")]
-    fn transfer_target_not_full_dimensional_panics() {
-        let source = me::make_imesh_2d(1);
-        let mut target =
-            UMesh::new(nd::ArcArray2::from_shape_vec((2, 2), vec![0.0, 0.0, 1.0, 0.0]).unwrap());
-        target.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
+    #[should_panic(expected = "Source mesh should be full-dimensional")]
+    fn transfer_surface_to_surface_in_3d_panics() {
+        let mut source = UMesh::new(nd::ArcArray2::from_shape_vec((4, 3), vec![0.0; 12]).unwrap());
+        source.add_regular_block(
+            ElementType::QUAD4,
+            nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
+            None,
+        );
+        let mut target = UMesh::new(nd::ArcArray2::from_shape_vec((4, 3), vec![0.0; 12]).unwrap());
+        target.add_regular_block(
+            ElementType::QUAD4,
+            nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
+            None,
+        );
         let _ = cp0(&source.view(), &target.view());
     }
 
