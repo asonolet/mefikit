@@ -1,3 +1,5 @@
+from typing import TypeAlias
+
 from . import DistanceWeighting, Field, UMesh
 
 class ConstantPiecewise:
@@ -7,6 +9,7 @@ class ConstantPiecewise:
         tgt_mesh: UMesh,
         def_val: float = ...,
     ) -> None: ...
+    def save(self, path: str, compressed: bool = ...) -> None: ...
     def __call__(
         self,
         expr: Field,
@@ -36,6 +39,7 @@ class MovingLeastSquares:
         weighting: DistanceWeighting = ...,
         def_val: float = ...,
     ) -> None: ...
+    def save(self, path: str, compressed: bool = ...) -> None: ...
     def __call__(
         self,
         expr: Field,
@@ -65,6 +69,7 @@ class InverseDistance:
         exponent: float = ...,
         def_val: float = ...,
     ) -> None: ...
+    def save(self, path: str, compressed: bool = ...) -> None: ...
     def __call__(
         self,
         expr: Field,
@@ -92,6 +97,7 @@ class ConservativeP0:
         tgt_mesh: UMesh,
         def_val: float = ...,
     ) -> None: ...
+    def save(self, path: str, compressed: bool = ...) -> None: ...
     def __call__(
         self,
         expr: Field,
@@ -111,3 +117,13 @@ class ConservativeP0:
         def_val: float = ...,
         extensive: bool = ...,
     ) -> None: ...
+
+Transfer: TypeAlias = (
+    ConstantPiecewise | MovingLeastSquares | InverseDistance | ConservativeP0
+)
+
+def load(
+    path: str,
+    src_mesh: UMesh,
+    tgt_mesh: UMesh | None = ...,
+) -> Transfer: ...

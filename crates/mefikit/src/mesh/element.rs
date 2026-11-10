@@ -137,6 +137,35 @@ impl From<RegularElemType> for ElementType {
 }
 
 impl ElementType {
+    /// Stable uppercase name of the element type.
+    ///
+    /// This is the name used in serialized transfer files; it must not change when new element
+    /// types are inserted in the enum.
+    pub fn name(&self) -> &'static str {
+        use ElementType::*;
+        match self {
+            VERTEX => "VERTEX",
+            SEG2 => "SEG2",
+            SEG3 => "SEG3",
+            SEG4 => "SEG4",
+            PLINE => "PLINE",
+            TRI3 => "TRI3",
+            TRI6 => "TRI6",
+            TRI7 => "TRI7",
+            QUAD4 => "QUAD4",
+            QUAD8 => "QUAD8",
+            QUAD9 => "QUAD9",
+            PGON => "PGON",
+            TET4 => "TET4",
+            TET10 => "TET10",
+            HEX8 => "HEX8",
+            HEX21 => "HEX21",
+            WEDGE6 => "WEDGE6",
+            WEDGE15 => "WEDGE15",
+            PHED => "PHED",
+        }
+    }
+
     pub fn dimension(&self) -> Dimension {
         use ElementType::*;
         match self {

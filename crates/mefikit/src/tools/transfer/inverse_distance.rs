@@ -9,7 +9,9 @@
 //! The validation and the plumbing between the `k`-nearest-neighbours search (in the shared
 //! meshless solver module) and the [`super::operator::TransferOperator`] live in this module.
 
-use super::operator::{TransferMethod, TransferOperator, point_interpolation, validated_dims};
+use super::operator::{
+    TransferMethod, TransferOperator, point_interpolation, source_blocks, validated_dims,
+};
 use crate::mesh::UMeshView;
 use crate::tools::meshless::{NeighbourScheme, solve_neighbours, source_centroids};
 
@@ -48,13 +50,14 @@ pub(crate) fn prepare(
         "Source mesh should not be empty"
     );
 
-    let (src_coords, n_src) = source_centroids(mesh_src, src_dim);
+    let (src_coords, _) = source_centroids(mesh_src, src_dim);
+    let src_blocks = source_blocks(mesh_src, src_dim);
 
     TransferOperator::build(
         TransferMethod::InverseDistance { k, exponent },
         src_dim,
         tgt_dim,
-        n_src,
+        src_blocks,
         point_interpolation(mesh_tgt, src_space, |coords| {
             solve_neighbours(
                 &src_coords.view(),

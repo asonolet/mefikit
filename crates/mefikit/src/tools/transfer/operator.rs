@@ -101,9 +101,10 @@ pub struct TransferOperator {
     /// downcast transfer).
     src_dim: Dimension,
     tgt_dim: Dimension,
-    /// Number of source cells the operator was built from, flattened over element types in
-    /// BTreeMap order.
-    n_src: usize,
+    /// Source element blocks, in the `BTreeMap` element-type order used to flatten the source
+    /// field arrays at apply time. The counts are kept so a saved operator can be validated
+    /// against a source mesh without rebuilding its coefficients.
+    source_blocks: Vec<(ElementType, usize)>,
     /// Sparse interpolation data, grouped by target element type.
     data: Vec<(ElementType, RowSparse)>,
 }
@@ -115,16 +116,60 @@ impl TransferOperator {
         method: TransferMethod,
         src_dim: Dimension,
         tgt_dim: Dimension,
-        n_src: usize,
+        source_blocks: Vec<(ElementType, usize)>,
         data: Vec<(ElementType, RowSparse)>,
     ) -> Self {
         Self {
             method,
             src_dim,
             tgt_dim,
-            n_src,
+            source_blocks,
             data,
         }
+    }
+
+    /// The transfer method and its construction parameters.
+    pub fn method(&self) -> TransferMethod {
+        self.method
+    }
+
+    /// Topological dimension of the source cells.
+    pub fn src_dim(&self) -> Dimension {
+        self.src_dim
+    }
+
+    /// Topological dimension of the target cells.
+    pub fn tgt_dim(&self) -> Dimension {
+        self.tgt_dim
+    }
+
+    /// Total number of source cells the operator was built from.
+    pub fn n_src(&self) -> usize {
+        self.source_blocks.iter().map(|(_, n)| *n).sum()
+    }
+
+    /// Total number of target cells the operator produces.
+    pub fn n_tgt(&self) -> usize {
+        self.data
+            .iter()
+            .map(|(_, rows)| rows.target_measure.len())
+            .sum()
+    }
+
+    /// Source element blocks, in the order used to flatten the source field arrays.
+    pub fn source_blocks(&self) -> &[(ElementType, usize)] {
+        &self.source_blocks
+    }
+
+    /// Target element blocks, in `BTreeMap` element-type order.
+    pub fn target_blocks(&self) -> impl Iterator<Item = (ElementType, usize)> + '_ {
+        self.data
+            .iter()
+            .map(|(et, rows)| (*et, rows.target_measure.len()))
+    }
+
+    pub(crate) fn data(&self) -> &[(ElementType, RowSparse)] {
+        &self.data
     }
 
     /// Wraps raw `(indices, weights)` interpolation data into a full single-element-type operator.
@@ -160,7 +205,7 @@ impl TransferOperator {
             },
             src_dim,
             tgt_dim,
-            n_src,
+            source_blocks: vec![(et, n_src)],
             data: vec![(
                 et,
                 RowSparse {
@@ -190,10 +235,10 @@ impl TransferOperator {
         default: f64,
     ) -> nd::ArrayD<f64> {
         let n_src = src.shape()[0];
+        let expected = self.n_src();
         assert_eq!(
-            n_src, self.n_src,
-            "The field should have one entry per source cell, got {n_src} for {}",
-            self.n_src
+            n_src, expected,
+            "The field should have one entry per source cell, got {n_src} for {expected}"
         );
         let n_compo = src.len() / n_src;
         let n_tgt = rows.target_measure.len();
@@ -259,6 +304,18 @@ impl Transfer for TransferOperator {
     fn tgt_dim(&self) -> Dimension {
         self.tgt_dim
     }
+}
+
+/// Source element blocks of topological dimension `src_dim`, in `BTreeMap` element-type order.
+///
+/// This is the order in which the source field arrays are concatenated at apply time, so the
+/// counts are also the number of rows expected from each source block.
+pub(crate) fn source_blocks(mesh_src: &UMeshView, src_dim: Dimension) -> Vec<(ElementType, usize)> {
+    mesh_src
+        .blocks()
+        .filter(|(et, _)| et.dimension() == src_dim)
+        .map(|(et, block)| (*et, block.len()))
+        .collect()
 }
 
 /// Per-element-type centroids of the target mesh, flattened into a `Vec` of `(indices, weights)`

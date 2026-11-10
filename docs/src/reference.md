@@ -267,6 +267,9 @@ Once built, every operator is used the same way:
 - `tr(expr, extensive=False)` → the transferred field, as a `Field` on `tgt`;
   store it with `tgt.fields[name] = tr(expr)`
 - `tr.eval(expr, extensive=False)` → `{etype: array}`
+- `tr.save(path)` writes the prepared sparse matrix to a SciPy-compatible
+  `.npz` file; `mf.transfer.load(path, src_mesh, tgt_mesh=None)` restores it
+  and validates its element-block counts against the meshes.
 
 `extensive=True` treats the field as extensive (mass, energy): `ConservativeP0`
 then keeps the raw measure-weighted sum, whereas intensive fields are

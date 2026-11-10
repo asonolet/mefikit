@@ -1,12 +1,35 @@
 use numpy as np;
+use pyo3::exceptions::{PyOSError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::fmt::{Display, Formatter};
+use std::path::Path;
 use std::sync::Arc;
 
 use mefikit::prelude as mf;
 use mefikit::tools::Transfer;
 use mefikit::tools::meshless::DistanceWeighting;
+
+fn map_transfer_err(err: mf::MefikitIOError) -> PyErr {
+    match err {
+        mf::MefikitIOError::Io(err) => PyOSError::new_err(err.to_string()),
+        other => PyValueError::new_err(other.to_string()),
+    }
+}
+
+fn save_transfer(
+    op: &mf::TransferOperator,
+    path: &str,
+    compressed: bool,
+    default_val: f64,
+) -> PyResult<()> {
+    let options = mf::transfer::TransferSaveOptions {
+        compressed,
+        default_value: Some(default_val),
+    };
+    op.save_with(Path::new(path), &options)
+        .map_err(map_transfer_err)
+}
 
 use crate::element::etype_to_str;
 use crate::pyfield::PyField;
@@ -121,6 +144,12 @@ impl PyConstantPiecewise {
         }
     }
 
+    /// Saves the prepared operator to a SciPy-compatible ``.npz`` file.
+    #[pyo3(signature = (path, compressed=true))]
+    fn save(&self, path: &str, compressed: bool) -> PyResult<()> {
+        save_transfer(&self.op, path, compressed, self.def_val)
+    }
+
     #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0, extensive=false))]
     fn apply_update(
         &self,
@@ -202,6 +231,12 @@ impl PyMovingLeastSquares {
             src_mesh: src_mesh.clone().unbind(),
             def_val,
         }
+    }
+
+    /// Saves the prepared operator to a SciPy-compatible ``.npz`` file.
+    #[pyo3(signature = (path, compressed=true))]
+    fn save(&self, path: &str, compressed: bool) -> PyResult<()> {
+        save_transfer(&self.op, path, compressed, self.def_val)
     }
 
     #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0, extensive=false))]
@@ -291,6 +326,12 @@ impl PyConservativeP0 {
         }
     }
 
+    /// Saves the prepared operator to a SciPy-compatible ``.npz`` file.
+    #[pyo3(signature = (path, compressed=true))]
+    fn save(&self, path: &str, compressed: bool) -> PyResult<()> {
+        save_transfer(&self.op, path, compressed, self.def_val)
+    }
+
     /// Transfers a field defined on the source cells to the target cells, weighted by the
     /// measure of their intersection in the target dimension (area for a 2D target, length for
     /// a 1D target, counting measure for point targets). By default the transferred values are
@@ -376,6 +417,12 @@ impl PyInverseDistance {
         }
     }
 
+    /// Saves the prepared operator to a SciPy-compatible ``.npz`` file.
+    #[pyo3(signature = (path, compressed=true))]
+    fn save(&self, path: &str, compressed: bool) -> PyResult<()> {
+        save_transfer(&self.op, path, compressed, self.def_val)
+    }
+
     #[pyo3(signature = (src_mesh, field_name, tgt_mesh, tgt_field_name=None, def_val=0.0, extensive=false))]
     fn apply_update(
         &self,
@@ -416,5 +463,80 @@ impl PyInverseDistance {
 }
 
 // ---------------------------------------------------------------------------
-// InverseDistance
+// Load
 // ---------------------------------------------------------------------------
+
+/// Loads an operator saved with ``op.save(path)``.
+///
+/// The source mesh is required to rebuild the Python wrapper and to validate the saved
+/// element-block counts. The target mesh is optional; when given, its blocks are validated too.
+/// The returned object is an instance of the operator class matching the saved method.
+#[pyfunction]
+#[pyo3(signature = (path, src_mesh, tgt_mesh=None))]
+pub fn load<'py>(
+    py: Python<'py>,
+    path: &str,
+    src_mesh: &Bound<'py, PyUMesh>,
+    tgt_mesh: Option<&Bound<'py, PyUMesh>>,
+) -> PyResult<Bound<'py, PyAny>> {
+    let (operator, default_value) =
+        mf::TransferOperator::load(Path::new(path)).map_err(map_transfer_err)?;
+
+    {
+        let src_guard = src_mesh.borrow();
+        let tgt_guard = tgt_mesh.map(|mesh| mesh.borrow());
+        let src_view = into_view(&src_guard);
+        let tgt_view = tgt_guard.as_ref().map(|guard| into_view(guard));
+        operator
+            .validate(&src_view, tgt_view.as_ref())
+            .map_err(map_transfer_err)?;
+    }
+
+    let def_val = default_value.unwrap_or(0.0);
+    let operator = Arc::new(operator);
+    let py_src_mesh = src_mesh.clone().unbind();
+
+    let object = match operator.method() {
+        mf::TransferMethod::ConstantPiecewise { .. } => Py::new(
+            py,
+            PyConstantPiecewise {
+                op: operator,
+                src_mesh: py_src_mesh,
+                def_val,
+            },
+        )?
+        .into_bound(py)
+        .into_any(),
+        mf::TransferMethod::ConservativeP0 => Py::new(
+            py,
+            PyConservativeP0 {
+                op: operator,
+                src_mesh: py_src_mesh,
+                def_val,
+            },
+        )?
+        .into_bound(py)
+        .into_any(),
+        mf::TransferMethod::InverseDistance { .. } => Py::new(
+            py,
+            PyInverseDistance {
+                op: operator,
+                src_mesh: py_src_mesh,
+                def_val,
+            },
+        )?
+        .into_bound(py)
+        .into_any(),
+        mf::TransferMethod::MovingLeastSquares { .. } => Py::new(
+            py,
+            PyMovingLeastSquares {
+                op: operator,
+                src_mesh: py_src_mesh,
+                def_val,
+            },
+        )?
+        .into_bound(py)
+        .into_any(),
+    };
+    Ok(object)
+}

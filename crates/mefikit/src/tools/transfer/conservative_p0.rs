@@ -79,7 +79,7 @@ fn prepare_same_dim(
         mesh_tgt.topological_dimension().unwrap()
     );
 
-    let (src_offsets, n_src) = source_offsets(mesh_src, src_dim);
+    let (src_offsets, src_blocks) = source_offsets(mesh_src, src_dim);
 
     let data = match space {
         2 => build_overlap_2d(mesh_src, mesh_tgt, &src_offsets),
@@ -90,7 +90,7 @@ fn prepare_same_dim(
         TransferMethod::ConservativeP0,
         src_dim,
         src_dim,
-        n_src,
+        src_blocks,
         data,
     )
 }
@@ -98,21 +98,22 @@ fn prepare_same_dim(
 /// Flattens the source blocks of topological dimension `src_dim` in `BTreeMap` element-type
 /// order, which is the order used to concatenate the source field arrays at apply time.
 ///
-/// Returns the first global index of each element type together with the total number of source
-/// cells.
+/// Returns the first global index of each element type together with the source block counts.
 pub(crate) fn source_offsets(
     mesh_src: &UMeshView,
     src_dim: Dimension,
-) -> (BTreeMap<ElementType, usize>, usize) {
+) -> (BTreeMap<ElementType, usize>, Vec<(ElementType, usize)>) {
     let mut src_offsets: BTreeMap<ElementType, usize> = BTreeMap::new();
+    let mut src_blocks = Vec::new();
     let mut n_src = 0;
     for (et, block) in mesh_src.blocks() {
         if et.dimension() == src_dim {
             src_offsets.insert(*et, n_src);
+            src_blocks.push((*et, block.len()));
             n_src += block.len();
         }
     }
-    (src_offsets, n_src)
+    (src_offsets, src_blocks)
 }
 
 /// Builds the source-pair overlap areas for all target cells of a 2D mesh.

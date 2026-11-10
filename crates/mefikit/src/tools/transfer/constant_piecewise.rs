@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 use ndarray as nd;
 
-use super::operator::{RowSparse, TransferMethod, TransferOperator, validated_dims};
+use super::operator::{RowSparse, TransferMethod, TransferOperator, source_blocks, validated_dims};
 use super::transfer_trait::PointLocation;
 use crate::element_traits::{ElementGeo, ElementTopo};
 use crate::geometry::{Polygon, point_in_phed};
@@ -55,13 +55,12 @@ pub(crate) fn prepare(
 
     // Flatten the source cells in BTreeMap element-type order, so the global index stored in
     // the rows matches the concatenation of the field arrays done at apply time.
+    let src_blocks = source_blocks(source, src_dim);
     let mut src_offsets: BTreeMap<ElementType, usize> = BTreeMap::new();
-    let mut n_src = 0;
-    for (et, block) in source.blocks() {
-        if u8::from(et.dimension()) as usize == src_space {
-            src_offsets.insert(*et, n_src);
-            n_src += block.len();
-        }
+    let mut offset = 0;
+    for (et, count) in &src_blocks {
+        src_offsets.insert(*et, offset);
+        offset += *count;
     }
 
     let mut data = Vec::new();
@@ -94,7 +93,7 @@ pub(crate) fn prepare(
         },
         src_dim,
         tgt_dim,
-        n_src,
+        src_blocks,
         data,
     )
 }

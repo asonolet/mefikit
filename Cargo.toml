@@ -13,6 +13,7 @@ derive-where = "1.7.0"
 itertools = "0.15.0"
 nalgebra = "0.34.2"
 numpy = "0.29.0"
+npyz = "0.9.1"
 once_cell = "1.21.4"
 petgraph = "0.8.3"
 pyo3 = "0.29.3"
@@ -23,6 +24,7 @@ serde_json = "1.0.154"
 serde_yaml = "0.9.34"
 smallvec = "1.16.4"
 vtkio = "0.7.0-rc2"
+zip = { version = "6", default-features = false, features = ["deflate"] }
 
 [workspace.lints.clippy]
 # Set a lower priority for certain flags to be overriden below.

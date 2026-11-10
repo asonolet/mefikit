@@ -25,7 +25,7 @@ mod sel {
 mod transfer {
     #[pymodule_export]
     use super::pytransfer::{
-        PyConservativeP0, PyConstantPiecewise, PyInverseDistance, PyMovingLeastSquares,
+        PyConservativeP0, PyConstantPiecewise, PyInverseDistance, PyMovingLeastSquares, load,
     };
 }
 

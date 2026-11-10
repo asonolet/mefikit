@@ -60,7 +60,7 @@ pub(crate) fn prepare(
     validate_source_types(mesh_src, src_dim);
     validate_target_types(mesh_tgt, tgt_dim);
 
-    let (src_offsets, n_src) = source_offsets(mesh_src, src_dim);
+    let (src_offsets, src_blocks) = source_offsets(mesh_src, src_dim);
     let data = match space {
         2 => build_2d_space(mesh_src, mesh_tgt, src_dim, tgt_dim, &src_offsets),
         3 => build_3d_space(mesh_src, mesh_tgt, src_dim, tgt_dim, &src_offsets),
@@ -71,7 +71,7 @@ pub(crate) fn prepare(
         TransferMethod::ConservativeP0,
         src_dim,
         tgt_dim,
-        n_src,
+        src_blocks,
         data,
     )
 }

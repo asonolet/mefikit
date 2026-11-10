@@ -485,3 +485,42 @@ m_tgt.fields["temp"] = trsf(rho * cp)
 
 
 ![png](transfers_files/transfers_40_0.png)
+
+## Saving and reusing a prepared operator
+
+Building a transfer operator is the expensive part; applying it is a sparse
+matrix-vector product. An operator can be written to disk and loaded back in a
+later session:
+
+```python
+trsf = mf.transfer.ConservativeP0(m_src, m_tgt, def_val=np.nan)
+trsf.save("transfer.npz")
+
+# src_mesh is required; tgt_mesh is optional but enables stronger validation.
+loaded = mf.transfer.load("transfer.npz", src_mesh=m_src, tgt_mesh=m_tgt)
+m_tgt.fields["temp"] = loaded("temp")
+```
+
+The file is a standard NumPy `.npz` archive, so it can also be opened without
+mefikit:
+
+```python
+import scipy.sparse as sp
+
+matrix = sp.load_npz("transfer.npz")  # CSR matrix
+```
+
+The CSR matrix has one row per target cell and one column per source cell.
+Blocks are stored by element type; the file metadata records each block's
+element type, size and explicit row/column offset. `mf.transfer.load` uses those
+offsets to remap columns to the current in-memory element-type order, so files
+remain valid if new element types are inserted into the enum later. The extra
+`mefikit_meta` array contains the JSON metadata; SciPy ignores it.
+
+On load, mefikit checks the CSR structure (row pointers, index bounds, array
+lengths), the method parameters, and, when meshes are supplied, the per-element-
+type block counts of both meshes. A mismatch raises `ValueError` with the
+expected and actual blocks. Validation is structural: it does not compare cell
+coordinates, so a saved operator is only meaningful for the geometry it was
+built from. Pass `compressed=False` to `save` if you prefer uncompressed
+(faster) I/O.
