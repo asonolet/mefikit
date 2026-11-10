@@ -42,6 +42,7 @@ pub(crate) use crate::tools::meshless::validated_dims;
 /// call to [`TransferOperator::new`] without any unused argument. The method only shapes the
 /// construction of the coefficients; at apply time it only decides whether an intensive
 /// [`TransferMethod::ConservativeP0`] field is normalized by the target cell measure.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TransferMethod {
     /// Piecewise-constant copy of the cell containing a target sampling point.

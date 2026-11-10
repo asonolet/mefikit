@@ -33,6 +33,7 @@ pub trait Select {
 ///
 /// Selections can be combined using boolean operators (AND, OR, XOR, NOT)
 /// to build complex queries.
+#[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum Selection {
     /// Selection based on element type or dimension.
@@ -52,6 +53,7 @@ pub enum Selection {
 }
 
 /// Boolean operators for combining selections.
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug)]
 pub enum BooleanOp {
     /// Logical AND (intersection).

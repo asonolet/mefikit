@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+#[non_exhaustive]
 #[derive(Error, Debug)]
 pub enum MefikitIOError {
     #[error("Unsupported file extension: {0}")]

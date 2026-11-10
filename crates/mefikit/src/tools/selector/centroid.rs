@@ -4,6 +4,7 @@ use crate::mesh::{ElementIdsSet, UMeshView};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
+#[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum CentroidSelection {
     BBox { min: [f64; 3], max: [f64; 3] }, // Axis aligned BBox

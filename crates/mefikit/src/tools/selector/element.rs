@@ -2,6 +2,7 @@ use rustc_hash::FxHashSet;
 
 use crate::mesh::{Dimension, ElementIds, ElementIdsSet, ElementType};
 
+#[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum ElementSelection {
     All,

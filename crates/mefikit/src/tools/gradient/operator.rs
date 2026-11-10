@@ -20,6 +20,7 @@ use crate::mesh::{Dimension, ElementType, FieldArcD, FieldOwnedD, FieldViewD, UM
 use crate::tools::meshless::DistanceWeighting;
 
 /// The reconstruction method used to estimate the gradient of a scalar field.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum GradientMethod {
     /// Weighted degree-1 moving least-squares fit over the `k` nearest source points.
@@ -56,6 +57,7 @@ impl GradientRowSparse {
 }
 
 /// Where a [`GradientOperator`] evaluates the gradient of the scalar field.
+#[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum GradientTarget {
     /// The centroids of the cells of a target mesh, grouped per element type.

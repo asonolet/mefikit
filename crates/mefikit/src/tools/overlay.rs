@@ -99,6 +99,7 @@ fn merge_on_reference_coords(
 }
 
 /// Boolean-like operation to perform on two 2D meshes.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum OverlayOperation {
     /// Refine `mesh1` with the edges of `mesh2` while keeping `mesh1`'s domain.

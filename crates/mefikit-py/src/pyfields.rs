@@ -335,6 +335,7 @@ fn selection_field_references<'a>(sel: &'a mf::Selection, out: &mut Vec<&'a str>
                 | mf::FieldSelection::Leq(a, b)
                 | mf::FieldSelection::Eq(a, b)
                 | mf::FieldSelection::Neq(a, b) => (a, b),
+                _ => return,
             };
             expr_field_references(a, out);
             expr_field_references(b, out);

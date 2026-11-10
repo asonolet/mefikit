@@ -537,6 +537,11 @@ pub fn load<'py>(
         )?
         .into_bound(py)
         .into_any(),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unsupported saved transfer method: {other:?}"
+            )));
+        }
     };
     Ok(object)
 }

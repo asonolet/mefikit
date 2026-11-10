@@ -11,6 +11,7 @@
 /// All kernels are written as a function of `s^2 = (r / h)^2`, where `r` is the distance from the
 /// target point to a source point and `h` is a characteristic length chosen per target point (the
 /// distance to its farthest selected neighbour).
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum DistanceWeighting {
     /// All selected neighbours get the same weight: a plain linear least-squares fit.

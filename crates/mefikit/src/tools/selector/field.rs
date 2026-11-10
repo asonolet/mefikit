@@ -1,6 +1,7 @@
 use crate::tools::fieldexpr::FieldExpr;
 use std::sync::Arc;
 
+#[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum FieldSelection {
     Gt(Arc<FieldExpr>, Arc<FieldExpr>),

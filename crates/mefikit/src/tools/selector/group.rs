@@ -1,5 +1,6 @@
 use crate::mesh::{ElementIdsSet, UMeshView};
 
+#[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum GroupSelection {
     IncludeGroup(String),

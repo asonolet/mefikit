@@ -13,6 +13,7 @@
 use crate::mesh::{Dimension, FieldArcD, FieldOwnedD, FieldViewD, UMesh};
 
 /// Nature of a field, governing how its values behave when the supporting cells change.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FieldNature {
     /// Per-unit-measure field (temperature, density, pressure).
@@ -27,6 +28,7 @@ pub enum FieldNature {
 }
 
 /// How each target cell's representative sampling point is chosen (fixed at precompute time).
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PointLocation {
     /// Arithmetic mean of the cell's vertices.

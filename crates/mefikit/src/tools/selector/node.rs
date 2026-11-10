@@ -8,6 +8,7 @@ use crate::mesh::ElementIdsSet;
 use crate::mesh::ElementLike;
 use crate::mesh::UMeshView;
 
+#[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum NodeSelection {
     BBox {

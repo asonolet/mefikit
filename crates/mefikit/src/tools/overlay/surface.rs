@@ -98,6 +98,7 @@ pub struct SurfaceOverlay {
 }
 
 /// Error conditions of [`Overlayable::overlay_surfaces`].
+#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum SurfaceOverlayError {
     /// Both inputs must be 2D surfaces embedded in 3D space.

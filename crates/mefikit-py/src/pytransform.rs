@@ -324,6 +324,9 @@ impl PyConformanceReport {
             ConformanceIssue::NoVolumeCells => {
                 dict.set_item("kind", "no_volume_cells")?;
             }
+            _ => {
+                dict.set_item("kind", "unknown")?;
+            }
         }
         dict.set_item("message", issue.to_string())?;
         Ok(dict)

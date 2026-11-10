@@ -14,6 +14,7 @@ pub enum Regularity {
 }
 
 /// Types of polyhedral/polygonal elements with arbitrary node counts.
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
 pub enum PolyElemType {
     /// A poly-line element with arbitrary nodes (1D).
@@ -25,6 +26,7 @@ pub enum PolyElemType {
 }
 
 /// Types of regular elements with a fixed number of nodes.
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub enum RegularElemType {
     /// A single point/vertex (0D, 1 node).
@@ -70,6 +72,7 @@ pub enum RegularElemType {
 /// Some elements are not linear but of higher order such as SEG3, HEX21. The elements node
 /// connecivity follows a convention. Three kinds of elements can hold an abitrary number of nodes
 /// and are specials: PLINE (Polyline), PGON (Polygon), and PHED (Polyhedron).
+#[non_exhaustive]
 #[repr(u8)]
 #[derive(Debug, Eq, Hash, Copy, Clone, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ElementType {

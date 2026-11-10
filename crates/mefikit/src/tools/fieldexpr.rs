@@ -103,6 +103,7 @@ impl GradientOperator {
 }
 
 /// An expression tree for field computations.
+#[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum FieldExpr {
     /// A broadcastable constant array.
@@ -169,6 +170,7 @@ pub enum FieldExpr {
 }
 
 /// Binary operations available in field expressions.
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     /// Addition.
@@ -186,6 +188,7 @@ pub enum BinaryOp {
 }
 
 /// Unary operations available in field expressions.
+#[non_exhaustive]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
     /// Sine function.

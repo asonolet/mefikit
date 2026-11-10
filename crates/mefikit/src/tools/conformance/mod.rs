@@ -23,6 +23,7 @@ use crate::tools::spatial_index::SpatiallyIndexable;
 ///
 /// Every variant carries the cells involved, and the coordinates of the place where the problem
 /// is centred, so that a report can be turned into a selection.
+#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum ConformanceIssue {
     /// A cell uses two distinct nodes that lie within `tol` of each other: the cell folds onto

@@ -22,6 +22,7 @@ pub fn etype_to_str(et: mf::ElementType) -> String {
         HEX8 => "HEX8",
         HEX21 => "HEX21",
         PHED => "PHED",
+        _ => return format!("{et:?}"),
     }
     .to_string()
 }

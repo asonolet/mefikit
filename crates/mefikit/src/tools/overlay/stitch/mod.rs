@@ -59,6 +59,7 @@ use crate::tools::Descendable;
 use crate::tools::spatial_index::{SpIdx3, SpatiallyIndexable};
 
 /// Tolerances and errors of [`stitch`].
+#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq)]
 pub enum StitchError {
     /// At least two meshes are required.
