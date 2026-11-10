@@ -6,9 +6,10 @@
 
 use super::element_topo::ElementTopo;
 use crate::geometry::{
-    Polygon, Polyhedron, Segment, area_polygon3, area_quad2, area_tri2, bounds_iter,
-    convex_polygon_contains2, hex_contains, hex_volume, signed_area2, tet_contains, tet_volume,
-    vertex_centroid, wedge_contains, wedge_volume,
+    ArcEdge, Polygon, Polyhedron, Segment, arc_length2, area_polygon3, area_quad2, area_tri2,
+    bounds_iter, convex_polygon_contains2, hex_contains, hex_volume, in_quadratic_polygon,
+    quadratic_polygon_area2, signed_area2, tet_contains, tet_volume, vertex_centroid,
+    wedge_contains, wedge_volume,
 };
 use crate::mesh::{Dimension, ElementLike, ElementType};
 
@@ -103,11 +104,34 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
     }
 
     /// Builds the element as a 2D polygon.
+    ///
+    /// For quadratic element types this uses every connectivity node as a vertex, so the
+    /// mid-side nodes become spurious vertices; use [`Self::to_quadratic_polygon2`] instead.
     fn to_polygon2(&self) -> Polygon<2> {
         Polygon::with_convexity(
             self.coords2().copied(),
             self.element_type().known_convexity(),
         )
+    }
+
+    /// Returns the boundary vertices of the element, excluding mid-side nodes and the
+    /// TRI7/QUAD9 centre node.
+    fn vertices2(&self) -> Vec<[f64; 2]> {
+        (0..self.num_vertices())
+            .map(|i| *self.coord2_ref(i))
+            .collect()
+    }
+
+    /// Returns the element as a quadratic polygon `[vertices..., mid-side nodes...]`.
+    ///
+    /// Edge `i` joins vertex `i` to vertex `i+1` and is shaped by mid-side node `i`. A
+    /// TRI7/QUAD9 centre node is excluded, as it takes no part in the boundary.
+    fn to_quadratic_polygon2(&self) -> Vec<[f64; 2]> {
+        let n = self.num_vertices();
+        debug_assert!(self.space_dimension() == 2 && self.connectivity().len() >= 2 * n);
+        let mut pgon = self.vertices2();
+        pgon.extend((n..2 * n).map(|i| *self.coord2_ref(i)));
+        pgon
     }
 
     /// Builds the element as a 3D polyhedron from its faces.
@@ -152,6 +176,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         match self.element_type() {
             VERTEX => 0.0,
             SEG2 => Segment::new(*self.coord2_ref(0), *self.coord2_ref(1)).length(),
+            SEG3 => arc_length2(self.coord2_ref(0), self.coord2_ref(2), self.coord2_ref(1)),
             TRI3 => area_tri2(self.coord2_ref(0), self.coord2_ref(1), self.coord2_ref(2)),
             QUAD4 => area_quad2(&[
                 *self.coord2_ref(0),
@@ -160,6 +185,9 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord2_ref(3),
             ]),
             PGON => self.to_polygon2().area(),
+            TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => {
+                quadratic_polygon_area2(&self.to_quadratic_polygon2()).abs()
+            }
             other => unimplemented!("measure2 is not implemented for element type {other:?}"),
         }
     }
@@ -314,6 +342,9 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 &[point[0], point[1]],
             ),
             PGON => self.to_polygon2().contains(&[point[0], point[1]]),
+            TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => {
+                in_quadratic_polygon(&[point[0], point[1]], &self.to_quadratic_polygon2())
+            }
             TET4 => tet_contains(
                 &[point[0], point[1], point[2]],
                 self.coord3_ref(0),
@@ -353,7 +384,33 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
     }
 
     fn bounds2(&self) -> [[f64; 2]; 2] {
-        bounds_iter(self.coords2().copied())
+        use ElementType::*;
+        let mut bounds = bounds_iter(self.coords2().copied());
+        let mut include_arc = |arc: ArcEdge| {
+            let [min, max] = arc.bounds();
+            for k in 0..2 {
+                bounds[0][k] = bounds[0][k].min(min[k]);
+                bounds[1][k] = bounds[1][k].max(max[k]);
+            }
+        };
+        match self.element_type() {
+            SEG3 => include_arc(ArcEdge::new(
+                *self.coord2_ref(0),
+                *self.coord2_ref(2),
+                *self.coord2_ref(1),
+            )),
+            TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => {
+                for edge in self.boundary_edges().iter().filter(|e| e.len() == 3) {
+                    include_arc(ArcEdge::new(
+                        *self.coord2_ref(edge[0]),
+                        *self.coord2_ref(edge[2]),
+                        *self.coord2_ref(edge[1]),
+                    ));
+                }
+            }
+            _ => {}
+        }
+        bounds
     }
 
     fn bounds3(&self) -> [[f64; 3]; 2] {
@@ -366,7 +423,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
         use ElementType::*;
         match self.element_type() {
             VERTEX => *self.coord2_ref(0),
-            SEG2 => Segment::new(*self.coord2_ref(0), *self.coord2_ref(1)).midpoint(),
+            SEG2 | SEG3 => Segment::new(*self.coord2_ref(0), *self.coord2_ref(1)).midpoint(),
             TRI3 => vertex_centroid(&[
                 *self.coord2_ref(0),
                 *self.coord2_ref(1),
@@ -379,6 +436,7 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord2_ref(3),
             ]),
             PGON => self.to_polygon2().centroid(),
+            SEG4 | TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => vertex_centroid(&self.vertices2()),
             other => unimplemented!("centroid2 is not implemented for element type {other:?}"),
         }
     }
@@ -872,5 +930,61 @@ mod tests {
             elem.oriented_positive_connectivity(),
             (ElementType::HEX8, canonical)
         );
+    }
+
+    #[test]
+    fn test_qpoly_measure_bounds_and_contains() {
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -0.2],
+            [1.2, 0.5],
+            [0.5, 1.2],
+            [-0.2, 0.5],
+        ];
+        let family = 0;
+        let groups = crate::mesh::ArcGroups::new();
+        let conn = [0usize, 1, 2, 3, 4, 5, 6, 7];
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &family,
+            &conn,
+            ElementType::QPOLY,
+            &groups,
+        );
+        let expected =
+            crate::geometry::quadratic_polygon_area2(&elem.to_quadratic_polygon2()).abs();
+        assert_abs_diff_eq!(elem.measure2(), expected, epsilon = 1e-12);
+        let [min, max] = elem.bounds2();
+        assert!(min[0] <= -0.2 && min[1] <= -0.2);
+        assert!(max[0] >= 1.2 && max[1] >= 1.2);
+        assert!(elem.is_point_inside(&[0.5, 0.5]));
+        assert!(!elem.is_point_inside(&[2.0, 0.5]));
+    }
+
+    #[test]
+    fn test_qpoly_two_vertex_lens() {
+        let coords = nd::array![[0.0, 0.0], [1.0, 0.0], [0.5, -0.2], [0.5, 0.0],];
+        let family = 0;
+        let groups = crate::mesh::ArcGroups::new();
+        let conn = [0usize, 1, 2, 3];
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &family,
+            &conn,
+            ElementType::QPOLY,
+            &groups,
+        );
+        assert_eq!(elem.num_vertices(), 2);
+        assert!(elem.measure2() > 0.0);
+        assert!(elem.is_point_inside(&[0.5, -0.1]));
+        assert!(!elem.is_point_inside(&[0.5, 0.1]));
+        let [min, max] = elem.bounds2();
+        assert!((min[1] + 0.2).abs() < 1e-12);
+        assert!((max[1] - 0.0).abs() < 1e-12);
     }
 }

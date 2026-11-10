@@ -83,6 +83,22 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 }
                 _ => panic!("It is not possible to ask for codim diff from D1 and D2 on QUAD"),
             },
+            QUAD8 | QUAD9 => match codim {
+                Dimension::D1 => {
+                    let conn = arr2(&[
+                        [co[0], co[1], co[4]],
+                        [co[1], co[2], co[5]],
+                        [co[2], co[3], co[6]],
+                        [co[3], co[0], co[7]],
+                    ]);
+                    res.push((SEG3, Connectivity::new_regular(conn.to_shared())));
+                }
+                Dimension::D2 => {
+                    let conn = arr2(&[[co[0]], [co[1]], [co[2]], [co[3]]]);
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => panic!("It is not possible to ask for codim diff from D1 and D2 on QUAD"),
+            },
             TET4 => match codim {
                 Dimension::D1 => {
                     let conn = arr2(&[
@@ -205,6 +221,23 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 }
                 _ => panic!("It is not possible to ask for codim diff from D1 or D2 on PGON"),
             },
+            QPOLY => match codim {
+                Dimension::D1 => {
+                    let n = co.len() / 2;
+                    let mut data = Vec::with_capacity(3 * n);
+                    for i in 0..n {
+                        data.extend([co[i], co[(i + 1) % n], co[n + i]]);
+                    }
+                    let conn = Array2::from_shape_vec([n, 3], data).unwrap();
+                    res.push((SEG3, Connectivity::new_regular(conn.to_shared())));
+                }
+                Dimension::D2 => {
+                    let n = co.len() / 2;
+                    let conn = Array2::from_shape_vec([n, 1], co[..n].to_vec()).unwrap();
+                    res.push((VERTEX, Connectivity::new_regular(conn.to_shared())));
+                }
+                _ => panic!("It is not possible to ask for codim diff from D1 or D2 on QPOLY"),
+            },
             PHED => match codim {
                 Dimension::D1 => {
                     let mut conn = Vec::new();
@@ -234,11 +267,46 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         res
     }
 
+    /// Returns the ordered boundary edges of a 2D element.
+    ///
+    /// Each entry holds the edge connectivity in traversal order. Linear edges have two
+    /// nodes; quadratic edges have `[start, end, mid]` in that order. The mid-side node of
+    /// edge `i` is the quadratic shape point, never a polygon vertex.
+    fn boundary_edges(&self) -> Vec<SmallVec<[usize; 3]>> {
+        use ElementType::*;
+        let co = self.connectivity();
+        match self.element_type() {
+            TRI3 | PGON => co
+                .iter()
+                .circular_tuple_windows()
+                .map(|(&a, &b)| SmallVec::from_slice(&[a, b]))
+                .collect(),
+            QUAD4 => (0..4)
+                .map(|i| SmallVec::from_slice(&[co[i], co[(i + 1) % 4]]))
+                .collect(),
+            TRI6 | TRI7 => (0..3)
+                .map(|i| SmallVec::from_slice(&[co[i], co[(i + 1) % 3], co[3 + i]]))
+                .collect(),
+            QUAD8 | QUAD9 => (0..4)
+                .map(|i| SmallVec::from_slice(&[co[i], co[(i + 1) % 4], co[4 + i]]))
+                .collect(),
+            QPOLY => {
+                let n = co.len() / 2;
+                (0..n)
+                    .map(|i| SmallVec::from_slice(&[co[i], co[(i + 1) % n], co[n + i]]))
+                    .collect()
+            }
+            other => panic!("boundary_edges is not implemented for element type {other:?}"),
+        }
+    }
+
     /// Converts the element to its polygonal/polyhedral equivalent.
     ///
     /// - 0D (VERTEX) is returned unchanged.
     /// - 1D elements become PLINE with the same node list.
-    /// - 2D elements become PGON with the same node list.
+    /// - 2D linear elements become PGON with the same node list.
+    /// - 2D quadratic elements become QPOLY, keeping their vertices and mid-side nodes
+    ///   (the TRI7/QUAD9 centre node is dropped).
     /// - 3D elements become PHED with face-based connectivity. Faces are
     ///   separated by `usize::MAX` sentinel values in the returned vector.
     /// - Already-poly elements are returned unchanged.
@@ -248,7 +316,11 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
         match self.element_type() {
             VERTEX => (VERTEX, co.to_vec()),
             SEG2 => (PLINE, co.to_vec()),
-            TRI3 | TRI6 | QUAD4 => (PGON, co.to_vec()),
+            TRI3 | QUAD4 => (PGON, co.to_vec()),
+            TRI6 | TRI7 | QUAD8 | QUAD9 => {
+                let n = self.num_vertices();
+                (QPOLY, co[..2 * n].to_vec())
+            }
             TET4 => {
                 let m = usize::MAX;
                 (
@@ -280,8 +352,8 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                     ],
                 )
             }
-            PLINE | PGON | PHED => (self.element_type(), co.to_vec()),
-            _ => todo!("Quadratic elements are not supported yet."),
+            PLINE | PGON | QPOLY | PHED => (self.element_type(), co.to_vec()),
+            other => todo!("to_poly is not implemented for element type {other:?}"),
         }
     }
 
@@ -290,6 +362,7 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
     /// - Regular elements (VERTEX, SEG*, TRI*, QUAD*, TET*, HEX*) are returned unchanged.
     /// - PLINE with 2 nodes becomes SEG2.
     /// - PGON with 3 nodes becomes TRI3, with 4 nodes becomes QUAD4.
+    /// - QPOLY with 6 nodes becomes TRI6, with 8 nodes becomes QUAD8.
     /// - PHED with 4 triangular faces becomes TET4, with 6 quadrilateral faces becomes HEX8.
     ///   Face orientation is verified by checking that each edge is shared by exactly
     ///   two faces with consistent winding.
@@ -311,6 +384,13 @@ pub trait ElementTopo<'a>: ElementLike<'a> {
                 4 => Ok((QUAD4, co.to_vec())),
                 n => Err(format!(
                     "PGON with {n} nodes cannot be converted to TRI3 or QUAD4"
+                )),
+            },
+            QPOLY => match co.len() {
+                6 => Ok((TRI6, co.to_vec())),
+                8 => Ok((QUAD8, co.to_vec())),
+                n => Err(format!(
+                    "QPOLY with {n} nodes cannot be converted to TRI6 or QUAD8"
                 )),
             },
             PHED => {
@@ -1444,5 +1524,75 @@ mod tests {
         let mut sorted = conn.clone();
         sorted.sort();
         assert_eq!(sorted, vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn test_subentities_quad8_edges_are_seg3() {
+        let coords = nd::Array2::zeros((8, 2));
+        let conn = &[0, 1, 2, 3, 4, 5, 6, 7];
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(0, coords.view(), &0, conn, ElementType::QUAD8, &groups);
+        let sub = elem.subentities(Some(Dimension::D1));
+        assert_eq!(sub.len(), 1);
+        assert_eq!(sub[0].0, ElementType::SEG3);
+        let edges: Vec<Vec<usize>> = sub[0].1.iter().map(|e| e.to_vec()).collect();
+        assert_eq!(
+            edges,
+            vec![vec![0, 1, 4], vec![1, 2, 5], vec![2, 3, 6], vec![3, 0, 7]]
+        );
+    }
+
+    #[test]
+    fn test_subentities_qpoly_edges_are_seg3() {
+        let coords = nd::Array2::zeros((10, 2));
+        let conn = [1, 2, 3, 4, 5, 6, 10, 11, 12, 13];
+        let groups = crate::mesh::ArcGroups::new();
+        let elem = Element::new(0, coords.view(), &0, &conn, ElementType::QPOLY, &groups);
+        let sub = elem.subentities(Some(Dimension::D1));
+        assert_eq!(sub.len(), 1);
+        assert_eq!(sub[0].0, ElementType::SEG3);
+        let edges: Vec<Vec<usize>> = sub[0].1.iter().map(|e| e.to_vec()).collect();
+        assert_eq!(
+            edges,
+            vec![
+                vec![1, 2, 6],
+                vec![2, 3, 10],
+                vec![3, 4, 11],
+                vec![4, 5, 12],
+                vec![5, 1, 13]
+            ]
+        );
+    }
+
+    #[test]
+    fn test_to_poly_quadratic_2d_is_qpoly() {
+        for (et, n) in [
+            (ElementType::TRI6, 6),
+            (ElementType::TRI7, 7),
+            (ElementType::QUAD8, 8),
+            (ElementType::QUAD9, 9),
+        ] {
+            let coords = nd::Array2::zeros((n, 2));
+            let conn: Vec<usize> = (0..n).collect();
+            let groups = crate::mesh::ArcGroups::new();
+            let elem = Element::new(0, coords.view(), &0, &conn, et, &groups);
+            let (out_et, out_conn) = elem.to_poly();
+            assert_eq!(out_et, ElementType::QPOLY);
+            assert_eq!(out_conn.len(), 2 * elem.num_vertices());
+            assert_eq!(out_conn, conn[..2 * elem.num_vertices()].to_vec());
+        }
+    }
+
+    #[test]
+    fn test_from_poly_qpoly_roundtrip() {
+        for (et, n) in [(ElementType::TRI6, 6), (ElementType::QUAD8, 8)] {
+            let coords = nd::Array2::zeros((n, 2));
+            let conn: Vec<usize> = (0..n).collect();
+            let groups = crate::mesh::ArcGroups::new();
+            let elem = Element::new(0, coords.view(), &0, &conn, ElementType::QPOLY, &groups);
+            let (out_et, out_conn) = elem.from_poly().unwrap();
+            assert_eq!(out_et, et);
+            assert_eq!(out_conn, conn);
+        }
     }
 }
