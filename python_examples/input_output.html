@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-462d748f.js";
+            window.path_to_searchindex_js = "../searchindex-f18196a7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-c7a05c98.js"></script>
@@ -234,10 +234,41 @@ Cell types present : NORM_HEXA8
 <li>med (medfile)</li>
 </ul>
 <p>The legacy vtk reader/writer only handles the old binary VTK 2.0 format; the HDF5-based <code>.vtkhdf</code> and <code>.cgns</code> formats are the recommended options for modern, HPC-friendly storage.</p>
+<h2 id="fields-and-groups"><a class="header" href="#fields-and-groups">Fields and groups</a></h2>
+<p>Cell-centered fields and element groups are stored alongside the geometry in every
+format. Coordinates are written once, and each field/group refers to cells through
+the same global cell ordering, so nothing is duplicated per element block.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Format</th><th>Fields</th><th>Groups</th></tr>
+</thead>
+<tbody>
+<tr><td>json</td><td>all (any number of components)</td><td>all</td></tr>
+<tr><td>yaml/yml</td><td>all (any number of components)</td><td>all</td></tr>
+<tr><td>med</td><td>all (any number of components)</td><td>all</td></tr>
+<tr><td>vtkhdf</td><td>scalar/vector, single topological dim</td><td>all (<code>GroupData</code>, 0-based)</td></tr>
+<tr><td>cgns</td><td>scalar only, one solution per dim</td><td>all (<code>ZoneSubRegion_t</code>, 1-based)</td></tr>
+<tr><td>vtk/vtu</td><td>none (legacy reader/writer, geometry only)</td><td>none</td></tr>
+</tbody>
+</table>
+</div>
+<p>Some restrictions apply to the HDF5 formats:</p>
+<ul>
+<li><strong>VTKHDF</strong> fields are only exported when the mesh has a single topological
+dimension; on mixed-dimension meshes they are skipped.</li>
+<li><strong>CGNS</strong> cell-centered solutions must be scalar, so multi-component fields are
+skipped. Each topological dimension gets its own <code>FlowSolution</code> node with a
+<code>GridLocation</code> matching that dimension (<code>CellCenter</code>, <code>FaceCenter</code> or
+<code>EdgeCenter</code>) and, when needed, a <code>PointList</code>. Groups are written as
+<code>ZoneSubRegion_t</code> nodes; a group spanning several dimensions is split into one
+node per dimension so each node has a single valid <code>GridLocation</code>. Vertex
+fields/groups cannot be represented and are skipped.</li>
+</ul>
 <pre><code class="language-python">import pathlib
 
 pathlib.Path("data").mkdir(exist_ok=True)
-for ext in ("vtk", "yaml", "json", "vtkhdf", "med"):
+for ext in ("vtk", "yaml", "json", "vtkhdf", "cgns", "med"):
     volumes.write(f"data/volumes.{ext}")
     volumes_from_disk = mf.UMesh.read(f"data/volumes.{ext}")
     assert volumes_from_disk
