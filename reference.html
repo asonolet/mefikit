@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f18196a7.js";
+            window.path_to_searchindex_js = "searchindex-b515501e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-c7a05c98.js"></script>
@@ -432,7 +432,7 @@ operator to any field is then a single fast sparse product:</p>
 <tr><td><code>ConstantPiecewise</code></td><td>cell-based, point location</td><td>no</td><td><code>(src, tgt, def_val=0.0)</code></td></tr>
 <tr><td><code>InverseDistance</code></td><td>meshless, <code>k</code>-nearest</td><td>no</td><td><code>(src, tgt, k=4, exponent=2.0, def_val=0.0)</code></td></tr>
 <tr><td><code>MovingLeastSquares</code></td><td>meshless, local fit</td><td>no</td><td><code>(src, tgt, k=10, weighting=DistanceWeighting.Constant(), def_val=0.0)</code></td></tr>
-<tr><td><code>ConservativeP0</code></td><td>volumetric overlap</td><td><strong>yes</strong></td><td><code>(src, tgt, def_val=0.0)</code></td></tr>
+<tr><td><code>ConservativeP0</code></td><td>measure-weighted overlap (same-dim and downcast)</td><td><strong>yes</strong></td><td><code>(src, tgt, def_val=0.0)</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -449,8 +449,11 @@ writes the result into a target field in place</li>
 <p><code>extensive=True</code> treats the field as extensive (mass, energy): <code>ConservativeP0</code>
 then keeps the raw measure-weighted sum, whereas intensive fields are
 normalized by the target cell measure. Cells uncovered by any source cell keep
-the transfer <code>def_val</code>. The <a href="./python_examples/transfers.html">Field transfers</a>
-notebook walks through each operator; the timing and correctness comparison
+the transfer <code>def_val</code>. <code>ConservativeP0</code> also supports downcast transfers:
+3D volume → 2D surface / 1D line / 0D point, 2D surface → 1D line / 0D point,
+and 1D line → 0D point, weighted by the intersection measure in the target
+dimension. See the <a href="./python_examples/transfers.html">Field transfers</a> notebook
+for the exact formula and assumptions; the timing and correctness comparison
 with medcoupling is at the end of <a href="./python_examples/compare_medcoupling.html">mefikit vs.
 medcoupling</a>.</p>
 <h2 id="field-gradients"><a class="header" href="#field-gradients">Field gradients</a></h2>

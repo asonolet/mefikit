@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-f18196a7.js";
+            window.path_to_searchindex_js = "../searchindex-b515501e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-c7a05c98.js"></script>
@@ -425,6 +425,12 @@ mesh, conserving mass. Same prepare / apply split on both sides:</p>
 <li>medcoupling: <code>MEDCouplingRemapper</code>, <code>prepare("P0P0")</code>, then <code>transferField</code>.</li>
 </ul>
 <p>The transferred fields match to machine precision.</p>
+<p><code>ConservativeP0</code> also handles volume → surface/line/point downcasts. For the
+comparison: MEDCoupling’s <code>P0P0</code> supports <code>3D → 2D</code> directly, and <code>2D → 1D</code> in
+a 2D space after <code>setIntersectionType(mc.Geometric2D)</code>. MEDCoupling has no
+measure-based <code>P0P0</code> for <code>3D → 1D</code>, <code>3D → 0D</code> or <code>2D → 1D</code> in 3D space (its
+<code>PointLocator</code> option is point location, not an intersection measure), so those
+pairs are checked against exact analytic references in the tests.</p>
 <pre><code class="language-python"># --- mefikit ----------------------------------------------------------------
 src2 = mf.build_cmesh(np.linspace(0.0, 1.0, 20), np.linspace(0.0, 1.0, 20))
 tgt2 = mf.build_cmesh(np.linspace(0.0, 1.0, 24), np.linspace(0.0, 1.0, 24))
@@ -716,6 +722,7 @@ adds ergonomics of its own — most of it already exercised in this notebook.</p
 <tr><td>Read / write <code>.med</code></td><td><code>ReadMeshFromFile</code> / <code>write</code></td><td><code>UMesh.read</code> / <code>write</code> (same format)</td></tr>
 <tr><td>Per-cell measure</td><td><code>getMeasureField</code> + field plumbing</td><td><code>mf.M</code> — symbolic, evaluated on demand</td></tr>
 <tr><td>P0/P0 conservative remap (quad / hex)</td><td><code>MEDCouplingRemapper.prepare("P0P0")</code></td><td><code>mf.transfer.ConservativeP0</code></td></tr>
+<tr><td>P0/P0 volume → surface remap</td><td><code>MEDCouplingRemapper.prepare("P0P0")</code></td><td><code>mf.transfer.ConservativeP0</code></td></tr>
 <tr><td>Polyhedral remap</td><td><code>MEDCouplingRemapper.prepare("P0P0")</code></td><td><code>mf.transfer.ConservativeP0</code></td></tr>
 <tr><td>Faces of a volume mesh</td><td><code>buildDescendingConnectivity</code></td><td><code>descend()</code></td></tr>
 <tr><td>Merge duplicated nodes</td><td><code>mergeNodes</code></td><td><code>merge_nodes()</code></td></tr>
