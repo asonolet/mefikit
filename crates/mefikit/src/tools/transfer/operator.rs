@@ -8,8 +8,10 @@
 //!   cell containing the sampling point (no entry and the `default` value is kept when nothing is
 //!   found).
 //! - [`TransferMethod::ConservativeP0`]: one row entry per overlapping source cell, weighted by the
-//!   intersection measure. An intensive field is normalized by the target cell measure after the
-//!   row is accumulated, an extensive field keeps the raw sum.
+//!   intersection measure in the target dimension. An intensive field is normalized by the target
+//!   cell measure after the row is accumulated, an extensive field keeps the raw sum. The source
+//!   cells may have the same dimension as the target cells or a higher one (downcast), see
+//!   [`super::conservative_downcast`].
 //! - [`TransferMethod::InverseDistance`] and [`TransferMethod::MovingLeastSquares`]: exactly `k`
 //!   row entries per target point, the interpolation weights over its `k` nearest source points.
 //!
@@ -48,6 +50,10 @@ pub enum TransferMethod {
         point_location: PointLocation,
     },
     /// Measure-weighted overlap average (`ConservativeP0`).
+    ///
+    /// Supports same-dimensional full-dimensional transfers and downcasts from higher- to
+    /// lower-dimensional cells (3D volume → 2D surface/1D line/0D point, 2D surface →
+    /// 1D line/0D point, 1D line → 0D point) in 2D or 3D space.
     ConservativeP0,
     /// Inverse-distance (`k`-nearest-neighbours Shepard) interpolation.
     InverseDistance {
@@ -69,8 +75,9 @@ pub enum TransferMethod {
 /// a single target element type.
 #[derive(Clone, Debug)]
 pub(crate) struct RowSparse {
-    /// Measure (area or volume) of each target cell, kept at `1.0` by the interpolation methods
-    /// and filled by `ConservativeP0`; used to normalize intensive fields.
+    /// Measure (area, volume, length, or `1.0` for a point) of each target cell, kept at `1.0`
+    /// by the interpolation methods and filled by `ConservativeP0`; used to normalize intensive
+    /// fields.
     pub(crate) target_measure: nd::Array1<f64>,
     /// Row pointer: the neighbours of target cell `j` live in `src_idx[row_ptr[j]..row_ptr[j + 1]]`.
     pub(crate) row_ptr: Vec<usize>,
@@ -90,7 +97,8 @@ pub(crate) struct RowSparse {
 #[derive(Clone, Debug)]
 pub struct TransferOperator {
     method: TransferMethod,
-    /// Topological dimension of the full-dimensional source cells.
+    /// Topological dimension of the source cells (not necessarily full-dimensional for a
+    /// downcast transfer).
     src_dim: Dimension,
     tgt_dim: Dimension,
     /// Number of source cells the operator was built from, flattened over element types in

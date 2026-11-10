@@ -40,6 +40,7 @@ MC_EXTENSIVE = 35
 # --- workloads -------------------------------------------------------------
 N2D = 96  # 96x96 = 9216 QUAD4 cells
 N3D = 16  # 16^3  = 4096 HEX8 cells
+N3D_TO_2D = 16  # 16^3 source HEX8 cells -> 16^2 target QUAD4 surface cells
 NPOLY = 16  # poly remap target, 16^3 source
 MERGE_N = 24  # 2 stacked 24x24 HEX8 layers with a duplicated interface
 DESCEND_N = 24  # 24^3 hexa grid -> faces
@@ -214,6 +215,23 @@ def hex_slabs(n: int, nz: int):
     return slabs, whole
 
 
+def plane_surface_3d(xs, ys, z: float) -> mf.UMesh:
+    """Structured QUAD4 surface mesh in the plane ``z``."""
+    xs = np.asarray(xs, dtype=float)
+    ys = np.asarray(ys, dtype=float)
+    x, y = np.meshgrid(xs, ys, indexing="ij")
+    coords = np.ascontiguousarray(np.c_[x.ravel(), y.ravel(), np.full(x.size, z)])
+    conn = []
+    ny = len(ys)
+    for i in range(len(xs) - 1):
+        for j in range(ny - 1):
+            n0 = i * ny + j
+            conn.append([n0, n0 + ny, n0 + ny + 1, n0 + 1])
+    mesh = mf.UMesh(coords)
+    mesh.add_regular_block("QUAD4", np.ascontiguousarray(np.array(conn), np.uintp))
+    return mesh
+
+
 # --- remap timing + validation ---------------------------------------------
 def bench_remap(dim: int, n: int, build_iter, poly: bool = False):
     """Returns (mf_build, mc_prepare, mf_apply, mc_transfer, checks)."""
@@ -328,6 +346,76 @@ def bench_remap_3d():
 
 def bench_remap_3d_poly():
     return bench_remap(3, NPOLY, build_iter=5, poly=True)
+
+
+def bench_remap_3d_to_2d():
+    """Volume -> surface conservative remap, checked against MEDCoupling P0P0."""
+    n = N3D_TO_2D
+    x = np.linspace(0.0, 1.0, n + 1)
+    src = mf.build_cmesh(x, x, x)
+    tgt = plane_surface_3d(
+        np.linspace(0.01, 0.99, n + 1),
+        np.linspace(0.02, 0.98, n + 1),
+        0.4,
+    )
+    vals = field_3d(n)
+
+    sm = mc_mesh(src, 3)
+    tm = mc_mesh(tgt, 2)
+
+    def mf_build():
+        mf.ConservativeP0(src, tgt)
+
+    remapper = mc.MEDCouplingRemapper()
+
+    def mc_prepare():
+        remapper.prepare(sm, tm, "P0P0")
+
+    t_mf_build = median_time(mf_build, 10)
+    t_mc_prepare = median_time(mc_prepare, 10)
+
+    src.set_field("T", {"HEX8": np.ascontiguousarray(vals)})
+    operator = mf.ConservativeP0(src, tgt)
+
+    def mf_apply():
+        operator.apply_update(src, "T", tgt, "T", def_val=0.0)
+
+    field = mc_field(sm, vals, MC_INTENSIVE)
+    remapper.prepare(sm, tm, "P0P0")
+
+    def mc_transfer():
+        remapper.transferField(field, 0.0)
+
+    t_mf_apply = median_time(mf_apply)
+    t_mc_transfer = median_time(mc_transfer)
+
+    operator.apply_update(src, "T", tgt, "T", def_val=0.0)
+    out_mf = np.concatenate(
+        [np.asarray(v).ravel() for v in tgt.fields["T"].values().values()]
+    )
+    out_mc = np.asarray(remapper.transferField(field, 0.0).getArray().getValues())
+
+    checks = {
+        "intensive match (mefi==mc)": (
+            np.allclose(out_mf, out_mc, rtol=RTOL, atol=ATOL),
+            float(np.max(np.abs(out_mf - out_mc))),
+        )
+    }
+
+    # Mefikit extensive is the integral over the target: MC intensive * target measure.
+    ext_operator = mf.ConservativeP0(src, tgt)
+    ext_operator.apply_update(src, "T", tgt, "T", def_val=0.0, extensive=True)
+    out_mf_ext = np.concatenate(
+        [np.asarray(v).ravel() for v in tgt.fields["T"].values().values()]
+    )
+    target_area = np.asarray(tgt.measure()["QUAD4"]).ravel()
+    expected_ext = out_mc * target_area
+    checks["extensive == mc_int * target_area"] = (
+        np.allclose(out_mf_ext, expected_ext, rtol=RTOL, atol=ATOL),
+        float(np.max(np.abs(out_mf_ext - expected_ext))),
+    )
+
+    return t_mf_build, t_mc_prepare, t_mf_apply, t_mc_transfer, checks
 
 
 def bench_merge():
@@ -585,6 +673,7 @@ def main():
     print("mefikit vs medcoupling benchmark")
     print("=" * 70)
     print(f"workloads: remap-2d {N2D}^2, remap-3d {N3D}^3, remap-3d-poly {NPOLY}^3,")
+    print(f"           remap-3d-2d {N3D_TO_2D}^3 HEX8 -> {N3D_TO_2D}^2 QUAD4 surface,")
     print(f"           merge-nodes {MERGE_N}x{MERGE_N}x2 (duplicated interface),")
     print(f"           descend {DESCEND_N}^3, overlay {OVERLAY_N}^2 (+ embedded 8x8),")
     print(
@@ -608,6 +697,7 @@ def main():
         ("remap-2d", bench_remap_2d),
         ("remap-3d", bench_remap_3d),
         ("remap-3d-poly", bench_remap_3d_poly),
+        ("remap-3d-2d", bench_remap_3d_to_2d),
     ]:
         b, p, a, tr, checks = fn()
         row(name, "build/prepare", b, p)

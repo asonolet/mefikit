@@ -150,6 +150,7 @@ def test_mixed_element_type_source(make_trsf):
         mf.transfer.ConstantPiecewise,
         mls(4),
         invdist(4),
+        mf.transfer.ConservativeP0,
     ],
 )
 def test_downcast_3d_to_2d(make_trsf):

@@ -243,7 +243,7 @@ operator to any field is then a single fast sparse product:
 | `ConstantPiecewise` | cell-based, point location | no | `(src, tgt, def_val=0.0)` |
 | `InverseDistance` | meshless, `k`-nearest | no | `(src, tgt, k=4, exponent=2.0, def_val=0.0)` |
 | `MovingLeastSquares` | meshless, local fit | no | `(src, tgt, k=10, weighting=DistanceWeighting.Constant(), def_val=0.0)` |
-| `ConservativeP0` | volumetric overlap | **yes** | `(src, tgt, def_val=0.0)` |
+| `ConservativeP0` | measure-weighted overlap (same-dim and downcast) | **yes** | `(src, tgt, def_val=0.0)` |
 
 Weighting kernels for `MovingLeastSquares` come from
 `mf.DistanceWeighting`: `Constant()`, `InverseDistance(exponent)`
@@ -259,8 +259,11 @@ Once built, every operator is used the same way:
 `extensive=True` treats the field as extensive (mass, energy): `ConservativeP0`
 then keeps the raw measure-weighted sum, whereas intensive fields are
 normalized by the target cell measure. Cells uncovered by any source cell keep
-the transfer `def_val`. The [Field transfers](./python_examples/transfers.md)
-notebook walks through each operator; the timing and correctness comparison
+the transfer `def_val`. `ConservativeP0` also supports downcast transfers:
+3D volume → 2D surface / 1D line / 0D point, 2D surface → 1D line / 0D point,
+and 1D line → 0D point, weighted by the intersection measure in the target
+dimension. See the [Field transfers](./python_examples/transfers.md) notebook
+for the exact formula and assumptions; the timing and correctness comparison
 with medcoupling is at the end of [mefikit vs.
 medcoupling](./python_examples/compare_medcoupling.md).
 

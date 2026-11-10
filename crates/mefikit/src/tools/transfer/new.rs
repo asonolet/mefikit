@@ -24,8 +24,11 @@ impl TransferOperator {
     /// # Panics
     ///
     /// - If `mesh_src` and `mesh_tgt` do not share the same space dimension, or if it is not 2 or 3.
+    /// - If `mesh_src` has a lower topological dimension than `mesh_tgt` (upcast is not
+    ///   conservative), or if both dimensions are equal but a mesh is not full-dimensional.
     /// - Depending on the method: if a non-empty source/target requirement is not met, if `k` is
-    ///   zero, or if an exponent/weighting parameter is not positive.
+    ///   zero, if an exponent/weighting parameter is not positive, or if a cross-dimensional
+    ///   [`TransferMethod::ConservativeP0`] receives an unsupported first-order element type.
     pub fn new(mesh_src: &UMeshView, mesh_tgt: &UMeshView, method: TransferMethod) -> Self {
         match method {
             TransferMethod::ConstantPiecewise { point_location } => {
