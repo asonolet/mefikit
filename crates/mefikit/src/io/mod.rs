@@ -5,6 +5,7 @@
 use crate::mesh::{UMesh, UMeshView};
 use std::path::Path;
 
+mod cell_index;
 mod cgns_io;
 mod elements_mapping;
 mod error;

@@ -1,11 +1,15 @@
+use super::cell_index::{
+    BlockLayout, element_ids_from_type_local_rows, field_from_type_local_rows,
+    flatten_field_for_dim, global_ids_of_dim,
+};
 use super::elements_mapping::ElementsMapping;
 use super::error::MefikitIOError;
-use super::hdf_utils::{read_index_array, read_string_data};
-use crate::mesh::{Dimension, ElementLike, ElementType, UMesh, UMeshView};
+use super::hdf_utils::{read_group_attr, read_index_array, read_string_data};
+use crate::mesh::{Dimension, ElementIds, ElementLike, ElementType, UMesh, UMeshView};
 use hdf5_metno::types::FixedAscii;
 use hdf5_metno::{File, Group};
-use ndarray::{Array1, arr1, arr2};
-use std::collections::HashMap;
+use ndarray::{Array1, Array2, ArrayD, arr1, arr2};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
 // The cgns module is responsible for reading and writing CGNS files. It is strictly limited to cgns hdf format files since it uses hdf5-metno as an interface to the hdf5 library.
@@ -79,6 +83,25 @@ fn cgns_label(group: &Group) -> Result<String, MefikitIOError> {
         .read_scalar::<FixedAscii<64>>()?
         .to_string();
     Ok(label.trim().trim_matches('\0').to_string())
+}
+
+fn cgns_name(group: &Group) -> Result<String, MefikitIOError> {
+    read_group_attr(group, "name")
+}
+
+/// Descriptor used to remember the original group name when a group had to be
+/// split into several `ZoneSubRegion_t` nodes, one per topological dimension.
+const MEFIKIT_GROUP_DESCRIPTOR: &str = "MefikitGroup";
+
+fn read_group_name(subregion: &Group) -> Result<String, MefikitIOError> {
+    if let Ok(descriptor) = subregion.group(MEFIKIT_GROUP_DESCRIPTOR)
+        && cgns_label(&descriptor).is_ok_and(|label| label == "Descriptor_t")
+        && let Ok(name) = read_string_data(&descriptor)
+        && !name.is_empty()
+    {
+        return Ok(name);
+    }
+    cgns_name(subregion)
 }
 
 fn find_first_child_with_label(group: &Group, label: &str) -> Result<Group, MefikitIOError> {
@@ -231,14 +254,62 @@ fn read_element_offsets(element: &Group) -> Result<Option<Vec<i64>>, MefikitIOEr
 
 // ElementConnectivity = [n0 n1 n2 n3 | n0 n1 n2 n3 n4 | n0 n1 n2 n3 | ...]
 //                        ←— cell 0 —→  ←——— cell 1 ———→  ←— cell 2 —→
-fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
+/// Maps a CGNS global element number (0-based) to the mefikit block and local
+/// index that were assigned while reading the file.
+#[derive(Default)]
+struct ElementMap {
+    by_global: BTreeMap<usize, (ElementType, usize)>,
+}
+
+impl ElementMap {
+    fn insert_1based(&mut self, global_1based: i64, element_type: ElementType, local: usize) {
+        if global_1based > 0 {
+            self.by_global
+                .insert((global_1based - 1) as usize, (element_type, local));
+        }
+    }
+
+    /// Resolves a list of 0-based CGNS element numbers. Returns `None` if any
+    /// number is missing from the map.
+    fn rows(&self, globals: impl IntoIterator<Item = usize>) -> Option<Vec<(ElementType, usize)>> {
+        globals
+            .into_iter()
+            .map(|global| self.by_global.get(&global).copied())
+            .collect()
+    }
+
+    /// All elements of `dim`, sorted by their CGNS element number.
+    fn rows_of_dim(&self, dim: Dimension) -> Vec<(ElementType, usize)> {
+        self.by_global
+            .values()
+            .filter(|(element_type, _)| element_type.dimension() == dim)
+            .copied()
+            .collect()
+    }
+}
+
+fn add_element_with_id(
+    mesh: &mut UMesh,
+    elements: &mut ElementMap,
+    element_type: ElementType,
+    connectivity: &[usize],
+    global_1based: i64,
+) {
+    let local = mesh.block(element_type).map_or(0, |block| block.len());
+    mesh.add_element(element_type, connectivity, None);
+    elements.insert_1based(global_1based, element_type, local);
+}
+
+fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<ElementMap, MefikitIOError> {
     let el_group = children_with_label(zone, "Elements_t")?;
+    let mut elements = ElementMap::default();
 
     // --- first pass: collect PGON and PHED raw data ---
     let mut pgon_offsets: Option<Vec<i64>> = None;
     let mut pgon_conn: Option<Vec<i64>> = None;
     let mut phed_offsets: Option<Vec<i64>> = None;
     let mut phed_conn: Option<Vec<i64>> = None;
+    let mut phed_range: Option<[i64; 2]> = None;
 
     for element in &el_group {
         let code = read_element_type(element)?;
@@ -250,13 +321,13 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
                 continue;
             }
         };
+        let range = read_element_range(element)?;
         match element_type {
             ElementType::PGON => {
                 let conn = read_element_connectivity(element)?;
                 let offsets = read_element_offsets(element)?.ok_or_else(|| {
                     MefikitIOError::MalformedFile("PGON missing ElementStartOffset".to_string())
                 })?;
-                let range = read_element_range(element)?;
                 let n_cells = (range[1] - range[0] + 1) as usize;
                 for i in 0..n_cells {
                     let start = offsets[i] as usize;
@@ -265,7 +336,13 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
                     // (indexes directly into `coords`), so subtract 1.
                     let nodes: Vec<usize> =
                         conn[start..end].iter().map(|&v| (v as usize) - 1).collect();
-                    mesh.add_element(ElementType::PGON, &nodes, None);
+                    add_element_with_id(
+                        mesh,
+                        &mut elements,
+                        ElementType::PGON,
+                        &nodes,
+                        range[0] + i as i64,
+                    );
                 }
                 pgon_offsets = Some(offsets);
                 pgon_conn = Some(conn);
@@ -275,9 +352,9 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
                 phed_offsets = Some(read_element_offsets(element)?.ok_or_else(|| {
                     MefikitIOError::MalformedFile("PHED missing ElementStartOffset".to_string())
                 })?);
+                phed_range = Some(range);
             }
             other => {
-                let range = read_element_range(element)?;
                 let conn = read_element_connectivity(element)?;
                 let n_cells = (range[1] - range[0] + 1) as usize;
                 let nodes_per_cell = other.num_nodes().ok_or_else(|| {
@@ -292,15 +369,15 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
                     // connectivity by subtracting 1.
                     let cell: Vec<usize> =
                         conn[start..end].iter().map(|&v| (v as usize) - 1).collect();
-                    mesh.add_element(other, &cell, None);
+                    add_element_with_id(mesh, &mut elements, other, &cell, range[0] + i as i64);
                 }
             }
         }
     }
 
     // --- second pass: resolve PHED using PGON ---
-    if let (Some(p_off), Some(p_conn), Some(f_off), Some(f_conn)) =
-        (phed_offsets, phed_conn, pgon_offsets, pgon_conn)
+    if let (Some(p_off), Some(p_conn), Some(f_off), Some(f_conn), Some(f_range)) =
+        (phed_offsets, phed_conn, pgon_offsets, pgon_conn, phed_range)
     {
         let n_cells = p_off.len() - 1;
         for i in 0..n_cells {
@@ -331,10 +408,163 @@ fn read_elements(mesh: &mut UMesh, zone: &Group) -> Result<(), MefikitIOError> {
                 cell_nodes.push(usize::MAX); // PHED separator
             }
 
-            mesh.add_element(ElementType::PHED, &cell_nodes, None);
+            add_element_with_id(
+                mesh,
+                &mut elements,
+                ElementType::PHED,
+                &cell_nodes,
+                f_range[0] + i as i64,
+            );
         }
     }
 
+    Ok(elements)
+}
+
+/// CGNS `GridLocation` value for a field/region stored on elements of `dim`,
+/// relative to the zone's cell dimension.
+fn cgns_grid_location(dim: Dimension, cell_dim: Dimension) -> Option<&'static str> {
+    if dim == cell_dim {
+        Some("CellCenter")
+    } else if dim == Dimension::D2 && cell_dim == Dimension::D3 {
+        Some("FaceCenter")
+    } else if dim == Dimension::D1 && matches!(cell_dim, Dimension::D2 | Dimension::D3) {
+        Some("EdgeCenter")
+    } else {
+        None
+    }
+}
+
+/// Maps a CGNS `GridLocation` to the topological dimension of the elements it
+/// indexes, or `None` for locations mefikit does not store as element fields.
+fn grid_location_dim(location: &str, cell_dim: Dimension) -> Option<Dimension> {
+    match location {
+        "CellCenter" => Some(cell_dim),
+        "EdgeCenter" => Some(Dimension::D1),
+        "FaceCenter" | "IFaceCenter" | "JFaceCenter" | "KFaceCenter" => Some(Dimension::D2),
+        _ => None,
+    }
+}
+
+fn is_element_grid_location(location: &str) -> bool {
+    grid_location_dim(location, Dimension::D3).is_some()
+}
+
+/// Reads element-based `FlowSolution_t` nodes into `mesh`.
+///
+/// `CellCenter` solutions without a `PointList` cover every cell of the zone
+/// (i.e. every element at `cell_dim`), not the boundary elements. Other element
+/// locations (`FaceCenter`, `EdgeCenter`) require a `PointList`.
+fn read_fields(
+    zone: &Group,
+    mesh: &mut UMesh,
+    elements: &ElementMap,
+    cell_dim: Dimension,
+) -> Result<(), MefikitIOError> {
+    for solution in children_with_label(zone, "FlowSolution_t")? {
+        let location = match solution.group("GridLocation") {
+            Ok(grid_location) => read_string_data(&grid_location).unwrap_or_default(),
+            // CGNS defaults GridLocation_t to Vertex when absent.
+            Err(_) => "Vertex".to_string(),
+        };
+        let Some(target_dim) = grid_location_dim(&location, cell_dim) else {
+            continue;
+        };
+
+        let point_list: Option<Vec<usize>> = match solution.group("PointList") {
+            Ok(point_list) => Some(
+                read_index_array(&point_list)?
+                    .into_iter()
+                    .filter(|&v| v >= 1)
+                    .map(|v| (v - 1) as usize)
+                    .collect(),
+            ),
+            Err(_) => None,
+        };
+
+        for data_array in children_with_label(&solution, "DataArray_t")? {
+            let name = cgns_name(&data_array)?;
+            let data: ArrayD<f64> = data_array.dataset(" data")?.as_reader().read_dyn::<f64>()?;
+            // CGNS cell-centered solutions are scalar: skip multi-component data.
+            if data.ndim() != 1 {
+                continue;
+            }
+
+            let rows: Option<Vec<(ElementType, usize)>> = match &point_list {
+                Some(list) => elements.rows(list.iter().copied()),
+                None if location == "CellCenter" => Some(elements.rows_of_dim(target_dim)),
+                // Alternate grid locations require an explicit PointList.
+                None => None,
+            };
+            let Some(rows) = rows else {
+                continue;
+            };
+            if rows.is_empty() {
+                continue;
+            }
+            let Ok(field) = field_from_type_local_rows(mesh, target_dim, &data.view(), &rows)
+            else {
+                continue;
+            };
+            mesh.update_field(&name, field);
+        }
+    }
+    Ok(())
+}
+
+/// Reads `ZoneSubRegion_t` nodes into element groups.
+///
+/// Subregions split by the writer across several dimensions are merged back
+/// using the original group name stored in a mefikit descriptor.
+fn read_groups(
+    zone: &Group,
+    mesh: &mut UMesh,
+    elements: &ElementMap,
+) -> Result<(), MefikitIOError> {
+    let mut groups: BTreeMap<String, ElementIds> = BTreeMap::new();
+
+    for subregion in children_with_label(zone, "ZoneSubRegion_t")? {
+        let name = read_group_name(&subregion)?;
+        if name.is_empty() {
+            continue;
+        }
+        let location = match subregion.group("GridLocation") {
+            Ok(grid_location) => read_string_data(&grid_location).unwrap_or_default(),
+            // CGNS defaults GridLocation_t to Vertex when absent.
+            Err(_) => "Vertex".to_string(),
+        };
+        if !is_element_grid_location(&location) {
+            continue;
+        }
+        let Ok(point_list) = subregion.group("PointList") else {
+            continue;
+        };
+        let globals = read_index_array(&point_list)?
+            .into_iter()
+            .filter(|&v| v >= 1)
+            .map(|v| (v - 1) as usize);
+        let Some(rows) = elements.rows(globals) else {
+            continue;
+        };
+        let ids = element_ids_from_type_local_rows(rows);
+        if ids.is_empty() {
+            continue;
+        }
+        match groups.entry(name) {
+            std::collections::btree_map::Entry::Vacant(slot) => {
+                slot.insert(ids);
+            }
+            std::collections::btree_map::Entry::Occupied(mut slot) => {
+                for (element_type, indices) in ids.iter_blocks() {
+                    slot.get_mut().add_block(*element_type, indices.clone());
+                }
+            }
+        }
+    }
+
+    // Bulk assignment preserves the exact cell indices and avoids the quadratic
+    // family splitting performed by repeated `add_to_group` calls.
+    mesh.set_groups(groups);
     Ok(())
 }
 
@@ -359,7 +589,11 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     let coords = read_coordinates(&zone, cgns_dim.phys_dim)?;
     let mut mesh = UMesh::new(coords);
 
-    read_elements(&mut mesh, &zone)?;
+    let elements = read_elements(&mut mesh, &zone)?;
+    let cell_dim = Dimension::try_from(cgns_dim.cell_dim as u8).map_err(MefikitIOError::Parse)?;
+
+    read_fields(&zone, &mut mesh, &elements, cell_dim)?;
+    read_groups(&zone, &mut mesh, &elements)?;
 
     // Future implementation: read families and boundary conditions
     Ok(mesh)
@@ -422,6 +656,44 @@ fn write_c1_data(group: &Group, value: &str) -> Result<(), MefikitIOError> {
         .shape([bytes.len()])
         .create(" data")?
         .write(&Array1::from(bytes))?;
+    Ok(())
+}
+
+fn validate_cgns_name(name: &str) -> Result<(), MefikitIOError> {
+    if name.is_empty() || name.contains('/') {
+        return Err(MefikitIOError::Encode(format!(
+            "name {name:?} is not a valid CGNS node name"
+        )));
+    }
+    Ok(())
+}
+
+fn write_group_descriptor(parent: &Group, group_name: &str) -> Result<(), MefikitIOError> {
+    let descriptor = parent.create_group(MEFIKIT_GROUP_DESCRIPTOR)?;
+    write_node_attrs(
+        &descriptor,
+        MEFIKIT_GROUP_DESCRIPTOR,
+        "Descriptor_t",
+        "C1",
+        1,
+    )?;
+    write_c1_data(&descriptor, group_name)?;
+    Ok(())
+}
+
+// Writes a CGNS PointList (IndexArray_t) holding 1-based cell indices. For
+// unstructured zones (index_dim = 1) the library stores the list as an
+// `[n, index_dim]` dataset, i.e. one point per row, so the physical shape is
+// `[n, 1]`.
+fn write_point_list(parent: &Group, globals_0based: &[usize]) -> Result<(), MefikitIOError> {
+    let node = parent.create_group("PointList")?;
+    write_node_attrs(&node, "PointList", "IndexArray_t", "I8", 1)?;
+    let values: Vec<i64> = globals_0based.iter().map(|&g| g as i64 + 1).collect();
+    let data = Array2::from_shape_vec((values.len(), 1), values)?;
+    node.new_dataset::<i64>()
+        .shape(data.shape())
+        .create(" data")?
+        .write(&data)?;
     Ok(())
 }
 
@@ -624,6 +896,153 @@ fn write_elements(zone: &Group, mesh: &UMeshView) -> Result<(), MefikitIOError> 
     Ok(())
 }
 
+// Writes scalar cell-centered fields as `FlowSolution_t` nodes, one per
+// topological dimension. `GridLocation` follows the field dimension
+// (CellCenter/FaceCenter/EdgeCenter), and a `PointList` selects the
+// corresponding elements. Each field becomes an `R8` `DataArray_t` shaped [n].
+//
+// CGNS stores one quantity per `DataArray_t`; multi-component fields are not
+// split into per-component arrays and are skipped.
+fn write_fields(zone: &Group, mesh: &UMeshView) -> Result<(), MefikitIOError> {
+    let mut fields: Vec<(String, Dimension)> = mesh
+        .fields()
+        .filter(|(_, field)| ndarray::Dimension::ndim(&field.dim()) == 0)
+        .filter_map(|(name, field)| field.dimension().map(|dim| (name, dim)))
+        .collect();
+    fields.sort();
+
+    if fields.is_empty() {
+        return Ok(());
+    }
+
+    let dimensions: BTreeSet<Dimension> = mesh.element_types().map(|et| et.dimension()).collect();
+    let mixed = dimensions.len() > 1;
+    let cell_dim = mesh.topological_dimension().unwrap_or(Dimension::D3);
+    let layout = BlockLayout::new(mesh);
+
+    let field_dimensions: BTreeSet<Dimension> = fields.iter().map(|(_, dim)| *dim).collect();
+    for dim in field_dimensions {
+        let Some(location) = cgns_grid_location(dim, cell_dim) else {
+            // E.g. a vertex field: mefikit stores it on NODE elements, which
+            // CGNS indexes differently from grid vertices.
+            continue;
+        };
+        let node_name = format!("FlowSolution_{}", u8::from(dim));
+        let solution = zone.create_group(&node_name)?;
+        write_node_attrs(&solution, &node_name, "FlowSolution_t", "MT", 1)?;
+
+        let grid_location = solution.create_group("GridLocation")?;
+        write_node_attrs(&grid_location, "GridLocation", "GridLocation_t", "C1", 1)?;
+        write_c1_data(&grid_location, location)?;
+
+        if mixed || location != "CellCenter" {
+            write_point_list(&solution, &global_ids_of_dim(&layout, dim))?;
+        }
+
+        for (name, field_dim) in &fields {
+            if *field_dim != dim {
+                continue;
+            }
+            validate_cgns_name(name)?;
+            let flat = flatten_field_for_dim(mesh, name, dim).ok_or_else(|| {
+                MefikitIOError::Encode(format!("field {name:?} cannot be flattened at {dim:?}"))
+            })?;
+            let data_array = solution.create_group(name)?;
+            write_node_attrs(&data_array, name, "DataArray_t", "R8", 1)?;
+            data_array
+                .new_dataset::<f64>()
+                .shape(flat.shape())
+                .create(" data")?
+                .write(&flat)?;
+        }
+    }
+    Ok(())
+}
+
+fn global_ids_of_element_ids(layout: &BlockLayout, element_ids: &ElementIds) -> Vec<usize> {
+    let mut globals = Vec::new();
+    for (element_type, indices) in element_ids.iter_blocks() {
+        for &local in indices {
+            if let Some(global) = layout.type_local_to_global(*element_type, local) {
+                globals.push(global);
+            }
+        }
+    }
+    globals
+}
+
+// Writes element groups as `ZoneSubRegion_t` nodes. A group that spans several
+// topological dimensions is split into one node per dimension (CGNS requires a
+// single `GridLocation` per region); a descriptor keeps the original group name
+// so the reader can merge the pieces back together.
+fn write_groups(zone: &Group, mesh: &UMeshView) -> Result<(), MefikitIOError> {
+    let mut group_names = mesh.group_names();
+    group_names.sort();
+
+    if group_names.is_empty() {
+        return Ok(());
+    }
+
+    let cell_dim = mesh.topological_dimension().unwrap_or(Dimension::D3);
+    let layout = BlockLayout::new(mesh);
+    for name in group_names {
+        validate_cgns_name(&name)?;
+
+        let element_ids = mesh.group_elements(&name);
+        let mut by_dim: BTreeMap<Dimension, ElementIds> = BTreeMap::new();
+        for (element_type, indices) in element_ids.iter_blocks() {
+            if indices.is_empty() {
+                continue;
+            }
+            by_dim
+                .entry(element_type.dimension())
+                .or_default()
+                .add_block(*element_type, indices.clone());
+        }
+
+        let dims: Vec<Dimension> = by_dim
+            .keys()
+            .copied()
+            .filter(|dim| cgns_grid_location(*dim, cell_dim).is_some())
+            .collect();
+        if dims.is_empty() {
+            eprintln!("warning: group {name:?} cannot be represented in CGNS, skipped");
+            continue;
+        }
+
+        let split = dims.len() > 1;
+        for dim in dims {
+            let location = cgns_grid_location(dim, cell_dim).unwrap();
+            let node_name = if split {
+                format!("{name}__D{}", u8::from(dim))
+            } else {
+                name.clone()
+            };
+            validate_cgns_name(&node_name)?;
+
+            let subregion = zone.create_group(&node_name)?;
+            write_node_attrs(&subregion, &node_name, "ZoneSubRegion_t", "I4", 1)?;
+            if split {
+                write_group_descriptor(&subregion, &name)?;
+            }
+
+            subregion
+                .new_dataset::<i32>()
+                .shape([1])
+                .create(" data")?
+                .write(&arr1(&[i32::from(u8::from(dim))]))?;
+
+            let globals = global_ids_of_element_ids(&layout, &by_dim[&dim]);
+            write_point_list(&subregion, &globals)?;
+
+            let grid_location = subregion.create_group("GridLocation")?;
+            write_node_attrs(&grid_location, "GridLocation", "GridLocation_t", "C1", 1)?;
+            write_c1_data(&grid_location, location)?;
+        }
+    }
+    Ok(())
+}
+
 // ── entry point ───────────────────────────────────────────────────────────────
 
 // Writes `mesh` as a CGNS/HDF5 file. One section per element block: regular
@@ -681,6 +1100,8 @@ pub fn write_cgns(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
 
     write_coords(&zone, &mesh)?;
     write_elements(&zone, &mesh)?;
+    write_fields(&zone, &mesh)?;
+    write_groups(&zone, &mesh)?;
 
     Ok(())
 }
@@ -689,6 +1110,8 @@ pub fn write_cgns(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
 mod tests {
     use super::*;
     use crate::io::hdf_utils::hdf5_test_guard;
+    use crate::mesh::FieldBase;
+    use crate::mesh_examples as me;
     use std::process::Command;
 
     fn fixture() -> std::path::PathBuf {
@@ -753,6 +1176,24 @@ mod tests {
             usize::MAX,
             "PHED cell connectivity must end with a face separator"
         );
+    }
+
+    #[test]
+    fn read_particles_loads_cell_centered_fields() {
+        let _guard = hdf5_test_guard();
+        let mesh = read(&fixture()).unwrap();
+
+        // The fixture has a CellCenter solution without a PointList. Its data
+        // covers the zone's volume cells (PHED), not the boundary faces.
+        let n_cells = mesh.block(ElementType::PHED).unwrap().len();
+        assert!(n_cells > 0);
+
+        let pressure = mesh
+            .field("PRESSURE", Some(Dimension::D3))
+            .expect("PRESSURE must be read from the fixture");
+        let values = &pressure.0[&ElementType::PHED];
+        assert_eq!(values.len(), n_cells);
+        assert!(values.iter().all(|value| value.is_finite()));
     }
 
     #[test]
@@ -855,6 +1296,325 @@ mod tests {
                     "cgnscheck reported errors:\n{text}"
                 );
             }
+        }
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    fn field_blocks<F>(
+        mesh: &UMesh,
+        mut value: F,
+    ) -> FieldBase<ndarray::OwnedArcRepr<f64>, ndarray::IxDyn>
+    where
+        F: FnMut(Dimension, usize) -> f64,
+    {
+        let mut blocks = std::collections::BTreeMap::new();
+        for (element_type, block) in mesh.blocks() {
+            let n = block.len();
+            let values: Vec<f64> = (0..n).map(|i| value(element_type.dimension(), i)).collect();
+            blocks.insert(
+                *element_type,
+                ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&[n]), values)
+                    .unwrap()
+                    .into_shared(),
+            );
+        }
+        FieldBase(blocks)
+    }
+
+    #[test]
+    fn roundtrip_cgns_fields_single_dim() {
+        let _guard = hdf5_test_guard();
+        let dst = tmp("mefikit_cgns_fields_single.cgns");
+        let _ = std::fs::remove_file(&dst);
+
+        let mut mesh = me::make_imesh_2d(2);
+        mesh.update_field("pressure", field_blocks(&mesh, |_, i| i as f64 + 0.5));
+
+        write_cgns(&dst, mesh.view()).unwrap();
+        let back = read(&dst).unwrap();
+
+        let field = back.field("pressure", None).unwrap();
+        for (element_type, block) in mesh.blocks() {
+            for i in 0..block.len() {
+                assert_eq!(field.0[element_type][[i]], i as f64 + 0.5);
+            }
+        }
+
+        match cgnscheck(&dst) {
+            None => eprintln!("cgnscheck not installed — skipping compliance check"),
+            Some((code, text)) => assert_eq!(code, 0, "cgnscheck failed (exit {code}):\n{text}"),
+        }
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    #[test]
+    fn roundtrip_cgns_skips_vector_fields() {
+        let _guard = hdf5_test_guard();
+        let dst = tmp("mefikit_cgns_vector.cgns");
+        let _ = std::fs::remove_file(&dst);
+
+        // CGNS cell-centered solutions must be scalar, so a 3-component field is
+        // skipped on write and does not round-trip.
+        let mut mesh = me::make_imesh_2d(2);
+        let mut blocks = std::collections::BTreeMap::new();
+        for (element_type, block) in mesh.blocks() {
+            let n = block.len();
+            let values: Vec<f64> = (0..n * 3).map(|i| i as f64).collect();
+            blocks.insert(
+                *element_type,
+                ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&[n, 3]), values)
+                    .unwrap()
+                    .into_shared(),
+            );
+        }
+        mesh.update_field("velocity", FieldBase(blocks));
+
+        write_cgns(&dst, mesh.view()).unwrap();
+        let back = read(&dst).unwrap();
+        assert!(back.field("velocity", None).is_none());
+
+        match cgnscheck(&dst) {
+            None => eprintln!("cgnscheck not installed — skipping compliance check"),
+            Some((code, text)) => assert_eq!(code, 0, "cgnscheck failed (exit {code}):\n{text}"),
+        }
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    #[test]
+    fn roundtrip_cgns_fields_mixed_dim() {
+        let _guard = hdf5_test_guard();
+        let dst = tmp("mefikit_cgns_fields_mixed.cgns");
+        let _ = std::fs::remove_file(&dst);
+
+        // `make_mesh_2d_multi` mixes SEG2 (D1) with QUAD4/PGON (D2), so the D2
+        // solution must carry a PointList selecting only the D2 cells.
+        let mut mesh = me::make_mesh_2d_multi();
+        let mut blocks = std::collections::BTreeMap::new();
+        for (element_type, block) in mesh.blocks() {
+            if element_type.dimension() != Dimension::D2 {
+                continue;
+            }
+            let n = block.len();
+            let values: Vec<f64> = (0..n).map(|i| i as f64 + 1.0).collect();
+            blocks.insert(
+                *element_type,
+                ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&[n]), values)
+                    .unwrap()
+                    .into_shared(),
+            );
+        }
+        mesh.update_field("pressure", FieldBase(blocks));
+
+        write_cgns(&dst, mesh.view()).unwrap();
+        let back = read(&dst).unwrap();
+
+        let field = back.field("pressure", Some(Dimension::D2)).unwrap();
+        for (element_type, block) in mesh.blocks() {
+            if element_type.dimension() != Dimension::D2 {
+                continue;
+            }
+            for i in 0..block.len() {
+                assert_eq!(field.0[element_type][[i]], i as f64 + 1.0);
+            }
+        }
+
+        match cgnscheck(&dst) {
+            None => eprintln!("cgnscheck not installed — skipping compliance check"),
+            Some((code, text)) => assert_eq!(code, 0, "cgnscheck failed (exit {code}):\n{text}"),
+        }
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    #[test]
+    fn roundtrip_cgns_lower_dim_field_and_group() {
+        let _guard = hdf5_test_guard();
+        let dst = tmp("mefikit_cgns_lower_dim.cgns");
+        let _ = std::fs::remove_file(&dst);
+
+        // A 3D zone with a 2D boundary patch: both the field and the group must
+        // use FaceCenter, not CellCenter.
+        let coords = arr2(&[
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ])
+        .into_shared();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_element(ElementType::HEX8, &[0, 1, 2, 3, 4, 5, 6, 7], None);
+        mesh.add_element(ElementType::QUAD4, &[0, 1, 2, 3], None);
+
+        let mut blocks = std::collections::BTreeMap::new();
+        blocks.insert(
+            ElementType::QUAD4,
+            ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&[1]), vec![42.0])
+                .unwrap()
+                .into_shared(),
+        );
+        mesh.update_field("wall_flux", FieldBase(blocks));
+
+        let mut ids = crate::mesh::ElementIds::new();
+        ids.add_block(ElementType::QUAD4, vec![0]);
+        mesh.add_to_group("bottom", &ids);
+
+        write_cgns(&dst, mesh.view()).unwrap();
+        let back = read(&dst).unwrap();
+
+        let field = back
+            .field("wall_flux", Some(Dimension::D2))
+            .expect("boundary field must round-trip");
+        assert_eq!(field.0[&ElementType::QUAD4][[0]], 42.0);
+        assert!(
+            back.in_group(crate::mesh::ElementId::new(ElementType::QUAD4, 0), "bottom"),
+            "boundary group must round-trip"
+        );
+
+        let file = File::open(&dst).unwrap();
+        let root = file.as_group().unwrap();
+        let base = find_first_child_with_label(&root, "CGNSBase_t").unwrap();
+        let zone = find_first_child_with_label(&base, "Zone_t").unwrap();
+        let solution = zone.group("FlowSolution_2").unwrap();
+        assert_eq!(
+            read_string_data(&solution.group("GridLocation").unwrap()).unwrap(),
+            "FaceCenter"
+        );
+        let region = zone.group("bottom").unwrap();
+        assert_eq!(
+            read_string_data(&region.group("GridLocation").unwrap()).unwrap(),
+            "FaceCenter"
+        );
+        let reg_dim: Array1<i32> = region.dataset(" data").unwrap().read().unwrap();
+        assert_eq!(reg_dim[0], 2);
+
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    #[test]
+    fn read_cgns_uses_element_ranges_for_point_lists() {
+        let _guard = hdf5_test_guard();
+        let dst = tmp("mefikit_cgns_element_ranges.cgns");
+        let _ = std::fs::remove_file(&dst);
+
+        let coords = arr2(&[
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ])
+        .into_shared();
+        let mut mesh = UMesh::new(coords);
+        mesh.add_element(ElementType::HEX8, &[0, 1, 2, 3, 4, 5, 6, 7], None);
+        mesh.add_element(ElementType::QUAD4, &[0, 1, 2, 3], None);
+        let mut blocks = std::collections::BTreeMap::new();
+        blocks.insert(
+            ElementType::QUAD4,
+            ndarray::ArrayD::from_shape_vec(ndarray::IxDyn(&[1]), vec![3.5])
+                .unwrap()
+                .into_shared(),
+        );
+        mesh.update_field("wall_flux", FieldBase(blocks));
+        write_cgns(&dst, mesh.view()).unwrap();
+
+        // Simulate a file produced by another tool: the volume section comes
+        // first in the element numbering. mefikit writes QUAD4 before HEX8, so
+        // swap the ranges and update the PointList accordingly.
+        {
+            let file = File::open_rw(&dst).unwrap();
+            let root = file.as_group().unwrap();
+            let base = find_first_child_with_label(&root, "CGNSBase_t").unwrap();
+            let zone = find_first_child_with_label(&base, "Zone_t").unwrap();
+            zone.group("QUAD4")
+                .unwrap()
+                .group("ElementRange")
+                .unwrap()
+                .dataset(" data")
+                .unwrap()
+                .write(&arr1(&[2i64, 2]))
+                .unwrap();
+            zone.group("HEX8")
+                .unwrap()
+                .group("ElementRange")
+                .unwrap()
+                .dataset(" data")
+                .unwrap()
+                .write(&arr1(&[1i64, 1]))
+                .unwrap();
+            zone.group("FlowSolution_2")
+                .unwrap()
+                .group("PointList")
+                .unwrap()
+                .dataset(" data")
+                .unwrap()
+                .write(&arr2(&[[2i64]]))
+                .unwrap();
+        }
+
+        let back = read(&dst).unwrap();
+        let field = back
+            .field("wall_flux", Some(Dimension::D2))
+            .expect("the PointList must be resolved through CGNS ElementRange");
+        assert_eq!(field.0[&ElementType::QUAD4][[0]], 3.5);
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    #[test]
+    fn write_cgns_rejects_invalid_field_name() {
+        let _guard = hdf5_test_guard();
+        let dst = tmp("mefikit_cgns_invalid_field_name.cgns");
+        let _ = std::fs::remove_file(&dst);
+
+        let mut mesh = me::make_imesh_2d(2);
+        let field = field_blocks(&mesh, |_, i| i as f64);
+        mesh.update_field("a/b", field);
+
+        let result = write_cgns(&dst, mesh.view());
+        assert!(
+            matches!(result, Err(MefikitIOError::Encode(_))),
+            "a field name containing '/' must be rejected, got {result:?}"
+        );
+
+        let _ = std::fs::remove_file(&dst);
+    }
+
+    #[test]
+    fn roundtrip_cgns_groups() {
+        let _guard = hdf5_test_guard();
+        let dst = tmp("mefikit_cgns_groups.cgns");
+        let _ = std::fs::remove_file(&dst);
+
+        let mut mesh = me::make_mesh_2d_multi();
+        let mut element_ids = crate::mesh::ElementIds::new();
+        for (element_type, block) in mesh.blocks() {
+            let indices: Vec<usize> = (0..block.len()).step_by(2).collect();
+            if !indices.is_empty() {
+                element_ids.add_block(*element_type, indices);
+            }
+        }
+        mesh.add_to_group("left", &element_ids);
+
+        write_cgns(&dst, mesh.view()).unwrap();
+        let back = read(&dst).unwrap();
+
+        assert_eq!(mesh.group_names(), back.group_names());
+        assert_eq!(
+            mesh.group_elements("left").iter().count(),
+            back.group_elements("left").iter().count()
+        );
+        for id in mesh.group_elements("left").iter() {
+            assert!(back.in_group(id, "left"));
+        }
+
+        match cgnscheck(&dst) {
+            None => eprintln!("cgnscheck not installed — skipping compliance check"),
+            Some((code, text)) => assert_eq!(code, 0, "cgnscheck failed (exit {code}):\n{text}"),
         }
         let _ = std::fs::remove_file(&dst);
     }

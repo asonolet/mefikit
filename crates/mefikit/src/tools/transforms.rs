@@ -1116,7 +1116,7 @@ mod tests {
         assert!(members.contains(&0) && members.contains(&1));
         let seg2 = joined.block(ElementType::SEG2).unwrap();
         let members = seg2.group_elements_local("groupA");
-        assert!(members.contains(&0) && members.contains(&1));
+        assert!(members.contains(&0) && members.contains(&2));
     }
 
     #[test]

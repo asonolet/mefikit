@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import pyvista as pv
 
 import mefikit as mf
@@ -104,3 +105,90 @@ def test_to_mc_keeps_every_cell():
     mm3 = m3.to_mc()
     assert mm3.getNumberOfCells() == 64
     assert mm3.getNumberOfNodes() == m3.coords().shape[0]
+
+
+def _field_group_mesh():
+    m = mf.UMesh(np.arange(30.0).reshape(10, 3))
+    m.add_regular_block(
+        "QUAD4",
+        np.array(
+            [[0, 1, 2, 3], [1, 2, 3, 4], [4, 5, 6, 7], [5, 6, 7, 8]], dtype=np.uintp
+        ),
+        fields={"T": np.array([1.0, 2.0, 3.0, 4.0])},
+    )
+    m.groups["left"] = {"QUAD4": np.array([0, 2])}
+    return m
+
+
+@pytest.mark.parametrize("ext", ["vtkhdf", "cgns"])
+def test_fields_groups_roundtrip(tmp_path, ext):
+    m = _field_group_mesh()
+    path = str(tmp_path / f"mesh.{ext}")
+    m.write(path)
+
+    m2 = mf.UMesh.read(path)
+    assert np.array_equal(
+        np.asarray(m2.fields["T"].values()["QUAD4"]), [1.0, 2.0, 3.0, 4.0]
+    )
+    assert set(m2.groups) == {"left"}
+    assert sorted(m2.groups["left"].ids()["QUAD4"]) == [0, 2]
+
+
+def test_cgns_skips_vector_fields(tmp_path):
+    path = str(tmp_path / "vector.cgns")
+    m = mf.UMesh(np.arange(30.0).reshape(10, 3))
+    m.add_regular_block(
+        "QUAD4",
+        np.array([[0, 1, 2, 3], [1, 2, 3, 4]], dtype=np.uintp),
+        fields={"V": np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])},
+    )
+    m.write(path)
+    m2 = mf.UMesh.read(path)
+    assert "V" not in m2.fields
+
+
+def test_vtkhdf_vector_field_roundtrip(tmp_path):
+    path = str(tmp_path / "vector.vtkhdf")
+    m = _field_group_mesh()
+    values = np.array(
+        [[0.0, 0.5, 1.0], [1.0, 1.5, 2.0], [2.0, 2.5, 3.0], [3.0, 3.5, 4.0]]
+    )
+    m.fields["velocity"] = {"QUAD4": values}
+    m.write(path)
+
+    m2 = mf.UMesh.read(path)
+    assert np.allclose(np.asarray(m2.fields["velocity"].values()["QUAD4"]), values)
+
+
+def test_cgns_boundary_field_and_group_roundtrip(tmp_path):
+    path = str(tmp_path / "boundary.cgns")
+    coords = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [0.0, 1.0, 1.0],
+        ]
+    )
+    m = mf.UMesh(coords)
+    m.add_regular_block(
+        "HEX8",
+        np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.uintp),
+        fields={"T": np.array([1.0])},
+    )
+    m.add_regular_block(
+        "QUAD4",
+        np.array([[0, 1, 2, 3]], dtype=np.uintp),
+        fields={"wall_flux": np.array([42.0])},
+    )
+    m.groups["bottom"] = {"QUAD4": np.array([0], dtype=np.uintp)}
+    m.write(path)
+
+    m2 = mf.UMesh.read(path)
+    assert np.array_equal(np.asarray(m2.fields["wall_flux"].values()["QUAD4"]), [42.0])
+    assert np.array_equal(np.asarray(m2.fields["T"].values()["HEX8"]), [1.0])
+    assert sorted(m2.groups["bottom"].ids()["QUAD4"]) == [0]
