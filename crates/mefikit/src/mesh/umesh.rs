@@ -497,9 +497,9 @@ where
         result
     }
 
-    /// List all group names across all blocks (works for both UMesh and UMeshView).
+    /// List all group names across all blocks, sorted.
     pub fn group_names(&self) -> Vec<String> {
-        let mut names = std::collections::HashSet::new();
+        let mut names = std::collections::BTreeSet::new();
         for block in self.element_blocks.values() {
             for name in block.groups().keys() {
                 names.insert(name.clone());
@@ -1116,10 +1116,11 @@ impl UMesh {
         }
     }
 
-    /// Set multiple groups at once. Most efficient way to define groups.
-    /// Replaces all group definitions with the provided map.
+    /// Set multiple groups at once. Replaces all group definitions with the
+    /// provided map. Runs in linear time in the number of elements and group
+    /// memberships.
     pub fn set_groups(&mut self, groups: BTreeMap<String, ElementIds>) {
-        // Convert ElementIds to per-block Vec<usize> maps
+        // Convert ElementIds to per-block Vec<usize> maps.
         let mut per_block_groups: BTreeMap<ElementType, BTreeMap<String, Vec<usize>>> =
             BTreeMap::new();
 
@@ -1134,45 +1135,24 @@ impl UMesh {
             }
         }
 
-        // Apply to each block
-        for (et, block_groups) in per_block_groups {
-            if let Some(block) = self.element_blocks.get_mut(&et) {
-                block.set_groups_internal(block_groups);
-            }
-        }
-    }
-
-    /// Add elements to multiple groups at once.
-    pub fn add_to_groups(&mut self, groups: &BTreeMap<String, ElementIds>) {
-        for (group_name, element_ids) in groups {
-            self.add_to_group(group_name, element_ids);
+        // Apply to every block; blocks absent from the map are cleared.
+        for (et, block) in self.element_blocks.iter_mut() {
+            block.set_groups_internal(per_block_groups.remove(et).unwrap_or_default());
         }
     }
 
     /// Delete a group entirely.
     pub fn delete_group(&mut self, group: &str) {
         for block in self.element_blocks.values_mut() {
-            let groups = block.groups_mut();
-            groups.remove(group);
+            block.delete_group_internal(group);
         }
-        self.recompute_families_all();
     }
 
-    /// Rename a group.
+    /// Rename a group. If `new_name` already exists, its membership is replaced
+    /// by the renamed group's membership.
     pub fn rename_group(&mut self, old_name: &str, new_name: &str) {
         for block in self.element_blocks.values_mut() {
-            let groups = block.groups_mut();
-            if let Some(family_ids) = groups.remove(old_name) {
-                groups.insert(new_name.to_string(), family_ids);
-            }
-        }
-        self.recompute_families_all();
-    }
-
-    /// Recompute families on all blocks.
-    fn recompute_families_all(&mut self) {
-        for block in self.element_blocks.values_mut() {
-            block.recompute_families();
+            block.rename_group_internal(old_name, new_name);
         }
     }
 }

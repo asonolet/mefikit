@@ -7,8 +7,6 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::mesh::IndirectIndexOwned;
-
 use super::connectivity::{Connectivity, ConnectivityBase, ConnectivityView};
 use super::element::{Element, ElementMut, ElementType};
 use super::indirect_index::IndirectIndex;
@@ -194,7 +192,7 @@ where
     }
 
     /// Returns a reference to the groups map.
-    pub fn groups(&self) -> &BTreeMap<String, BTreeSet<usize>> {
+    pub(crate) fn groups(&self) -> &BTreeMap<String, BTreeSet<usize>> {
         &self.groups.0
     }
 
@@ -206,22 +204,6 @@ where
     /// Set the groups on this block view.
     pub(crate) fn set_groups(&mut self, groups: ArcGroups) {
         self.groups = groups;
-    }
-
-    /// Returns a mutable reference to the groups map.
-    pub fn groups_mut(&mut self) -> &mut BTreeMap<String, BTreeSet<usize>> {
-        Arc::make_mut(&mut self.groups.0)
-    }
-
-    /// Returns the group signature for an element (sorted list of group names).
-    /// Uses the family-based indirection: checks which groups contain this element's family ID.
-    pub fn element_signature(&self, elem_index: usize) -> Vec<String> {
-        let fid = self.families[elem_index];
-        self.groups
-            .iter()
-            .filter(|(_, family_ids)| family_ids.contains(&fid))
-            .map(|(name, _)| name.clone())
-            .collect()
     }
 
     /// Get all element indices belonging to a group (local to this block).
@@ -397,248 +379,151 @@ impl ElementBlock {
         )
     }
 
-    /// Recompute families from scratch based on current groups.
-    /// This ensures the invariant: elements with different group signatures have different family IDs.
+    /// Snapshot current per-element group memberships as group ids.
     ///
-    /// Uses a snapshot approach to avoid circular dependencies: first captures element-level
-    /// group membership from the current (family-ID-based) groups, then assigns new families,
-    /// then rebuilds groups with the new family IDs.
-    pub fn recompute_families(&mut self) {
+    /// Group ids refer to the keys of the block's group map, in name order.
+    fn group_memberships(&self) -> (Vec<String>, Vec<Vec<usize>>) {
+        use std::collections::HashMap;
+
+        let group_names: Vec<String> = self.groups.0.keys().cloned().collect();
+        let mut family_groups: HashMap<usize, Vec<usize>> = HashMap::new();
+        for (group_id, name) in group_names.iter().enumerate() {
+            if let Some(family_ids) = self.groups.0.get(name) {
+                for &family in family_ids {
+                    family_groups.entry(family).or_default().push(group_id);
+                }
+            }
+        }
+
+        let memberships = (0..self.len())
+            .map(|i| {
+                family_groups
+                    .get(&self.families[i])
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .collect();
+        (group_names, memberships)
+    }
+
+    /// Rebuild families and the group family sets from exact per-element group
+    /// memberships. Group ids refer to `group_names`.
+    fn rebuild_from_memberships(
+        &mut self,
+        group_names: &[String],
+        mut memberships: Vec<Vec<usize>>,
+    ) {
         use std::collections::HashMap;
 
         let n = self.len();
-        if n == 0 {
-            return;
-        }
+        debug_assert_eq!(memberships.len(), n);
 
-        // Step 1: Snapshot element-level group membership using current families + groups.
-        // This avoids the circular dependency where element_signature reads groups
-        // that reference old family IDs while we're trying to recompute families.
-        let mut element_group_snapshot: IndirectIndexOwned<String> = IndirectIndexOwned::default();
-        for fid in &self.families {
-            let group_names = self
-                .groups
-                .iter()
-                .filter(|(_, fids)| fids.contains(fid))
-                .map(|(name, _)| name.clone());
-            element_group_snapshot.push_iter(group_names);
-        }
-
-        // Step 2: Compute new family IDs from signatures (using the snapshot).
-        // Family 0 is reserved for elements without any group membership; all
-        // other signatures are assigned strictly positive family IDs so that a
-        // group can never silently reference the reserved zero family.
-        let mut signature_to_family: HashMap<Vec<String>, usize> = HashMap::new();
+        let mut signature_to_family: HashMap<Vec<usize>, usize> = HashMap::new();
         signature_to_family.insert(Vec::new(), 0);
         let mut next_family = 1usize;
-        let mut new_families_vec = vec![0; n];
+        let mut families = vec![0usize; n];
 
-        for (i, sig) in element_group_snapshot.iter().enumerate() {
-            let family_id = if let Some(&id) = signature_to_family.get(sig) {
-                id
-            } else {
-                let id = next_family;
-                signature_to_family.insert(sig.to_vec(), id);
-                next_family += 1;
-                id
-            };
-            new_families_vec[i] = family_id;
+        for (i, signature) in memberships.iter_mut().enumerate() {
+            signature.sort_unstable();
+            signature.dedup();
+            let family = *signature_to_family
+                .entry(signature.clone())
+                .or_insert_with(|| {
+                    let family = next_family;
+                    next_family += 1;
+                    family
+                });
+            families[i] = family;
         }
 
-        // Step 3: Update families
-        let mut new_families = std::mem::take(&mut self.families).into_owned();
-        for (i, &fid) in new_families_vec.iter().enumerate() {
-            new_families[i] = fid;
-        }
-        self.families = new_families.into_shared();
-
-        // Step 4: Rebuild groups from the snapshot + new family IDs
-        let mut new_groups: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
-        for (i, group_names) in element_group_snapshot.iter().enumerate() {
-            let fid = self.families[i];
-            for group_name in group_names {
-                new_groups
-                    .entry(group_name.clone())
-                    .or_default()
-                    .insert(fid);
+        let mut groups: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+        for (i, signature) in memberships.iter().enumerate() {
+            for &group_id in signature {
+                if let Some(name) = group_names.get(group_id) {
+                    groups.entry(name.clone()).or_default().insert(families[i]);
+                }
             }
         }
-        self.groups = ArcGroups(Arc::new(new_groups));
+
+        self.families = nd::Array1::from_vec(families).into_shared();
+        self.groups = ArcGroups(Arc::new(groups));
     }
 
-    /// Add elements to a group with family splitting.
+    /// Add elements to a group.
     ///
-    /// When adding only some elements of a family, the family is split so the
-    /// added elements get a new family ID that is placed in the group. Family 0 is
-    /// reserved for elements without group membership, so any added element that
-    /// still carries family 0 is always moved to a new, strictly positive family.
-    /// This preserves the invariant without a full recompute.
-    pub fn add_to_group_internal(&mut self, group: &str, elem_indices: &[usize]) {
+    /// Rebuilds the block's family partition from the resulting exact
+    /// membership. This is linear in the block size plus the number of group
+    /// memberships, and never scans the block once per family.
+    pub(crate) fn add_to_group_internal(&mut self, group: &str, elem_indices: &[usize]) {
         if elem_indices.is_empty() {
             return;
         }
-        let n = self.len();
-
-        // Check if any family among the elements being added needs splitting
-        let mut needs_split = false;
+        let (mut group_names, mut memberships) = self.group_memberships();
+        let group_id = match group_names.iter().position(|name| name == group) {
+            Some(group_id) => group_id,
+            None => {
+                group_names.push(group.to_string());
+                group_names.len() - 1
+            }
+        };
         for &i in elem_indices {
-            if i >= n {
-                continue;
-            }
-            let fid = self.families[i];
-            let has_non_added =
-                (0..n).any(|j| self.families[j] == fid && !elem_indices.contains(&j));
-            if has_non_added || fid == 0 {
-                needs_split = true;
-                break;
+            if i < memberships.len() {
+                memberships[i].push(group_id);
             }
         }
-
-        if needs_split {
-            let max_family = self.families.iter().copied().max().unwrap_or(0);
-            let mut next_fid = max_family + 1;
-            let mut splits: BTreeMap<usize, usize> = BTreeMap::new();
-
-            for &i in elem_indices {
-                if i >= n {
-                    continue;
-                }
-                let fid = self.families[i];
-                if splits.contains_key(&fid) {
-                    continue;
-                }
-                let has_non_added =
-                    (0..n).any(|j| self.families[j] == fid && !elem_indices.contains(&j));
-                if has_non_added || fid == 0 {
-                    splits.insert(fid, next_fid);
-                    next_fid += 1;
-                }
-            }
-
-            for &i in elem_indices {
-                if let Some(&new_fid) = splits.get(&self.families[i]) {
-                    self.families[i] = new_fid;
-                }
-            }
-
-            // Propagate old family's group memberships to new families
-            let groups = Arc::make_mut(&mut self.groups.0);
-            for (&old_fid, &new_fid) in &splits {
-                let group_names: Vec<String> = groups
-                    .iter()
-                    .filter(|(_, fids)| fids.contains(&old_fid))
-                    .map(|(name, _)| name.clone())
-                    .collect();
-                for name in &group_names {
-                    if let Some(fids) = groups.get_mut(name) {
-                        fids.insert(new_fid);
-                    }
-                }
-            }
-
-            // Add the new family IDs to the target group
-            let fids = groups.entry(group.to_string()).or_default();
-            for &i in elem_indices {
-                if i < n {
-                    fids.insert(self.families[i]);
-                }
-            }
-        } else {
-            let groups = Arc::make_mut(&mut self.groups.0);
-            let fids = groups.entry(group.to_string()).or_default();
-            for &i in elem_indices {
-                if i < n {
-                    fids.insert(self.families[i]);
-                }
-            }
-        }
+        self.rebuild_from_memberships(&group_names, memberships);
     }
 
-    /// Remove elements from a group with family splitting.
+    /// Remove elements from a group.
     ///
-    /// When removing only some elements of a family, the family is split so the
-    /// removed elements get a new family ID that is NOT in the group.
-    pub fn remove_from_group_internal(&mut self, group: &str, elem_indices: &[usize]) {
-        if elem_indices.is_empty() {
+    /// Rebuilds the block's family partition from the resulting exact membership.
+    pub(crate) fn remove_from_group_internal(&mut self, group: &str, elem_indices: &[usize]) {
+        if elem_indices.is_empty() || !self.groups.0.contains_key(group) {
             return;
         }
-        let n = self.len();
-
-        let mut needs_split = false;
+        let (group_names, mut memberships) = self.group_memberships();
+        let Some(group_id) = group_names.iter().position(|name| name == group) else {
+            return;
+        };
         for &i in elem_indices {
-            if i >= n {
-                continue;
-            }
-            let fid = self.families[i];
-            let in_group = self
-                .groups
-                .0
-                .get(group)
-                .map(|fids| fids.contains(&fid))
-                .unwrap_or(false);
-            if !in_group {
-                continue;
-            }
-            let has_non_removed =
-                (0..n).any(|j| self.families[j] == fid && !elem_indices.contains(&j));
-            if has_non_removed {
-                needs_split = true;
-                break;
+            if i < memberships.len() {
+                memberships[i].retain(|&id| id != group_id);
             }
         }
+        self.rebuild_from_memberships(&group_names, memberships);
+    }
 
-        if needs_split {
-            let max_family = self.families.iter().copied().max().unwrap_or(0);
-            let mut next_fid = max_family + 1;
-            let mut splits: BTreeMap<usize, usize> = BTreeMap::new();
+    /// Delete a group from this block.
+    pub(crate) fn delete_group_internal(&mut self, group: &str) {
+        if !self.groups.0.contains_key(group) {
+            return;
+        }
+        let (group_names, mut memberships) = self.group_memberships();
+        let Some(group_id) = group_names.iter().position(|name| name == group) else {
+            return;
+        };
+        for signature in &mut memberships {
+            signature.retain(|&id| id != group_id);
+        }
+        self.rebuild_from_memberships(&group_names, memberships);
+    }
 
-            for &i in elem_indices {
-                if i >= n {
-                    continue;
-                }
-                let fid = self.families[i];
-                let in_group = self
-                    .groups
-                    .0
-                    .get(group)
-                    .map(|fids| fids.contains(&fid))
-                    .unwrap_or(false);
-                if !in_group || splits.contains_key(&fid) {
-                    continue;
-                }
-                let has_non_removed =
-                    (0..n).any(|j| self.families[j] == fid && !elem_indices.contains(&j));
-                if has_non_removed {
-                    splits.insert(fid, next_fid);
-                    next_fid += 1;
-                }
-            }
-
-            for &i in elem_indices {
-                if let Some(&new_fid) = splits.get(&self.families[i]) {
-                    self.families[i] = new_fid;
-                }
-            }
-
-            // The old family IDs stay in the group (non-removed elements keep them).
-            // The new family IDs (for removed elements) were never added, so they
-            // are effectively not in the group. No group mutation needed here.
-        } else {
-            let groups = Arc::make_mut(&mut self.groups.0);
-            if let Some(fids) = groups.get_mut(group) {
-                let removed_families: BTreeSet<usize> = elem_indices
-                    .iter()
-                    .filter(|&&i| i < n)
-                    .map(|&i| self.families[i])
-                    .collect();
-                for fid in removed_families {
-                    fids.remove(&fid);
-                }
-                if fids.is_empty() {
-                    groups.remove(group);
-                }
+    /// Rename a group, replacing any group that already has the target name.
+    pub(crate) fn rename_group_internal(&mut self, old_name: &str, new_name: &str) {
+        if old_name == new_name || !self.groups.0.contains_key(old_name) {
+            return;
+        }
+        let (mut group_names, mut memberships) = self.group_memberships();
+        let Some(old_id) = group_names.iter().position(|name| name == old_name) else {
+            return;
+        };
+        if let Some(new_id) = group_names.iter().position(|name| name == new_name) {
+            for signature in &mut memberships {
+                signature.retain(|&id| id != new_id);
             }
         }
+        group_names[old_id] = new_name.to_string();
+        self.rebuild_from_memberships(&group_names, memberships);
     }
 
     /// Replace the families array for this block (crate-internal).
@@ -650,25 +535,24 @@ impl ElementBlock {
         self.families = families;
     }
 
-    /// Set groups from a map of group_name -> element_indices.
-    /// Converts element indices to family IDs, then calls recompute_families
-    /// to establish the correct partition.
-    pub fn set_groups_internal(&mut self, new_groups: BTreeMap<String, Vec<usize>>) {
-        let mut groups: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+    /// Replace all groups with exact element-index membership.
+    ///
+    /// Families are rebuilt from the group signatures in a single pass. This is
+    /// safe on a freshly built block where every element still carries family 0,
+    /// and does not interpret indices through the current families.
+    pub(crate) fn set_groups_internal(&mut self, new_groups: BTreeMap<String, Vec<usize>>) {
+        let n = self.len();
+        let group_names: Vec<String> = new_groups.keys().cloned().collect();
+        let mut memberships: Vec<Vec<usize>> = vec![Vec::new(); n];
 
-        for (group_name, elem_indices) in new_groups {
-            let family_ids: BTreeSet<usize> = elem_indices
-                .into_iter()
-                .filter(|&i| i < self.len())
-                .map(|i| self.families[i])
-                .collect();
-            if !family_ids.is_empty() {
-                groups.insert(group_name, family_ids);
+        for (group_id, indices) in new_groups.values().enumerate() {
+            for &i in indices {
+                if i < n {
+                    memberships[i].push(group_id);
+                }
             }
         }
-
-        self.groups = ArcGroups(Arc::new(groups));
-        self.recompute_families();
+        self.rebuild_from_memberships(&group_names, memberships);
     }
 }
 
@@ -880,7 +764,7 @@ mod tests {
     }
 
     #[test]
-    fn test_recompute_families() {
+    fn test_group_families_are_partitioned() {
         let mut element_block = ElementBlock::new_regular(
             ElementType::TRI3,
             array![[0, 1], [1, 2], [2, 3], [3, 0]].to_shared(),
@@ -1024,7 +908,39 @@ mod tests {
     }
 
     #[test]
-    fn test_recompute_families_compaction() {
+    fn test_set_groups_preserves_overlaps() {
+        let mut block = ElementBlock::new_regular(
+            ElementType::TRI3,
+            array![[0, 1], [1, 2], [2, 3], [3, 0], [0, 2]].to_shared(),
+            None,
+            None,
+        );
+
+        let mut groups = BTreeMap::new();
+        groups.insert("a".to_string(), vec![0, 1, 2]);
+        groups.insert("b".to_string(), vec![1, 2, 3]);
+        block.set_groups_internal(groups);
+
+        assert!(block.in_group_local(0, "a"));
+        assert!(!block.in_group_local(0, "b"));
+        assert!(block.in_group_local(1, "a"));
+        assert!(block.in_group_local(1, "b"));
+        assert!(block.in_group_local(2, "a"));
+        assert!(block.in_group_local(2, "b"));
+        assert!(!block.in_group_local(3, "a"));
+        assert!(block.in_group_local(3, "b"));
+        assert!(!block.in_group_local(4, "a"));
+        assert!(!block.in_group_local(4, "b"));
+
+        // Elements outside every group keep the reserved family 0.
+        assert_eq!(block.families()[4], 0);
+        // Elements with different signatures must have different families.
+        assert_ne!(block.families()[0], block.families()[1]);
+        assert_ne!(block.families()[1], block.families()[3]);
+    }
+
+    #[test]
+    fn test_delete_and_rename_groups() {
         let mut block = ElementBlock::new_regular(
             ElementType::TRI3,
             array![[0, 1], [1, 2], [2, 3], [3, 0]].to_shared(),
@@ -1032,32 +948,55 @@ mod tests {
             None,
         );
 
-        block.add_to_group_internal("wall", &[0, 1]);
-        block.add_to_group_internal("interface", &[2, 3]);
+        let mut groups = BTreeMap::new();
+        groups.insert("a".to_string(), vec![0, 1]);
+        groups.insert("b".to_string(), vec![1, 2, 3]);
+        block.set_groups_internal(groups);
 
-        let fam_before = block.families().to_vec();
+        block.delete_group_internal("a");
+        assert!(!block.has_group_local("a"));
+        assert_eq!(block.group_elements_local("b"), vec![1, 2, 3]);
 
-        // recompute_families should compact but preserve the partition
-        block.recompute_families();
+        block.rename_group_internal("b", "c");
+        assert!(!block.has_group_local("b"));
+        assert_eq!(block.group_elements_local("c"), vec![1, 2, 3]);
+
+        // Renaming onto an existing group replaces its membership.
+        let mut groups = BTreeMap::new();
+        groups.insert("x".to_string(), vec![0]);
+        groups.insert("y".to_string(), vec![0, 1]);
+        block.set_groups_internal(groups);
+        block.rename_group_internal("x", "y");
+        assert!(!block.has_group_local("x"));
+        assert_eq!(block.group_elements_local("y"), vec![0]);
+    }
+
+    #[test]
+    fn test_set_groups_compacts_families() {
+        let mut block = ElementBlock::new_regular(
+            ElementType::TRI3,
+            array![[0, 1], [1, 2], [2, 3], [3, 0]].to_shared(),
+            None,
+            None,
+        );
+
+        let mut groups = BTreeMap::new();
+        groups.insert("wall".to_string(), vec![0, 1]);
+        groups.insert("interface".to_string(), vec![2, 3]);
+        block.set_groups_internal(groups);
 
         let fam_after = block.families().to_vec();
 
-        // The partition structure should be the same:
-        // two distinct families, one for wall, one for interface
+        // Two distinct families, one for wall, one for interface.
         assert_ne!(fam_after[0], fam_after[2]);
         assert_eq!(fam_after[0], fam_after[1]);
         assert_eq!(fam_after[2], fam_after[3]);
 
-        // Group membership preserved
+        // Group membership preserved.
         assert!(block.in_group_local(0, "wall"));
         assert!(!block.in_group_local(0, "interface"));
         assert!(!block.in_group_local(2, "wall"));
         assert!(block.in_group_local(2, "interface"));
-
-        // Family IDs may be renumbered (compacted)
-        let max_before = *fam_before.iter().max().unwrap();
-        let max_after = *fam_after.iter().max().unwrap();
-        assert!(max_after <= max_before);
     }
 
     #[test]
@@ -1079,10 +1018,10 @@ mod tests {
         // elem 1: {A, B}
         // elem 2: {A, B, C}
         // elem 3: {B}
-        let sig0 = block.element_signature(0);
-        let sig1 = block.element_signature(1);
-        let sig2 = block.element_signature(2);
-        let sig3 = block.element_signature(3);
+        let sig0 = block.element_groups_local(0);
+        let sig1 = block.element_groups_local(1);
+        let sig2 = block.element_groups_local(2);
+        let sig3 = block.element_groups_local(3);
 
         assert_eq!(sig0, vec!["A", "C"]);
         assert_eq!(sig1, vec!["A", "B"]);

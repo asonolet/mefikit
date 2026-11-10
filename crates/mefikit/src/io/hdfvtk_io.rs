@@ -1,10 +1,11 @@
 use super::cell_index::{
-    BlockLayout, field_from_global_rows, flatten_field_for_dim, global_ids_of_dim,
+    BlockLayout, element_ids_from_type_local_rows, field_from_type_local_rows,
+    flatten_field_for_dim,
 };
 use super::error::MefikitIOError;
 use super::hdf_utils::read_group_attr;
 use super::vtk_io::VTK_MAPPING;
-use crate::mesh::{Dimension, ElementLike, UMesh, UMeshView};
+use crate::mesh::{Dimension, ElementLike, ElementType, UMesh, UMeshView};
 use hdf5_metno::{File, Group, types::FixedAscii};
 use ndarray::{Array1, Array2, ArrayD, arr1, s};
 use std::collections::{BTreeMap, BTreeSet};
@@ -89,8 +90,7 @@ fn write_fields(vtk: &Group, mesh: &UMeshView) -> Result<(), MefikitIOError> {
 /// Writes element groups into the VTKHDF `GroupData` group.
 ///
 /// `GroupData` is a mefikit extension: VTKHDF has no standard group/subset
-/// concept. Each group becomes an Int64 dataset of 0-based global cell indices
-/// (using the canonical [`BlockLayout`] numbering).
+/// concept. Each group becomes an Int64 dataset of 0-based VTKHDF cell indices.
 fn write_groups(vtk: &Group, mesh: &UMeshView) -> Result<(), MefikitIOError> {
     let mut group_names = mesh.group_names();
     group_names.sort();
@@ -103,6 +103,8 @@ fn write_groups(vtk: &Group, mesh: &UMeshView) -> Result<(), MefikitIOError> {
     let group_data = vtk.create_group("GroupData")?;
     for name in group_names {
         validate_dataset_name(&name)?;
+        // Cells are written block by block, so the canonical BlockLayout index
+        // is exactly the VTKHDF cell index used by CellData/GroupData.
         let ids = layout.group_global_ids(mesh, &name);
         group_data
             .new_dataset::<i64>()
@@ -120,7 +122,7 @@ fn write_groups(vtk: &Group, mesh: &UMeshView) -> Result<(), MefikitIOError> {
 fn read_fields(
     block: &Group,
     mesh: &mut UMesh,
-    layout: &BlockLayout,
+    cells: &[(ElementType, usize)],
 ) -> Result<(), MefikitIOError> {
     let Ok(cell_data) = block.group("CellData") else {
         return Ok(());
@@ -131,7 +133,6 @@ fn read_fields(
         return Ok(());
     }
     let dim = *dimensions.iter().next().unwrap();
-    let globals = global_ids_of_dim(layout, dim);
 
     for name in cell_data.member_names()? {
         let Ok(dataset) = cell_data.dataset(&name) else {
@@ -140,7 +141,7 @@ fn read_fields(
         let Ok(data): Result<ArrayD<f64>, _> = dataset.read() else {
             continue;
         };
-        let Ok(field) = field_from_global_rows(mesh, layout, dim, &data.view(), &globals) else {
+        let Ok(field) = field_from_type_local_rows(mesh, dim, &data.view(), cells) else {
             continue;
         };
         mesh.update_field(&name, field);
@@ -149,10 +150,12 @@ fn read_fields(
 }
 
 /// Reads element groups from the VTKHDF `GroupData` group.
+///
+/// Dataset values are 0-based VTKHDF cell indices.
 fn read_groups(
     block: &Group,
     mesh: &mut UMesh,
-    layout: &BlockLayout,
+    cells: &[(ElementType, usize)],
 ) -> Result<(), MefikitIOError> {
     let Ok(group_data) = block.group("GroupData") else {
         return Ok(());
@@ -166,17 +169,18 @@ fn read_groups(
         let Ok(ids): Result<Array1<i64>, _> = dataset.read() else {
             continue;
         };
-        let element_ids = layout.element_ids_from_globals(ids.iter().copied());
+        let rows = ids
+            .iter()
+            .filter(|&&id| id >= 0)
+            .filter_map(|&id| cells.get(id as usize).copied());
+        let element_ids = element_ids_from_type_local_rows(rows);
         if !element_ids.is_empty() {
             groups.insert(name, element_ids);
         }
     }
-    // `add_to_group` (not `set_groups`) preserves the exact cell indices: on a
-    // freshly built mesh every cell shares family 0, and `set_groups` would map
-    // the indices onto that family and thereby pull in every other cell too.
-    for (name, element_ids) in &groups {
-        mesh.add_to_group(name, element_ids);
-    }
+    // Bulk assignment preserves exact indices and avoids quadratic family
+    // splitting on large groups.
+    mesh.set_groups(groups);
     Ok(())
 }
 
@@ -187,6 +191,7 @@ fn handle_unstructured(block: &Group) -> Result<UMesh, MefikitIOError> {
     let types: Array1<usize> = block.dataset("Types")?.read()?;
 
     let mut mesh = UMesh::new(points.into());
+    let mut cells: Vec<(ElementType, usize)> = Vec::with_capacity(types.len());
     for i in 0..types.len() {
         let start = offsets[i];
         let end = offsets[i + 1];
@@ -196,12 +201,13 @@ fn handle_unstructured(block: &Group) -> Result<UMesh, MefikitIOError> {
             .iter()
             .map(|&x| x as usize)
             .collect();
+        let local = mesh.block(el_type).map_or(0, |block| block.len());
         mesh.add_element(el_type, &cell_conn, None);
+        cells.push((el_type, local));
     }
 
-    let layout = BlockLayout::new(&mesh);
-    read_fields(block, &mut mesh, &layout)?;
-    read_groups(block, &mut mesh, &layout)?;
+    read_fields(block, &mut mesh, &cells)?;
+    read_groups(block, &mut mesh, &cells)?;
 
     Ok(mesh)
 }
@@ -363,6 +369,70 @@ mod tests {
         me::make_imesh_2d(2)
     }
 
+    /// Writes a minimal VTKHDF UnstructuredGrid fixture and returns the open
+    /// file so tests can add `CellData`/`GroupData`.
+    fn write_vtkhdf_fixture(
+        path: &Path,
+        points: &Array2<f64>,
+        types: &[u8],
+        offsets: &[i64],
+        connectivity: &[i64],
+    ) -> File {
+        let file = File::create(path).unwrap();
+        let vtk = file.create_group("VTKHDF").unwrap();
+        vtk.new_attr::<FixedAscii<16>>()
+            .shape(())
+            .create("Type")
+            .unwrap()
+            .write_scalar(&FixedAscii::<16>::from_ascii("UnstructuredGrid").unwrap())
+            .unwrap();
+        vtk.new_attr::<i64>()
+            .shape([2])
+            .create("Version")
+            .unwrap()
+            .write(&arr1(&[2i64, 0]))
+            .unwrap();
+
+        for (name, value) in [
+            ("NumberOfPoints", points.nrows() as i64),
+            ("NumberOfCells", types.len() as i64),
+            ("NumberOfConnectivityIds", connectivity.len() as i64),
+        ] {
+            vtk.new_dataset::<i64>()
+                .shape([1])
+                .create(name)
+                .unwrap()
+                .write(&arr1(&[value]))
+                .unwrap();
+        }
+
+        vtk.new_dataset::<f64>()
+            .shape(points.shape())
+            .create("Points")
+            .unwrap()
+            .write(points)
+            .unwrap();
+        vtk.new_dataset::<u8>()
+            .shape([types.len()])
+            .create("Types")
+            .unwrap()
+            .write(&Array1::from(types.to_vec()))
+            .unwrap();
+        vtk.new_dataset::<i64>()
+            .shape([offsets.len()])
+            .create("Offsets")
+            .unwrap()
+            .write(&Array1::from(offsets.to_vec()))
+            .unwrap();
+        vtk.new_dataset::<i64>()
+            .shape([connectivity.len()])
+            .create("Connectivity")
+            .unwrap()
+            .write(&Array1::from(connectivity.to_vec()))
+            .unwrap();
+        file
+    }
+
     #[test]
     fn test_roundtrip_hdfvtk_fields() {
         let _guard = hdf5_test_guard();
@@ -394,6 +464,113 @@ mod tests {
                 assert_eq!(written[[i]], (i as f64) * 2.0);
             }
         }
+    }
+
+    #[test]
+    fn test_roundtrip_hdfvtk_vector_field() {
+        let _guard = hdf5_test_guard();
+        let path = PathBuf::from("test_roundtrip_vector_field.vtkhdf");
+
+        let mut mesh = field_mesh();
+        let mut blocks = BTreeMap::new();
+        for (et, block) in mesh.blocks() {
+            let n = block.len();
+            let values: Vec<f64> = (0..n)
+                .flat_map(|i| [i as f64, i as f64 + 0.5, i as f64 + 1.0])
+                .collect();
+            blocks.insert(
+                *et,
+                ArrayD::from_shape_vec(ndarray::IxDyn(&[n, 3]), values)
+                    .unwrap()
+                    .into_shared(),
+            );
+        }
+        mesh.update_field("velocity", FieldBase(blocks));
+
+        write(&path, mesh.view()).unwrap();
+        let mesh2 = read(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        let field = mesh2.field("velocity", None).unwrap();
+        for (et, original) in mesh.blocks() {
+            let n = original.len();
+            let written = &field.0[et];
+            assert_eq!(written.shape(), &[n, 3]);
+            for i in 0..n {
+                for component in 0..3 {
+                    assert_eq!(written[[i, component]], i as f64 + component as f64 * 0.5);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_read_hdfvtk_uses_file_cell_order_for_fields() {
+        let _guard = hdf5_test_guard();
+        let path = PathBuf::from("test_interleaved_fields.vtkhdf");
+
+        let points = Array2::from_shape_vec(
+            (8, 3),
+            (0..24).map(|value| value as f64).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        // File cell order: TRI3, QUAD4, TRI3, QUAD4.
+        let file = write_vtkhdf_fixture(
+            &path,
+            &points,
+            &[5, 9, 5, 9],
+            &[0, 3, 7, 10, 14],
+            &[0, 1, 2, 0, 1, 2, 3, 2, 3, 4, 4, 5, 6, 7],
+        );
+        let vtk = file.group("VTKHDF").unwrap();
+        let cell_data = vtk.create_group("CellData").unwrap();
+        cell_data
+            .new_dataset::<f64>()
+            .shape([4])
+            .create("v")
+            .unwrap()
+            .write(&arr1(&[10.0, 20.0, 30.0, 40.0]))
+            .unwrap();
+        drop(file);
+
+        let mesh = read(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+
+        let field = mesh.field("v", None).unwrap();
+        assert_eq!(
+            field.0[&ElementType::TRI3],
+            ndarray::arr1(&[10.0, 30.0]).into_dyn()
+        );
+        assert_eq!(
+            field.0[&ElementType::QUAD4],
+            ndarray::arr1(&[20.0, 40.0]).into_dyn()
+        );
+    }
+
+    #[test]
+    fn test_read_hdfvtk_ignores_zero_dimensional_cell_data() {
+        let _guard = hdf5_test_guard();
+        let path = PathBuf::from("test_zero_dim_cell_data.vtkhdf");
+
+        let points = Array2::from_shape_vec(
+            (4, 3),
+            (0..12).map(|value| value as f64).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let file = write_vtkhdf_fixture(&path, &points, &[9], &[0, 4], &[0, 1, 2, 3]);
+        let vtk = file.group("VTKHDF").unwrap();
+        let cell_data = vtk.create_group("CellData").unwrap();
+        cell_data
+            .new_dataset::<f64>()
+            .create("bad")
+            .unwrap()
+            .write(&ndarray::arr0(1.0_f64))
+            .unwrap();
+        drop(file);
+
+        let mesh = read(&path).unwrap();
+        std::fs::remove_file(path).unwrap();
+        assert!(mesh.field("bad", None).is_none());
     }
 
     #[test]

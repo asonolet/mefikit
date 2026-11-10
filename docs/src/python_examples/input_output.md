@@ -116,10 +116,12 @@ Some restrictions apply to the HDF5 formats:
 - **VTKHDF** fields are only exported when the mesh has a single topological
   dimension; on mixed-dimension meshes they are skipped.
 - **CGNS** cell-centered solutions must be scalar, so multi-component fields are
-  skipped. Each topological dimension gets its own `FlowSolution` node, and a
-  `PointList` is added for mixed-dimension meshes. Groups are written as
-  `ZoneSubRegion_t` nodes whose `reg_dim` is the highest dimension present in the
-  group.
+  skipped. Each topological dimension gets its own `FlowSolution` node with a
+  `GridLocation` matching that dimension (`CellCenter`, `FaceCenter` or
+  `EdgeCenter`) and, when needed, a `PointList`. Groups are written as
+  `ZoneSubRegion_t` nodes; a group spanning several dimensions is split into one
+  node per dimension so each node has a single valid `GridLocation`. Vertex
+  fields/groups cannot be represented and are skipped.
 
 
 ```python

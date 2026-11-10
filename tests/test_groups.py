@@ -71,6 +71,26 @@ def test_groups_mapping(umesh2):
     assert len(umesh2.groups) == 2
 
 
+def test_group_replace_and_overlap(umesh2):
+    umesh2.groups["a"] = {"QUAD4": np.array([0, 1, 2])}
+    umesh2.groups["b"] = {"QUAD4": np.array([1, 2, 3])}
+    assert sorted(umesh2.groups["a"].ids()["QUAD4"]) == [0, 1, 2]
+    assert sorted(umesh2.groups["b"].ids()["QUAD4"]) == [1, 2, 3]
+
+    # Dict assignment replaces the group exactly and leaves other groups alone.
+    umesh2.groups["a"] = {"QUAD4": np.array([2])}
+    assert sorted(umesh2.groups["a"].ids()["QUAD4"]) == [2]
+    assert sorted(umesh2.groups["b"].ids()["QUAD4"]) == [1, 2, 3]
+
+    umesh2.groups["a"].add({"QUAD4": np.array([3])})
+    assert sorted(umesh2.groups["a"].ids()["QUAD4"]) == [2, 3]
+    assert sorted(umesh2.groups["b"].ids()["QUAD4"]) == [1, 2, 3]
+
+    umesh2.groups["a"].remove({"QUAD4": np.array([2])})
+    assert sorted(umesh2.groups["a"].ids()["QUAD4"]) == [3]
+    assert sorted(umesh2.groups["b"].ids()["QUAD4"]) == [1, 2, 3]
+
+
 def test_groups_empty():
     coords = np.array([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
     mesh = mf.UMesh(coords)

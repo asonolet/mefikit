@@ -1,14 +1,16 @@
-//! Canonical cell numbering shared by the unstructured IO backends.
+//! Canonical cell numbering used by the unstructured IO writers.
 //!
 //! Formats that store one flat array of cell data (VTKHDF `CellData`/`GroupData`,
-//! CGNS `PointList`) need a single, deterministic way to map between a flat
-//! "global cell index" and the `(ElementType, local index)` pair used by
+//! CGNS `PointList`) need a deterministic way to map between a flat "global cell
+//! index" and the `(ElementType, local index)` pair used by
 //! [`UMesh`](crate::mesh::UMesh). [`BlockLayout`] provides exactly that: it walks
 //! the element blocks in `mesh.blocks()` order (sorted by `ElementType`) and, in
-//! each block, in local index order. This matches the order in which VTKHDF
-//! writes its `Types`/`Offsets`/`Connectivity` arrays and the order in which the
-//! CGNS writer assigns its 1-based `ElementRange`s, so a single layout is shared
-//! by both readers and writers.
+//! each block, in local index order. This matches the order in which mefikit
+//! writes VTKHDF cells and CGNS `ElementRange`s.
+//!
+//! Readers must **not** use this layout: files produced by other tools may number
+//! their cells (or CGNS elements) differently. They build an explicit
+//! file-index-to-`(ElementType, local)` mapping while parsing the connectivity.
 
 use super::error::MefikitIOError;
 use crate::mesh::{Dimension, ElementIds, ElementType, FieldBase, UMesh, UMeshBase};
@@ -68,14 +70,6 @@ impl BlockLayout {
         (local < entry.len).then_some(entry.start + local)
     }
 
-    /// Converts a global cell index back into `(element_type, local index)`.
-    pub fn global_to_type_local(&self, global: usize) -> Option<(ElementType, usize)> {
-        self.entries
-            .iter()
-            .find(|entry| global >= entry.start && global < entry.start + entry.len)
-            .map(|entry| (entry.element_type, global - entry.start))
-    }
-
     /// Global (0-based) cell indices of every element belonging to `group`, in
     /// canonical order.
     pub fn group_global_ids<N, C, F, G>(
@@ -99,26 +93,22 @@ impl BlockLayout {
         }
         ids
     }
+}
 
-    /// Rebuilds an [`ElementIds`] map from global (0-based) cell indices.
-    ///
-    /// Negative indices and indices outside the layout are silently ignored.
-    pub fn element_ids_from_globals(&self, globals: impl IntoIterator<Item = i64>) -> ElementIds {
-        let mut per_type: BTreeMap<ElementType, Vec<usize>> = BTreeMap::new();
-        for global in globals {
-            if global < 0 {
-                continue;
-            }
-            if let Some((element_type, local)) = self.global_to_type_local(global as usize) {
-                per_type.entry(element_type).or_default().push(local);
-            }
-        }
-        let mut ids = ElementIds::new();
-        for (element_type, indices) in per_type {
-            ids.add_block(element_type, indices);
-        }
-        ids
+/// Rebuilds an [`ElementIds`] map from an explicit list of
+/// `(element type, local index)` pairs.
+pub fn element_ids_from_type_local_rows(
+    rows: impl IntoIterator<Item = (ElementType, usize)>,
+) -> ElementIds {
+    let mut per_type: BTreeMap<ElementType, Vec<usize>> = BTreeMap::new();
+    for (element_type, local) in rows {
+        per_type.entry(element_type).or_default().push(local);
     }
+    let mut ids = ElementIds::new();
+    for (element_type, indices) in per_type {
+        ids.add_block(element_type, indices);
+    }
+    ids
 }
 
 /// Flattens the cell-centered field `name` at dimension `dim` into a single
@@ -137,7 +127,11 @@ where
     G: nd::Data<Elem = usize>,
 {
     let field = mesh.field(name, Some(dim))?;
-    let trailing: Vec<usize> = field.0.values().next()?.shape()[1..].to_vec();
+    let first = field.0.values().next()?;
+    if first.ndim() == 0 {
+        return None;
+    }
+    let trailing: Vec<usize> = first.shape()[1..].to_vec();
     let total: usize = field.0.values().map(|array| array.shape()[0]).sum();
 
     let mut shape = vec![total];
@@ -148,29 +142,42 @@ where
     for (element_type, _) in mesh.blocks().filter(|(et, _)| et.dimension() == dim) {
         let array = &field.0[element_type];
         let len = array.shape()[0];
-        flat.slice_mut(nd::s![offset..offset + len]).assign(array);
+        if trailing.is_empty() {
+            flat.slice_mut(nd::s![offset..offset + len]).assign(array);
+        } else {
+            // `flat` has extra component axes: copy one element at a time so the
+            // trailing dimensions are preserved.
+            for i in 0..len {
+                flat.index_axis_mut(nd::Axis(0), offset + i)
+                    .assign(&array.index_axis(nd::Axis(0), i));
+            }
+        }
         offset += len;
     }
     Some(flat)
 }
 
 /// Rebuilds a cell-centered field at dimension `dim` from a flat array whose
-/// rows are aligned with `globals` (0-based global cell indices).
+/// rows are aligned with `rows` (`(element type, local index)` pairs).
 ///
-/// Every element of `dim` must be covered by `globals`; otherwise the field is
+/// Every element of `dim` must be covered by `rows`; otherwise the field is
 /// only partially defined and an error is returned.
-pub fn field_from_global_rows(
+pub fn field_from_type_local_rows(
     mesh: &UMesh,
-    layout: &BlockLayout,
     dim: Dimension,
     data: &nd::ArrayViewD<f64>,
-    globals: &[usize],
+    rows: &[(ElementType, usize)],
 ) -> Result<FieldBase<nd::OwnedArcRepr<f64>, nd::IxDyn>, MefikitIOError> {
-    if data.shape()[0] != globals.len() {
+    if data.ndim() == 0 {
+        return Err(MefikitIOError::MalformedFile(
+            "field data has no element dimension".to_string(),
+        ));
+    }
+    if data.shape()[0] != rows.len() {
         return Err(MefikitIOError::MalformedFile(format!(
             "field has {} rows but {} cell indices",
             data.shape()[0],
-            globals.len()
+            rows.len()
         )));
     }
 
@@ -195,14 +202,20 @@ pub fn field_from_global_rows(
         )));
     }
 
-    for (row, &global) in globals.iter().enumerate() {
-        let (element_type, local) = layout.global_to_type_local(global).ok_or_else(|| {
-            MefikitIOError::MalformedFile(format!("cell index {global} is out of range"))
-        })?;
-        let array = values.get_mut(&element_type).unwrap();
+    for (row, &(element_type, local)) in rows.iter().enumerate() {
+        let Some(array) = values.get_mut(&element_type) else {
+            return Err(MefikitIOError::MalformedFile(format!(
+                "field row {row} refers to {element_type:?}, which is not at {dim:?}"
+            )));
+        };
+        if local >= array.shape()[0] {
+            return Err(MefikitIOError::MalformedFile(format!(
+                "field row {row} refers to {element_type:?} element {local}, which is out of range"
+            )));
+        }
         array
-            .slice_mut(nd::s![local..local + 1])
-            .assign(&data.slice(nd::s![row..row + 1]));
+            .index_axis_mut(nd::Axis(0), local)
+            .assign(&data.index_axis(nd::Axis(0), row));
         *covered.get_mut(&element_type).unwrap() += 1;
     }
 
