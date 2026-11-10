@@ -28,15 +28,31 @@ element node ordering and face definitions.
 | HEX21   | 3D  | 21    | Regular    | Tricubic hexahedron                   |
 | PLINE   | 1D  | var.  | Poly       | Polyline                              |
 | PGON    | 2D  | var.  | Poly       | Polygon                               |
+| QPOLY   | 2D  | var.  | Poly       | Quadratic polygon (curved edges)      |
 | PHED    | 3D  | var.  | Poly       | Polyhedron                            |
+
+**Quadratic edges.** A quadratic edge `(v0, m, v1)` — a SEG3, or any edge of a
+TRI6/TRI7/QUAD8/QUAD9/QPOLY — is interpreted as the **circular arc through its
+three nodes**. A collinear triple degenerates to a straight segment. This exact
+shape (not a polygonal approximation) is used for lengths, areas, centroids,
+point-in-element tests and overlay intersections. A quadratic segment
+`[v0, v1, m]` is the arc from `v0` to `v1` passing through `m`.
 
 ## Poly element representation
 
-Poly elements (PLINE, PGON, PHED) store their connectivity as a flat array of
-node indices. **Faces are delimited by `usize::MAX` sentinel values.**
+Poly elements (PLINE, PGON, QPOLY, PHED) store their connectivity as a flat
+array of node indices. **Faces are delimited by `usize::MAX` sentinel values.**
 
 - **PGON**: nodes form a single face, no sentinel needed.
   `[n0, n1, n2, n3]` — a 4-node polygon.
+
+- **QPOLY**: a single face with quadratic (curved) edges. Nodes are laid out as
+  all `n` vertices first, then the `n` mid-side nodes in the same cyclic order:
+  `[v0, …, v{n-1}, m0, …, m{n-1}]`, where `mi` is the mid-side node of the edge
+  `vi → v{i+1}` (indices modulo `n`). No sentinel is needed. `n` is at least
+  2, so a QPOLY has at least four nodes; a two-vertex QPOLY represents a lens
+  bounded by two arcs. TRI6/TRI7/QUAD8/QUAD9 convert to QPOLY with `n = 3` or
+  `n = 4`; the centroid node of TRI7/QUAD9 is dropped.
 
 - **PHED**: each face is a closed polygon (PGON), separated by sentinels.
 

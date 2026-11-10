@@ -96,8 +96,11 @@ The intersection is valid in the following conditions :
 - correctly oriented (CCW element connectivity),
 - and fully merged (no unmerged nodes).
 
-Mesh1 and mesh2 may have any number of kind of 2d elements of the first order (TRI3, QUAD4, PGON).
-A future version of this algorithm will work with quadratic elements (TRI7, QUAD8, QPGON).
+Mesh1 and mesh2 may have any number of 2d elements of the first order (TRI3, QUAD4, PGON).
+`IMPRINT` additionally accepts a quadratic mesh1 (`TRI6`, `TRI7`, `QUAD8`, `QUAD9`, `QPOLY`)
+cut by a first-order cutter. Quadratic edges are circular arcs and touched pieces are emitted
+as `QPOLY`.
+
 
 
 ```python
@@ -138,6 +141,138 @@ labels = [
 
 
 The ugly cell in the center in the difference and symmetric difference comes from the plotting of non convex cells in pyvista. It is just a known plotting bug (due to optimisation quirks).
+
+### Quadratic imprint
+
+`IMPRINT` also accepts a quadratic subject mesh: `TRI6`, `TRI7`, `QUAD8`, `QUAD9` or `QPOLY`.
+A quadratic edge is the circular arc through its two endpoints and its mid-side node. The
+cutter stays first-order, and the quadratic mesh must be the subject (`mesh1`).
+
+Touched pieces of quadratic cells are emitted as `QPOLY` with connectivity
+`[v0, ..., vn-1, m0, ..., mn-1]`. Untouched cells keep their original type, and the mid nodes
+of cut sub-arcs are recomputed on the same circle. The plot below converts QPOLY cells to quadratic triangles and lets PyVista subdivide them
+with `extract_surface(nonlinear_subdivision=4)` for display; the area check uses the exact
+circular-arc geometry. `to_pyvista` is left untouched.
+
+
+
+```python
+quad8_coords = np.array(
+    [
+        [0.0, 0.0],
+        [1.0, 0.0],
+        [1.0, 1.0],
+        [0.0, 1.0],
+        [0.5, -0.2],
+        [1.2, 0.5],
+        [0.5, 1.2],
+        [-0.2, 0.5],
+    ]
+)
+quadratic = mf.UMesh(quad8_coords)
+quadratic.add_regular_block(
+    "QUAD8", np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.uintp)
+)
+cutter = mf.build_cmesh([-0.25, 0.5, 1.25], [0.25, 0.75])
+quadratic_imprint = quadratic.overlay(cutter, mf.OverlayOperation.IMPRINT)
+print("result types:", quadratic_imprint.block_types())
+print("QPOLY pieces:", len(quadratic_imprint.blocks()["QPOLY"][1]))
+```
+
+    result types: ['QPOLY']
+    QPOLY pieces: 4
+
+
+
+```python
+def mesh_area(mesh):
+    return sum(float(np.sum(values)) for values in mesh.measure().values())
+
+
+area_before = mesh_area(quadratic)
+area_after = mesh_area(quadratic_imprint)
+print(f"curved area before imprint: {area_before:.12f}")
+print(f"curved area after imprint:  {area_after:.12f}")
+assert np.isclose(area_before, area_after, rtol=0.0, atol=1e-12)
+```
+
+    curved area before imprint: 1.550029315757
+    curved area after imprint:  1.550029315757
+
+
+
+```python
+def qpoly_to_pyvista(mesh):
+    """Represent QPOLY cells as quadratic triangles for PyVista rendering."""
+    coords = np.asarray(mesh.coords(), dtype=float)
+    if coords.shape[1] == 2:
+        coords = np.hstack((coords, np.zeros((coords.shape[0], 1))))
+    conn, offsets = mesh.blocks()["QPOLY"]
+    conn = np.asarray(conn)
+    offsets = np.asarray(offsets, dtype=int)
+    starts = np.concatenate(([0], offsets[:-1]))
+    points = list(coords)
+    cells = []
+    piece_ids = []
+
+    def add_point(point):
+        points.append([point[0], point[1], 0.0])
+        return len(points) - 1
+
+    for piece, (start, stop) in enumerate(zip(starts, offsets)):
+        cell = conn[start:stop]
+        n = len(cell) // 2
+        vertices, mids = cell[:n], cell[n:]
+        center = coords[vertices, :2].mean(axis=0)
+        center_id = add_point(center)
+        for i, v0 in enumerate(vertices):
+            v1 = vertices[(i + 1) % n]
+            mid_v1_center = add_point((coords[v1, :2] + center) / 2)
+            mid_center_v0 = add_point((center + coords[v0, :2]) / 2)
+            cells.extend(
+                [
+                    6,
+                    int(v0),
+                    int(v1),
+                    center_id,
+                    int(mids[i]),
+                    mid_v1_center,
+                    mid_center_v0,
+                ]
+            )
+            piece_ids.append(piece)
+
+    celltypes = np.full(len(piece_ids), pv.CellType.QUADRATIC_TRIANGLE, dtype=np.intp)
+    grid = pv.UnstructuredGrid(np.asarray(cells), celltypes, np.asarray(points))
+    grid.cell_data["piece"] = np.asarray(piece_ids)
+    return grid.extract_surface(nonlinear_subdivision=4, algorithm="dataset_surface")
+
+
+pt = pv.Plotter(shape=(1, 2))
+pt.subplot(0, 0)
+pt.add_text("QUAD8 subject + linear cutter")
+pt.add_mesh(qpoly_to_pyvista(quadratic.polyze()), color="lightblue", lighting=False)
+pt.add_mesh(cutter.to_pyvista(), show_edges=True, color="orange", opacity=0.35)
+pt.camera_position = "xy"
+pt.subplot(0, 1)
+pt.add_text("QPOLY pieces (exact curved area)")
+quadratic_pv = qpoly_to_pyvista(quadratic_imprint)
+pt.add_mesh(
+    quadratic_pv,
+    scalars="piece",
+    cmap="tab20",
+    show_scalar_bar=False,
+    lighting=False,
+)
+pt.camera_position = "xy"
+pt.show(cpos="xy")
+```
+
+
+
+![png](geometric_tools_files/geometric_tools_22_0.png)
+
+
 
 ## Surface overlay
 
@@ -183,7 +318,7 @@ overlay = surface1.overlay_surfaces(surface2)
 
 
 
-![png](geometric_tools_files/geometric_tools_23_0.png)
+![png](geometric_tools_files/geometric_tools_27_0.png)
 
 
 

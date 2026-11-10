@@ -39,6 +39,7 @@
 //!   allocation instead of one `Vec` per face, mirroring `Connectivity::Poly` in the mesh layer).
 //!   This is the single geometry→mesh edge; keep it to this one data structure.
 
+mod arc;
 mod clipping;
 mod convexity;
 mod plane;
@@ -47,6 +48,7 @@ mod polyhedron;
 mod region;
 mod segment;
 
+pub(crate) use arc::{ArcEdge, arc_length2, intersect_arc_seg, quadratic_polygon_area2};
 pub(crate) use clipping::{HalfSpace, clip_polygon, clip_segment, point_inside};
 pub use convexity::Convexity;
 pub use plane::PlaneFrame;

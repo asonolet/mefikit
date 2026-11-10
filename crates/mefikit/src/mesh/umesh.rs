@@ -670,6 +670,15 @@ impl UMesh {
                                 connectivity.data.len()
                             ));
                         }
+                        if et == ElementType::QPOLY {
+                            let len = offset - previous;
+                            if len < 4 || !len.is_multiple_of(2) {
+                                return Err(format!(
+                                    "QPOLY element at index {index} has {len} nodes; expected an \
+                                     even number of at least 4 (n vertices + n mid-side nodes)."
+                                ));
+                            }
+                        }
                         previous = offset;
                     }
                     if previous != connectivity.data.len() {

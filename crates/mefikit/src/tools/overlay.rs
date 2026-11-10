@@ -33,16 +33,17 @@ pub use stitch::{StitchError, conformize, stitch};
 pub use surface::{SurfaceOverlay, SurfaceOverlayError, overlay_surfaces};
 
 use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
 
-use nalgebra::Point2;
-use nalgebra::Vector2;
 use ndarray as nd;
 
 use crate::element_traits::cut::{
-    IntersectionIds, M1M2Intersections, NodeId, SortedSegIntersections,
+    CutEdgeSource, CutPiece, IntersectionIds, M1M2Intersections, NodeId, SortedSegIntersections,
 };
-use crate::element_traits::{Cutable, SortedVecKey};
-use crate::geometry::{Intersection, Intersections, PointId, Polygon, Segment};
+use crate::element_traits::{Cutable, ElementTopo, SortedVecKey};
+use crate::geometry::{
+    ArcEdge, Intersection, Intersections, PointId, Polygon, Segment, intersect_arc_seg,
+};
 use crate::mesh::{Dimension, Element, ElementId, ElementLike, ElementType, UMesh, UMeshView};
 use crate::prelude::ElementGeo;
 use crate::tools::duplicates_from;
@@ -52,6 +53,10 @@ use crate::tools::{Descendable, spatial_index::SpatiallyIndexable};
 /// Node coincidence tolerance used when merging two 2D meshes onto shared coordinates. Kept
 /// tight because the 2D overlay assumes the inputs already share a coordinate space.
 const WELD_EPS: f64 = 1e-12;
+
+/// Number of floating-point roundoff units (`scale * f64::EPSILON`) allowed when deciding
+/// whether a computed intersection point may reuse an existing node.
+const NODE_REUSE_FP_UNITS: f64 = 64.0;
 
 /// Merges `subject` onto `reference` in a single coordinate space.
 ///
@@ -127,6 +132,9 @@ pub trait Overlayable {
     /// # Assumptions
     /// - Input meshes are valid (non-self-intersecting)
     /// - Coordinates are in the same plane
+    /// - Quadratic cells (`TRI6`, `TRI7`, `QUAD8`, `QUAD9`, `QPOLY`) are only supported for
+    ///   [`OverlayOperation::Imprint`], and only in `self` (the subject mesh). Quadratic edges
+    ///   are circular arcs through their mid-side node.
     fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh;
 
     /// Imprints two surface meshes embedded in 3D space onto each other wherever they
@@ -156,6 +164,19 @@ pub trait Overlayable {
 
 impl Overlayable for UMesh {
     fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh {
+        let quadratic1 = has_quadratic_faces(self);
+        let quadratic2 = has_quadratic_faces(&mesh2);
+        if quadratic1 || quadratic2 {
+            assert!(
+                operation == OverlayOperation::Imprint,
+                "quadratic overlay is only implemented for OverlayOperation::Imprint"
+            );
+            assert!(
+                !quadratic2,
+                "the quadratic mesh must be the subject (mesh1); quadratic cutters are not \
+                 supported"
+            );
+        }
         match operation {
             OverlayOperation::Imprint => intersect_2d2d(self, mesh2),
             OverlayOperation::Intersection => cut_and_classify(self, mesh2, |inside| inside),
@@ -221,6 +242,12 @@ fn cut_2d_with_edges(mesh1: &UMesh, cutting_edges: UMesh) -> UMesh {
 /// - Input meshes are valid (non-self-intersecting)
 /// - Coordinates are in the same plane
 pub fn intersect_2d1d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
+    assert!(
+        !mesh2
+            .elements()
+            .any(|e| matches!(e.element_type(), ElementType::SEG3)),
+        "quadratic 1D cutters are not supported"
+    );
     let (mesh2, _) = merge_on_reference_coords(mesh2, mesh1.view(), WELD_EPS);
     cut_2d_with_edges(mesh1, mesh2)
 }
@@ -306,8 +333,12 @@ fn compute_overlay(
 
     let cutted_mesh = UMesh::new(new_coords.into_shared());
 
-    let seg_intersections =
-        to_sorted_intersections(&intersections, &cutting_edges.view(), &cutted_mesh.coords());
+    let seg_intersections = to_sorted_intersections(
+        &intersections,
+        subject_edges,
+        cutting_edges,
+        &cutted_mesh.coords(),
+    );
 
     (cutted_mesh, seg_intersections)
 }
@@ -331,9 +362,11 @@ fn cut_cells_all(
         Some(p) => p,
         None => &mut dropped_parents,
     };
+    let mut mid_store = MidStore::default();
     for cell in subject.elements_of_dim(Dimension::D2) {
         let [bmin, bmax] = cell.bounds2();
         let candidates = cutting_bvh.in_bounds(bmin, bmax);
+        let boundary_edges = cell.boundary_edges();
         let reconstructed = cell.cut_with_intersections(
             seg_intersections,
             cutting_edges,
@@ -343,9 +376,9 @@ fn cut_cells_all(
 
         let mut piece_ids: Vec<ElementId> = Vec::new();
         // If the cell was cut, I add new polys from the cut
-        if let Some(polys) = reconstructed {
-            for new_cell in polys {
-                let id = out.add_element(ElementType::PGON, &new_cell, Some(*cell.family));
+        if let Some(pieces) = reconstructed {
+            for piece in pieces {
+                let id = emit_piece(out, &cell, &boundary_edges, &piece, &mut mid_store);
                 piece_ids.push(id);
             }
         } else {
@@ -354,6 +387,221 @@ fn cut_cells_all(
         }
         parents.push((cell.id(), piece_ids));
     }
+}
+
+/// Whether the mesh has quadratic 2D cells.
+fn has_quadratic_faces(mesh: &UMesh) -> bool {
+    mesh.elements_of_dim(Dimension::D2).any(|cell| {
+        matches!(
+            cell.element_type(),
+            ElementType::TRI6
+                | ElementType::TRI7
+                | ElementType::QUAD8
+                | ElementType::QUAD9
+                | ElementType::QPOLY
+        )
+    })
+}
+
+#[inline]
+fn point2(coords: &nd::ArrayView2<'_, f64>, node: usize) -> [f64; 2] {
+    [coords[(node, 0)], coords[(node, 1)]]
+}
+
+#[inline]
+fn edge_key(conn: &[usize]) -> SortedVecKey {
+    SortedVecKey::new(conn.iter().copied().collect())
+}
+
+#[inline]
+fn chord_midpoint(a: [f64; 2], b: [f64; 2]) -> [f64; 2] {
+    [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])]
+}
+
+fn point_on_segment2(a: [f64; 2], b: [f64; 2], p: [f64; 2]) -> bool {
+    let ab = [b[0] - a[0], b[1] - a[1]];
+    let ap = [p[0] - a[0], p[1] - a[1]];
+    let len = ab[0].hypot(ab[1]);
+    if len == 0.0 {
+        return ap[0].hypot(ap[1]) == 0.0;
+    }
+    let scale = len.max(ap[0].hypot(ap[1]));
+    let eps = 64.0 * scale * f64::EPSILON;
+    let cross = ab[0] * ap[1] - ab[1] * ap[0];
+    if cross.abs() > eps * len {
+        return false;
+    }
+    let dot = ab[0] * ap[0] + ab[1] * ap[1];
+    dot >= -eps * len && dot <= len * len + eps * len
+}
+
+/// Source curve of a synthesized mid-side node. Keeping the source in the key prevents two
+/// distinct arcs with the same endpoints (e.g. a lens) from sharing a mid by mistake.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum MidSource {
+    Boundary(SortedVecKey),
+    Cutter(ElementId),
+}
+
+#[derive(Default)]
+struct MidStore {
+    by_edge: FxHashMap<(MidSource, usize, usize), usize>,
+}
+
+impl MidStore {
+    fn get_or_create(
+        &mut self,
+        out: &mut UMesh,
+        source: MidSource,
+        a: usize,
+        b: usize,
+        coord: [f64; 2],
+    ) -> usize {
+        let key = (source, a.min(b), a.max(b));
+        if let Some(&id) = self.by_edge.get(&key) {
+            return id;
+        }
+        let id = out.coords().nrows();
+        out.append_coord(nd::arr1(&coord).view())
+            .expect("appending a single 2D coordinate");
+        self.by_edge.insert(key, id);
+        id
+    }
+}
+
+fn boundary_arc(out: &UMesh, edge: &[usize]) -> Option<ArcEdge> {
+    if edge.len() != 3 {
+        return None;
+    }
+    let coords = out.coords();
+    let arc = ArcEdge::new(
+        point2(&coords, edge[0]),
+        point2(&coords, edge[2]),
+        point2(&coords, edge[1]),
+    );
+    arc.is_curved().then_some(arc)
+}
+
+/// True when the cut piece is exactly the original cell boundary, in the same order, using
+/// only boundary edges. Such a piece must be copied verbatim so the original element type is
+/// preserved.
+fn is_verbatim(
+    cell: &Element<'_>,
+    boundary_edges: &[SmallVec<[usize; 3]>],
+    piece: &CutPiece,
+) -> bool {
+    let n = cell.num_vertices();
+    if piece.ring.len() != n {
+        return false;
+    }
+    let mut parent: Vec<usize> = cell.connectivity()[..n].to_vec();
+    let mut ring = piece.ring.clone();
+    parent.sort_unstable();
+    ring.sort_unstable();
+    if parent != ring {
+        return false;
+    }
+    for (i, source) in piece.edges.iter().enumerate() {
+        let a = piece.ring[i];
+        let b = piece.ring[(i + 1) % piece.ring.len()];
+        let CutEdgeSource::Boundary(j) = *source else {
+            return false;
+        };
+        let Some(edge) = boundary_edges.get(j) else {
+            return false;
+        };
+        if !((edge[0] == a && edge[1] == b) || (edge[0] == b && edge[1] == a)) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Appends one cut piece to `out`, restoring the curvature of the original boundary edges.
+///
+/// A touched piece of a quadratic cell is always emitted as [`ElementType::QPOLY`]; pieces of
+/// linear cells stay [`ElementType::PGON`]. Untouched pieces are copied verbatim.
+fn emit_piece(
+    out: &mut UMesh,
+    cell: &Element<'_>,
+    boundary_edges: &[SmallVec<[usize; 3]>],
+    piece: &CutPiece,
+    mid_store: &mut MidStore,
+) -> ElementId {
+    if is_verbatim(cell, boundary_edges, piece) {
+        return out.add_element(cell.element_type(), cell.connectivity(), Some(*cell.family));
+    }
+
+    let quadratic_cell = boundary_edges.iter().any(|edge| edge.len() == 3);
+    if !quadratic_cell {
+        return out.add_element(ElementType::PGON, &piece.ring, Some(*cell.family));
+    }
+
+    let n = piece.ring.len();
+    let mut mids: Vec<usize> = Vec::with_capacity(n);
+    for i in 0..n {
+        let a = piece.ring[i];
+        let b = piece.ring[(i + 1) % n];
+        let mid = match piece.edges[i] {
+            CutEdgeSource::Boundary(j) => {
+                let edge = &boundary_edges[j];
+                let coords = out.coords();
+                let pa = point2(&coords, a);
+                let pb = point2(&coords, b);
+                if let Some(arc) = boundary_arc(out, edge) {
+                    let sa = arc.param(&pa);
+                    let sb = arc.param(&pb);
+                    let sm = arc.mid_param();
+                    if let (Some(sa), Some(sb), Some(sm)) = (sa, sb, sm) {
+                        let (lo, hi) = if sa <= sb { (sa, sb) } else { (sb, sa) };
+                        let margin = 1e-12;
+                        if sm > lo + margin && sm < hi - margin {
+                            edge[2]
+                        } else {
+                            let mid = arc
+                                .sub_midpoint(&pa, &pb)
+                                .expect("non-degenerate arc has a sub-arc midpoint");
+                            mid_store.get_or_create(
+                                out,
+                                MidSource::Boundary(edge_key(edge)),
+                                a,
+                                b,
+                                mid,
+                            )
+                        }
+                    } else {
+                        mid_store.get_or_create(
+                            out,
+                            MidSource::Boundary(edge_key(edge)),
+                            a,
+                            b,
+                            chord_midpoint(pa, pb),
+                        )
+                    }
+                } else if edge.len() == 3 && point_on_segment2(pa, pb, point2(&coords, edge[2])) {
+                    edge[2]
+                } else {
+                    mid_store.get_or_create(
+                        out,
+                        MidSource::Boundary(edge_key(edge)),
+                        a,
+                        b,
+                        chord_midpoint(pa, pb),
+                    )
+                }
+            }
+            CutEdgeSource::Cutter(eid) => {
+                let coords = out.coords();
+                let mid = chord_midpoint(point2(&coords, a), point2(&coords, b));
+                mid_store.get_or_create(out, MidSource::Cutter(eid), a, b, mid)
+            }
+        };
+        mids.push(mid);
+    }
+
+    let mut conn = piece.ring.clone();
+    conn.extend(mids);
+    out.add_element(ElementType::QPOLY, &conn, Some(*cell.family))
 }
 
 /// Cut the D2 cells of `subject` with `cutting_edges` and append the kept pieces to `out`.
@@ -367,10 +615,12 @@ fn cut_cells(
     keep: &impl Fn(bool) -> bool,
 ) {
     let cutter_bvh = cutter.view().bvh2();
+    let mut mid_store = MidStore::default();
 
     for cell in subject.elements_of_dim(Dimension::D2) {
         let [bmin, bmax] = cell.bounds2();
         let candidates = cutting_bvh.in_bounds(bmin, bmax);
+        let boundary_edges = cell.boundary_edges();
         let reconstructed = cell.cut_with_intersections(
             seg_intersections,
             cutting_edges,
@@ -379,11 +629,11 @@ fn cut_cells(
         );
 
         // If the cell was cut, I add the kept new polys from the cut
-        if let Some(polys) = reconstructed {
-            for new_cell in polys {
-                let inside = pgon_inside(&new_cell, &out.coords(), cutter, &cutter_bvh);
+        if let Some(pieces) = reconstructed {
+            for piece in pieces {
+                let inside = pgon_inside(&piece.ring, &out.coords(), cutter, &cutter_bvh);
                 if keep(inside) {
-                    out.add_element(ElementType::PGON, &new_cell, Some(*cell.family));
+                    emit_piece(out, &cell, &boundary_edges, &piece, &mut mid_store);
                 }
             }
         } else if keep(cell_inside(&cell, cutter, &cutter_bvh)) {
@@ -464,6 +714,7 @@ fn compute_intersections(
                 &mut new_coord_id,
                 &edge,
                 edge2,
+                &m2_edges.coords(),
             );
         }
     }
@@ -478,89 +729,244 @@ fn add_intersection(
     new_coord_id: &mut usize,
     edge: &Element<'_>,
     edge2: Element<'_>,
+    coords: &nd::ArrayView2<'_, f64>,
 ) {
     use crate::mesh::ElementType::*;
-    let int = match (edge.element_type(), edge2.element_type()) {
-        (SEG2, SEG2) => Segment::new(edge.coord2(0).into(), edge.coord2(1).into())
-            .intersect(Segment::new(edge2.coord2(0).into(), edge2.coord2(1).into())),
-        _ => todo!("Intersection with SEG3 is not yet implemented"),
+    let c1 = edge.connectivity();
+    let c2 = edge2.connectivity();
+    let (int, p_ids): (Intersections, [usize; 4]) =
+        match (edge.element_type(), edge2.element_type()) {
+            (SEG2, SEG2) => (
+                Segment::new(edge.coord2(0).into(), edge.coord2(1).into())
+                    .intersect(Segment::new(edge2.coord2(0).into(), edge2.coord2(1).into())),
+                [c1[0], c1[1], c2[0], c2[1]],
+            ),
+            (SEG3, SEG2) => (
+                intersect_arc_seg(
+                    edge.coord2_ref(0),
+                    edge.coord2_ref(2),
+                    edge.coord2_ref(1),
+                    edge2.coord2_ref(0),
+                    edge2.coord2_ref(1),
+                ),
+                [c1[0], c1[1], c2[0], c2[1]],
+            ),
+            (SEG2, SEG3) => panic!(
+                "quadratic cutter edges are not supported: the quadratic mesh must be the subject \
+             (mesh1)"
+            ),
+            (SEG3, SEG3) => panic!("SEG3-SEG3 intersections are not supported"),
+            (a, b) => panic!("unsupported edge intersection between {a:?} and {b:?}"),
+        };
+
+    let Some((eid2, ids)) =
+        intersection_entry(int, p_ids, edge, &edge2, coords, new_coords, new_coord_id)
+    else {
+        return;
     };
-    match int {
-        Intersections::None => (),
-        Intersections::One(i) => {
-            {
-                let m1sgid = SortedVecKey::new(edge.connectivity().into());
-                let v = intersections.entry(m1sgid).or_default();
-                match i {
-                    Intersection::Existing(p) => {
-                        v.push((
-                            edge2.id(),
-                            IntersectionIds::One(intersection_p_to_global_index(p, edge, &edge2)),
-                        ));
-                    }
-                    Intersection::New(coord) => {
-                        v.push((edge2.id(), IntersectionIds::One(*new_coord_id)));
+    let m1sgid = SortedVecKey::new(edge.connectivity().into());
+    intersections.entry(m1sgid).or_default().push((eid2, ids));
+}
+
+#[inline]
+fn p_node(id: PointId, nodes: [usize; 4]) -> usize {
+    match id {
+        PointId::P1 => nodes[0],
+        PointId::P2 => nodes[1],
+        PointId::P3 => nodes[2],
+        PointId::P4 => nodes[3],
+    }
+}
+
+fn node_reuse_eps(
+    edge: &Element<'_>,
+    edge2: &Element<'_>,
+    coords: &nd::ArrayView2<'_, f64>,
+) -> f64 {
+    let mut nodes = edge
+        .connectivity()
+        .iter()
+        .chain(edge2.connectivity().iter());
+    let Some(&first) = nodes.next() else {
+        return 0.0;
+    };
+    let origin = point2(coords, first);
+    let mut scale = 0.0f64;
+    for &n in edge
+        .connectivity()
+        .iter()
+        .chain(edge2.connectivity().iter())
+    {
+        let p = point2(coords, n);
+        scale = scale.max((p[0] - origin[0]).hypot(p[1] - origin[1]));
+    }
+    NODE_REUSE_FP_UNITS * scale * f64::EPSILON
+}
+
+fn closest_global_node(
+    pt: [f64; 2],
+    edge: &Element<'_>,
+    edge2: &Element<'_>,
+    coords: &nd::ArrayView2<'_, f64>,
+    eps: f64,
+) -> Option<usize> {
+    let mut best: Option<(usize, f64)> = None;
+    let eps2 = eps * eps;
+    for &nid in edge
+        .connectivity()
+        .iter()
+        .chain(edge2.connectivity().iter())
+    {
+        let p = point2(coords, nid);
+        let dx = p[0] - pt[0];
+        let dy = p[1] - pt[1];
+        let d2 = dx * dx + dy * dy;
+        if d2 <= eps2 {
+            match best {
+                None => best = Some((nid, d2)),
+                Some((_, bd2)) if d2 < bd2 => best = Some((nid, d2)),
+                _ => {}
+            }
+        }
+    }
+    best.map(|(n, _)| n)
+}
+
+/// Maps an [`Intersections`] result to `(edge2 id, resolved node ids)`.
+fn intersection_entry(
+    int: Intersections,
+    p_ids: [usize; 4],
+    edge: &Element<'_>,
+    edge2: &Element<'_>,
+    coords: &nd::ArrayView2<'_, f64>,
+    new_coords: &mut Vec<f64>,
+    new_coord_id: &mut usize,
+) -> Option<(ElementId, IntersectionIds)> {
+    let eps = node_reuse_eps(edge, edge2, coords);
+    let mut resolve = |i: Intersection| -> usize {
+        match i {
+            Intersection::Existing(p) => p_node(p, p_ids),
+            Intersection::New(coord) => {
+                match closest_global_node(coord, edge, edge2, coords, eps) {
+                    Some(n) => n,
+                    None => {
+                        let id = *new_coord_id;
                         *new_coord_id += 1;
                         new_coords.extend_from_slice(&coord);
+                        id
                     }
                 }
-            };
+            }
         }
-        Intersections::Two([_i1, _i2]) => todo!("Arc intersections is not yet implemented."),
-        Intersections::Segment([p1, p2]) => {
-            let m1sgid = SortedVecKey::new(edge.connectivity().into());
-            let v = intersections.entry(m1sgid).or_default();
-            v.push((
+    };
+    match int {
+        Intersections::None => None,
+        Intersections::One(i) => {
+            let n = resolve(i);
+            Some((edge2.id(), IntersectionIds::One(n)))
+        }
+        Intersections::Two([i1, i2]) => {
+            let n1 = resolve(i1);
+            let n2 = resolve(i2);
+            Some((
                 edge2.id(),
-                IntersectionIds::Segment(
-                    intersection_p_to_global_index(p1, edge, &edge2),
-                    intersection_p_to_global_index(p2, edge, &edge2),
-                ),
-            ));
+                if n1 == n2 {
+                    IntersectionIds::One(n1)
+                } else {
+                    IntersectionIds::Segment(n1, n2)
+                },
+            ))
+        }
+        Intersections::Segment([p1, p2]) => {
+            let n1 = resolve(Intersection::Existing(p1));
+            let n2 = resolve(Intersection::Existing(p2));
+            Some((
+                edge2.id(),
+                if n1 == n2 {
+                    IntersectionIds::One(n1)
+                } else {
+                    IntersectionIds::Segment(n1, n2)
+                },
+            ))
         }
     }
 }
 
-fn intersection_p_to_global_index(p: PointId, edge: &Element<'_>, edge2: &Element<'_>) -> usize {
-    match p {
-        PointId::P1 => edge.connectivity[0],
-        PointId::P2 => edge.connectivity[1],
-        PointId::P3 => edge2.connectivity[0],
-        PointId::P4 => edge2.connectivity[1],
+#[derive(Clone, Copy)]
+struct EdgeInfo {
+    p0: usize,
+    p1: usize,
+    mid: Option<usize>,
+}
+
+fn collect_edge_info(meshes: &[&UMesh]) -> FxHashMap<SortedVecKey, EdgeInfo> {
+    let mut infos = FxHashMap::default();
+    for mesh in meshes {
+        for edge in mesh.elements() {
+            let conn = edge.connectivity();
+            let info = match edge.element_type() {
+                ElementType::SEG2 => EdgeInfo {
+                    p0: conn[0],
+                    p1: conn[1],
+                    mid: None,
+                },
+                ElementType::SEG3 => EdgeInfo {
+                    p0: conn[0],
+                    p1: conn[1],
+                    mid: Some(conn[2]),
+                },
+                _ => continue,
+            };
+            infos.entry(edge_key(conn)).or_insert(info);
+        }
     }
+    infos
 }
 
 /// Build edge to sorted intersections map.
-/// Sort order is taken from the SortedVecKey order (from node with lower id to node with higer
-/// id).
-/// The SortedVecKey of the map is independent from mesh1/mesh2 distinction as NodeIds are common
-/// between the two meshes.
+///
+/// Intersections are ordered along the edge itself: by circular-arc parameter for `SEG3` and by
+/// chord projection for straight edges.
 fn to_sorted_intersections(
     intersections: &M1M2Intersections,
-    mesh2: &UMeshView,
+    subject_edges: &UMesh,
+    cutting_edges: &UMesh,
     coords: &nd::ArrayView2<'_, f64>,
 ) -> SortedSegIntersections {
-    let mut non_sorted_intersections = to_non_sorted_intersections(intersections, mesh2);
+    let mut non_sorted_intersections =
+        to_non_sorted_intersections(intersections, &cutting_edges.view());
+    let edge_infos = collect_edge_info(&[subject_edges, cutting_edges]);
 
     for (eid, v) in &mut non_sorted_intersections {
-        let p1: Point2<f64> = Point2::from_slice(coords.row(eid[0]).as_slice().unwrap());
-        let p2: Point2<f64> = Point2::from_slice(coords.row(eid[1]).as_slice().unwrap());
-        let oriented_vec: Vector2<f64> = p2 - p1;
-        let projection = |n: usize| {
-            let vn: Vector2<f64> = Point2::from_slice(coords.row(n).as_slice().unwrap()) - p1;
-            oriented_vec.dot(&vn)
+        let info = edge_infos.get(eid).copied().unwrap_or(EdgeInfo {
+            p0: eid[0],
+            p1: eid[1],
+            mid: None,
+        });
+        let p0 = point2(coords, info.p0);
+        let p1 = point2(coords, info.p1);
+        let arc = info.mid.map(|mid| {
+            let mid = point2(coords, mid);
+            ArcEdge::new(p0, mid, p1)
+        });
+        let arc = arc.filter(|arc| arc.is_curved());
+        let chord = [p1[0] - p0[0], p1[1] - p0[1]];
+
+        let param = |n: usize| {
+            let p = point2(coords, n);
+            if let Some(arc) = arc {
+                arc.param(&p).unwrap_or(0.0).clamp(0.0, 1.0)
+            } else {
+                (p[0] - p0[0]) * chord[0] + (p[1] - p0[1]) * chord[1]
+            }
         };
 
-        // First point
         let mut sorted_ints: Vec<(f64, usize)> = Vec::with_capacity(v.len() + 2);
-        sorted_ints.push((projection(eid[0]), eid[0]));
-        // Intersection points
-        sorted_ints.extend(v.iter().map(|&n| (projection(n), n)));
-        // Sorting all intersections points
-        sorted_ints.sort_by(|a, b| a.0.total_cmp(&b.0));
+        sorted_ints.push((param(info.p0), info.p0));
+        sorted_ints.push((param(info.p1), info.p1));
+        sorted_ints.extend(v.iter().map(|&n| (param(n), n)));
+        sorted_ints.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
         let mut sorted_nodes: Vec<NodeId> = sorted_ints.into_iter().map(|(_, n)| n).collect();
-        // Adding last point (known)
-        sorted_nodes.push(eid[1]);
 
         // Removing duplicates
         sorted_nodes.dedup();
@@ -976,5 +1382,344 @@ mod tests {
             assert_abs_diff_eq!(u, union_expected, epsilon = 1e-9);
             assert_abs_diff_eq!(s, symdiff_expected, epsilon = 1e-9);
         }
+    }
+
+    fn exact_cell_area(cell: Element<'_>) -> f64 {
+        use ElementType::*;
+        match cell.element_type() {
+            TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => {
+                crate::geometry::quadratic_polygon_area2(&cell.to_quadratic_polygon2()).abs()
+            }
+            _ => Polygon::unknown(cell.vertices2()).area(),
+        }
+    }
+
+    fn exact_mesh_area(mesh: &UMesh) -> f64 {
+        mesh.elements_of_dim(Dimension::D2)
+            .map(exact_cell_area)
+            .sum()
+    }
+
+    /// A QUAD8 cell over `[0, 1]^2` whose four edges bulge outward by `bulge`.
+    fn quad8_square(bulge: f64) -> UMesh {
+        let coords = nd::arr2(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -bulge],
+            [1.0 + bulge, 0.5],
+            [0.5, 1.0 + bulge],
+            [-bulge, 0.5],
+        ]);
+        let mut mesh = UMesh::new(coords.into_shared());
+        mesh.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7]]).to_shared(),
+            None,
+        );
+        mesh
+    }
+
+    #[test]
+    fn test_overlay_quad8_imprint_preserves_curved_area() {
+        let mesh1 = quad8_square(0.15);
+        let before = exact_mesh_area(&mesh1);
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.25, 0.5, 1.25])
+            .add_axis(vec![0.25, 0.75])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert!(
+            cutted
+                .elements_of_dim(Dimension::D2)
+                .any(|c| c.element_type() == ElementType::QPOLY),
+            "cut quadratic pieces must be QPOLY"
+        );
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_overlay_two_intersections_on_one_arc() {
+        // A single QUAD8 whose bottom edge bulges downwards; every other edge is straight.
+        let coords = nd::arr2(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -0.2],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5],
+        ]);
+        let mut mesh1 = UMesh::new(coords.into_shared());
+        mesh1.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7]]).to_shared(),
+            None,
+        );
+        let before = exact_mesh_area(&mesh1);
+
+        // A single horizontal segment crossing the bulged arc twice.
+        let coords2 = nd::arr2(&[[-0.5, -0.05], [1.5, -0.05]]);
+        let mut mesh2 = UMesh::new(coords2.into_shared());
+        mesh2.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
+        let cutted = intersect_2d1d(&mesh1, mesh2);
+
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+        let mut lens = false;
+        for cell in cutted.elements_of_dim(Dimension::D2) {
+            if cell.element_type() == ElementType::QPOLY && cell.connectivity().len() == 4 {
+                let n = cell.num_vertices();
+                assert_eq!(n, 2, "a two-edge lens has two vertices and two mids");
+                lens = true;
+            }
+        }
+        assert!(lens, "expected a two-vertex QPOLY lens piece");
+    }
+
+    #[test]
+    fn test_overlay_qpoly_input() {
+        let mesh1 = quad8_square(0.15);
+        let before = exact_mesh_area(&mesh1);
+        let qpoly = crate::tools::polyze(&mesh1.view());
+        assert!(
+            qpoly
+                .elements()
+                .any(|c| c.element_type() == ElementType::QPOLY)
+        );
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.25, 0.5, 1.25])
+            .add_axis(vec![0.25, 0.75])
+            .build();
+        let cutted = qpoly.overlay(mesh2, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+        assert!(
+            cutted
+                .elements_of_dim(Dimension::D2)
+                .any(|c| c.element_type() == ElementType::QPOLY)
+        );
+    }
+
+    #[test]
+    fn test_overlay_curved_tri6_imprint() {
+        let coords = nd::arr2(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.5, -0.1],
+            [0.65, 0.65],
+            [-0.1, 0.5],
+        ]);
+        let mut mesh1 = UMesh::new(coords.into_shared());
+        mesh1.add_regular_block(
+            ElementType::TRI6,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5]]).to_shared(),
+            None,
+        );
+        let before = exact_mesh_area(&mesh1);
+        let coords2 = nd::arr2(&[[0.3, -1.0], [0.3, 2.0]]);
+        let mut mesh2 = UMesh::new(coords2.into_shared());
+        mesh2.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
+        let cutted = intersect_2d1d(&mesh1, mesh2);
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+        assert!(
+            cutted
+                .elements_of_dim(Dimension::D2)
+                .any(|c| c.element_type() == ElementType::QPOLY)
+        );
+    }
+
+    #[test]
+    fn test_overlay_tri6_imprint() {
+        // Straight-mid TRI6: the cut pieces must still be QPOLY.
+        let coords = nd::arr2(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [0.5, 0.5],
+            [0.0, 0.5],
+        ]);
+        let mut mesh1 = UMesh::new(coords.into_shared());
+        mesh1.add_regular_block(
+            ElementType::TRI6,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5]]).to_shared(),
+            None,
+        );
+        let before = exact_mesh_area(&mesh1);
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![0.25, 0.75])
+            .add_axis(vec![-0.5, 0.5])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+        assert!(
+            cutted
+                .elements_of_dim(Dimension::D2)
+                .all(|c| c.element_type() == ElementType::QPOLY)
+        );
+    }
+
+    /// Two QUAD8 cells sharing a curved vertical edge, with shared corner and mid nodes.
+    fn two_quad8_squares(bulge: f64) -> UMesh {
+        let coords = nd::arr2(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -bulge],
+            [1.0 + bulge, 0.5],
+            [0.5, 1.0 + bulge],
+            [-bulge, 0.5],
+            [2.0, 0.0],
+            [2.0, 1.0],
+            [1.5, -bulge],
+            [2.0 + bulge, 0.5],
+            [1.5, 1.0 + bulge],
+        ]);
+        let mut mesh = UMesh::new(coords.into_shared());
+        mesh.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7]]).to_shared(),
+            None,
+        );
+        mesh.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[1, 8, 9, 2, 10, 11, 12, 5]]).to_shared(),
+            None,
+        );
+        mesh
+    }
+
+    #[test]
+    fn test_overlay_shared_curved_edge_mid_is_shared() {
+        let mesh1 = two_quad8_squares(0.15);
+        let before = exact_mesh_area(&mesh1);
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![0.4, 0.6])
+            .add_axis(vec![-0.5, 0.5, 1.5])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+
+        // Each synthesized mid node id must be unique to one coordinate: shared sub-arcs
+        // must reuse one node id.
+        let coords = cutted.coords();
+        let mut by_pos: FxHashMap<(u64, u64), usize> = FxHashMap::default();
+        for cell in cutted.elements_of_dim(Dimension::D2) {
+            if cell.element_type() != ElementType::QPOLY {
+                continue;
+            }
+            let conn = cell.connectivity();
+            let n = conn.len() / 2;
+            for &mid in &conn[n..] {
+                let key = (coords[(mid, 0)].to_bits(), coords[(mid, 1)].to_bits());
+                if let Some(&prev) = by_pos.get(&key) {
+                    assert_eq!(prev, mid, "two mid nodes share one coordinate");
+                }
+                by_pos.insert(key, mid);
+            }
+        }
+    }
+
+    #[test]
+    fn test_overlay_cut_at_mid_node() {
+        let coords = nd::arr2(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -0.2],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5],
+        ]);
+        let mut mesh1 = UMesh::new(coords.into_shared());
+        mesh1.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7]]).to_shared(),
+            None,
+        );
+        let before = exact_mesh_area(&mesh1);
+        // Vertical cutter through the bottom-edge mid node.
+        let coords2 = nd::arr2(&[[0.5, -1.0], [0.5, 2.0]]);
+        let mut mesh2 = UMesh::new(coords2.into_shared());
+        mesh2.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
+        let cutted = intersect_2d1d(&mesh1, mesh2);
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+        // The parent mid node is now a corner; no piece may reuse it as a mid node.
+        for cell in cutted.elements_of_dim(Dimension::D2) {
+            if cell.element_type() != ElementType::QPOLY {
+                continue;
+            }
+            let conn = cell.connectivity();
+            let n = conn.len() / 2;
+            assert!(!conn[n..].contains(&4), "parent mid must not be reused");
+        }
+    }
+
+    #[test]
+    fn test_overlay_quad9_center_node_is_ignored() {
+        let coords = nd::arr2(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -0.15],
+            [1.15, 0.5],
+            [0.5, 1.15],
+            [-0.15, 0.5],
+            [0.5, 0.5],
+        ]);
+        let mut mesh1 = UMesh::new(coords.into_shared());
+        mesh1.add_regular_block(
+            ElementType::QUAD9,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7, 8]]).to_shared(),
+            None,
+        );
+        let before = exact_mesh_area(&mesh1);
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.25, 0.5, 1.25])
+            .add_axis(vec![0.25, 0.75])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+        assert!(
+            cutted
+                .elements_of_dim(Dimension::D2)
+                .any(|c| c.element_type() == ElementType::QPOLY)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "only implemented for OverlayOperation::Imprint")]
+    fn test_overlay_quadratic_boolean_panics() {
+        let mesh1 = quad8_square(0.15);
+        let mesh2 = make_imesh_2d(1);
+        let _ = mesh1.overlay(mesh2, OverlayOperation::Union);
+    }
+
+    #[test]
+    #[should_panic(expected = "quadratic mesh must be the subject")]
+    fn test_overlay_linear_subject_quadratic_cutter_panics() {
+        let mesh1 = make_imesh_2d(1);
+        let mesh2 = quad8_square(0.15);
+        let _ = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+    }
+
+    #[test]
+    fn test_overlay_quad8_untouched_is_verbatim() {
+        let mesh1 = quad8_square(0.15);
+        // A cutter box strictly outside mesh1.
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![2.0, 3.0])
+            .add_axis(vec![2.0, 3.0])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert_eq!(cutted.num_elements_of_dim(Dimension::D2), 1);
+        let cell = cutted.elements_of_dim(Dimension::D2).next().unwrap();
+        assert_eq!(cell.element_type(), ElementType::QUAD8);
+        assert_eq!(cell.connectivity(), &[0, 1, 2, 3, 4, 5, 6, 7]);
     }
 }

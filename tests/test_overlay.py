@@ -83,6 +83,34 @@ def test_overlay_disjoint_union():
     assert list(_cells(out)) and _mesh_area(out) == pytest.approx(2.0)
 
 
+def _measure_total(mesh):
+    return sum(float(np.sum(values)) for values in mesh.measure().values())
+
+
+def test_overlay_quad8_imprint():
+    coords = np.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -0.15],
+            [1.15, 0.5],
+            [0.5, 1.15],
+            [-0.15, 0.5],
+        ]
+    )
+    mesh1 = mf.UMesh(coords)
+    mesh1.add_regular_block(
+        "QUAD8", np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.uintp)
+    )
+    mesh2 = mf.build_cmesh([-0.25, 0.5, 1.25], [0.25, 0.75])
+    before = _measure_total(mesh1)
+    out = mesh1.overlay(mesh2, mf.OverlayOperation.IMPRINT)
+    assert "QPOLY" in out.block_types()
+    assert _measure_total(out) == pytest.approx(before)
+
+
 def _grid_surface(n, tri=False, transform=None):
     coords = np.zeros(((n + 1) * (n + 1), 3))
     for j in range(n + 1):
