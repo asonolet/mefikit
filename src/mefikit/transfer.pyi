@@ -1,14 +1,28 @@
-from typing import TypeAlias
+from typing import TypeAlias, final
+
+import numpy as np
+import numpy.typing as npt
 
 from . import DistanceWeighting, Field, UMesh
 
+_Array: TypeAlias = npt.NDArray[np.float64]
+
+__all__ = [
+    "ConservativeP0",
+    "ConstantPiecewise",
+    "InverseDistance",
+    "MovingLeastSquares",
+    "load",
+]
+
+@final
 class ConstantPiecewise:
-    def __init__(
-        self,
+    def __new__(
+        cls,
         src_mesh: UMesh,
         tgt_mesh: UMesh,
         def_val: float = ...,
-    ) -> None: ...
+    ) -> ConstantPiecewise: ...
     def save(self, path: str, compressed: bool = ...) -> None: ...
     def __call__(
         self,
@@ -19,7 +33,7 @@ class ConstantPiecewise:
         self,
         expr: Field,
         extensive: bool = False,
-    ) -> dict[str, object]: ...
+    ) -> dict[str, _Array]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
@@ -30,15 +44,16 @@ class ConstantPiecewise:
         extensive: bool = ...,
     ) -> None: ...
 
+@final
 class MovingLeastSquares:
-    def __init__(
-        self,
+    def __new__(
+        cls,
         src_mesh: UMesh,
         tgt_mesh: UMesh,
         k: int = ...,
         weighting: DistanceWeighting = ...,
         def_val: float = ...,
-    ) -> None: ...
+    ) -> MovingLeastSquares: ...
     def save(self, path: str, compressed: bool = ...) -> None: ...
     def __call__(
         self,
@@ -49,7 +64,7 @@ class MovingLeastSquares:
         self,
         expr: Field,
         extensive: bool = False,
-    ) -> dict[str, object]: ...
+    ) -> dict[str, _Array]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
@@ -60,15 +75,16 @@ class MovingLeastSquares:
         extensive: bool = ...,
     ) -> None: ...
 
+@final
 class InverseDistance:
-    def __init__(
-        self,
+    def __new__(
+        cls,
         src_mesh: UMesh,
         tgt_mesh: UMesh,
         k: int = ...,
         exponent: float = ...,
         def_val: float = ...,
-    ) -> None: ...
+    ) -> InverseDistance: ...
     def save(self, path: str, compressed: bool = ...) -> None: ...
     def __call__(
         self,
@@ -79,7 +95,7 @@ class InverseDistance:
         self,
         expr: Field,
         extensive: bool = False,
-    ) -> dict[str, object]: ...
+    ) -> dict[str, _Array]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
@@ -90,13 +106,14 @@ class InverseDistance:
         extensive: bool = ...,
     ) -> None: ...
 
+@final
 class ConservativeP0:
-    def __init__(
-        self,
+    def __new__(
+        cls,
         src_mesh: UMesh,
         tgt_mesh: UMesh,
         def_val: float = ...,
-    ) -> None: ...
+    ) -> ConservativeP0: ...
     def save(self, path: str, compressed: bool = ...) -> None: ...
     def __call__(
         self,
@@ -107,7 +124,7 @@ class ConservativeP0:
         self,
         expr: Field,
         extensive: bool = False,
-    ) -> dict[str, object]: ...
+    ) -> dict[str, _Array]: ...
     def apply_update(
         self,
         src_mesh: UMesh,
@@ -118,7 +135,7 @@ class ConservativeP0:
         extensive: bool = ...,
     ) -> None: ...
 
-Transfer: TypeAlias = (
+_Transfer: TypeAlias = (
     ConstantPiecewise | MovingLeastSquares | InverseDistance | ConservativeP0
 )
 
@@ -126,4 +143,4 @@ def load(
     path: str,
     src_mesh: UMesh,
     tgt_mesh: UMesh | None = ...,
-) -> Transfer: ...
+) -> _Transfer: ...

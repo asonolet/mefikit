@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Sequence
+from typing import cast
 
 import numpy as np
 import numpy.typing as npt
@@ -154,7 +155,9 @@ def install_conversions():
             if et not in blocks or mf_types_dim[et] != lev:
                 continue
 
-            conn, offset = _mf_reg_to_mc_connectivity(et, blocks[et])
+            conn, offset = _mf_reg_to_mc_connectivity(
+                et, cast(npt.NDArray[np.uintp], blocks[et])
+            )
             mc_conn = np.hstack((mc_conn, conn), dtype=int)
             # offsets the offset
             if len(mc_offset) > 0:
@@ -302,7 +305,7 @@ def install_conversions():
 
         conns = []
         et_typess = []
-        fields_dict = {f: [] for f in fields}
+        fields_dict: dict[str, list[npt.NDArray[np.float64]]] = {f: [] for f in fields}
         for et in [*type_order, "PHED"]:
             if et not in blocks or (dim != "all" and mf_types_dim[et] != dim):
                 continue
@@ -314,7 +317,9 @@ def install_conversions():
                 conn, offsets = blocks[et]
                 conn, et_types = _mf_poly_to_pv_connectivity(et, conn, offsets)
             else:
-                conn, et_types = _mf_reg_to_pv_connectivity(et, blocks[et])
+                conn, et_types = _mf_reg_to_pv_connectivity(
+                    et, cast(np.ndarray, blocks[et])
+                )
             conns.append(conn)
             et_typess.append(et_types)
             for f, v in fields.items():
@@ -335,8 +340,8 @@ def install_conversions():
             pv_coords = coords
 
         res = pv.UnstructuredGrid(pv_conn, pv_et_types, pv_coords)
-        for f, v in pv_fields_dict.items():
-            res.cell_data[f] = v
+        for field_name, field_values in pv_fields_dict.items():
+            res.cell_data[field_name] = field_values
         return res
 
     UMesh.to_meshio = to_meshio

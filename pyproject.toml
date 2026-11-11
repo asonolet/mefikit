@@ -35,6 +35,19 @@ module-name = "mefikit.mefipy"
 include = ["LICENSE-*"]
 features = ["pyo3/extension-module"]
 
+[tool.mypy]
+# These optional I/O dependencies may not be installed or ship type information.
+[[tool.mypy.overrides]]
+module = [
+    "medcoupling",
+    "medcoupling.*",
+    "meshio",
+    "meshio.*",
+    "pyvista",
+    "pyvista.*",
+]
+ignore_missing_imports = true
+
 [tool.ruff.lint]
 preview = true
 

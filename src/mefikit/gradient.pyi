@@ -1,25 +1,28 @@
-from typing import TypeAlias
+from typing import TypeAlias, final
 
 import numpy as np
 import numpy.typing as npt
 
 from . import DistanceWeighting, Field, UMesh
 
-Array2F: TypeAlias = npt.NDArray[np.float64]
+_Array: TypeAlias = npt.NDArray[np.float64]
 
+__all__ = ["Gradient"]
+
+@final
 class Gradient:
-    def __init__(
-        self,
+    def __new__(
+        cls,
         src_mesh: UMesh,
         tgt_mesh: UMesh | None = ...,
         k: int = ...,
         weighting: DistanceWeighting = ...,
         def_val: float = ...,
-    ) -> None: ...
+    ) -> Gradient: ...
     @staticmethod
     def at_points(
         src_mesh: UMesh,
-        points: Array2F,
+        points: _Array,
         k: int = ...,
         weighting: DistanceWeighting = ...,
         def_val: float = ...,
@@ -31,11 +34,11 @@ class Gradient:
     def eval(
         self,
         expr: Field,
-    ) -> dict[str, object]: ...
+    ) -> dict[str, _Array]: ...
     def eval_points(
         self,
         expr: Field,
-    ) -> Array2F: ...
+    ) -> _Array: ...
     def apply_update(
         self,
         src_mesh: UMesh,

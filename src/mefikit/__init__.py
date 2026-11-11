@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 from enum import IntFlag
 
 from . import data as data
@@ -45,6 +46,14 @@ InverseDistance = transfer.InverseDistance
 ConservativeP0 = transfer.ConservativeP0
 
 Gradient = gradient.Gradient
+
+# The PyO3 submodules are attributes of the extension module. Register them
+# under the package name as well so `import mefikit.transfer` (and the matching
+# `.pyi` stubs) works like a regular package submodule.
+sys.modules[f"{__name__}.gradient"] = gradient
+sys.modules[f"{__name__}.sel"] = sel
+sys.modules[f"{__name__}.transfer"] = transfer
+del sys
 
 
 class ConformanceChecks(IntFlag):
