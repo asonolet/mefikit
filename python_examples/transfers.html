@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-d5930ea5.js";
+            window.path_to_searchindex_js = "../searchindex-f1886e4a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-67ea746a.js"></script>
@@ -457,6 +457,36 @@ m_tgt.fields["temp"] = trsf(rho)   # uncovered cells -&gt; NaN, covered cells -&
 differ because of the chosen default value.</p>
 </blockquote>
 <p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="transfers_files/transfers_40_0.png" alt="png"><span class="img-wrapper"><img src="transfers_files/transfers_40_0.png" alt="png"></span></label></p>
+<h2 id="saving-and-reusing-a-prepared-operator"><a class="header" href="#saving-and-reusing-a-prepared-operator">Saving and reusing a prepared operator</a></h2>
+<p>Building a transfer operator is the expensive part; applying it is a sparse
+matrix-vector product. An operator can be written to disk and loaded back in a
+later session:</p>
+<pre><code class="language-python">trsf = mf.transfer.ConservativeP0(m_src, m_tgt, def_val=np.nan)
+trsf.save("transfer.npz")
+
+# src_mesh is required; tgt_mesh is optional but enables stronger validation.
+loaded = mf.transfer.load("transfer.npz", src_mesh=m_src, tgt_mesh=m_tgt)
+m_tgt.fields["temp"] = loaded("temp")
+</code></pre>
+<p>The file is a standard NumPy <code>.npz</code> archive, so it can also be opened without
+mefikit:</p>
+<pre><code class="language-python">import scipy.sparse as sp
+
+matrix = sp.load_npz("transfer.npz")  # CSR matrix
+</code></pre>
+<p>The CSR matrix has one row per target cell and one column per source cell.
+Blocks are stored by element type; the file metadata records each block’s
+element type, size and explicit row/column offset. <code>mf.transfer.load</code> uses those
+offsets to remap columns to the current in-memory element-type order, so files
+remain valid if new element types are inserted into the enum later. The extra
+<code>mefikit_meta</code> array contains the JSON metadata; SciPy ignores it.</p>
+<p>On load, mefikit checks the CSR structure (row pointers, index bounds, array
+lengths), the method parameters, and, when meshes are supplied, the per-element-
+type block counts of both meshes. A mismatch raises <code>ValueError</code> with the
+expected and actual blocks. Validation is structural: it does not compare cell
+coordinates, so a saved operator is only meaningful for the geometry it was
+built from. Pass <code>compressed=False</code> to <code>save</code> if you prefer uncompressed
+(faster) I/O.</p>
 
                     </main>
 

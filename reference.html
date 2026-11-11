@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d5930ea5.js";
+            window.path_to_searchindex_js = "searchindex-f1886e4a.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-67ea746a.js"></script>
@@ -456,6 +456,9 @@ and <code>Gaussian()</code>.</p>
 <li><code>tr(expr, extensive=False)</code> → the transferred field, as a <code>Field</code> on <code>tgt</code>;
 store it with <code>tgt.fields[name] = tr(expr)</code></li>
 <li><code>tr.eval(expr, extensive=False)</code> → <code>{etype: array}</code></li>
+<li><code>tr.save(path)</code> writes the prepared sparse matrix to a SciPy-compatible
+<code>.npz</code> file; <code>mf.transfer.load(path, src_mesh, tgt_mesh=None)</code> restores it
+and validates its element-block counts against the meshes.</li>
 </ul>
 <p><code>extensive=True</code> treats the field as extensive (mass, energy): <code>ConservativeP0</code>
 then keeps the raw measure-weighted sum, whereas intensive fields are
