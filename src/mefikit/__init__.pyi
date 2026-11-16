@@ -23,10 +23,16 @@ from .transfer import (
     ConstantPiecewise as ConstantPiecewise,
 )
 from .transfer import (
+    DistributedConservativeP0 as DistributedConservativeP0,
+)
+from .transfer import (
     InverseDistance as InverseDistance,
 )
 from .transfer import (
     MovingLeastSquares as MovingLeastSquares,
+)
+from .transfer import (
+    distributed as distributed,
 )
 
 __all__ = (
@@ -36,6 +42,7 @@ __all__ = (
     "ConservativeP0",
     "ConstantPiecewise",
     "DistanceWeighting",
+    "DistributedConservativeP0",
     "Field",
     "FieldRef",
     "FieldsMapping",
@@ -65,6 +72,7 @@ __all__ = (
     "concat",
     "conformize",
     "data",
+    "distributed",
     "gradient",
     "is_conform",
     "sel",

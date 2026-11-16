@@ -524,3 +524,39 @@ expected and actual blocks. Validation is structural: it does not compare cell
 coordinates, so a saved operator is only meaningful for the geometry it was
 built from. Pass `compressed=False` to `save` if you prefer uncompressed
 (faster) I/O.
+
+## Parallel transfer with MPI
+
+`mf.transfer.DistributedConservativeP0` performs the same conservative P0
+transfer when the source and target meshes are split across MPI ranks. It
+follows the decomposition of MEDCoupling's `InterpKernelDEC`: each rank owns a
+local source piece and/or a local target piece, the precompute exchanges only
+the source cells whose bounding boxes intersect the target ranks, and applying
+a field fetches the needed source values with one `AlltoallV`.
+
+MPI lives entirely on the Python side (`mpi4py`), so the Rust library and its
+wheels do not depend on an MPI implementation:
+
+```bash
+pip install "mefikit[mpi]"
+mpirun -n 4 python my_transfer.py
+```
+
+```python
+from mpi4py import MPI
+import mefikit as mf
+
+# src, tgt: this rank's local source/target pieces (None if the rank owns
+# no cell on that side). The union of the local pieces is the global mesh.
+op = mf.transfer.DistributedConservativeP0(src, tgt, comm=MPI.COMM_WORLD)
+values = op.eval("T")  # dict of local target arrays
+op.apply_update(src, "T", tgt, "T_new")  # store on the local target mesh
+```
+
+The operator is prepared once and can be reused for any number of fields, for
+example in a time loop. Intensive fields are normalized by the target measure
+and `extensive=True` keeps the raw measure-weighted sum, exactly like the
+sequential `ConservativeP0`. The sequential and distributed variants can be
+mixed: the rank-local geometry work is the same Rust operator.
+
+For a one-shot transfer, use `mf.transfer.distributed(src, "T", tgt, comm=...)`.

@@ -374,6 +374,28 @@ impl PyConservativeP0 {
     ) -> PyResult<Bound<'py, PyDict>> {
         transfer_eval(py, &self.src_mesh, &self.op, self.def_val, extensive, expr)
     }
+
+    /// Applies the operator to a flat source array in flattened source-block order.
+    ///
+    /// Internal entry point used by :class:`DistributedConservativeP0`; prefer
+    /// :meth:`eval` or :meth:`apply_update` for regular use.
+    #[pyo3(name = "_apply_values", signature = (values, extensive=false, def_val=0.0))]
+    fn apply_values<'py>(
+        &self,
+        py: Python<'py>,
+        values: np::PyReadonlyArrayDyn<'_, f64>,
+        extensive: bool,
+        def_val: f64,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let result = self
+            .op
+            .apply_flat(&values.as_array(), field_nature(extensive), def_val);
+        let dict = PyDict::new(py);
+        for (et, arr) in result {
+            dict.set_item(etype_to_str(et), np::PyArray::from_array(py, &arr))?;
+        }
+        Ok(dict)
+    }
 }
 
 // ---------------------------------------------------------------------------

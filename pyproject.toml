@@ -26,7 +26,8 @@ classifiers = [
 
 [project.optional-dependencies]
 io = ["meshio[all]>=5.3.5", "medcoupling", "pyvista[all]>=0.46.4"]
-all = ["mefikit[io]"]
+mpi = ["mpi4py>=3.1"]
+all = ["mefikit[io,mpi]"]
 
 [tool.maturin]
 python-source = "src"
@@ -59,6 +60,7 @@ default-groups = "all"
 dev = [
   "jupyterlab>=4.5.6",
   "medcoupling>=9.15.0",
+  "mpi4py>=3.1",
   "mypy>=1.19.1",
   "pytest>=8.4.2",
   "pyvista>=0.46.5",
