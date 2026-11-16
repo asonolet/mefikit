@@ -437,23 +437,27 @@ def install_conversions():
                 if et in poly_types:
                     offsets, within, entries = _gather(conn, starts[sel], counts)
                     if et == "PGON":
-                        data = entries.astype(np.uintp)
-                        poly_offsets = offsets[1:].astype(np.uintp)
+                        data = entries
+                        poly_offsets = offsets[1:]
                     else:
                         base = offsets[:-1] + np.arange(n_cells)
                         out = np.full(offsets[-1] + n_cells, -1, dtype=np.int64)
                         out[base.repeat(counts) + within] = entries
-                        data = out.astype(np.uintp)
-                        poly_offsets = (offsets[1:] + np.arange(1, n_cells + 1)).astype(
-                            np.uintp
-                        )
-                    res.add_poly_block(et, data, poly_offsets)
+                        data = out
+                        poly_offsets = offsets[1:] + np.arange(1, n_cells + 1)
+                    res.add_poly_block(
+                        et,
+                        np.ascontiguousarray(data, dtype=np.uintp),
+                        np.ascontiguousarray(poly_offsets, dtype=np.uintp),
+                    )
                 else:
                     nn = mf_types_num_node[et]
                     block = conn[starts[sel][:, None] + np.arange(nn)]
                     if et in _mf_permutations:
-                        block = block[:, _mf_permutations[et]].copy()
-                    res.add_regular_block(et, block.astype(np.uintp))
+                        block = block[:, _mf_permutations[et]]
+                    res.add_regular_block(
+                        et, np.ascontiguousarray(block, dtype=np.uintp)
+                    )
 
         if isinstance(mesh, mc.MEDFileUMesh):
             levels = [lev for lev in mesh.getNonEmptyLevelsExt() if lev != 1]
