@@ -267,6 +267,60 @@ def test_distributed_disjoint_source_and_target_ranks() -> None:
     comm.Barrier()
 
 
+def test_distributed_one_shot() -> None:
+    """The one-shot ``mf.transfer.distributed`` helper matches the class API."""
+    xs = np.linspace(0.0, 1.0, 7)
+    src_full = mf.build_cmesh(xs, xs)
+    tgt_full = mf.build_cmesh(xs + 0.01, xs[1:] - 0.02)
+    values = (np.arange(1, src_full.num_elements() + 1, dtype=float)).reshape(-1, 1)
+    src_full.set_field("T", {"QUAD4": values})
+
+    s_lo, s_hi = contiguous_range(src_full.num_elements(), rank, size)
+    t_lo, t_hi = contiguous_range(tgt_full.num_elements(), rank, size)
+    src = partition(src_full, "QUAD4", s_lo, s_hi)
+    tgt = partition(tgt_full, "QUAD4", t_lo, t_hi)
+    if src is not None:
+        src.set_field("T", {"QUAD4": np.ascontiguousarray(values[s_lo:s_hi])})
+
+    got = local_slice(
+        mf.transfer.distributed(src, "T", tgt, comm=comm, def_val=-2.0), "QUAD4"
+    )
+    op = mf.transfer.DistributedConservativeP0(src, tgt, comm=comm, def_val=-2.0)
+    expected = local_slice(op.eval("T"), "QUAD4")
+
+    np.testing.assert_allclose(got, expected, rtol=1e-12, atol=1e-12)
+    comm.Barrier()
+
+
+def test_distributed_extensive_mass_conservation() -> None:
+    """The distributed extensive transfer conserves the global integral."""
+    src_full = mf.build_cmesh(
+        np.linspace(0.0, 1.0, 5),
+        np.linspace(0.0, 1.0, 5),
+    )
+    tgt_full = mf.build_cmesh(
+        np.linspace(0.0, 1.0, 7),
+        np.linspace(0.0, 1.0, 4),
+    )
+    src_full.set_field(
+        "T", {"QUAD4": np.ones((src_full.num_elements(), 1), dtype=float)}
+    )
+
+    s_lo, s_hi = contiguous_range(src_full.num_elements(), rank, size)
+    t_lo, t_hi = contiguous_range(tgt_full.num_elements(), rank, size)
+    src = partition(src_full, "QUAD4", s_lo, s_hi)
+    tgt = partition(tgt_full, "QUAD4", t_lo, t_hi)
+    if src is not None:
+        src.set_field("T", {"QUAD4": np.ones((s_hi - s_lo, 1), dtype=float)})
+
+    op = mf.transfer.DistributedConservativeP0(src, tgt)
+    local = local_slice(op.eval("T", extensive=True), "QUAD4")
+    total = comm.allreduce(float(local.sum()), op=mpi.SUM)
+
+    np.testing.assert_allclose(total, 1.0, rtol=1e-12, atol=1e-12)
+    comm.Barrier()
+
+
 def surface_grid_3d(xs, ys, z) -> mf.UMesh:
     xs = np.asarray(xs, dtype=float)
     ys = np.asarray(ys, dtype=float)
