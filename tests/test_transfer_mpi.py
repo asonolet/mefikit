@@ -267,6 +267,103 @@ def test_distributed_disjoint_source_and_target_ranks() -> None:
     comm.Barrier()
 
 
+def test_distributed_tetra_matches_sequential() -> None:
+    """Shifted tetrahedralized hexahedra match the sequential P0 transfer."""
+    src_full = mf.build_cmesh(
+        np.linspace(0.0, 1.0, 6),
+        np.linspace(0.0, 1.0, 6),
+        np.linspace(0.0, 1.0, 6),
+    ).simplexize()
+    tgt_full = mf.build_cmesh(
+        np.linspace(0.03, 0.97, 5),
+        np.linspace(0.03, 0.97, 5),
+        np.linspace(0.03, 0.97, 5),
+    ).simplexize()
+    assert src_full.block_types() == ["TET4"]
+    assert tgt_full.block_types() == ["TET4"]
+
+    values = (np.arange(1, src_full.num_elements() + 1, dtype=float)).reshape(-1, 1)
+    src_full.set_field("T", {"TET4": values})
+
+    s_lo, s_hi = contiguous_range(src_full.num_elements(), rank, size)
+    t_lo, t_hi = contiguous_range(tgt_full.num_elements(), rank, size)
+    src = partition(src_full, "TET4", s_lo, s_hi)
+    tgt = partition(tgt_full, "TET4", t_lo, t_hi)
+    if src is not None:
+        src.set_field("T", {"TET4": np.ascontiguousarray(values[s_lo:s_hi])})
+
+    op = mf.transfer.DistributedConservativeP0(src, tgt)
+    got = local_slice(op.eval("T"), "TET4")
+
+    reference = None
+    if rank == 0:
+        reference = np.asarray(
+            mf.transfer.ConservativeP0(src_full, tgt_full).eval("T")["TET4"]
+        ).reshape(tgt_full.num_elements(), -1)
+    expected_local = reference_from_rank0(reference, t_lo, t_hi, tag=107)
+
+    np.testing.assert_allclose(got, expected_local, rtol=1e-12, atol=1e-12)
+    comm.Barrier()
+
+
+@pytest.mark.skipif(
+    size < 2 or size % 2,
+    reason="needs n = p source/target ranks with size = n + p",
+)
+def test_distributed_tetra_disjoint_ranks() -> None:
+    """TET4 transfer with n = p source/target ranks, size = n + p."""
+    n_src = size // 2
+    n_tgt = size // 2
+    is_src = rank < n_src
+    is_tgt = not is_src
+    target_rank = rank - n_src
+
+    src_full = mf.build_cmesh(
+        np.linspace(0.0, 1.0, 6),
+        np.linspace(0.0, 1.0, 6),
+        np.linspace(0.0, 1.0, 6),
+    ).simplexize()
+    tgt_full = mf.build_cmesh(
+        np.linspace(0.03, 0.97, 5),
+        np.linspace(0.03, 0.97, 5),
+        np.linspace(0.03, 0.97, 5),
+    ).simplexize()
+    values = (np.arange(1, src_full.num_elements() + 1, dtype=float)).reshape(-1, 1)
+    src_full.set_field("T", {"TET4": values})
+
+    src = None
+    if is_src:
+        s_lo, s_hi = contiguous_range(src_full.num_elements(), rank, n_src)
+        src = partition(src_full, "TET4", s_lo, s_hi)
+        assert src is not None
+        src.set_field("T", {"TET4": np.ascontiguousarray(values[s_lo:s_hi])})
+
+    tgt = None
+    t_lo = t_hi = 0
+    if is_tgt:
+        t_lo, t_hi = contiguous_range(tgt_full.num_elements(), target_rank, n_tgt)
+        tgt = partition(tgt_full, "TET4", t_lo, t_hi)
+
+    op = mf.transfer.DistributedConservativeP0(src, tgt)
+    got = local_slice(op.eval("T"), "TET4")
+
+    expected_local = None
+    if rank == 0:
+        reference = np.asarray(
+            mf.transfer.ConservativeP0(src_full, tgt_full).eval("T")["TET4"]
+        ).reshape(tgt_full.num_elements(), -1)
+        for t in range(n_tgt):
+            lo, hi = contiguous_range(tgt_full.num_elements(), t, n_tgt)
+            comm.send(reference[lo:hi], dest=n_src + t, tag=108)
+    elif is_tgt:
+        expected_local = comm.recv(source=0, tag=108)
+
+    if is_tgt:
+        assert expected_local is not None
+        np.testing.assert_allclose(got, expected_local, rtol=1e-12, atol=1e-12)
+    comm.Barrier()
+
+
 def test_distributed_one_shot() -> None:
     """The one-shot ``mf.transfer.distributed`` helper matches the class API."""
     xs = np.linspace(0.0, 1.0, 7)
