@@ -25,8 +25,6 @@
 //! The mesh plumbing that turns raw `(indices, weights)` point data into [`RowSparse`] blocks
 //! ([`point_interpolation`], [`build_row_ptr`]) lives here next to the CSR data they assemble.
 
-use std::collections::BTreeMap;
-
 use ndarray as nd;
 use ndarray::{Axis, concatenate};
 
@@ -277,6 +275,34 @@ impl TransferOperator {
     }
 }
 
+impl TransferOperator {
+    /// Applies the operator to a flat source array whose leading dimension is the concatenation
+    /// of the source element blocks in `BTreeMap` element-type order.
+    ///
+    /// This is the same operation as [`Transfer::apply`] without the per-element-type field
+    /// wrapper: the caller provides the source values already flattened in the order returned by
+    /// [`TransferOperator::source_blocks`]. It is used by the distributed Python transfer, where
+    /// each rank only owns a subset of the source cells.
+    pub fn apply_flat(
+        &self,
+        src: &nd::ArrayViewD<f64>,
+        field_nature: FieldNature,
+        default: f64,
+    ) -> Vec<(ElementType, nd::ArrayD<f64>)> {
+        assert_eq!(
+            src.shape()[0],
+            self.n_src(),
+            "The flat source array should have one entry per source cell, got {} for {}",
+            src.shape()[0],
+            self.n_src()
+        );
+        self.data
+            .iter()
+            .map(|(et, rows)| (*et, self.apply_rows(rows, src, field_nature, default)))
+            .collect()
+    }
+}
+
 impl Transfer for TransferOperator {
     fn apply(&self, field: &FieldViewD, field_nature: FieldNature, default: f64) -> FieldOwnedD {
         assert_eq!(
@@ -292,14 +318,11 @@ impl Transfer for TransferOperator {
         let src_views: Vec<nd::ArrayViewD<f64>> = field.0.values().map(|a| a.view()).collect();
         let src = concatenate(Axis(0), src_views.as_slice()).unwrap();
 
-        let mut res = BTreeMap::new();
-        for (et, rows) in &self.data {
-            res.insert(
-                *et,
-                self.apply_rows(rows, &src.view(), field_nature, default),
-            );
-        }
-        FieldOwnedD::new(res)
+        FieldOwnedD::new(
+            self.apply_flat(&src.view(), field_nature, default)
+                .into_iter()
+                .collect(),
+        )
     }
 
     fn tgt_dim(&self) -> Dimension {

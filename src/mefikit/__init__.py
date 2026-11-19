@@ -39,11 +39,16 @@ from .mefipy import (
     stitch,
     transfer,
 )
+from .mpi import DistributedConservativeP0 as DistributedConservativeP0
+from .mpi import distributed as distributed
 
 ConstantPiecewise = transfer.ConstantPiecewise
 MovingLeastSquares = transfer.MovingLeastSquares
 InverseDistance = transfer.InverseDistance
 ConservativeP0 = transfer.ConservativeP0
+
+transfer.DistributedConservativeP0 = DistributedConservativeP0
+transfer.distributed = distributed
 
 Gradient = gradient.Gradient
 
@@ -87,6 +92,7 @@ __all__ = (
     "ConservativeP0",
     "ConstantPiecewise",
     "DistanceWeighting",
+    "DistributedConservativeP0",
     "Field",
     "FieldRef",
     "FieldsMapping",
@@ -116,6 +122,7 @@ __all__ = (
     "concat",
     "conformize",
     "data",
+    "distributed",
     "gradient",
     "is_conform",
     "sel",

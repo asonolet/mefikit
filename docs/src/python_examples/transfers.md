@@ -524,3 +524,112 @@ expected and actual blocks. Validation is structural: it does not compare cell
 coordinates, so a saved operator is only meaningful for the geometry it was
 built from. Pass `compressed=False` to `save` if you prefer uncompressed
 (faster) I/O.
+
+## Parallel transfer with MPI
+
+When the source and target meshes are split across MPI ranks,
+`mf.transfer.DistributedConservativeP0` performs the same conservative P0
+transfer on each rank's local pieces and exchanges only the source values that
+are actually needed. MPI is used from Python through `mpi4py`; the Rust
+extension itself stays MPI-free. Install the optional dependency with:
+
+```bash
+pip install "mefikit[mpi]"
+```
+
+The example below builds one local piece per rank. Running it normally executes
+the single-rank path; running it with `mpirun -n N` splits the cells over the
+ranks (the piece construction is only here to make the example self-contained).
+
+
+
+```python
+import numpy as np
+from mpi4py import MPI
+
+import mefikit as mf
+
+comm = MPI.COMM_WORLD
+rank, size = comm.Get_rank(), comm.Get_size()
+print(f"rank {rank}/{size}")
+
+x = np.linspace(0.0, 1.0, 17)
+src_full = mf.build_cmesh(x, x)
+tgt_full = mf.build_cmesh(np.linspace(0.0, 1.0, 13), np.linspace(0.0, 1.0, 13))
+values = (np.arange(src_full.num_elements(), dtype=float) + 1.0).reshape(-1, 1)
+src_full.set_field("T", {"QUAD4": values})
+
+
+def local_piece(mesh, et, start, stop):
+    if stop <= start:
+        return None
+    ids = np.arange(start, stop, dtype=np.uintp)
+    return mesh.select({et: ids}).to_mesh(False).remove_unused_coords()
+
+
+s_lo = rank * src_full.num_elements() // size
+s_hi = (rank + 1) * src_full.num_elements() // size
+t_lo = rank * tgt_full.num_elements() // size
+t_hi = (rank + 1) * tgt_full.num_elements() // size
+
+src = local_piece(src_full, "QUAD4", s_lo, s_hi)
+tgt = local_piece(tgt_full, "QUAD4", t_lo, t_hi)
+if src is not None:
+    src.set_field("T", {"QUAD4": np.ascontiguousarray(values[s_lo:s_hi])})
+
+print(f"local source cells: {0 if src is None else src.num_elements()}")
+print(f"local target cells: {0 if tgt is None else tgt.num_elements()}")
+```
+
+    rank 0/1
+    local source cells: 256
+    local target cells: 144
+
+
+
+```python
+transfer = mf.transfer.DistributedConservativeP0(src, tgt, comm=comm)
+local = transfer.eval("T")
+local_values = (
+    np.asarray(local["QUAD4"]).reshape(-1, 1) if "QUAD4" in local else np.empty((0, 1))
+)
+print(f"local transferred shape: {local_values.shape}")
+
+# extensive=True keeps the integral: the target integral equals the source one.
+extensive = transfer.eval("T", extensive=True)
+local_integral = (
+    float(np.asarray(extensive["QUAD4"]).sum()) if "QUAD4" in extensive else 0.0
+)
+total = comm.allreduce(local_integral, op=MPI.SUM)
+if rank == 0:
+    print(f"distributed extensive integral: {total:.12f}")
+
+# Store the result on the local target mesh, as with the sequential operators.
+transfer.apply_update(src, "T", tgt, "T_mpi")
+if tgt is not None:
+    print(f"target field T_mpi: {tgt.fields['T_mpi'].numpy().shape}")
+
+# Gather the local pieces on rank 0 and compare with the sequential operator.
+gathered = comm.gather(local_values, root=0)
+if rank == 0:
+    distributed = np.concatenate(gathered, axis=0)
+    sequential = np.asarray(
+        mf.transfer.ConservativeP0(src_full, tgt_full).eval("T")["QUAD4"]
+    ).reshape(-1, 1)
+    print(
+        "max |distributed - sequential| = "
+        f"{np.max(np.abs(distributed - sequential)):.3e}"
+    )
+```
+
+    local transferred shape: (144, 1)
+    distributed extensive integral: 128.500000000000
+    target field T_mpi: (144, 1)
+    max |distributed - sequential| = 0.000e+00
+
+
+The operator is prepared once and can be reused for any number of fields, for
+example in a time loop. Intensive fields are normalized by the target cell
+measure, while `extensive=True` keeps the raw measure-weighted sum. For a
+one-shot transfer, use `mf.transfer.distributed(src, expr, tgt, comm=...)`; for
+repeated fields, keep the `DistributedConservativeP0` object.

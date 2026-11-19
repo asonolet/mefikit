@@ -282,6 +282,14 @@ for the exact formula and assumptions; the timing and correctness comparison
 with medcoupling is at the end of [mefikit vs.
 medcoupling](./python_examples/compare_medcoupling.md).
 
+When the source and target meshes are split across MPI ranks,
+`mf.transfer.DistributedConservativeP0(src, tgt, comm=...)` prepares the same
+conservative P0 operator on each rank's local pieces and performs the
+communication through `mpi4py`. Only the Python side requires MPI (install the
+optional `mpi` extra); the Rust library and its wheels stay MPI-independent.
+The operator is reused across fields with the same `eval` / `apply_update`
+calls, or use the one-shot `mf.transfer.distributed(src, expr, tgt, comm=...)`.
+
 ## Field gradients
 
 `mf.Gradient` differentiates a **scalar** field with a moving least-squares
