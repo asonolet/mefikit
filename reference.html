@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f1886e4a.js";
+            window.path_to_searchindex_js = "searchindex-5a18199f.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-67ea746a.js"></script>
@@ -470,6 +470,13 @@ dimension. See the <a href="./python_examples/transfers.html">Field transfers</a
 for the exact formula and assumptions; the timing and correctness comparison
 with medcoupling is at the end of <a href="./python_examples/compare_medcoupling.html">mefikit vs.
 medcoupling</a>.</p>
+<p>When the source and target meshes are split across MPI ranks,
+<code>mf.transfer.DistributedConservativeP0(src, tgt, comm=...)</code> prepares the same
+conservative P0 operator on each rank’s local pieces and performs the
+communication through <code>mpi4py</code>. Only the Python side requires MPI (install the
+optional <code>mpi</code> extra); the Rust library and its wheels stay MPI-independent.
+The operator is reused across fields with the same <code>eval</code> / <code>apply_update</code>
+calls, or use the one-shot <code>mf.transfer.distributed(src, expr, tgt, comm=...)</code>.</p>
 <h2 id="field-gradients"><a class="header" href="#field-gradients">Field gradients</a></h2>
 <p><code>mf.Gradient</code> differentiates a <strong>scalar</strong> field with a moving least-squares
 (MLS) fit over the <code>k</code> nearest source cell centres. Like the transfers it has a
