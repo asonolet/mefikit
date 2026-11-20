@@ -1,0 +1,23 @@
+[package]
+name = "mefikit-ffi"
+version = "0.6.2"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/asonolet/mefikit"
+description = "Minimal C++ bindings for mefikit, generated with cxx."
+categories = ["science", "simulation"]
+keywords = ["mesh", "cfd", "c++", "ffi", "hpc"]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+bench = false
+
+[dependencies]
+cxx = { workspace = true }
+ndarray = { workspace = true }
+
+mefikit = { path = "../mefikit", features = ["rayon"] }
+
+[build-dependencies]
+cxx-build = { workspace = true }

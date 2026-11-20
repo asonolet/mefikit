@@ -3,10 +3,12 @@ resolver = "3"
 members = [
   "crates/mefikit",
   "crates/mefikit-py",
-  # "mefikit-ffi",
+  "crates/mefikit-ffi",
 ]
 
 [workspace.dependencies]
+cxx = "1.0.194"
+cxx-build = "1.0.194"
 ndarray = { version = "0.17", features = ["serde"] }
 arrayvec = "0.7.8"
 derive-where = "1.7.0"
