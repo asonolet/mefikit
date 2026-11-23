@@ -72,6 +72,69 @@ def test_accepts_two_stacked_hexes():
     assert mf.is_conform(mesh, _TOL).is_conform
 
 
+def test_accepts_quadratic_surface_cells():
+    """2D quadratic cells are diagnosed through their boundary ring, without panicking."""
+    quad9 = _regular(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.5, 0.0, 0.0],
+            [1.0, 0.5, 0.0],
+            [0.5, 1.0, 0.0],
+            [0.0, 0.5, 0.0],
+            [0.5, 0.5, 0.0],
+        ],
+        "QUAD9",
+        [[0, 1, 2, 3, 4, 5, 6, 7, 8]],
+    )
+    assert mf.is_conform(quad9, _TOL).is_conform
+
+    tri7 = _regular(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.5, 0.0, 0.0],
+            [0.5, 0.5, 0.0],
+            [0.0, 0.5, 0.0],
+            [0.25, 0.25, 0.0],
+        ],
+        "TRI7",
+        [[0, 1, 2, 3, 4, 5, 6]],
+    )
+    assert mf.is_conform(tri7, _TOL).is_conform
+
+
+def test_quadratic_fold_reports_raw_node_ids():
+    """A repeated mid-side node is reported with the original connectivity ids."""
+    mesh = _regular(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.5, 0.5, 0.0],
+            [0.0, 0.5, 0.0],
+        ],
+        "TRI6",
+        [[0, 1, 2, 3, 4, 5]],
+    )
+    merged = [
+        issue["nodes"]
+        for issue in mf.is_conform(mesh, _TOL).issues
+        if issue["kind"] == "merged_nodes"
+    ]
+    assert [0, 3] in merged
+
+
+def test_rejects_unknown_check_bits():
+    mesh = mf.build_cmesh([0.0, 1.0], [0.0, 1.0], [0.0, 1.0])
+    with pytest.raises(ValueError, match="unknown conformance check"):
+        mf.is_conform(mesh, _TOL, checks=16)
+
+
 def test_simplexize_shared_hex_face_is_conformal():
     """Simplexizing two hexes sharing a face produces a conforming tetrahedral mesh."""
     mesh = mf.build_cmesh([0.0, 1.0, 2.0], [0.0, 1.0], [0.0, 1.0])

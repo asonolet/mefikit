@@ -373,6 +373,11 @@ impl IssueSink<'_> {
 /// neighbour cells that carry their own copy of a *complete* interface are conformal; only a
 /// *partially* shared interface, where some nodes coincide and others differ, is reported.
 ///
+/// Quadratic support is best effort. Two-dimensional quadratic cells are checked through their
+/// boundary ring (their centre node is ignored), while three-dimensional quadratic cells are
+/// reported as [`ConformanceIssue::UnsupportedCells`]. Only the top-dimensional cells are
+/// diagnosed; 1D and 0D meshes are reported conformal.
+///
 /// `max_issues` caps the length of the report so that a large mesh cannot produce an unbounded
 /// one; `None` keeps everything. [`ConformanceReport::n_issues`] always holds the true total.
 ///
@@ -694,6 +699,8 @@ struct SurfaceCell {
     id: ElementId,
     /// Raw connectivity, before node identification.
     raw: Vec<usize>,
+    /// Boundary ring expressed with raw connectivity ids.
+    ring_raw: Vec<usize>,
     /// Identified boundary ring.
     ring: Vec<usize>,
     face: FaceData,
@@ -707,10 +714,8 @@ impl SurfaceCell {
         et: ElementType,
     ) -> Self {
         let raw = cell.connectivity().to_vec();
-        let ring: Vec<usize> = surface_ring(et, &raw)
-            .into_iter()
-            .map(|n| canonical[n])
-            .collect();
+        let ring_raw = surface_ring(et, &raw);
+        let ring: Vec<usize> = ring_raw.iter().map(|&n| canonical[n]).collect();
         let pts: Vec<[f64; 3]> = ring.iter().map(|&n| point3(coords, n)).collect();
         let raw_normal = crate::geometry::newell_normal3(&pts);
         let norm = (raw_normal[0].powi(2) + raw_normal[1].powi(2) + raw_normal[2].powi(2)).sqrt();
@@ -741,6 +746,7 @@ impl SurfaceCell {
         Self {
             id: cell.id(),
             raw,
+            ring_raw,
             ring,
             face,
         }
@@ -918,12 +924,12 @@ fn is_conform_surface(
     if checks.contains(ConformanceChecks::TOPOLOGY) {
         for cell in &cells {
             let mut seen: FxHashMap<usize, usize> =
-                FxHashMap::with_capacity_and_hasher(cell.raw.len(), FxBuildHasher);
+                FxHashMap::with_capacity_and_hasher(cell.ring.len(), FxBuildHasher);
             let mut repeats: Vec<[usize; 2]> = Vec::new();
-            for (pos, &node) in cell.raw.iter().enumerate() {
-                if let Some(prev) = seen.insert(cell.ring[pos], pos) {
-                    let other = cell.raw[prev];
-                    let (a, b) = (other.min(node), other.max(node));
+            for (pos, (&node, &raw_node)) in cell.ring.iter().zip(&cell.ring_raw).enumerate() {
+                if let Some(prev) = seen.insert(node, pos) {
+                    let other = cell.ring_raw[prev];
+                    let (a, b) = (other.min(raw_node), other.max(raw_node));
                     if a != b {
                         repeats.push([a, b]);
                     }

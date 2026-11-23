@@ -228,10 +228,15 @@ pub fn conformize(mesh: &PyUMesh, tol: f64) -> PyResult<PyUMesh> {
 /// interface — the case `conformize` repairs), and input that cannot be diagnosed (too few
 /// coordinate dimensions, no cell, or a cell type without a polyhedral form).
 ///
+/// Quadratic cells are supported on a best-effort basis: 2D quadratic cells are checked through
+/// their boundary ring (the centre node is ignored), while 3D quadratic cells are reported as
+/// unsupported. Only the top-dimensional cells are diagnosed; 1D and 0D meshes are reported
+/// conformal.
+///
 /// `max_issues` caps the length of `report.issues` (10 by default, `None` keeps everything);
 /// `report.n_issues` always holds the true total. `checks` selects which checks to run; pass
 /// `ConformanceChecks.FAST` to skip the expensive cell-pair searches. Raises `ValueError` on an
-/// invalid tolerance.
+/// invalid tolerance or unknown check bits.
 #[pyfunction]
 #[pyo3(signature = (mesh, tol=1e-9, max_issues=10, checks=15))]
 pub fn is_conform(
@@ -240,6 +245,11 @@ pub fn is_conform(
     max_issues: Option<usize>,
     checks: u8,
 ) -> PyResult<PyConformanceReport> {
+    if checks & !mf::ConformanceChecks::FULL.bits() != 0 {
+        return Err(PyValueError::new_err(format!(
+            "unknown conformance check bits in {checks:#04x}"
+        )));
+    }
     let options = mf::ConformanceOptions {
         checks: mf::ConformanceChecks::from_bits_truncate(checks),
         max_issues,

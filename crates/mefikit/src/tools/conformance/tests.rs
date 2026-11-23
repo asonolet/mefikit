@@ -69,6 +69,84 @@ fn unit_cube_coords() -> Vec<[f64; 3]> {
     c
 }
 
+/// Quadratic 2D cells are best-effort: their boundary ring is checked, the centre node is
+/// ignored, and the diagnostic must not index past the ring.
+#[test]
+fn is_conform_accepts_quadratic_surface_cells() {
+    let quad9_coords = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.5, 0.0, 0.0],
+        [1.0, 0.5, 0.0],
+        [0.5, 1.0, 0.0],
+        [0.0, 0.5, 0.0],
+        [0.5, 0.5, 0.0],
+    ];
+    let mut quad9 = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (quad9_coords.len(), 3),
+            quad9_coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    quad9.add_element(ElementType::QUAD9, &(0..9).collect::<Vec<_>>(), None);
+    let report = is_conform(&quad9.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+
+    let tri7_coords = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.5, 0.0, 0.0],
+        [0.5, 0.5, 0.0],
+        [0.0, 0.5, 0.0],
+        [0.25, 0.25, 0.0],
+    ];
+    let mut tri7 = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (tri7_coords.len(), 3),
+            tri7_coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    tri7.add_element(ElementType::TRI7, &(0..7).collect::<Vec<_>>(), None);
+    let report = is_conform(&tri7.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
+
+/// A quadratic cell that reuses a corner id for a mid-side node reports the raw node pair.
+#[test]
+fn is_conform_reports_quadratic_fold_with_raw_node_ids() {
+    let coords = vec![
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.5, 0.5, 0.0],
+        [0.0, 0.5, 0.0],
+    ];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_element(ElementType::TRI6, &[0, 1, 2, 3, 4, 5], None);
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    let merged = report.issues.iter().find_map(|issue| match issue {
+        ConformanceIssue::MergedNodes { nodes, .. } => Some(*nodes),
+        _ => None,
+    });
+    assert_eq!(merged, Some([0, 3]), "{report:?}");
+}
+
 /// A single conformal `HEX8` block is conformal.
 #[test]
 fn is_conform_accepts_a_hex_block() {
