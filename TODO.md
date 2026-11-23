@@ -14,9 +14,6 @@ best-effort quadratic/concave policy; they are follow-ups.
 
 - `is_conform`: concave `PHED` volume intersections still use convex clipping;
   either decompose concave cells or document the limitation more explicitly.
-- `is_conform`: `MergedNodes` reports only intra-cell folds. Complete duplicated
-  interfaces are intentionally conformal; align the variant/function docs with
-  that decision and keep a cross-cell duplicate-interface test.
 - `is_conform`: 1D/0D overlaps are not checked; `NoVolumeCells` is also returned
   for empty 2D meshes. Consider renaming and a conformance-specific error type
   instead of `StitchError`.
