@@ -522,7 +522,9 @@ impl PyUMesh {
     /// Computes the boolean overlay of this mesh (as mesh1) with `mesh2`.
     ///
     /// The operation defaults to `OverlayOperation.IMPRINT` which refines the domain of
-    /// `self` with the edges of `mesh2`.
+    /// `self` with the edges of `mesh2`. A closed cutter loop strictly inside a cell is
+    /// ignored (a cell with a hole is not a valid element); edges must cross the cell
+    /// boundary to produce a cut.
     #[pyo3(signature = (mesh2, operation=None))]
     fn overlay(&self, mesh2: &PyUMesh, operation: Option<PyOverlayOperation>) -> PyResult<PyUMesh> {
         let operation: mf::OverlayOperation =
@@ -544,7 +546,9 @@ impl PyUMesh {
     /// The edges of `mesh2` refine the cells of `self`; the result keeps the same domain
     /// (the IMPRINT operation for meshes of different dimensions). `PLINE` cells are split
     /// into their consecutive `SEG2` edges. The 1D elements are assumed not to intersect
-    /// one another. Raises `ValueError` if `mesh2` contains other element types.
+    /// one another. A closed polyline strictly inside a cell is ignored (the result would
+    /// be a cell with a hole, which is not a valid element). Raises `ValueError` if
+    /// `mesh2` contains other element types.
     fn intersect_1d(&self, mesh2: &PyUMesh) -> PyResult<PyUMesh> {
         if let Some(cell) = mesh2
             .inner

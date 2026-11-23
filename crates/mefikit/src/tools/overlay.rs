@@ -15,6 +15,10 @@
 //! inside/outside classification still assumes straight-edged cut pieces. Calling them
 //! with a quadratic mesh is rejected rather than returning a wrong result.
 //!
+//! A closed cutter loop lying strictly inside a cell does not split it: the result would
+//! be a cell with a hole, which is not a valid element. Such a loop is ignored. Cutter
+//! edges must enter and leave the cell through its boundary to produce a cut.
+//!
 //! The input meshes do not need to be clean (i.e. they can have unmerged nodes). They need to be
 //! conformed (i.e. no overlapping elements).
 //! In all cases, the operation gives a "conformized without merging nodes" mesh. The user can
@@ -142,6 +146,8 @@ pub trait Overlayable {
     ///   meshes for [`OverlayOperation::Imprint`]; their edges are circular arcs through
     ///   their mid-side node and cut pieces are emitted as `QPOLY`. The four other
     ///   operations are only implemented for first-order meshes.
+    /// - A closed cutter loop strictly inside a cell is ignored: splitting it would
+    ///   produce a cell with a hole, which is not a valid element.
     fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh;
 
     /// Intersects this 2D mesh with a 1D mesh of edges (`SEG2` or `PLINE`).
@@ -154,6 +160,9 @@ pub trait Overlayable {
     /// # Assumptions
     /// - `mesh2` contains only `SEG2` or `PLINE` elements, and those elements do not
     ///   intersect one another.
+    /// - A closed polyline strictly inside a cell is ignored: the result would be a cell
+    ///   with a hole, which is not a valid element. Edges must enter and leave the cell
+    ///   through its boundary to produce a cut.
     /// - Both meshes are valid, planar and share the same coordinate space.
     /// - Quadratic cells are only supported in `self`, as for
     ///   [`OverlayOperation::Imprint`].
