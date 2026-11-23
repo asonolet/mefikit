@@ -110,7 +110,11 @@ close to the data, while remaining concise and expressive.
   - `snap` - To snap nodes of one mesh on another mesh nodes
   - `merge_nodes` - Merges duplicated nodes
   - `overlay` – Boolean mesh overlay on 2D meshes: `IMPRINT`, `UNION`,
-    `INTERSECTION`, `DIFFERENCE`, `SYMMETRIC_DIFFERENCE` (`OverlayOperation`)
+    `INTERSECTION`, `DIFFERENCE`, `SYMMETRIC_DIFFERENCE` (`OverlayOperation`).
+    `IMPRINT` supports quadratic cells (TRI6/TRI7/QUAD8/QUAD9/QPOLY) in both
+    meshes; the four other operations are first-order only and raise `ValueError`
+    for quadratic cells.
+  - `intersect_1d` – Cut a 2D mesh with a 1D mesh of `SEG2` or `PLINE` edges
   - `split` – Split the cells into smaller cells of the same element type
 - 🔁 Field transfers
   - `mf.transfer.ConstantPiecewise` – Point-location based assignment
