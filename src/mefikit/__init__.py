@@ -49,6 +49,15 @@ ConservativeP0 = transfer.ConservativeP0
 
 transfer.DistributedConservativeP0 = DistributedConservativeP0
 transfer.distributed = distributed
+transfer.__all__ = [
+    "ConservativeP0",
+    "ConstantPiecewise",
+    "DistributedConservativeP0",
+    "InverseDistance",
+    "MovingLeastSquares",
+    "distributed",
+    "load",
+]
 
 Gradient = gradient.Gradient
 
