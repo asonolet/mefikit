@@ -18,6 +18,7 @@
 - [Geometric transforms](./python_examples/geometric_transforms.md)
 - [Topological tools](./python_examples/topological_tools.md)
 - [Geometric tools](./python_examples/geometric_tools.md)
+- [Mesh overlay](./python_examples/overlay.md)
 
 # Fields and selections
 
