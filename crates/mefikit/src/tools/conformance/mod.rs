@@ -362,9 +362,9 @@ impl IssueSink<'_> {
 ///   cells, which leaves the domain ill-defined;
 /// - [`ConformanceIssue::NonConformingFaces`]: two cells meet through a face/edge that is only
 ///   partially shared;
-/// - [`ConformanceIssue::MergedNodes`]: two nodes lie within `tol` of each other but are not the
-///   same node, and the cells using them do not meet through a full common face (a cell that
-///   folds onto itself, or two cells that share only part of a face);
+/// - [`ConformanceIssue::MergedNodes`]: a cell uses two distinct nodes that lie within `tol` of
+///   each other, so it folds onto itself. Partially shared interfaces between distinct cells
+///   are reported as [`ConformanceIssue::NonConformingFaces`] instead;
 /// - an input that cannot be diagnosed (too few coordinate dimensions, no cell, or a cell type
 ///   whose polyhedral form is not available), reported as a single self-explanatory issue rather
 ///   than an error. Such an issue is always included, even when `max_issues` is `Some(0)`.

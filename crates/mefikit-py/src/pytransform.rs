@@ -223,10 +223,10 @@ pub fn conformize(mesh: &PyUMesh, tol: f64) -> PyResult<PyUMesh> {
 ///
 /// Reported defects: cells whose boundary crosses itself (a "butterfly" cell, e.g. an edge
 /// passing through a face), cells overlapping in volume (3D) or area (2D), a face/edge shared by
-/// more than two cells, two nodes within `tol` that are not the same node while the cells using
-/// them do not meet through a full common face (a cell folding onto itself, or a partially shared
-/// interface — the case `conformize` repairs), and input that cannot be diagnosed (too few
-/// coordinate dimensions, no cell, or a cell type without a polyhedral form).
+/// more than two cells, a cell that folds onto itself because it uses two distinct nodes at the
+/// same location, and input that cannot be diagnosed (too few coordinate dimensions, no cell, or
+/// a cell type without a polyhedral form). Partially shared interfaces between distinct cells are
+/// reported as `non_conforming_faces`.
 ///
 /// Quadratic cells are supported on a best-effort basis: 2D quadratic cells are checked through
 /// their boundary ring (the centre node is ignored), while 3D quadratic cells are reported as
