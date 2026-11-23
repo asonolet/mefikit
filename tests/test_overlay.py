@@ -346,6 +346,16 @@ def test_overlay_imprint_quadratic_cutter():
         assert "QPOLY" in out.block_types() or "QUAD8" in out.block_types()
 
 
+def test_overlay_ignores_closed_cutter_loop_inside_cell():
+    # A cell with a hole is not a valid element, so a closed cutter loop strictly
+    # inside a cell must not split it (also true for first-order meshes).
+    subject = mf.build_cmesh([0.0, 1.0], [0.0, 1.0])
+    inner = mf.build_cmesh([0.2, 0.8], [0.2, 0.8])
+    out = subject.overlay(inner, mf.OverlayOperation.IMPRINT)
+    assert _num_cells(out) == 1
+    assert _measure_total(out) == pytest.approx(1.0)
+
+
 def test_overlay_booleans_reject_quadratic_meshes():
     quad = _shifted_quad8(0.15)
     lin = mf.build_cmesh([0.0, 1.0], [0.0, 1.0])

@@ -11,13 +11,30 @@
 //!   - `Difference`: keep the domain of `mesh1` not covered by `mesh2`.
 //!   - `SymmetricDifference`: keep the domain covered by exactly one of the two meshes.
 //!
-//! The four boolean operations are only implemented for first-order meshes: their
-//! inside/outside classification still assumes straight-edged cut pieces. Calling them
-//! with a quadratic mesh is rejected rather than returning a wrong result.
+//! The four boolean operations are only implemented for first-order meshes. Calling them
+//! with a quadratic mesh is rejected rather than returning a wrong result; see the
+//! "Known limitations" section below.
 //!
 //! A closed cutter loop lying strictly inside a cell does not split it: the result would
 //! be a cell with a hole, which is not a valid element. Such a loop is ignored. Cutter
 //! edges must enter and leave the cell through its boundary to produce a cut.
+//!
+//! # Known limitations
+//!
+//! - **Booleans on quadratic meshes.** `cut_cells` classifies a cut piece with a strict
+//!   interior point of its *straight-chord* ring (`Polygon::strict_interior_point`). A
+//!   piece of a quadratic cell is bounded by circular arcs, so that point is not a valid
+//!   witness. `cut_both` additionally cuts the second mesh with the first mesh's arcs,
+//!   whose pieces are likewise classified from straight chords. Enabling `UNION`,
+//!   `INTERSECTION`, `DIFFERENCE` and `SYMMETRIC_DIFFERENCE` anyway broke the
+//!   inclusion/exclusion area invariants (`UNION + INTERSECTION = area(A) + area(B)`,
+//!   etc.) in 380 of 420 randomized cases, with errors up to 27 %. `IMPRINT` is exact
+//!   (no classification) and works with quadratic meshes on both sides. A correct fix
+//!   needs a strict interior point of the *curved* polygon of each piece, i.e. a
+//!   rework of the shared classification path — deliberately not attempted here to
+//!   avoid regressing the first-order path.
+//! - **A closed cutter loop strictly inside a cell** is ignored (see above). This also
+//!   holds for first-order meshes.
 //!
 //! The input meshes do not need to be clean (i.e. they can have unmerged nodes). They need to be
 //! conformed (i.e. no overlapping elements).
@@ -148,6 +165,10 @@ pub trait Overlayable {
     ///   operations are only implemented for first-order meshes.
     /// - A closed cutter loop strictly inside a cell is ignored: splitting it would
     ///   produce a cell with a hole, which is not a valid element.
+    ///
+    /// # Panics
+    /// Panics if `operation` is not [`OverlayOperation::Imprint`] and either mesh has
+    /// quadratic 2D cells. See the module-level "Known limitations" for the reason.
     fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh;
 
     /// Intersects this 2D mesh with a 1D mesh of edges (`SEG2` or `PLINE`).

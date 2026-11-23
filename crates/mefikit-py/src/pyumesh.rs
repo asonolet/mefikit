@@ -525,6 +525,11 @@ impl PyUMesh {
     /// `self` with the edges of `mesh2`. A closed cutter loop strictly inside a cell is
     /// ignored (a cell with a hole is not a valid element); edges must cross the cell
     /// boundary to produce a cut.
+    ///
+    /// Only `IMPRINT` supports quadratic meshes. `UNION`, `INTERSECTION`, `DIFFERENCE`
+    /// and `SYMMETRIC_DIFFERENCE` raise `ValueError` when either mesh contains TRI6,
+    /// TRI7, QUAD8, QUAD9 or QPOLY cells: their inside/outside classification assumes
+    /// straight-edged cut pieces and would produce wrong areas on curved pieces.
     #[pyo3(signature = (mesh2, operation=None))]
     fn overlay(&self, mesh2: &PyUMesh, operation: Option<PyOverlayOperation>) -> PyResult<PyUMesh> {
         let operation: mf::OverlayOperation =
