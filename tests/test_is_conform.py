@@ -107,6 +107,28 @@ def test_accepts_quadratic_surface_cells():
     assert mf.is_conform(tri7, _TOL).is_conform
 
 
+def test_accepts_qpoly_surface_cell():
+    """QPOLY is a 2D quadratic cell and is checked through its linearized boundary ring."""
+    mesh = mf.UMesh(
+        np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.5, 0.0, 0.0],
+                [1.0, 0.5, 0.0],
+                [0.5, 1.0, 0.0],
+                [0.0, 0.5, 0.0],
+            ]
+        )
+    )
+    mesh.add_poly_block(
+        "QPOLY", np.arange(8, dtype=np.uintp), np.array([8], dtype=np.uintp)
+    )
+    assert mf.is_conform(mesh, _TOL).is_conform
+
+
 def test_quadratic_fold_reports_raw_node_ids():
     """A repeated mid-side node is reported with the original connectivity ids."""
     mesh = _regular(

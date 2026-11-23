@@ -410,17 +410,7 @@ fn coord3(cell: &Element<'_>, local: usize) -> [f64; 3] {
 
 /// Returns the corner vertices of a 2D cell in ring order.
 fn cell_polygon(cell: &Element<'_>) -> Vec<[f64; 2]> {
-    use ElementType::*;
-    let n = match cell.element_type() {
-        TRI3 | TRI6 | TRI7 => 3,
-        QUAD4 | QUAD8 | QUAD9 => 4,
-        PGON => cell.connectivity().len(),
-        _ => panic!(
-            "Cannot slice a {:?} cell as a 2D polygon",
-            cell.element_type()
-        ),
-    };
-    (0..n)
+    (0..cell.num_vertices())
         .map(|local| {
             let c = cell.coord(local);
             [c[0], c[1]]
@@ -929,6 +919,36 @@ mod tests {
         for row in sliced.coords().rows() {
             assert_abs_diff_eq!(row[0], 0.5, epsilon = 1e-12);
         }
+    }
+
+    #[test]
+    fn slice_2d_qpoly_uses_corner_vertices() {
+        let coords = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5]
+        ];
+        let mut mesh = UMesh::new(coords.into_shared());
+        mesh.add_poly_block(
+            ElementType::QPOLY,
+            nd::Array1::from_vec((0..8).collect()).into_shared(),
+            nd::Array1::from_vec(vec![8usize]).into_shared(),
+            None,
+        );
+
+        let sliced = mesh.slice(&[0.0, 0.5], &[0.0, 1.0]);
+        assert_eq!(sliced.num_elements_of_dim(Dimension::D1), 1);
+        let length = sliced
+            .elements_of_dim(Dimension::D1)
+            .next()
+            .unwrap()
+            .measure2();
+        assert_abs_diff_eq!(length, 1.0, epsilon = 1e-12);
     }
 
     #[test]

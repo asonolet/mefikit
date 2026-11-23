@@ -118,6 +118,38 @@ fn is_conform_accepts_quadratic_surface_cells() {
     assert!(report.is_conform(), "{report:?}");
 }
 
+/// QPOLY is a 2D quadratic cell; its boundary ring is used for the topology checks.
+#[test]
+fn is_conform_accepts_qpoly_surface_cell() {
+    let coords = [
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.5, 0.0, 0.0],
+        [1.0, 0.5, 0.0],
+        [0.5, 1.0, 0.0],
+        [0.0, 0.5, 0.0],
+    ];
+    let mut mesh = UMesh::new(
+        nd::Array2::from_shape_vec(
+            (coords.len(), 3),
+            coords.iter().flatten().copied().collect(),
+        )
+        .unwrap()
+        .into_shared(),
+    );
+    mesh.add_poly_block(
+        ElementType::QPOLY,
+        nd::Array1::from_vec((0..8).collect()).into_shared(),
+        nd::Array1::from_vec(vec![8usize]).into_shared(),
+        None,
+    );
+
+    let report = is_conform(&mesh.view(), 1e-9, None).unwrap();
+    assert!(report.is_conform(), "{report:?}");
+}
+
 /// A quadratic cell that reuses a corner id for a mid-side node reports the raw node pair.
 #[test]
 fn is_conform_reports_quadratic_fold_with_raw_node_ids() {

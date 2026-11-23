@@ -668,6 +668,7 @@ fn diagnostic_cell_type(et: ElementType, dim: Dimension) -> bool {
                 | ElementType::QUAD8
                 | ElementType::QUAD9
                 | ElementType::PGON
+                | ElementType::QPOLY
         ),
         Dimension::D1 => matches!(
             et,
@@ -690,6 +691,15 @@ fn surface_ring(et: ElementType, conn: &[usize]) -> Vec<usize> {
         ElementType::QUAD8 | ElementType::QUAD9 => vec![
             conn[0], conn[4], conn[1], conn[5], conn[2], conn[6], conn[3], conn[7],
         ],
+        ElementType::QPOLY => {
+            let n = conn.len() / 2;
+            let mut ring = Vec::with_capacity(conn.len());
+            for i in 0..n {
+                ring.push(conn[i]);
+                ring.push(conn[n + i]);
+            }
+            ring
+        }
         _ => Vec::new(),
     }
 }
