@@ -133,13 +133,23 @@ fn push_cutter_dart(
     n0: NodeId,
     n1: NodeId,
     coords: nd::ArrayView2<'_, f64>,
+    arc: Option<&ArcEdge>,
     source: CutEdgeSource,
 ) {
     let p0 = point(coords, n0);
     let p1 = point(coords, n1);
-    let dir = [p1[0] - p0[0], p1[1] - p0[1]];
-    let angle0 = angle_of(dir);
-    let angle1 = angle_of([-dir[0], -dir[1]]);
+    // A curved cutter edge must be sorted by its tangent, not by its chord: at a
+    // shared node the chord and the arc leave in different directions.
+    let (angle0, angle1) = match arc {
+        Some(arc) => (
+            angle_of(arc.direction(&p0, &p1)),
+            angle_of(arc.direction(&p1, &p0)),
+        ),
+        None => {
+            let dir = [p1[0] - p0[0], p1[1] - p0[1]];
+            (angle_of(dir), angle_of([-dir[0], -dir[1]]))
+        }
+    };
     push_dart(
         graph,
         heap,
@@ -167,18 +177,28 @@ fn build_cell_dart_map(
 ) -> (Vec<Dart>, DartMap) {
     let mut graph: DartMap = FxHashMap::default();
     let mut heap: Vec<Dart> = Vec::new();
-    // Only straight boundary darts can safely absorb a coincident cutter dart. A curved
-    // boundary and its chord are distinct curves even when they share endpoints.
+    // A straight boundary dart can absorb a coincident straight cutter dart. A curved
+    // boundary and its chord are distinct curves even when they share endpoints, so a
+    // curved cutter edge needs its own coincidence test (same three nodes).
     let mut straight_boundary_pairs: FxHashSet<SortedVecKey> = FxHashSet::default();
     let mut cutter_pairs: FxHashSet<SortedVecKey> = FxHashSet::default();
     let geometries = boundary_geometries(boundary_edges, coords);
+    let curved_boundary_keys: FxHashSet<SortedVecKey> = geometries
+        .iter()
+        .filter(|g| g.conn.len() == 3 && g.arc.is_curved())
+        .map(|g| edge_key(&g.conn))
+        .collect();
 
-    // A straight cutter edge can cross the same curved boundary twice. Only the
-    // sub-segments that actually lie inside the cell may contribute darts: the others
-    // would open phantom faces and leave the dart walker with no next dart to follow.
-    // Linear cells never hit that situation, so they keep the untouched fast path.
-    let curved = geometries.iter().any(|g| g.arc.is_curved());
-    let pgon: Vec<[f64; 2]> = if curved {
+    // A cutter edge can cross the same boundary twice. Only the sub-segments that
+    // actually lie inside the cell may contribute darts: the others would open phantom
+    // faces and leave the dart walker with no next dart to follow. This is needed when
+    // either side is curved; the plain linear/linear case keeps the untouched fast path.
+    let curved_subject = geometries.iter().any(|g| g.arc.is_curved());
+    let curved_cutter = candidate
+        .iter()
+        .any(|c| mesh2.element(c).connectivity().len() == 3);
+    let need_inside = curved_subject || curved_cutter;
+    let pgon: Vec<[f64; 2]> = if need_inside {
         let n = geometries.len();
         let mut p = Vec::with_capacity(2 * n);
         for g in &geometries {
@@ -201,7 +221,7 @@ fn build_cell_dart_map(
         Vec::new()
     };
     let inside = |n0: usize, n1: usize| -> bool {
-        if !curved {
+        if !need_inside {
             return true;
         }
         let a = point(coords, n0);
@@ -247,11 +267,20 @@ fn build_cell_dart_map(
     for c in candidate.iter() {
         let cutter = mesh2.element(c);
         let conn = cutter.connectivity();
-        if conn.len() == 3 {
-            panic!(
-                "quadratic cutter edges are not supported: the quadratic mesh must be the \
-                 subject (mesh1)"
-            );
+        let cutter_arc = (conn.len() == 3).then(|| {
+            ArcEdge::new(
+                point(coords, conn[0]),
+                point(coords, conn[2]),
+                point(coords, conn[1]),
+            )
+        });
+        // An arc identical to a boundary arc is already part of the cell boundary:
+        // adding it as an internal dart would open a zero-area slit. Its intersection
+        // nodes still reach the boundary through the shared sorted edge key.
+        if cutter_arc.as_ref().is_some_and(|a| a.is_curved())
+            && curved_boundary_keys.contains(&edge_key(conn))
+        {
+            continue;
         }
         let eid = edge_key(conn);
         let ints = s_int.get(&eid);
@@ -271,6 +300,7 @@ fn build_cell_dart_map(
                     n0,
                     n1,
                     coords,
+                    cutter_arc.as_ref(),
                     CutEdgeSource::Cutter(cutter.id()),
                 );
             }
@@ -291,6 +321,7 @@ fn build_cell_dart_map(
                 n0,
                 n1,
                 coords,
+                cutter_arc.as_ref(),
                 CutEdgeSource::Cutter(cutter.id()),
             );
         }

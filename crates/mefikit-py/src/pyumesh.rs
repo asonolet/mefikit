@@ -32,6 +32,20 @@ pub struct PyUMesh {
     pub(crate) inner: mf::UMesh,
 }
 
+/// Whether a mesh contains a 2D cell with circular-arc edges.
+fn has_quadratic_2d(mesh: &PyUMesh) -> bool {
+    mesh.inner.blocks().any(|(et, _)| {
+        matches!(
+            *et,
+            ElementType::TRI6
+                | ElementType::TRI7
+                | ElementType::QUAD8
+                | ElementType::QUAD9
+                | ElementType::QPOLY
+        )
+    })
+}
+
 #[derive(IntoPyObject)]
 enum PyConnectivity<'py> {
     Regular(Bound<'py, np::PyArray2<usize>>),
@@ -511,7 +525,16 @@ impl PyUMesh {
     /// `self` with the edges of `mesh2`.
     #[pyo3(signature = (mesh2, operation=None))]
     fn overlay(&self, mesh2: &PyUMesh, operation: Option<PyOverlayOperation>) -> PyResult<PyUMesh> {
-        let operation = operation.unwrap_or(PyOverlayOperation::Imprint).into();
+        let operation: mf::OverlayOperation =
+            operation.unwrap_or(PyOverlayOperation::Imprint).into();
+        if operation != mf::OverlayOperation::Imprint
+            && (has_quadratic_2d(self) || has_quadratic_2d(mesh2))
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "boolean overlay operations (UNION, INTERSECTION, DIFFERENCE, \
+                 SYMMETRIC_DIFFERENCE) are not supported for quadratic meshes; only IMPRINT is",
+            ));
+        }
         let result = self.inner.overlay(mesh2.inner.clone(), operation);
         Ok(result.into())
     }

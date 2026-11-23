@@ -318,6 +318,49 @@ def test_intersect_1d_deduplicates_coincident_edges():
     assert _measure_total(out) == pytest.approx(1.0)
 
 
+def _shifted_quad8(bulge, shift=(0.0, 0.0)):
+    dx, dy = shift
+    v = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]) + [dx, dy]
+    m = np.array(
+        [
+            [0.5, -bulge],
+            [1.0 + bulge, 0.5],
+            [0.5, 1.0 + bulge],
+            [-bulge, 0.5],
+        ]
+    ) + [dx, dy]
+    mesh = mf.UMesh(np.vstack([v, m]))
+    mesh.add_regular_block(
+        "QUAD8", np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.uintp)
+    )
+    return mesh
+
+
+def test_overlay_imprint_quadratic_cutter():
+    subject = _shifted_quad8(0.15)
+    before = _measure_total(subject)
+    for cutter_bulge, shift in [(0.05, (0.2, 0.1)), (0.2, (-0.3, 0.25))]:
+        cutter = _shifted_quad8(cutter_bulge, shift)
+        out = subject.overlay(cutter, mf.OverlayOperation.IMPRINT)
+        assert _measure_total(out) == pytest.approx(before)
+        assert "QPOLY" in out.block_types() or "QUAD8" in out.block_types()
+
+
+def test_overlay_booleans_reject_quadratic_meshes():
+    quad = _shifted_quad8(0.15)
+    lin = mf.build_cmesh([0.0, 1.0], [0.0, 1.0])
+    for op in (
+        mf.OverlayOperation.UNION,
+        mf.OverlayOperation.INTERSECTION,
+        mf.OverlayOperation.DIFFERENCE,
+        mf.OverlayOperation.SYMMETRIC_DIFFERENCE,
+    ):
+        with pytest.raises(ValueError, match="not supported for quadratic meshes"):
+            quad.overlay(lin, op)
+        with pytest.raises(ValueError, match="not supported for quadratic meshes"):
+            lin.overlay(quad, op)
+
+
 def test_intersect_1d_deduplicates_coincident_plines():
     out = mf.build_cmesh([0.0, 1.0], [0.0, 1.0]).intersect_1d(
         _cut_line_mesh("two_plines")

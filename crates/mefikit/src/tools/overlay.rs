@@ -5,10 +5,15 @@
 //!   `PLINE` edges, producing a 2D mesh conformized with the 1D mesh.
 //! - 2d + 2d: `Overlayable::overlay` with one of the [`OverlayOperation`]s:
 //!   - `Imprint`: refine `mesh1` with the edges of `mesh2` while keeping `mesh1`'s domain.
+//!     Quadratic cells are supported in both meshes (arc/arc intersections).
 //!   - `Union`: keep the domain covered by at least one of the two meshes.
 //!   - `Intersection`: keep the domain covered by both meshes.
 //!   - `Difference`: keep the domain of `mesh1` not covered by `mesh2`.
 //!   - `SymmetricDifference`: keep the domain covered by exactly one of the two meshes.
+//!
+//! The four boolean operations are only implemented for first-order meshes: their
+//! inside/outside classification still assumes straight-edged cut pieces. Calling them
+//! with a quadratic mesh is rejected rather than returning a wrong result.
 //!
 //! The input meshes do not need to be clean (i.e. they can have unmerged nodes). They need to be
 //! conformed (i.e. no overlapping elements).
@@ -133,9 +138,10 @@ pub trait Overlayable {
     /// # Assumptions
     /// - Input meshes are valid (non-self-intersecting)
     /// - Coordinates are in the same plane
-    /// - Quadratic cells (`TRI6`, `TRI7`, `QUAD8`, `QUAD9`, `QPOLY`) are only supported for
-    ///   [`OverlayOperation::Imprint`], and only in `self` (the subject mesh). Quadratic edges
-    ///   are circular arcs through their mid-side node.
+    /// - Quadratic cells (`TRI6`, `TRI7`, `QUAD8`, `QUAD9`, `QPOLY`) are supported in both
+    ///   meshes for [`OverlayOperation::Imprint`]; their edges are circular arcs through
+    ///   their mid-side node and cut pieces are emitted as `QPOLY`. The four other
+    ///   operations are only implemented for first-order meshes.
     fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh;
 
     /// Intersects this 2D mesh with a 1D mesh of edges (`SEG2` or `PLINE`).
@@ -183,19 +189,12 @@ pub trait Overlayable {
 
 impl Overlayable for UMesh {
     fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh {
-        let quadratic1 = has_quadratic_faces(self);
-        let quadratic2 = has_quadratic_faces(&mesh2);
-        if quadratic1 || quadratic2 {
-            assert!(
-                operation == OverlayOperation::Imprint,
-                "quadratic overlay is only implemented for OverlayOperation::Imprint"
-            );
-            assert!(
-                !quadratic2,
-                "the quadratic mesh must be the subject (mesh1); quadratic cutters are not \
-                 supported"
-            );
-        }
+        assert!(
+            operation == OverlayOperation::Imprint
+                || (!mesh_has_quadratic_2d(self) && !mesh_has_quadratic_2d(&mesh2)),
+            "boolean overlay operations (UNION, INTERSECTION, DIFFERENCE, \
+             SYMMETRIC_DIFFERENCE) are not supported for quadratic meshes; only IMPRINT is"
+        );
         match operation {
             OverlayOperation::Imprint => intersect_2d2d(self, mesh2),
             OverlayOperation::Intersection => cut_and_classify(self, mesh2, |inside| inside),
@@ -439,20 +438,6 @@ fn cut_cells_all(
         }
         parents.push((cell.id(), piece_ids));
     }
-}
-
-/// Whether the mesh has quadratic 2D cells.
-fn has_quadratic_faces(mesh: &UMesh) -> bool {
-    mesh.elements_of_dim(Dimension::D2).any(|cell| {
-        matches!(
-            cell.element_type(),
-            ElementType::TRI6
-                | ElementType::TRI7
-                | ElementType::QUAD8
-                | ElementType::QUAD9
-                | ElementType::QPOLY
-        )
-    })
 }
 
 #[inline]
@@ -716,9 +701,14 @@ fn pgon_inside(
 
 /// Returns `true` if the cell lies inside any cell of `cutter_cells`.
 fn cell_inside(cell: &Element<'_>, cutter: &UMesh, cutter_bvh: &SpIdx2) -> bool {
-    let points: Vec<[f64; 2]> = (0..cell.connectivity().len())
-        .map(|i| cell.coord2(i).into())
-        .collect();
+    // Untouched quadratic cells still carry their mid-side nodes in the connectivity;
+    // only the corners bound the cell.
+    let n = if is_quadratic_2d(cell.element_type()) {
+        cell.num_vertices()
+    } else {
+        cell.connectivity().len()
+    };
+    let points: Vec<[f64; 2]> = (0..n).map(|i| *cell.coord2_ref(i)).collect();
     point_inside(&points, cutter, cutter_bvh)
 }
 
@@ -729,6 +719,11 @@ fn cell_inside(cell: &Element<'_>, cutter: &UMesh, cutter_bvh: &SpIdx2) -> bool 
 /// witness: the piece is inside the cutter iff its interior point is. The centroid of a
 /// non-convex piece (e.g. an L-shape) can fall outside its own interior, so it is not a valid
 /// witness.
+/// Whether a mesh contains any 2D cell with curved (circular-arc) edges.
+fn mesh_has_quadratic_2d(mesh: &UMesh) -> bool {
+    mesh.blocks().any(|(et, _)| is_quadratic_2d(*et))
+}
+
 /// Whether a 2D cell type has curved (circular-arc) edges.
 fn is_quadratic_2d(et: ElementType) -> bool {
     matches!(
@@ -2139,20 +2134,35 @@ mod tests {
         let _ = mesh1.intersect_1d(mesh2);
     }
 
+    /// IMPRINT accepts a quadratic cutter; the four boolean operations are
+    /// explicitly rejected for quadratic meshes until their classification is exact.
     #[test]
-    #[should_panic(expected = "only implemented for OverlayOperation::Imprint")]
-    fn test_overlay_quadratic_boolean_panics() {
+    #[should_panic(expected = "not supported for quadratic meshes")]
+    fn test_overlay_booleans_reject_quadratic_meshes() {
         let mesh1 = quad8_square(0.15);
         let mesh2 = make_imesh_2d(1);
         let _ = mesh1.overlay(mesh2, OverlayOperation::Union);
     }
 
+    /// A quadratic cutter is supported for IMPRINT: the arc/arc intersections must
+    /// refine the subject without changing its area, for both convex and concave arcs.
     #[test]
-    #[should_panic(expected = "quadratic mesh must be the subject")]
-    fn test_overlay_linear_subject_quadratic_cutter_panics() {
+    fn test_overlay_quadratic_cutter() {
         let mesh1 = make_imesh_2d(1);
-        let mesh2 = quad8_square(0.15);
-        let _ = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        let before = exact_mesh_area(&mesh1);
+        let mesh2 = quad8_square(0.05);
+        let out = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(exact_mesh_area(&out), before, epsilon = 1e-12);
+
+        for bulge in [0.05, 0.15, 0.25] {
+            let quad = quad8_square(bulge);
+            let before = exact_mesh_area(&quad);
+            for cutter in [quad8_square(0.10), concave_quad(bulge, false)] {
+                let out = quad.overlay(cutter, OverlayOperation::Imprint);
+                assert_abs_diff_eq!(exact_mesh_area(&out), before, epsilon = 1e-12);
+                assert_imprint_valid(&out, before);
+            }
+        }
     }
 
     #[test]
