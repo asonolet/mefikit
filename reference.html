@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f01a7c88.js";
+            window.path_to_searchindex_js = "searchindex-d378b8e4.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-3dcbf833.js"></script>
@@ -441,7 +441,9 @@ format being selected by the file extension (<code>.json</code>, <code>.yaml</co
 </div>
 <p><code>to_pyvista</code> copies the mesh (and, by default, its fields) into a
 <code>pyvista.UnstructuredGrid</code>; <code>to_meshio</code> produces a <code>meshio.Mesh</code>; the
-medcoupling pair converts to / from a <code>MEDCouplingUMesh</code>. See the
+medcoupling pair converts to / from a <code>MEDCouplingUMesh</code>. <code>QPOLY</code> maps directly
+to PyVista’s quadratic polygon and to MEDCoupling’s <code>QPOLYG</code> cell type; meshio
+has no quadratic polygon type and raises <code>ValueError</code> for it. See the
 <a href="./python_examples/input_output.html">Input/Output</a> notebook and the <code>.med</code>
 round-trip in <a href="./python_examples/compare_medcoupling.html">mefikit vs. medcoupling</a>.</p>
 <h2 id="field-transfers"><a class="header" href="#field-transfers">Field transfers</a></h2>
