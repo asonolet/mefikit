@@ -11,6 +11,10 @@
 //! Only cells of the highest dimension are sliced. Lower-dimensional elements are ignored.
 //! Fields are not carried over: use the transfer operators to map source fields onto the
 //! produced mesh (see the slicing example in the Python documentation).
+//!
+//! Slicing assumes convex cells; concave 2D cells are rejected instead of returning a wrong
+//! section. Quadratic cells are handled on a best-effort basis: only their corner nodes are
+//! used, so the cut is a linearization of the curved geometry.
 
 use ndarray as nd;
 use rustc_hash::FxHashSet;
@@ -129,8 +133,25 @@ impl Sliceable for UMesh {
     }
 }
 
-fn empty_mesh(space_dim: usize) -> UMesh {
-    UMesh::new(nd::Array2::zeros((0, space_dim)).into_shared())
+fn empty_segment_mesh<const D: usize>() -> UMesh {
+    let mut mesh = UMesh::new(nd::Array2::zeros((0, D)).into_shared());
+    mesh.add_regular_block(
+        ElementType::SEG2,
+        nd::Array2::zeros((0, 2)).into_shared(),
+        None,
+    );
+    mesh
+}
+
+fn empty_polygon_mesh() -> UMesh {
+    let mut mesh = UMesh::new(nd::Array2::zeros((0, 3)).into_shared());
+    mesh.add_poly_block(
+        ElementType::PGON,
+        nd::Array1::zeros(0).into_shared(),
+        nd::Array1::zeros(0).into_shared(),
+        None,
+    );
+    mesh
 }
 
 fn slice_3d(mesh: &UMeshView, origin: [f64; 3], normal: [f64; 3]) -> UMesh {
@@ -156,7 +177,7 @@ fn slice_3d(mesh: &UMeshView, origin: [f64; 3], normal: [f64; 3]) -> UMesh {
     }
 
     if polygons.is_empty() {
-        return empty_mesh(3);
+        return empty_polygon_mesh();
     }
 
     let coords =
@@ -240,6 +261,14 @@ fn slice_2d(mesh: &UMeshView, origin: [f64; 2], normal: [f64; 2]) -> UMesh {
 
     for cell in mesh.elements_of_dim(Dimension::D2) {
         let polygon = cell_polygon(&cell);
+        if !crate::geometry::Polygon::unknown(polygon.iter().copied()).is_convex() {
+            panic!(
+                "Slicing does not support concave cells (got {:?}); only convex cells are supported. \
+                 Concave cells are produced by overlay operations and must be triangulated or \
+                 convexified before slicing.",
+                cell.id()
+            );
+        }
         for [a, b] in plane_section_segments(&polygon, &origin, &normal, tol) {
             let ia = coords.len();
             coords.push(a);
@@ -259,7 +288,7 @@ fn build_segment_mesh<const D: usize>(
     tol: f64,
 ) -> UMesh {
     if segments.is_empty() {
-        return empty_mesh(D);
+        return empty_segment_mesh::<D>();
     }
 
     let coords =
@@ -921,6 +950,39 @@ mod tests {
         let mesh = UMesh::new(nd::Array2::zeros((0, 3)).into_shared());
         let sliced = mesh.slice(&[0.0, 0.0, 0.0], &[0.0, 0.0, 1.0]);
         assert_eq!(sliced.num_elements(), 0);
+        assert_eq!(
+            sliced.element_types().copied().collect::<Vec<_>>(),
+            vec![ElementType::PGON]
+        );
+    }
+
+    #[test]
+    fn slice_missing_plane_keeps_typed_empty_block() {
+        let mesh = crate::mesh_examples::make_imesh_3d(1);
+        let sliced = mesh.slice(&[0.0, 0.0, 10.0], &[0.0, 0.0, 1.0]);
+        assert_eq!(sliced.num_elements(), 0);
+        assert_eq!(
+            sliced.element_types().copied().collect::<Vec<_>>(),
+            vec![ElementType::PGON]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "does not support concave")]
+    fn slice_rejects_concave_2d_cell() {
+        let coords = nd::array![
+            [0.0, 0.0],
+            [3.0, 0.0],
+            [3.0, 3.0],
+            [2.0, 3.0],
+            [2.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 3.0],
+            [0.0, 3.0]
+        ];
+        let mut mesh = UMesh::new(coords.into_shared());
+        mesh.add_element(ElementType::PGON, &[0, 1, 2, 3, 4, 5, 6, 7], None);
+        let _ = mesh.slice(&[0.0, 2.0], &[0.0, 1.0]);
     }
 
     #[test]

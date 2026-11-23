@@ -109,3 +109,40 @@ def test_slice_rejects_bad_normal():
         mesh.slice([0.0, 0.0, 0.0], [0.0, 0.0, 1.0])
     with pytest.raises(ValueError):
         mesh.slice_line([0.0, 0.0], [0.0, 0.0])
+    with pytest.raises(ValueError, match="finite"):
+        mesh.slice([0.0, 0.0], [np.nan, 1.0])
+    with pytest.raises(ValueError, match="finite"):
+        mesh.slice_line([0.0, 0.0], [np.inf, 1.0])
+    with pytest.raises(ValueError, match="finite"):
+        mesh.slice([np.nan, 0.0], [1.0, 0.0])
+
+
+def test_slice_missing_mesh_keeps_typed_empty_block():
+    mesh = mf.build_cmesh([0.0, 1.0], [0.0, 1.0], [0.0, 1.0])
+    sliced = mesh.slice([0.0, 0.0, 10.0], [0.0, 0.0, 1.0])
+
+    assert sliced.block_types() == ["PGON"]
+    assert sliced.num_elements() == 0
+    assert sliced.measure()["PGON"].size == 0
+
+
+def test_slice_line_missing_mesh_keeps_typed_empty_block():
+    mesh = mf.build_cmesh([0.0, 1.0], [0.0, 1.0])
+    sliced = mesh.slice_line([10.0, 10.0], [1.0, 0.0])
+
+    assert sliced.block_types() == ["SEG2"]
+    assert sliced.num_elements() == 0
+    assert sliced.measure()["SEG2"].size == 0
+
+
+def test_slice_rejects_concave_cells():
+    coords = np.array(
+        [[0, 0], [3, 0], [3, 3], [2, 3], [2, 1], [1, 1], [1, 3], [0, 3]],
+        dtype=float,
+    )
+    mesh = mf.UMesh(coords)
+    mesh.add_poly_block(
+        "PGON", np.arange(8, dtype=np.uintp), np.array([8], dtype=np.uintp)
+    )
+    with pytest.raises(BaseException, match="concave"):
+        mesh.slice([0.0, 2.0], [0.0, 1.0])

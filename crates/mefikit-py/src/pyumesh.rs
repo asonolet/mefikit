@@ -356,6 +356,9 @@ impl PyUMesh {
     /// plane through `origin` with normal `normal`; in 2D it is the line through
     /// `origin` normal to `normal`. A 3D mesh produces a 2D `PGON` mesh embedded in
     /// 3D, a 2D mesh produces a 1D `SEG2` mesh.
+    ///
+    /// Cells must be convex: concave 2D cells are rejected. Quadratic cells are handled on a
+    /// best-effort basis using their corner nodes only.
     #[pyo3(signature = (origin, normal))]
     fn slice(&self, origin: Vec<f64>, normal: Vec<f64>) -> PyResult<Self> {
         check_slice_args(self.inner.space_dimension(), &origin, &normal, "normal")?;
@@ -365,7 +368,8 @@ impl PyUMesh {
     /// Slices the mesh with a line through `origin` with direction `direction`.
     ///
     /// A 3D mesh produces a 1D `SEG2` mesh embedded in 3D, and a 2D mesh produces a 1D
-    /// `SEG2` mesh embedded in 2D. The direction does not need to be normalized.
+    /// `SEG2` mesh embedded in 2D. The direction does not need to be normalized. Cells must be
+    /// convex; quadratic cells are handled using their corner nodes only.
     #[pyo3(signature = (origin, direction))]
     fn slice_line(&self, origin: Vec<f64>, direction: Vec<f64>) -> PyResult<Self> {
         check_slice_args(
@@ -603,9 +607,15 @@ fn check_slice_args(
             "origin and {vector_name} must have {space_dim} components."
         )));
     }
-    if vector.iter().map(|x| x * x).sum::<f64>() == 0.0 {
+    if origin.iter().chain(vector).any(|x| !x.is_finite()) {
         return Err(pyo3::exceptions::PyValueError::new_err(format!(
-            "{vector_name} must not be zero."
+            "origin and {vector_name} must be finite."
+        )));
+    }
+    let norm2 = vector.iter().map(|x| x * x).sum::<f64>();
+    if !norm2.is_finite() || norm2 <= 0.0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "{vector_name} must be finite and non-zero."
         )));
     }
     Ok(())
