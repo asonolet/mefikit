@@ -511,7 +511,13 @@ fn aggregate_block(
                         ));
                     };
                     let base = data.len();
-                    data.extend(c.data.iter().map(|&v| v + off));
+                    // `usize::MAX` separates the faces of a PHED cell: it is not a node id and
+                    // must not be shifted by the node offset.
+                    data.extend(
+                        c.data
+                            .iter()
+                            .map(|&v| if v == usize::MAX { usize::MAX } else { v + off }),
+                    );
                     offsets.extend(c.offsets.iter().map(|&o| base + o));
                 }
             }
@@ -1419,6 +1425,25 @@ mod tests {
         };
         let err = concat(&a.view(), &b.view()).unwrap_err();
         assert!(err.contains("incompatible trailing shape"), "{err}");
+    }
+
+    #[test]
+    fn test_aggregate_phred_preserves_face_separators() {
+        use crate::tools::test_helpers::box_mesh;
+        let a = crate::tools::conformize(
+            &box_mesh(&[0.0, 1.0], &[0.0, 1.0], &[0.0, 1.0]).view(),
+            1e-9,
+        )
+        .unwrap();
+        let b = crate::tools::conformize(
+            &box_mesh(&[1.0, 2.0], &[0.0, 1.0], &[0.0, 1.0]).view(),
+            1e-9,
+        )
+        .unwrap();
+        let joined = aggregate(&[a.view(), b.view()]).unwrap();
+
+        assert_eq!(joined.block(ElementType::PHED).unwrap().len(), 2);
+        joined.validate_structure().unwrap();
     }
 
     #[test]

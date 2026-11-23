@@ -688,11 +688,13 @@ impl UMesh {
                             connectivity.data.len() - previous
                         ));
                     }
-                    if let Some((index, &node)) = connectivity
-                        .data
-                        .iter()
-                        .enumerate()
-                        .find(|entry| *entry.1 >= self.coords.nrows())
+                    if let Some((index, &node)) =
+                        connectivity.data.iter().enumerate().find(|entry| {
+                            // PHED uses `usize::MAX` to separate its face rings.
+                            let is_face_separator =
+                                et == ElementType::PHED && *entry.1 == usize::MAX;
+                            *entry.1 >= self.coords.nrows() && !is_face_separator
+                        })
                     {
                         return Err(format!(
                             "Poly connectivity for element type {et:?} references node {node} at \
