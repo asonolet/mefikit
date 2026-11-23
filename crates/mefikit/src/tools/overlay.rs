@@ -42,7 +42,8 @@ use crate::element_traits::cut::{
 };
 use crate::element_traits::{Cutable, ElementTopo, SortedVecKey};
 use crate::geometry::{
-    ArcEdge, Intersection, Intersections, PointId, Polygon, Segment, intersect_arc_seg,
+    ArcEdge, Intersection, Intersections, PointId, Polygon, Segment, arc_line_is_tangent,
+    intersect_arc_seg,
 };
 use crate::mesh::{Dimension, Element, ElementId, ElementLike, ElementType, UMesh, UMeshView};
 use crate::prelude::ElementGeo;
@@ -741,16 +742,17 @@ fn add_intersection(
                     .intersect(Segment::new(edge2.coord2(0).into(), edge2.coord2(1).into())),
                 [c1[0], c1[1], c2[0], c2[1]],
             ),
-            (SEG3, SEG2) => (
-                intersect_arc_seg(
-                    edge.coord2_ref(0),
-                    edge.coord2_ref(2),
-                    edge.coord2_ref(1),
-                    edge2.coord2_ref(0),
-                    edge2.coord2_ref(1),
-                ),
-                [c1[0], c1[1], c2[0], c2[1]],
-            ),
+            (SEG3, SEG2) => {
+                let (p0, m, p1) = (edge.coord2_ref(0), edge.coord2_ref(2), edge.coord2_ref(1));
+                let (l0, l1) = (edge2.coord2_ref(0), edge2.coord2_ref(1));
+                let int = intersect_arc_seg(p0, m, p1, l0, l1);
+                // A tangent line only touches the arc: it does not cut the cell, and
+                // splitting both curves there would open a slit (a pinched piece).
+                if matches!(int, Intersections::One(_)) && arc_line_is_tangent(p0, m, p1, l0, l1) {
+                    return;
+                }
+                (int, [c1[0], c1[1], c2[0], c2[1]])
+            }
             (SEG2, SEG3) => panic!(
                 "quadratic cutter edges are not supported: the quadratic mesh must be the subject \
              (mesh1)"
@@ -1690,6 +1692,207 @@ mod tests {
                 .elements_of_dim(Dimension::D2)
                 .any(|c| c.element_type() == ElementType::QPOLY)
         );
+    }
+
+    /// A unit-square quadrilateral whose top edge curves towards the interior by `inward`.
+    /// That edge has a clockwise sweep; the other three are straight. The boundary stays
+    /// simple for the values used below. `centre` adds the QUAD9 centre node.
+    fn concave_quad(inward: f64, centre: bool) -> UMesh {
+        let (et, coords, n) = if centre {
+            (
+                ElementType::QUAD9,
+                nd::arr2(&[
+                    [0.0, 0.0],
+                    [1.0, 0.0],
+                    [1.0, 1.0],
+                    [0.0, 1.0],
+                    [0.5, 0.0],
+                    [1.0, 0.5],
+                    [0.5, 1.0 - inward],
+                    [0.0, 0.5],
+                    [0.5, 0.5],
+                ]),
+                9,
+            )
+        } else {
+            (
+                ElementType::QUAD8,
+                nd::arr2(&[
+                    [0.0, 0.0],
+                    [1.0, 0.0],
+                    [1.0, 1.0],
+                    [0.0, 1.0],
+                    [0.5, 0.0],
+                    [1.0, 0.5],
+                    [0.5, 1.0 - inward],
+                    [0.0, 0.5],
+                ]),
+                8,
+            )
+        };
+        let mut mesh = UMesh::new(coords.into_shared());
+        let conn = nd::Array2::from_shape_vec((1, n), (0..n).collect::<Vec<usize>>()).unwrap();
+        mesh.add_regular_block(et, conn.into_shared(), None);
+        mesh
+    }
+
+    /// A TRI6 whose bottom edge curves towards the interior of the triangle.
+    fn concave_tri(inward: f64) -> UMesh {
+        let coords = nd::arr2(&[
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [0.5, inward],
+            [0.5, 0.5],
+            [0.0, 0.5],
+        ]);
+        let mut mesh = UMesh::new(coords.into_shared());
+        mesh.add_regular_block(
+            ElementType::TRI6,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5]]).to_shared(),
+            None,
+        );
+        mesh
+    }
+
+    fn concave_cutter(kind: usize) -> UMesh {
+        let b = RegularUMeshBuilder::new();
+        match kind {
+            0 => b
+                .add_axis(vec![-0.25, 0.5, 1.25])
+                .add_axis(vec![0.25, 0.75]),
+            1 => b.add_axis(vec![0.25, 0.5, 0.75]).add_axis(vec![-0.5, 1.5]),
+            2 => b.add_axis(vec![-0.5, 1.5]).add_axis(vec![0.25, 0.5, 0.75]),
+            3 => b
+                .add_axis(vec![-0.5, 0.3, 0.7, 1.5])
+                .add_axis(vec![0.3, 0.7]),
+            4 => b.add_axis(vec![0.4, 0.6]).add_axis(vec![-0.5, 0.5, 1.5]),
+            // A horizontal edge crossing the concave arc twice, plus vertical edges so
+            // the cutter has no dangling segment inside the cell.
+            5 => b
+                .add_axis(vec![-0.5, 0.3, 0.7, 1.5])
+                .add_axis(vec![0.6, 0.85]),
+            _ => unreachable!(),
+        }
+        .build()
+    }
+
+    /// Every cut piece tiles the original cell: the area is preserved, its QPOLY ring is
+    /// well formed and none of its nodes escapes the input footprint (a synthesized
+    /// mid-side node on the wrong circle branch would).
+    fn assert_imprint_valid(out: &UMesh, before: f64) {
+        assert_abs_diff_eq!(exact_mesh_area(out), before, epsilon = 1e-9);
+        let coords = out.coords();
+        for cell in out.elements_of_dim(Dimension::D2) {
+            if cell.element_type() != ElementType::QPOLY {
+                continue;
+            }
+            let conn = cell.connectivity();
+            assert!(conn.len() % 2 == 0 && conn.len() >= 4, "odd QPOLY {conn:?}");
+            let n = conn.len() / 2;
+            let mut verts = conn[..n].to_vec();
+            verts.sort_unstable();
+            verts.dedup();
+            assert_eq!(verts.len(), n, "repeated vertex in {conn:?}");
+            for &node in conn {
+                let x = coords[(node, 0)];
+                let y = coords[(node, 1)];
+                assert!(x.is_finite() && y.is_finite());
+                assert!(
+                    (-0.5..=1.5).contains(&x) && (-0.5..=1.5).contains(&y),
+                    "node {node} escaped the cell footprint: ({x}, {y})"
+                );
+            }
+        }
+    }
+
+    /// Concave (clockwise-sweep) arcs must be cut exactly like convex ones: area is
+    /// conserved for every inward bulge, every cutter layout and every quadratic type.
+    #[test]
+    fn test_overlay_concave_arcs_imprint_preserves_area() {
+        // Stay clear of 0.25: there the cutter edge is exactly tangent to the arc,
+        // which currently produces a pinched QPOLY (known bug, reported separately).
+        for inward in [0.02, 0.1, 0.2, 0.23] {
+            for centre in [false, true] {
+                let mesh1 = concave_quad(inward, centre);
+                let before = exact_mesh_area(&mesh1);
+                for kind in 0..6 {
+                    let out = mesh1.overlay(concave_cutter(kind), OverlayOperation::Imprint);
+                    assert_imprint_valid(&out, before);
+                }
+            }
+        }
+        // A larger inward bulge would make the TRI6 arc cross its hypotenuse.
+        for inward in [0.02, 0.08, 0.15] {
+            let tri = concave_tri(inward);
+            let before = exact_mesh_area(&tri);
+            for kind in 0..6 {
+                let out = tri.overlay(concave_cutter(kind), OverlayOperation::Imprint);
+                assert_imprint_valid(&out, before);
+            }
+            let qpoly = crate::tools::polyze(&tri.view());
+            for kind in 0..6 {
+                let out = qpoly.overlay(concave_cutter(kind), OverlayOperation::Imprint);
+                assert_imprint_valid(&out, before);
+            }
+        }
+    }
+
+    /// The intersection nodes created where a straight cutter edge crosses a concave
+    /// arc must lie on that arc's circle.
+    #[test]
+    fn test_overlay_concave_arc_intersections_lie_on_the_circle() {
+        let mesh1 = concave_quad(0.25, false);
+        let before = exact_mesh_area(&mesh1);
+        // The horizontal edge at y = 0.85 crosses the inward top arc twice, at
+        // x = 0.5 +/- sqrt(0.625^2 - 0.525^2).
+        let cutter = concave_cutter(5);
+        let out = mesh1.overlay(cutter, OverlayOperation::Imprint);
+        assert_imprint_valid(&out, before);
+
+        // Circle through (1,1), (0.5,0.75), (0,1): centre (0.5,1.375), radius 0.625.
+        let coords = out.coords();
+        let on_arc: Vec<[f64; 2]> = (0..coords.nrows())
+            .map(|i| [coords[(i, 0)], coords[(i, 1)]])
+            .filter(|p| (p[1] - 0.85).abs() < 1e-9 && p[0] > 0.0 && p[0] < 1.0)
+            .filter(|p| {
+                (((p[0] - 0.5).powi(2) + (p[1] - 1.375).powi(2)).sqrt() - 0.625).abs() < 1e-9
+            })
+            .collect();
+        assert_eq!(
+            on_arc.len(),
+            2,
+            "expected two arc/line intersections: {on_arc:?}"
+        );
+    }
+
+    /// One straight cutter edge crossing the same concave arc twice: the sub-segment
+    /// between the crossings lies outside the cell and must not become a dart.
+    #[test]
+    fn test_overlay_concave_arc_crossed_twice_by_one_edge() {
+        let mesh1 = concave_quad(0.30, false);
+        let before = exact_mesh_area(&mesh1);
+        // No vertical subdivision: a single horizontal edge at y = 0.75 crosses the
+        // arc (which dips to y = 0.70) twice.
+        let cutter = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.5, 1.5])
+            .add_axis(vec![0.25, 0.75])
+            .build();
+        let out = mesh1.overlay(cutter, OverlayOperation::Imprint);
+        assert_imprint_valid(&out, before);
+    }
+
+    /// A line tangent to the arc does not cut the cell, so no node is created there.
+    #[test]
+    fn test_overlay_tangent_cutter_edge_creates_no_sliver() {
+        let mesh1 = concave_quad(0.25, false);
+        let before = exact_mesh_area(&mesh1);
+        let cutter = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.5, 1.5])
+            .add_axis(vec![0.25, 0.75])
+            .build();
+        let out = mesh1.overlay(cutter, OverlayOperation::Imprint);
+        assert_imprint_valid(&out, before);
     }
 
     #[test]

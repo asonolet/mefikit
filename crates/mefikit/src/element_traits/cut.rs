@@ -6,7 +6,7 @@ use rustc_hash::FxHashSet;
 
 use crate::element_traits::ElementTopo;
 use crate::element_traits::SortedVecKey;
-use crate::geometry::ArcEdge;
+use crate::geometry::{ArcEdge, in_quadratic_polygon};
 use crate::mesh::ElementId;
 use crate::mesh::ElementIds;
 use crate::mesh::ElementLike;
@@ -173,6 +173,42 @@ fn build_cell_dart_map(
     let mut cutter_pairs: FxHashSet<SortedVecKey> = FxHashSet::default();
     let geometries = boundary_geometries(boundary_edges, coords);
 
+    // A straight cutter edge can cross the same curved boundary twice. Only the
+    // sub-segments that actually lie inside the cell may contribute darts: the others
+    // would open phantom faces and leave the dart walker with no next dart to follow.
+    // Linear cells never hit that situation, so they keep the untouched fast path.
+    let curved = geometries.iter().any(|g| g.arc.is_curved());
+    let pgon: Vec<[f64; 2]> = if curved {
+        let n = geometries.len();
+        let mut p = Vec::with_capacity(2 * n);
+        for g in &geometries {
+            p.push(point(coords, g.conn[0]));
+        }
+        for g in &geometries {
+            let mid = g
+                .conn
+                .get(2)
+                .map(|&nd| point(coords, nd))
+                .unwrap_or_else(|| {
+                    let a = point(coords, g.conn[0]);
+                    let b = point(coords, g.conn[1]);
+                    [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])]
+                });
+            p.push(mid);
+        }
+        p
+    } else {
+        Vec::new()
+    };
+    let inside = |n0: usize, n1: usize| -> bool {
+        if !curved {
+            return true;
+        }
+        let a = point(coords, n0);
+        let b = point(coords, n1);
+        in_quadratic_polygon(&[0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])], &pgon)
+    };
+
     for (edge_idx, edge) in geometries.iter().enumerate() {
         let p0 = edge.conn[0];
         let p1 = edge.conn[1];
@@ -226,6 +262,9 @@ fn build_cell_dart_map(
                 if straight_boundary_pairs.contains(&pair) || !cutter_pairs.insert(pair) {
                     continue;
                 }
+                if !inside(n0, n1) {
+                    continue;
+                }
                 push_cutter_dart(
                     &mut graph,
                     &mut heap,
@@ -241,6 +280,9 @@ fn build_cell_dart_map(
             let (n0, n1) = (conn[0], conn[1]);
             let pair = SortedVecKey::new(SmallVec::from_slice(&[n0, n1]));
             if straight_boundary_pairs.contains(&pair) || !cutter_pairs.insert(pair) {
+                continue;
+            }
+            if !inside(n0, n1) {
                 continue;
             }
             push_cutter_dart(

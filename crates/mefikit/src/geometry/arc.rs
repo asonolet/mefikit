@@ -230,11 +230,13 @@ impl ArcCircle {
             return 0.0;
         }
         let a0 = self.angle(p0);
-        let ccw = (self.angle(x) - a0).rem_euclid(TAU);
+        let ax = self.angle(x);
         if sweep > 0.0 {
-            ccw / sweep
+            (ax - a0).rem_euclid(TAU) / sweep
         } else {
-            (TAU - ccw) / (-sweep)
+            // Measure the clockwise distance from `p0`: using `TAU - ccw` would map the
+            // start endpoint (ccw == 0) to a full turn instead of parameter 0.
+            (a0 - ax).rem_euclid(TAU) / (-sweep)
         }
     }
 
@@ -574,6 +576,31 @@ pub(crate) fn intersect_arc_seg(
     classify_intersections(&pts, [p0, p1, l0, l1], eps)
 }
 
+/// Whether the straight line `l0 -> l1` is tangent to the circle through `p0, m, p1`.
+///
+/// A tangential contact does not cross the arc, so it must not become a node of the cut
+/// graph: splitting both curves there would open a slit and produce a pinched cell. The
+/// test uses the same discriminant as the quadratic solver in [`intersect_arc_seg`], so a
+/// line that `quad_roots` already treats as tangent is classified the same way here.
+pub(crate) fn arc_line_is_tangent(
+    p0: &[f64; 2],
+    m: &[f64; 2],
+    p1: &[f64; 2],
+    l0: &[f64; 2],
+    l1: &[f64; 2],
+) -> bool {
+    let Some(circ) = ArcCircle::through(p0, m, p1) else {
+        return false;
+    };
+    let d = [l1[0] - l0[0], l1[1] - l0[1]];
+    let f = [l0[0] - circ.center[0], l0[1] - circ.center[1]];
+    let qa = d[0] * d[0] + d[1] * d[1];
+    let qb = 2.0 * (f[0] * d[0] + f[1] * d[1]);
+    let qc = f[0] * f[0] + f[1] * f[1] - circ.r2;
+    let disc = qb * qb - 4.0 * qa * qc;
+    disc.abs() <= 64.0 * f64::EPSILON * (qb * qb).max((4.0 * qa * qc).abs())
+}
+
 /// Builds an [`Intersections`] from up to two intersection coordinates, mapping a coordinate
 /// that coincides with one of the four operands' endpoints to [`Intersection::Existing`].
 ///
@@ -706,6 +733,35 @@ mod tests {
         assert!(dir[0].abs() < 1e-12 && (dir[1] - 1.0).abs() < 1e-12);
     }
 
+    /// An edge bulging towards the interior of a CCW cell has a clock-wise sweep. Its
+    /// parameter must still run from 0 at `p0` to 1 at `p1` (see `param_along`'s contract).
+    #[test]
+    fn param_along_clockwise_arc_endpoints() {
+        let p0 = [1.0, 1.0];
+        let m = [0.5, 0.95];
+        let p1 = [0.0, 1.0];
+        let edge = ArcEdge::new(p0, m, p1);
+        assert!(edge.is_curved());
+        assert!(edge.circle.unwrap().sweep(&p0, &m, &p1) < 0.0);
+
+        assert!((edge.param(&p0).unwrap() - 0.0).abs() < TOL);
+        assert!((edge.param(&p1).unwrap() - 1.0).abs() < TOL);
+        assert!((edge.param(&m).unwrap() - 0.5).abs() < TOL);
+    }
+
+    #[test]
+    fn sub_midpoint_of_clockwise_arc_stays_on_the_arc() {
+        let p0 = [1.0, 1.0];
+        let m = [0.5, 0.95];
+        let p1 = [0.0, 1.0];
+        let edge = ArcEdge::new(p0, m, p1);
+        let mid = edge.sub_midpoint(&p0, &p1).unwrap();
+        assert!((mid[0] - m[0]).abs() < TOL);
+        assert!((mid[1] - m[1]).abs() < TOL);
+        let [lo, hi] = edge.bounds();
+        assert!(mid[1] >= lo[1] - TOL && mid[1] <= hi[1] + TOL);
+    }
+
     fn on_arc_tol(p0: &[f64; 2], m: &[f64; 2], p1: &[f64; 2], p: &[f64; 2]) -> bool {
         let scale = points_scale(&[p0, m, p1, p]);
         let eps = 64.0 * scale * f64::EPSILON;
@@ -724,6 +780,42 @@ mod tests {
     }
 
     proptest! {
+        #[test]
+        fn param_along_inverts_the_arc_for_both_sweeps(
+            p0 in prop::array::uniform2(-2.0f64..2.0),
+            p1 in prop::array::uniform2(-2.0f64..2.0),
+            off in prop_oneof![-0.4f64..-0.02, 0.02f64..0.4],
+            t in 0.0f64..=1.0,
+        ) {
+            let d = [p1[0] - p0[0], p1[1] - p0[1]];
+            prop_assume!(d[0] * d[0] + d[1] * d[1] > 1e-4);
+            let mid = [(p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0];
+            // Both signs of `off` produce both sweep directions.
+            let m = [mid[0] + off * d[1], mid[1] - off * d[0]];
+            let Some(circ) = ArcCircle::through(&p0, &m, &p1) else {
+                return Ok(());
+            };
+            let a0 = circ.angle(&p0);
+            let sweep = circ.sweep(&p0, &m, &p1);
+            let ang = a0 + sweep * t;
+            let r = circ.radius();
+            let pt = [
+                circ.center()[0] + r * ang.cos(),
+                circ.center()[1] + r * ang.sin(),
+            ];
+            // The old clockwise branch only failed exactly at `p0`, so check the
+            // endpoints explicitly as well as a random interior parameter.
+            let start = circ.param_along(&p0, &m, &p1, &p0);
+            let end = circ.param_along(&p0, &m, &p1, &p1);
+            prop_assert!(start.abs() < 1e-9, "sweep {sweep}: param(p0) = {start}");
+            prop_assert!((end - 1.0).abs() < 1e-9, "sweep {sweep}: param(p1) = {end}");
+            let got = circ.param_along(&p0, &m, &p1, &pt);
+            prop_assert!(
+                (got - t).abs() < 1e-9,
+                "sweep {sweep}, t {t}: param_along returned {got}"
+            );
+        }
+
         #[test]
         fn arc_seg_intersections_lie_on_both(
             p0 in prop::array::uniform2(-2.0f64..2.0),

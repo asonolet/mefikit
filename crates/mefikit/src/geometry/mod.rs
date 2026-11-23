@@ -48,7 +48,9 @@ mod polyhedron;
 mod region;
 mod segment;
 
-pub(crate) use arc::{ArcEdge, arc_length2, intersect_arc_seg, quadratic_polygon_area2};
+pub(crate) use arc::{
+    ArcEdge, arc_length2, arc_line_is_tangent, intersect_arc_seg, quadratic_polygon_area2,
+};
 pub(crate) use clipping::{HalfSpace, clip_polygon, clip_segment, point_inside};
 pub use convexity::Convexity;
 pub use plane::PlaneFrame;
