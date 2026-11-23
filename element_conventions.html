@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5a18199f.js";
+            window.path_to_searchindex_js = "searchindex-90a22066.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-67ea746a.js"></script>
@@ -204,17 +204,33 @@ element node ordering and face definitions.</p>
 <tr><td>HEX21</td><td>3D</td><td>21</td><td>Regular</td><td>Tricubic hexahedron</td></tr>
 <tr><td>PLINE</td><td>1D</td><td>var.</td><td>Poly</td><td>Polyline</td></tr>
 <tr><td>PGON</td><td>2D</td><td>var.</td><td>Poly</td><td>Polygon</td></tr>
+<tr><td>QPOLY</td><td>2D</td><td>var.</td><td>Poly</td><td>Quadratic polygon (curved edges)</td></tr>
 <tr><td>PHED</td><td>3D</td><td>var.</td><td>Poly</td><td>Polyhedron</td></tr>
 </tbody>
 </table>
 </div>
+<p><strong>Quadratic edges.</strong> A quadratic edge <code>(v0, m, v1)</code> — a SEG3, or any edge of a
+TRI6/TRI7/QUAD8/QUAD9/QPOLY — is interpreted as the <strong>circular arc through its
+three nodes</strong>. A collinear triple degenerates to a straight segment. This exact
+shape (not a polygonal approximation) is used for lengths, areas, centroids,
+point-in-element tests and overlay intersections. A quadratic segment
+<code>[v0, v1, m]</code> is the arc from <code>v0</code> to <code>v1</code> passing through <code>m</code>.</p>
 <h2 id="poly-element-representation"><a class="header" href="#poly-element-representation">Poly element representation</a></h2>
-<p>Poly elements (PLINE, PGON, PHED) store their connectivity as a flat array of
-node indices. <strong>Faces are delimited by <code>usize::MAX</code> sentinel values.</strong></p>
+<p>Poly elements (PLINE, PGON, QPOLY, PHED) store their connectivity as a flat
+array of node indices. <strong>Faces are delimited by <code>usize::MAX</code> sentinel values.</strong></p>
 <ul>
 <li>
 <p><strong>PGON</strong>: nodes form a single face, no sentinel needed.
 <code>[n0, n1, n2, n3]</code> — a 4-node polygon.</p>
+</li>
+<li>
+<p><strong>QPOLY</strong>: a single face with quadratic (curved) edges. Nodes are laid out as
+all <code>n</code> vertices first, then the <code>n</code> mid-side nodes in the same cyclic order:
+<code>[v0, …, v{n-1}, m0, …, m{n-1}]</code>, where <code>mi</code> is the mid-side node of the edge
+<code>vi → v{i+1}</code> (indices modulo <code>n</code>). No sentinel is needed. <code>n</code> is at least
+2, so a QPOLY has at least four nodes; a two-vertex QPOLY represents a lens
+bounded by two arcs. TRI6/TRI7/QUAD8/QUAD9 convert to QPOLY with <code>n = 3</code> or
+<code>n = 4</code>; the centroid node of TRI7/QUAD9 is dropped.</p>
 </li>
 <li>
 <p><strong>PHED</strong>: each face is a closed polygon (PGON), separated by sentinels.</p>
