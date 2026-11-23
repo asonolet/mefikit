@@ -490,6 +490,12 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord3_ref(7),
             ]),
             PHED => self.to_polyhedron().centroid(),
+            SEG3 | SEG4 | TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => {
+                // Vertex centroid of the corners only: mid-side nodes shape the edges,
+                // they are not additional vertices (same convention as `centroid2`).
+                let n = self.num_vertices();
+                vertex_centroid(&(0..n).map(|i| *self.coord3_ref(i)).collect::<Vec<_>>())
+            }
             other => unimplemented!("centroid3 is not implemented for element type {other:?}"),
         }
     }
@@ -1052,5 +1058,33 @@ mod tests {
         let [min, max] = global_elem.bounds2();
         assert!(min[0] <= -0.2 && min[1] <= -0.2);
         assert!(max[0] >= 1.2 && max[1] >= 1.2);
+    }
+
+    /// `centroid3` used to be `unimplemented!` for quadratic 2D cells embedded in 3D.
+    #[test]
+    fn centroid3_of_quadratic_2d_cell_uses_corners_only() {
+        let family = 0;
+        let groups = crate::mesh::ArcGroups::new();
+        let coords = nd::arr2(&[
+            [0.0, 0.0, 0.0],
+            [2.0, 0.0, 0.0],
+            [2.0, 2.0, 1.0],
+            [0.0, 2.0, 1.0],
+            // four mid-side nodes, deliberately far from the chord midpoints
+            [1.0, -3.0, 0.0],
+            [5.0, 1.0, 0.5],
+            [1.0, 5.0, 1.0],
+            [-3.0, 1.0, 0.5],
+        ]);
+        let conn = [0usize, 1, 2, 3, 4, 5, 6, 7];
+        let elem = Element::new(
+            0,
+            coords.view(),
+            &family,
+            &conn,
+            ElementType::QUAD8,
+            &groups,
+        );
+        assert_eq!(elem.centroid3(), [1.0, 1.0, 0.5]);
     }
 }

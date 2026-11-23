@@ -305,3 +305,29 @@ def test_intersect_1d_rejects_2d_cutter():
         mf.build_cmesh([0.0, 1.0], [0.0, 1.0]).intersect_1d(
             mf.build_cmesh([0.0, 1.0], [0.0, 1.0])
         )
+
+
+def test_intersect_1d_deduplicates_coincident_edges():
+    coords = np.array([[-0.5, 0.5], [0.5, 0.5], [1.5, 0.5]])
+    mesh2 = mf.UMesh(coords)
+    mesh2.add_regular_block(
+        "SEG2", np.array([[0, 1], [1, 2], [0, 1], [1, 2]], dtype=np.uintp)
+    )
+    out = mf.build_cmesh([0.0, 1.0], [0.0, 1.0]).intersect_1d(mesh2)
+    assert _num_cells(out) == 2
+    assert _measure_total(out) == pytest.approx(1.0)
+
+
+def test_intersect_1d_deduplicates_coincident_plines():
+    out = mf.build_cmesh([0.0, 1.0], [0.0, 1.0]).intersect_1d(
+        _cut_line_mesh("two_plines")
+    )
+    doubled = mf.UMesh(np.asarray(_cut_line_mesh("two_plines").coords()))
+    doubled.add_poly_block(
+        "PLINE",
+        np.array([0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5], dtype=np.uintp),
+        np.array([3, 6, 9, 12], dtype=np.uintp),
+    )
+    out2 = mf.build_cmesh([0.0, 1.0], [0.0, 1.0]).intersect_1d(doubled)
+    assert _num_cells(out2) == _num_cells(out)
+    assert _measure_total(out2) == pytest.approx(1.0)

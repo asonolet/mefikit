@@ -25,7 +25,9 @@ use rayon::prelude::*;
 use super::operator::{RowSparse, TransferMethod, TransferOperator, validated_dims};
 use crate::element_traits::ElementGeo;
 use crate::geometry::{cross2, into_ccw2, signed_area2};
-use crate::mesh::{Dimension, Element, ElementBlockView, ElementId, ElementType, UMeshView};
+use crate::mesh::{
+    Dimension, Element, ElementBlockView, ElementId, ElementLike, ElementType, UMeshView,
+};
 use crate::tools::spatial_index::{SpatialIndex, SpatiallyIndexable};
 
 /// Builds the conservative P0 operator by intersecting every source/target cell pair.
@@ -47,6 +49,8 @@ use crate::tools::spatial_index::{SpatialIndex, SpatiallyIndexable};
 /// - If the source dimension is lower than the target dimension (upcast is not conservative).
 /// - If both dimensions are equal but a mesh is not full-dimensional.
 /// - If a source or target cell type is not supported by the cross-dimensional path.
+/// - If a full-dimensional cell is quadratic: the overlap is computed on straight
+///   polygons built from the raw connectivity, which would silently give wrong weights.
 pub(crate) fn prepare(mesh_src: &UMeshView, mesh_tgt: &UMeshView) -> TransferOperator {
     let (src_dim, tgt_dim, space) = validated_dims(mesh_src, mesh_tgt, "Conservative P0");
     assert!(
@@ -79,6 +83,15 @@ fn prepare_same_dim(
         mesh_tgt.topological_dimension().unwrap()
     );
 
+    // A quadratic cell stores mid-side nodes after its corners. Every overlap helper
+    // below treats the connectivity as a straight polygon, so those nodes would become
+    // spurious vertices and the weights would be silently wrong. Reject them instead.
+    assert!(
+        !has_quadratic_cells(mesh_src, src_dim) && !has_quadratic_cells(mesh_tgt, src_dim),
+        "Conservative P0 does not support quadratic cells (TRI6, TRI7, QUAD8, QUAD9, QPOLY, \
+         TET10, HEX21, WEDGE15)"
+    );
+
     let (src_offsets, src_blocks) = source_offsets(mesh_src, src_dim);
 
     let data = match space {
@@ -93,6 +106,17 @@ fn prepare_same_dim(
         src_blocks,
         data,
     )
+}
+
+/// Whether `mesh` has quadratic cells of the given topological dimension.
+pub(crate) fn has_quadratic_cells(mesh: &UMeshView, dim: Dimension) -> bool {
+    use ElementType::*;
+    mesh.elements_of_dim(dim).any(|cell| {
+        matches!(
+            cell.element_type(),
+            TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY | TET10 | HEX21 | WEDGE15
+        )
+    })
 }
 
 /// Flattens the source blocks of topological dimension `src_dim` in `BTreeMap` element-type
@@ -361,6 +385,30 @@ mod tests {
     /// Builds a conservative P0 operator for the common test meshes.
     fn cp0(source: &UMeshView, target: &UMeshView) -> TransferOperator {
         TransferOperator::new(source, target, TransferMethod::ConservativeP0)
+    }
+
+    #[test]
+    #[should_panic(expected = "does not support quadratic cells")]
+    fn conservative_p0_rejects_quadratic_cells() {
+        let mut mesh = UMesh::new(
+            nd::arr2(&[
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [1.0, 1.0],
+                [0.0, 1.0],
+                [0.5, 0.0],
+                [1.0, 0.5],
+                [0.5, 1.0],
+                [0.0, 0.5],
+            ])
+            .into_shared(),
+        );
+        mesh.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7]]).to_shared(),
+            None,
+        );
+        let _ = cp0(&mesh.view(), &mesh.view());
     }
 
     fn source_with_field(values: nd::Array<f64, nd::IxDyn>) -> UMesh {

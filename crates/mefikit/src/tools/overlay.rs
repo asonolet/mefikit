@@ -32,7 +32,7 @@ pub(crate) mod surface;
 pub use stitch::{StitchError, conformize, stitch};
 pub use surface::{SurfaceOverlay, SurfaceOverlayError, overlay_surfaces};
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 
 use ndarray as nd;
@@ -42,7 +42,8 @@ use crate::element_traits::cut::{
 };
 use crate::element_traits::{Cutable, ElementTopo, SortedVecKey};
 use crate::geometry::{
-    ArcEdge, Intersection, Intersections, PointId, Polygon, Segment, intersect_arc_seg,
+    ArcEdge, Intersection, Intersections, PointId, Polygon, Segment, intersect_arc_arc,
+    intersect_arc_seg,
 };
 use crate::mesh::{Dimension, Element, ElementId, ElementLike, ElementType, UMesh, UMeshView};
 use crate::prelude::ElementGeo;
@@ -260,15 +261,24 @@ fn cut_2d_with_edges(mesh1: &UMesh, cutting_edges: UMesh) -> UMesh {
 /// unchanged, so node ids stay valid.
 fn as_cutting_edges(mesh: UMesh) -> UMesh {
     let mut edges: Vec<[usize; 2]> = Vec::new();
+    // Coincident edges would each create their own intersection nodes, splitting a
+    // cell twice along the same line and losing area. The 1D elements are assumed not
+    // to cross, so an exact duplicate can only be an input artefact: keep one copy.
+    let mut seen: FxHashSet<(usize, usize)> = FxHashSet::default();
+    let mut push_edge = |a: usize, b: usize| {
+        if seen.insert((a.min(b), a.max(b))) {
+            edges.push([a, b]);
+        }
+    };
     for cell in mesh.elements() {
         match cell.element_type() {
             ElementType::SEG2 => {
                 let co = cell.connectivity();
-                edges.push([co[0], co[1]]);
+                push_edge(co[0], co[1]);
             }
             ElementType::PLINE => {
                 for w in cell.connectivity().windows(2) {
-                    edges.push([w[0], w[1]]);
+                    push_edge(w[0], w[1]);
                 }
             }
             et => panic!("intersect_1d expects a 1D mesh of SEG2 or PLINE elements, found {et:?}"),
@@ -719,6 +729,18 @@ fn cell_inside(cell: &Element<'_>, cutter: &UMesh, cutter_bvh: &SpIdx2) -> bool 
 /// witness: the piece is inside the cutter iff its interior point is. The centroid of a
 /// non-convex piece (e.g. an L-shape) can fall outside its own interior, so it is not a valid
 /// witness.
+/// Whether a 2D cell type has curved (circular-arc) edges.
+fn is_quadratic_2d(et: ElementType) -> bool {
+    matches!(
+        et,
+        ElementType::TRI6
+            | ElementType::TRI7
+            | ElementType::QUAD8
+            | ElementType::QUAD9
+            | ElementType::QPOLY
+    )
+}
+
 fn point_inside(points: &[[f64; 2]], cutter: &UMesh, cutter_bvh: &SpIdx2) -> bool {
     let Some(interior) = Polygon::unknown(points.iter().copied()).strict_interior_point() else {
         return false;
@@ -727,8 +749,15 @@ fn point_inside(points: &[[f64; 2]], cutter: &UMesh, cutter_bvh: &SpIdx2) -> boo
     candidates
         .iter()
         .map(|eid| cutter.element(eid))
-        .map(cell_points)
-        .any(|cell| cell.contains_stable(&interior))
+        .any(|cell| {
+            if is_quadratic_2d(cell.element_type()) {
+                // A quadratic cell stores its mid-side nodes after the corners: treating
+                // them as polygon vertices would give a bogus "inside" answer.
+                cell.is_point_inside(&[interior[0], interior[1]])
+            } else {
+                cell_points(cell).contains_stable(&interior)
+            }
+        })
 }
 
 /// Compute all intersections between mesh1 and mesh2 where mesh1 and mesh2 should be 2d mesh of
@@ -793,11 +822,33 @@ fn add_intersection(
                 ),
                 [c1[0], c1[1], c2[0], c2[1]],
             ),
-            (SEG2, SEG3) => panic!(
-                "quadratic cutter edges are not supported: the quadratic mesh must be the subject \
-             (mesh1)"
+            (SEG2, SEG3) => {
+                let p0 = edge.coord2_ref(0);
+                let p1 = edge.coord2_ref(1);
+                let mid = [0.5 * (p0[0] + p1[0]), 0.5 * (p0[1] + p1[1])];
+                (
+                    intersect_arc_arc(
+                        p0,
+                        &mid,
+                        p1,
+                        edge2.coord2_ref(0),
+                        edge2.coord2_ref(2),
+                        edge2.coord2_ref(1),
+                    ),
+                    [c1[0], c1[1], c2[0], c2[1]],
+                )
+            }
+            (SEG3, SEG3) => (
+                intersect_arc_arc(
+                    edge.coord2_ref(0),
+                    edge.coord2_ref(2),
+                    edge.coord2_ref(1),
+                    edge2.coord2_ref(0),
+                    edge2.coord2_ref(2),
+                    edge2.coord2_ref(1),
+                ),
+                [c1[0], c1[1], c2[0], c2[1]],
             ),
-            (SEG3, SEG3) => panic!("SEG3-SEG3 intersections are not supported"),
             (a, b) => panic!("unsupported edge intersection between {a:?} and {b:?}"),
         };
 

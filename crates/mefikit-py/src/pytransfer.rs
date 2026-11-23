@@ -282,6 +282,26 @@ impl PyMovingLeastSquares {
 // ConservativeP0
 // ---------------------------------------------------------------------------
 
+/// Quadratic cells are rejected by ConservativeP0: its overlap is computed on straight
+/// polygons built from the raw connectivity, where mid-side nodes would become spurious
+/// vertices and produce silently wrong weights.
+fn has_quadratic_cells(view: &mf::UMeshView<'_>) -> bool {
+    use mefikit::mesh::ElementType;
+    view.blocks().any(|(et, _)| {
+        matches!(
+            *et,
+            ElementType::TRI6
+                | ElementType::TRI7
+                | ElementType::QUAD8
+                | ElementType::QUAD9
+                | ElementType::QPOLY
+                | ElementType::TET10
+                | ElementType::HEX21
+                | ElementType::WEDGE15
+        )
+    })
+}
+
 /// Measure-weighted conservative transfer between source and target cells.
 ///
 /// The source cells may have the same topological dimension as the target cells (2D→2D or
@@ -313,17 +333,28 @@ impl Display for PyConservativeP0 {
 impl PyConservativeP0 {
     #[new]
     #[pyo3(signature = (src_mesh, tgt_mesh, def_val=0.0))]
-    fn new(src_mesh: &Bound<'_, PyUMesh>, tgt_mesh: &Bound<'_, PyUMesh>, def_val: f64) -> Self {
-        let transfer = mf::TransferOperator::new(
-            &into_view(&src_mesh.borrow()),
-            &into_view(&tgt_mesh.borrow()),
-            mf::TransferMethod::ConservativeP0,
-        );
-        PyConservativeP0 {
+    fn new(
+        src_mesh: &Bound<'_, PyUMesh>,
+        tgt_mesh: &Bound<'_, PyUMesh>,
+        def_val: f64,
+    ) -> PyResult<Self> {
+        let src = src_mesh.borrow();
+        let tgt = tgt_mesh.borrow();
+        let src_view = src.inner.view();
+        let tgt_view = tgt.inner.view();
+        if has_quadratic_cells(&src_view) || has_quadratic_cells(&tgt_view) {
+            return Err(PyValueError::new_err(
+                "ConservativeP0 does not support quadratic cells (TRI6, TRI7, QUAD8, QUAD9, \
+                 QPOLY, TET10, HEX21, WEDGE15)",
+            ));
+        }
+        let transfer =
+            mf::TransferOperator::new(&src_view, &tgt_view, mf::TransferMethod::ConservativeP0);
+        Ok(PyConservativeP0 {
             op: Arc::new(transfer),
             src_mesh: src_mesh.clone().unbind(),
             def_val,
-        }
+        })
     }
 
     /// Saves the prepared operator to a SciPy-compatible ``.npz`` file.

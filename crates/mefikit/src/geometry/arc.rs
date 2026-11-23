@@ -15,7 +15,7 @@ use std::f64::consts::TAU;
 
 use robust::{Coord, incircle, orient2d};
 
-use super::segment::{Intersection, Intersections, PointId};
+use super::segment::{Intersection, Intersections, PointId, Segment};
 use super::signed_area2;
 
 /// Characteristic length of a set of points: the largest pairwise distance.
@@ -576,6 +576,119 @@ pub(crate) fn intersect_arc_seg(
     classify_intersections(&pts, [p0, p1, l0, l1], eps)
 }
 
+/// Re-labels the `Existing` ids of a result whose two operands were swapped:
+/// `P1 <-> P3` and `P2 <-> P4`. Used when the curved operand is the second one.
+fn swap_operands(res: Intersections) -> Intersections {
+    let id = |p: PointId| match p {
+        PointId::P1 => PointId::P3,
+        PointId::P2 => PointId::P4,
+        PointId::P3 => PointId::P1,
+        PointId::P4 => PointId::P2,
+    };
+    let point = |i: Intersection| match i {
+        Intersection::Existing(p) => Intersection::Existing(id(p)),
+        Intersection::New(x) => Intersection::New(x),
+    };
+    match res {
+        Intersections::None => Intersections::None,
+        Intersections::One(i) => Intersections::One(point(i)),
+        Intersections::Two([a, b]) => Intersections::Two([point(a), point(b)]),
+        Intersections::Segment([a, b]) => Intersections::Segment([id(a), id(b)]),
+    }
+}
+
+/// Intersection points of two quadratic edges (circular arcs through their mid-side
+/// nodes). A collinear triple degenerates to a straight segment and falls back to the
+/// segment/arc cases.
+///
+/// Two distinct circles meet in at most two points, so the result is never
+/// [`Intersections::Segment`] except when both operands are straight. When both arcs lie
+/// on the same circle they may share a sub-arc; its boundary points are always endpoints
+/// of one operand, returned as [`Intersection::Existing`] (the downstream code reads them
+/// exactly like a collinear overlap).
+///
+/// `endpoints` are ordered `[P1, P2, P3, P4]` = `[a0, a1, b0, b1]`; mid-side nodes are
+/// shape parameters, never endpoints.
+pub(crate) fn intersect_arc_arc(
+    a0: &[f64; 2],
+    am: &[f64; 2],
+    a1: &[f64; 2],
+    b0: &[f64; 2],
+    bm: &[f64; 2],
+    b1: &[f64; 2],
+) -> Intersections {
+    let scale = points_scale(&[a0, am, a1, b0, bm, b1]);
+    let eps = 64.0 * scale * f64::EPSILON;
+    let ca = ArcCircle::through(a0, am, a1);
+    let cb = ArcCircle::through(b0, bm, b1);
+
+    match (ca, cb) {
+        (None, None) => Segment::new(*a0, *a1).intersect(Segment::new(*b0, *b1)),
+        (Some(_), None) => intersect_arc_seg(a0, am, a1, b0, b1),
+        (None, Some(_)) => swap_operands(intersect_arc_seg(b0, bm, b1, a0, a1)),
+        (Some(ca), Some(cb)) => {
+            // Membership is decided per operand: a global scale over all six points
+            // would make the angular tolerance far too loose when the two arcs are
+            // far apart, accepting points that are actually off the smaller arc.
+            let eps_a = |pt: &[f64; 2]| 64.0 * points_scale(&[a0, am, a1, pt]) * f64::EPSILON;
+            let eps_b = |pt: &[f64; 2]| 64.0 * points_scale(&[b0, bm, b1, pt]) * f64::EPSILON;
+            let mut pts: Vec<[f64; 2]> = Vec::new();
+            let d = [cb.center[0] - ca.center[0], cb.center[1] - ca.center[1]];
+            let dist2 = d[0] * d[0] + d[1] * d[1];
+            let dist = dist2.sqrt();
+            let disc_tol = 64.0 * f64::EPSILON * ca.r2.max(cb.r2).max(dist2);
+
+            if dist <= eps {
+                // Concentric: only arcs on the very same circle can meet. The overlap
+                // boundary is made of endpoints that lie on both arcs.
+                if (ca.r2 - cb.r2).abs() <= disc_tol {
+                    for p in [a0, a1] {
+                        if on_arc(&cb, b0, bm, b1, p, eps_b(p)) {
+                            dedup_push(&mut pts, *p, eps);
+                        }
+                    }
+                    for p in [b0, b1] {
+                        if on_arc(&ca, a0, am, a1, p, eps_a(p)) {
+                            dedup_push(&mut pts, *p, eps);
+                        }
+                    }
+                }
+            } else {
+                // Radical axis: the intersection points are `foot +/- h * perp(u)`.
+                let a_len = (dist2 + ca.r2 - cb.r2) / (2.0 * dist);
+                let h2 = ca.r2 - a_len * a_len;
+                if h2 >= -disc_tol {
+                    let h = h2.max(0.0).sqrt();
+                    let u = [d[0] / dist, d[1] / dist];
+                    let foot = [ca.center[0] + a_len * u[0], ca.center[1] + a_len * u[1]];
+                    let perp = [-u[1], u[0]];
+                    for s in [-1.0, 1.0] {
+                        let pt = [foot[0] + s * h * perp[0], foot[1] + s * h * perp[1]];
+                        if on_arc(&ca, a0, am, a1, &pt, eps_a(&pt))
+                            && on_arc(&cb, b0, bm, b1, &pt, eps_b(&pt))
+                        {
+                            dedup_push(&mut pts, pt, eps);
+                        }
+                    }
+                }
+                // Shared endpoints are exact circle intersections; adding them is a
+                // safety net for roots that roundoff pushed just outside a sweep.
+                for p in [a0, a1] {
+                    if on_arc(&cb, b0, bm, b1, p, eps_b(p)) {
+                        dedup_push(&mut pts, *p, eps);
+                    }
+                }
+                for p in [b0, b1] {
+                    if on_arc(&ca, a0, am, a1, p, eps_a(p)) {
+                        dedup_push(&mut pts, *p, eps);
+                    }
+                }
+            }
+            classify_intersections(&pts, [a0, a1, b0, b1], eps)
+        }
+    }
+}
+
 /// Builds an [`Intersections`] from up to two intersection coordinates, mapping a coordinate
 /// that coincides with one of the four operands' endpoints to [`Intersection::Existing`].
 ///
@@ -737,6 +850,127 @@ mod tests {
         assert!(mid[1] >= lo[1] - TOL && mid[1] <= hi[1] + TOL);
     }
 
+    /// Upper unit semicircle centred at (0, 0).
+    fn upper_arc() -> ([f64; 2], [f64; 2], [f64; 2]) {
+        ([-1.0, 0.0], [0.0, 1.0], [1.0, 0.0])
+    }
+
+    fn coords(
+        res: Intersections,
+        a0: &[f64; 2],
+        a1: &[f64; 2],
+        b0: &[f64; 2],
+        b1: &[f64; 2],
+    ) -> Vec<[f64; 2]> {
+        seg_int_coords(res, a0, a1, b0, b1)
+    }
+
+    #[test]
+    fn arc_arc_distinct_circles_one_intersection() {
+        let (a0, am, a1) = upper_arc();
+        // Same radius, centre shifted by (1, 0): the circles meet at (0.5, +/-sqrt(3)/2),
+        // but only the upper point lies on both upper arcs.
+        let (b0, bm, b1) = ([0.0, 0.0], [1.0, 1.0], [2.0, 0.0]);
+        let pts = coords(
+            intersect_arc_arc(&a0, &am, &a1, &b0, &bm, &b1),
+            &a0,
+            &a1,
+            &b0,
+            &b1,
+        );
+        assert_eq!(pts.len(), 1, "{pts:?}");
+        assert!((pts[0][0] - 0.5).abs() < 1e-12);
+        assert!((pts[0][1] - 3f64.sqrt() / 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn arc_arc_tangent_at_shared_endpoint() {
+        let (a0, am, a1) = upper_arc();
+        let (b0, bm, b1) = ([1.0, 0.0], [2.0, 1.0], [3.0, 0.0]);
+        let pts = coords(
+            intersect_arc_arc(&a0, &am, &a1, &b0, &bm, &b1),
+            &a0,
+            &a1,
+            &b0,
+            &b1,
+        );
+        assert_eq!(pts.len(), 1, "{pts:?}");
+        assert!((pts[0][0] - 1.0).abs() < 1e-12 && pts[0][1].abs() < 1e-12);
+    }
+
+    #[test]
+    fn arc_arc_disjoint_circles() {
+        let (a0, am, a1) = upper_arc();
+        let (b0, bm, b1) = ([3.0, 0.0], [4.0, 1.0], [5.0, 0.0]);
+        assert!(matches!(
+            intersect_arc_arc(&a0, &am, &a1, &b0, &bm, &b1),
+            Intersections::None
+        ));
+    }
+
+    #[test]
+    fn arc_arc_same_circle_partial_overlap() {
+        let (a0, am, a1) = upper_arc();
+        let s = std::f64::consts::FRAC_1_SQRT_2;
+        // Sub-arc from 90 deg to 0 deg; overlap with the upper semicircle is [0, 90] deg.
+        let (b0, bm, b1) = ([0.0, 1.0], [s, s], [1.0, 0.0]);
+        let res = intersect_arc_arc(&a0, &am, &a1, &b0, &bm, &b1);
+        assert!(matches!(res, Intersections::Two(_)), "{res:?}");
+        let mut pts = coords(res, &a0, &a1, &b0, &b1);
+        pts.sort_by(|a, b| a[0].total_cmp(&b[0]));
+        assert!((pts[0][1] - 1.0).abs() < 1e-12); // (0, 1)
+        assert!((pts[1][0] - 1.0).abs() < 1e-12); // (1, 0)
+    }
+
+    #[test]
+    fn arc_arc_identical_arcs() {
+        let (a0, am, a1) = upper_arc();
+        let res = intersect_arc_arc(&a0, &am, &a1, &a0, &am, &a1);
+        assert!(matches!(res, Intersections::Two(_)), "{res:?}");
+    }
+
+    #[test]
+    fn arc_arc_straight_fallbacks() {
+        // both straight: crossing at (0.5, 0)
+        let (a0, am, a1) = ([0.0, 0.0], [0.5, 0.0], [1.0, 0.0]);
+        let (b0, bm, b1) = ([0.5, -1.0], [0.5, -0.5], [0.5, 1.0]);
+        let pts = coords(
+            intersect_arc_arc(&a0, &am, &a1, &b0, &bm, &b1),
+            &a0,
+            &a1,
+            &b0,
+            &b1,
+        );
+        assert_eq!(pts.len(), 1);
+        assert!((pts[0][0] - 0.5).abs() < 1e-12 && pts[0][1].abs() < 1e-12);
+
+        // arc + straight, in both operand orders: two crossings of y = 0.5
+        let (c0, cm, c1) = upper_arc();
+        let (l0, lm, l1) = ([-2.0, 0.5], [0.0, 0.5], [2.0, 0.5]);
+        let pts = [
+            coords(
+                intersect_arc_arc(&c0, &cm, &c1, &l0, &lm, &l1),
+                &c0,
+                &c1,
+                &l0,
+                &l1,
+            ),
+            coords(
+                intersect_arc_arc(&l0, &lm, &l1, &c0, &cm, &c1),
+                &l0,
+                &l1,
+                &c0,
+                &c1,
+            ),
+        ];
+        for pts in pts {
+            assert_eq!(pts.len(), 2, "{pts:?}");
+            for p in pts {
+                assert!((p[1] - 0.5).abs() < 1e-12);
+            }
+        }
+    }
+
     fn on_arc_tol(p0: &[f64; 2], m: &[f64; 2], p1: &[f64; 2], p: &[f64; 2]) -> bool {
         let scale = points_scale(&[p0, m, p1, p]);
         let eps = 64.0 * scale * f64::EPSILON;
@@ -755,6 +989,30 @@ mod tests {
     }
 
     proptest! {
+        #[test]
+        fn arc_arc_intersections_lie_on_both(
+            a0 in prop::array::uniform2(-2.0f64..2.0),
+            a1 in prop::array::uniform2(-2.0f64..2.0),
+            aoff in prop_oneof![-0.4f64..-0.02, 0.02f64..0.4],
+            b0 in prop::array::uniform2(-2.0f64..2.0),
+            b1 in prop::array::uniform2(-2.0f64..2.0),
+            boff in prop_oneof![-0.4f64..-0.02, 0.02f64..0.4],
+        ) {
+            let da = [a1[0] - a0[0], a1[1] - a0[1]];
+            let db = [b1[0] - b0[0], b1[1] - b0[1]];
+            prop_assume!(da[0] * da[0] + da[1] * da[1] > 1e-4);
+            prop_assume!(db[0] * db[0] + db[1] * db[1] > 1e-4);
+            let amid = [(a0[0] + a1[0]) / 2.0, (a0[1] + a1[1]) / 2.0];
+            let bmid = [(b0[0] + b1[0]) / 2.0, (b0[1] + b1[1]) / 2.0];
+            let am = [amid[0] + aoff * da[1], amid[1] - aoff * da[0]];
+            let bm = [bmid[0] + boff * db[1], bmid[1] - boff * db[0]];
+            let res = intersect_arc_arc(&a0, &am, &a1, &b0, &bm, &b1);
+            for p in seg_int_coords(res, &a0, &a1, &b0, &b1) {
+                prop_assert!(on_arc_tol(&a0, &am, &a1, &p), "not on A: {p:?}");
+                prop_assert!(on_arc_tol(&b0, &bm, &b1, &p), "not on B: {p:?}");
+            }
+        }
+
         #[test]
         fn param_along_inverts_the_arc_for_both_sweeps(
             p0 in prop::array::uniform2(-2.0f64..2.0),
