@@ -255,7 +255,9 @@ format being selected by the file extension (`.json`, `.yaml`, `.vtk`, `.vtu`,
 
 `to_pyvista` copies the mesh (and, by default, its fields) into a
 `pyvista.UnstructuredGrid`; `to_meshio` produces a `meshio.Mesh`; the
-medcoupling pair converts to / from a `MEDCouplingUMesh`. See the
+medcoupling pair converts to / from a `MEDCouplingUMesh`. `QPOLY` maps directly
+to PyVista's quadratic polygon and to MEDCoupling's `QPOLYG` cell type; meshio
+has no quadratic polygon type and raises `ValueError` for it. See the
 [Input/Output](./python_examples/input_output.md) notebook and the `.med`
 round-trip in [mefikit vs. medcoupling](./python_examples/compare_medcoupling.md).
 

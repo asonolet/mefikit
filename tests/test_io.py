@@ -51,6 +51,64 @@ def test_to_pv_phed_fields():
     assert np.allclose(ug.cell_data["Heat"], np.linspace(0.0, 1.0, ph.num_elements()))
 
 
+def qpoly_mesh():
+    """A single QPOLY square: four vertices followed by their four mid-side nodes."""
+    coords = np.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, 0.0],
+            [1.0, 0.5],
+            [0.5, 1.0],
+            [0.0, 0.5],
+        ]
+    )
+    mesh = mf.UMesh(coords)
+    mesh.add_poly_block(
+        "QPOLY", np.arange(8, dtype=np.uintp), np.array([8], dtype=np.uintp)
+    )
+    return mesh
+
+
+def test_to_pv_qpoly_keeps_quadratic_polygon():
+    mesh = qpoly_mesh()
+    mesh.set_field("T", {"QPOLY": np.array([7.0])})
+    ug = mesh.to_pyvista()
+
+    assert ug.n_cells == 1
+    assert np.all(ug.celltypes == int(pv.CellType.QUADRATIC_POLYGON))
+    assert ug.get_cell(0).n_points == 8
+    assert np.array_equal(ug.cells, [8, 0, 1, 2, 3, 4, 5, 6, 7])
+    assert np.allclose(ug.cell_data["T"], [7.0])
+
+
+def test_to_meshio_rejects_qpoly():
+    mesh = qpoly_mesh()
+    with pytest.raises(ValueError, match="quadratic polygon"):
+        mesh.to_meshio()
+
+
+def test_to_mc_qpoly_keeps_quadratic_polygon():
+    mesh = qpoly_mesh()
+    converted = mesh.to_mc()
+
+    assert converted.getNumberOfCells() == 1
+    assert converted.getNodalConnectivity().toNumPyArray().tolist() == [
+        32,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+    ]
+    assert converted.getNodalConnectivityIndex().toNumPyArray().tolist() == [0, 9]
+
+
 def test_to_pv_pgon():
     m = mf.build_cmesh(np.linspace(0.0, 1.0, 3), np.linspace(0.0, 1.0, 3)).polyze()
     ug = m.to_pyvista()

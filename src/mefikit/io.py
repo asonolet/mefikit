@@ -17,6 +17,7 @@ type_order = [
     "QUAD4",
     "QUAD8",
     "PGON",
+    "QPOLY",
     "TET4",
     "TET10",
     "WEDGE6",
@@ -33,6 +34,7 @@ meshio_to_mefikit_type = {
     "triangle6": "TRI6",
     "quad": "QUAD4",
     "quad8": "QUAD8",
+    "polygon": "PGON",
     "tetra": "TET4",
     "tetra10": "TET10",
     "wedge": "WEDGE6",
@@ -53,6 +55,7 @@ mf_types_dim = {
     "QUAD4": 2,
     "QUAD8": 2,
     "PGON": 2,
+    "QPOLY": 2,
     "TET4": 3,
     "TET10": 3,
     "WEDGE6": 3,
@@ -90,10 +93,39 @@ def install_conversions():
 
     from mefikit import UMesh
 
+    def _poly_cells(
+        conn: npt.NDArray[np.uintp], offsets: npt.NDArray[np.uintp]
+    ) -> list[npt.NDArray[np.uintp]]:
+        """Split flat poly connectivity into the per-cell arrays expected by meshio."""
+        conn_u = np.asarray(conn, dtype=np.uintp)
+        offsets_i = np.asarray(offsets, dtype=np.intp)
+        if offsets_i.size == 0:
+            return []
+        starts = np.concatenate(([0], offsets_i[:-1]))
+        return [
+            np.ascontiguousarray(conn_u[start:end], dtype=np.uintp)
+            for start, end in zip(starts, offsets_i, strict=True)
+        ]
+
     def to_meshio(self: UMesh) -> meshio.Mesh:
         blocks: dict = self.blocks()
 
-        cells = {mefikit_to_meshio_type[t]: b for (t, b) in blocks.items()}
+        cells: dict[str, object] = {}
+        polygon_cells: list[npt.NDArray[np.uintp]] = []
+        for et, block in blocks.items():
+            if et == "QPOLY":
+                raise ValueError(
+                    "meshio has no quadratic polygon cell type; "
+                    "QPOLY cannot be converted without losing its mid-side nodes"
+                )
+            elif et == "PGON":
+                polygon_cells.extend(_poly_cells(*block))
+            elif et in mefikit_to_meshio_type:
+                cells[mefikit_to_meshio_type[et]] = block
+            else:
+                raise ValueError(f"to_meshio does not support element type {et}")
+        if polygon_cells:
+            cells["polygon"] = polygon_cells
 
         return meshio.Mesh(
             self.coords(),
@@ -142,6 +174,22 @@ def install_conversions():
             offsets = np.arange(n_elem + 1, dtype=int) * (num_nodes + 1)
             return new_connectivity, offsets
 
+        def _mf_poly_to_mc_connectivity(
+            conn: npt.NDArray[np.uintp],
+            offsets: npt.NDArray[np.uintp],
+            code: int,
+        ):
+            conn_i = np.asarray(conn, dtype=np.intp).reshape(-1)
+            offsets_i = np.asarray(offsets, dtype=np.intp).reshape(-1)
+            if offsets_i.size == 0:
+                return np.empty(0, dtype=int), np.array([0], dtype=int)
+            starts = np.concatenate(([0], offsets_i[:-1]))
+            counts = offsets_i - starts
+            # MEDCoupling polygonal cells are [code, node ids...] without an explicit
+            # node count; the connectivity index carries the cell extent.
+            values = np.insert(conn_i, starts + np.arange(counts.size), code)
+            return values, np.concatenate(([0], np.cumsum(counts + 1)))
+
         blocks = self.blocks()
         coords = self.coords()
 
@@ -155,9 +203,14 @@ def install_conversions():
             if et not in blocks or mf_types_dim[et] != lev:
                 continue
 
-            conn, offset = _mf_reg_to_mc_connectivity(
-                et, cast(npt.NDArray[np.uintp], blocks[et])
-            )
+            if et in ("QPOLY", "PGON"):
+                conn, offsets = blocks[et]
+                code = int(mc.NORM_QPOLYG if et == "QPOLY" else mc.NORM_POLYGON)
+                conn, offset = _mf_poly_to_mc_connectivity(conn, offsets, code)
+            else:
+                conn, offset = _mf_reg_to_mc_connectivity(
+                    et, cast(npt.NDArray[np.uintp], blocks[et])
+                )
             mc_conn = np.hstack((mc_conn, conn), dtype=int)
             # offsets the offset
             if len(mc_offset) > 0:
@@ -194,6 +247,7 @@ def install_conversions():
             "QUAD4": pv.CellType.QUAD,
             "QUAD8": pv.CellType.QUADRATIC_QUAD,
             "PGON": pv.CellType.POLYGON,
+            "QPOLY": pv.CellType.QUADRATIC_POLYGON,
             "TET4": pv.CellType.TETRA,
             "TET10": pv.CellType.QUADRATIC_TETRA,
             "WEDGE6": pv.CellType.WEDGE,
@@ -218,6 +272,8 @@ def install_conversions():
 
         def _mf_poly_to_pv_connectivity(et: str, conn: np.ndarray, offsets: np.ndarray):
             n_elem = offsets.shape[0]
+            if n_elem == 0:
+                return np.array([], dtype=int), np.array([], dtype=int)
             offsets = offsets.astype(np.intp)
             starts = np.concatenate(([0], offsets[:-1]))
             num_nodes = offsets - starts
@@ -313,7 +369,7 @@ def install_conversions():
             if et == "PHED":
                 conn, offsets = blocks[et]
                 conn, et_types = _mf_phed_to_pv_connectivity(conn, offsets)
-            elif et == "PGON":
+            elif et in ("QPOLY", "PGON"):
                 conn, offsets = blocks[et]
                 conn, et_types = _mf_poly_to_pv_connectivity(et, conn, offsets)
             else:
