@@ -418,6 +418,29 @@ def test_distributed_extensive_mass_conservation() -> None:
     comm.Barrier()
 
 
+def test_distributed_rejects_higher_order_cells() -> None:
+    """Quadratic/higher-order cells are best effort and not supported distributed."""
+    mesh = mf.UMesh(
+        np.array(
+            [
+                [0.0, 0.0],
+                [1.0, 0.0],
+                [1.0, 1.0],
+                [0.0, 1.0],
+                [0.5, 0.0],
+                [1.0, 0.5],
+                [0.5, 1.0],
+                [0.0, 0.5],
+                [0.5, 0.5],
+            ]
+        )
+    )
+    mesh.add_regular_block("QUAD9", np.arange(9, dtype=np.uintp).reshape(1, 9))
+
+    with pytest.raises(ValueError, match="first-order"):
+        mf.transfer.DistributedConservativeP0(mesh, None)
+
+
 def surface_grid_3d(xs, ys, z) -> mf.UMesh:
     xs = np.asarray(xs, dtype=float)
     ys = np.asarray(ys, dtype=float)

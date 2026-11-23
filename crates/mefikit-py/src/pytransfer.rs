@@ -308,7 +308,8 @@ fn has_quadratic_cells(view: &mf::UMeshView<'_>) -> bool {
 /// 3D→3D) or a higher one: 3D volume→2D surface/1D line/0D point, 2D surface→1D line/0D point,
 /// 1D line→0D point. The weight of a source/target pair is the measure of their intersection in
 /// the target dimension (area for a surface target, length for a line target, counting measure
-/// for points).
+/// for points). Cross-dimensional (downcast) transfers accept first-order cells only; quadratic
+/// cells are best effort in mefikit and are rejected.
 ///
 /// Intensive fields (default) are normalized by the target cell measure; extensive fields keep
 /// the raw measure-weighted sum. Uncovered target cells keep `def_val`.

@@ -39,6 +39,22 @@ _TAG_REQ = 4103
 
 _MAX_UINT = np.iinfo(np.uintp).max
 
+# Higher-order elements are best-effort in mefikit; the distributed conservative transfer only
+# accepts first-order cells. Reject them explicitly instead of failing with a KeyError later.
+_FIRST_ORDER_TYPES = frozenset(
+    {
+        "VERTEX",
+        "SEG2",
+        "TRI3",
+        "QUAD4",
+        "PGON",
+        "TET4",
+        "WEDGE6",
+        "HEX8",
+        "PHED",
+    }
+)
+
 
 # ---------------------------------------------------------------------------
 # Small mesh helpers
@@ -90,6 +106,12 @@ class _MeshInfo:
         self.coords = np.asarray(mesh.coords(), dtype=np.float64)
         blocks = mesh.blocks()
         self.block_order: list[str] = list(blocks)
+        unsupported = sorted(set(self.block_order) - _FIRST_ORDER_TYPES)
+        if unsupported:
+            raise ValueError(
+                "DistributedConservativeP0 supports first-order element types only; "
+                f"got {unsupported}"
+            )
         self.lengths = {et: _block_len(conn) for et, conn in blocks.items()}
         self.dims = {et: _io.mf_types_dim[et] for et in self.block_order}
         self.bounds = {
@@ -270,6 +292,9 @@ class DistributedConservativeP0:
     by the target cell measure, while ``extensive=True`` keeps the raw
     measure-weighted sum. Downcasts (3D -> 2D/1D/0D, 2D -> 1D/0D, 1D -> 0D) are
     supported with the same geometry rules as the sequential operator.
+
+    Only first-order cells are supported. Higher-order/quadratic element types
+    are best effort in mefikit and are rejected here with :class:`ValueError`.
     """
 
     def __init__(
