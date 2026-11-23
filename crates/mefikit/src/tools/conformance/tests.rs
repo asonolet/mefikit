@@ -73,7 +73,7 @@ fn unit_cube_coords() -> Vec<[f64; 3]> {
 /// ignored, and the diagnostic must not index past the ring.
 #[test]
 fn is_conform_accepts_quadratic_surface_cells() {
-    let quad9_coords = vec![
+    let quad9_coords = [
         [0.0, 0.0, 0.0],
         [1.0, 0.0, 0.0],
         [1.0, 1.0, 0.0],
@@ -96,7 +96,7 @@ fn is_conform_accepts_quadratic_surface_cells() {
     let report = is_conform(&quad9.view(), 1e-9, None).unwrap();
     assert!(report.is_conform(), "{report:?}");
 
-    let tri7_coords = vec![
+    let tri7_coords = [
         [0.0, 0.0, 0.0],
         [1.0, 0.0, 0.0],
         [0.0, 1.0, 0.0],
@@ -121,7 +121,7 @@ fn is_conform_accepts_quadratic_surface_cells() {
 /// A quadratic cell that reuses a corner id for a mid-side node reports the raw node pair.
 #[test]
 fn is_conform_reports_quadratic_fold_with_raw_node_ids() {
-    let coords = vec![
+    let coords = [
         [0.0, 0.0, 0.0],
         [1.0, 0.0, 0.0],
         [0.0, 1.0, 0.0],
