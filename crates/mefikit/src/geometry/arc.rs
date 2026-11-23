@@ -576,31 +576,6 @@ pub(crate) fn intersect_arc_seg(
     classify_intersections(&pts, [p0, p1, l0, l1], eps)
 }
 
-/// Whether the straight line `l0 -> l1` is tangent to the circle through `p0, m, p1`.
-///
-/// A tangential contact does not cross the arc, so it must not become a node of the cut
-/// graph: splitting both curves there would open a slit and produce a pinched cell. The
-/// test uses the same discriminant as the quadratic solver in [`intersect_arc_seg`], so a
-/// line that `quad_roots` already treats as tangent is classified the same way here.
-pub(crate) fn arc_line_is_tangent(
-    p0: &[f64; 2],
-    m: &[f64; 2],
-    p1: &[f64; 2],
-    l0: &[f64; 2],
-    l1: &[f64; 2],
-) -> bool {
-    let Some(circ) = ArcCircle::through(p0, m, p1) else {
-        return false;
-    };
-    let d = [l1[0] - l0[0], l1[1] - l0[1]];
-    let f = [l0[0] - circ.center[0], l0[1] - circ.center[1]];
-    let qa = d[0] * d[0] + d[1] * d[1];
-    let qb = 2.0 * (f[0] * d[0] + f[1] * d[1]);
-    let qc = f[0] * f[0] + f[1] * f[1] - circ.r2;
-    let disc = qb * qb - 4.0 * qa * qc;
-    disc.abs() <= 64.0 * f64::EPSILON * (qb * qb).max((4.0 * qa * qc).abs())
-}
-
 /// Builds an [`Intersections`] from up to two intersection coordinates, mapping a coordinate
 /// that coincides with one of the four operands' endpoints to [`Intersection::Existing`].
 ///

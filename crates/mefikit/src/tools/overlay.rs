@@ -42,8 +42,7 @@ use crate::element_traits::cut::{
 };
 use crate::element_traits::{Cutable, ElementTopo, SortedVecKey};
 use crate::geometry::{
-    ArcEdge, Intersection, Intersections, PointId, Polygon, Segment, arc_line_is_tangent,
-    intersect_arc_seg,
+    ArcEdge, Intersection, Intersections, PointId, Polygon, Segment, intersect_arc_seg,
 };
 use crate::mesh::{Dimension, Element, ElementId, ElementLike, ElementType, UMesh, UMeshView};
 use crate::prelude::ElementGeo;
@@ -742,17 +741,16 @@ fn add_intersection(
                     .intersect(Segment::new(edge2.coord2(0).into(), edge2.coord2(1).into())),
                 [c1[0], c1[1], c2[0], c2[1]],
             ),
-            (SEG3, SEG2) => {
-                let (p0, m, p1) = (edge.coord2_ref(0), edge.coord2_ref(2), edge.coord2_ref(1));
-                let (l0, l1) = (edge2.coord2_ref(0), edge2.coord2_ref(1));
-                let int = intersect_arc_seg(p0, m, p1, l0, l1);
-                // A tangent line only touches the arc: it does not cut the cell, and
-                // splitting both curves there would open a slit (a pinched piece).
-                if matches!(int, Intersections::One(_)) && arc_line_is_tangent(p0, m, p1, l0, l1) {
-                    return;
-                }
-                (int, [c1[0], c1[1], c2[0], c2[1]])
-            }
+            (SEG3, SEG2) => (
+                intersect_arc_seg(
+                    edge.coord2_ref(0),
+                    edge.coord2_ref(2),
+                    edge.coord2_ref(1),
+                    edge2.coord2_ref(0),
+                    edge2.coord2_ref(1),
+                ),
+                [c1[0], c1[1], c2[0], c2[1]],
+            ),
             (SEG2, SEG3) => panic!(
                 "quadratic cutter edges are not supported: the quadratic mesh must be the subject \
              (mesh1)"
@@ -1810,9 +1808,9 @@ mod tests {
     /// conserved for every inward bulge, every cutter layout and every quadratic type.
     #[test]
     fn test_overlay_concave_arcs_imprint_preserves_area() {
-        // Stay clear of 0.25: there the cutter edge is exactly tangent to the arc,
-        // which currently produces a pinched QPOLY (known bug, reported separately).
-        for inward in [0.02, 0.1, 0.2, 0.23] {
+        // 0.25 makes a cutter edge exactly tangent to the arc: the piece is split at
+        // the pinch instead of being emitted as a self-touching QPOLY.
+        for inward in [0.02, 0.1, 0.2, 0.25, 0.30] {
             for centre in [false, true] {
                 let mesh1 = concave_quad(inward, centre);
                 let before = exact_mesh_area(&mesh1);
@@ -1882,17 +1880,41 @@ mod tests {
         assert_imprint_valid(&out, before);
     }
 
-    /// A line tangent to the arc does not cut the cell, so no node is created there.
+    /// An exact tangency produces a pinched ring; it must be emitted as several
+    /// simple cells meeting at the pinch node, never as one self-touching QPOLY.
     #[test]
-    fn test_overlay_tangent_cutter_edge_creates_no_sliver() {
+    fn test_overlay_tangent_cutter_vertex_splits_at_the_pinch() {
         let mesh1 = concave_quad(0.25, false);
         let before = exact_mesh_area(&mesh1);
+        // The cutter has a vertex exactly at the tangent point (0.5, 0.75).
         let cutter = RegularUMeshBuilder::new()
-            .add_axis(vec![-0.5, 1.5])
+            .add_axis(vec![-0.5, 0.5, 1.5])
             .add_axis(vec![0.25, 0.75])
             .build();
         let out = mesh1.overlay(cutter, OverlayOperation::Imprint);
         assert_imprint_valid(&out, before);
+        assert!(
+            out.num_elements_of_dim(Dimension::D2) > 1,
+            "cell was not split"
+        );
+    }
+
+    /// A closed cutter loop tangent to the boundary must not leave a dangling dart;
+    /// the region outside the loop is split at the contact node.
+    #[test]
+    fn test_overlay_tangent_closed_cutter_loop_splits_at_the_pinch() {
+        let mesh1 = concave_quad(0.20, false);
+        let before = exact_mesh_area(&mesh1);
+        let cutter = RegularUMeshBuilder::new()
+            .add_axis(vec![0.2, 0.8])
+            .add_axis(vec![0.2, 0.8])
+            .build();
+        let out = mesh1.overlay(cutter, OverlayOperation::Imprint);
+        assert_imprint_valid(&out, before);
+        assert!(
+            out.num_elements_of_dim(Dimension::D2) > 1,
+            "cell was not split"
+        );
     }
 
     #[test]

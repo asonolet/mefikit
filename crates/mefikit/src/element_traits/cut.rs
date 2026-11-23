@@ -368,19 +368,76 @@ fn walk_dart_map(mut dart_map: DartMap, mut heap: Vec<Dart>) -> Vec<CutPiece> {
                 }
             }
             if !found {
-                // TODO: I must rewind, the heap (removing useless opposed dart), and the pgon
-                todo!(
-                    "Handle the case where there is no next dart to follow. This is when there is a piece of m2 which does not cut the cell."
-                );
+                // A dead end: the only unvisited dart here is the one opposed to the
+                // dart we just walked, so this walk is a dangling spur rather than a
+                // face. Discard it. The opposed darts pushed onto the heap above are
+                // still available, so the real faces are enumerated from their other
+                // side and no area is lost.
+                ring.clear();
+                sources.clear();
+                break;
             }
             dart = [next_node, next_pos];
         }
-        pieces.push(CutPiece {
-            ring: std::mem::take(&mut ring),
-            edges: std::mem::take(&mut sources),
-        });
+        if !ring.is_empty() {
+            pieces.push(CutPiece {
+                ring: std::mem::take(&mut ring),
+                edges: std::mem::take(&mut sources),
+            });
+        }
     }
     pieces
+}
+
+/// Whether a ring visits the same node more than once (a "pinched" ring).
+#[inline]
+fn is_pinched(ring: &[NodeId]) -> bool {
+    for (i, &node) in ring.iter().enumerate() {
+        if ring[..i].contains(&node) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Splits pinched rings into simple rings at the pinch nodes.
+///
+/// A tangential contact makes two parts of a cut piece meet at a single node; emitting
+/// them as one cell would produce a non-conformal, self-touching polygon. A closed walk
+/// decomposes into simple cycles: whenever it reaches a node it already visited, the
+/// portion walked since then is one cycle. Every edge is used exactly once, so the
+/// pieces tile the original walk exactly and preserve its area.
+fn split_pinched_pieces(pieces: Vec<CutPiece>) -> Vec<CutPiece> {
+    let mut out = Vec::with_capacity(pieces.len());
+    for piece in pieces {
+        if !is_pinched(&piece.ring) {
+            out.push(piece);
+            continue;
+        }
+        let n = piece.ring.len();
+        let mut path: Vec<NodeId> = Vec::with_capacity(n);
+        let mut path_edges: Vec<CutEdgeSource> = Vec::with_capacity(n);
+        path.push(piece.ring[0]);
+        for i in 0..n {
+            let next = piece.ring[(i + 1) % n];
+            let edge = piece.edges[i];
+            if let Some(k) = path.iter().rposition(|&nd| nd == next) {
+                let mut edges = path_edges[k..].to_vec();
+                edges.push(edge);
+                let ring = path[k..].to_vec();
+                // A self-loop bounds no area; never emit a degenerate cell for it.
+                if ring.len() >= 2 {
+                    out.push(CutPiece { ring, edges });
+                }
+                path.truncate(k + 1);
+                path_edges.truncate(k);
+            } else {
+                path.push(next);
+                path_edges.push(edge);
+            }
+        }
+    }
+    out
 }
 
 pub trait Cutable {
@@ -429,15 +486,51 @@ impl<'a, T: ElementLike<'a>> Cutable for T {
             *p2 = dart_pos;
         }
 
-        Some(walk_dart_map(dart_map, heap))
+        let pieces = walk_dart_map(dart_map, heap);
+        // Pinched rings only come from curved boundaries (a tangential contact), so
+        // linear cells never pay for the decomposition below.
+        let curved = boundary_edges.iter().any(|edge| edge.len() == 3);
+        Some(if curved {
+            split_pinched_pieces(pieces)
+        } else {
+            pieces
+        })
     }
 }
 
 #[cfg(test)]
 mod quadratic_cut_tests {
+    use super::{CutEdgeSource, CutPiece, is_pinched, split_pinched_pieces};
     use crate::element_traits::ElementTopo;
     use crate::mesh::{ArcGroups, Element, ElementType::*};
     use ndarray as nd;
+
+    /// A closed walk visiting node 2 three times decomposes into four simple rings.
+    /// Every edge is used exactly once, so the pieces tile the original walk.
+    #[test]
+    fn split_pinched_ring_into_simple_cycles() {
+        let ring = vec![16, 9, 6, 3, 17, 6, 15, 2, 6, 9, 14, 15, 6, 17];
+        let edges: Vec<CutEdgeSource> = (0..ring.len())
+            .map(|i| {
+                if i % 2 == 0 {
+                    CutEdgeSource::Boundary(i / 2)
+                } else {
+                    CutEdgeSource::Cutter(crate::mesh::ElementId::new(SEG2, i / 2))
+                }
+            })
+            .collect();
+        assert!(is_pinched(&ring));
+        let pieces = split_pinched_pieces(vec![CutPiece { ring, edges }]);
+        assert_eq!(pieces.len(), 4);
+        let mut edge_count = 0;
+        for piece in &pieces {
+            assert!(!is_pinched(&piece.ring), "pinched ring: {:?}", piece.ring);
+            assert!(piece.ring.len() >= 2);
+            assert_eq!(piece.ring.len(), piece.edges.len());
+            edge_count += piece.edges.len();
+        }
+        assert_eq!(edge_count, 14);
+    }
 
     fn element<'a>(
         coords: &'a nd::Array2<f64>,
