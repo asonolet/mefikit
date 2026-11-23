@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c5ef9310.js";
+            window.path_to_searchindex_js = "searchindex-f01a7c88.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-3dcbf833.js"></script>
@@ -204,9 +204,11 @@ familiar but the overall experience is really better than anything else.</li>
 Some tools use only their corner nodes (effectively linearizing the geometry),
 while others reject them. A tool that rejects a quadratic cell documents it
 and raises an error rather than returning a silent approximation.</li>
-<li>Concave cells are not generally supported. The overlay/intersection family
-(<code>overlay</code>, <code>intersect_1d</code>) is the only intended producer of concave output;
-passing that output to another tool may be rejected.</li>
+<li>Concave cells are not supported by most algorithms, and convexity is <strong>not
+checked</strong>: these tools assume convex input and may silently return incorrect
+results for concave cells. Concave input is untested. The overlay/intersection
+family (<code>overlay</code>, <code>intersect_1d</code>) is the only intended producer of concave
+output.</li>
 </ul>
 <h2 id="the-fields-mapping"><a class="header" href="#the-fields-mapping">The fields mapping</a></h2>
 <p><code>mesh.fields</code> behaves like a dict keyed by field name. Each entry returns a
