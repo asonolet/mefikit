@@ -35,7 +35,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-47c079cf.js";
+            window.path_to_searchindex_js = "searchindex-c5ef9310.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-3dcbf833.js"></script>
@@ -195,6 +195,18 @@ and less error prone than manual indexing. They are inspired from <code>polars</
 DataFrame python-rust lib.</li>
 <li>Visualize with <code>pyvista</code>. It lacks type hints and the syntax may not feel
 familiar but the overall experience is really better than anything else.</li>
+</ul>
+<h2 id="cell-support"><a class="header" href="#cell-support">Cell support</a></h2>
+<p>Unless a tool’s own documentation says otherwise, mefikit algorithms assume
+<strong>first-order, convex</strong> cells.</p>
+<ul>
+<li>Quadratic and higher-order elements are supported on a <strong>best-effort</strong> basis.
+Some tools use only their corner nodes (effectively linearizing the geometry),
+while others reject them. A tool that rejects a quadratic cell documents it
+and raises an error rather than returning a silent approximation.</li>
+<li>Concave cells are not generally supported. The overlay/intersection family
+(<code>overlay</code>, <code>intersect_1d</code>) is the only intended producer of concave output;
+passing that output to another tool may be rejected.</li>
 </ul>
 <h2 id="the-fields-mapping"><a class="header" href="#the-fields-mapping">The fields mapping</a></h2>
 <p><code>mesh.fields</code> behaves like a dict keyed by field name. Each entry returns a
