@@ -23,6 +23,19 @@ Some insights on how to use the current Python library:
 - Visualize with `pyvista`. It lacks type hints and the syntax may not feel
   familiar but the overall experience is really better than anything else.
 
+## Cell support
+
+Unless a tool's own documentation says otherwise, mefikit algorithms assume
+**first-order, convex** cells.
+
+- Quadratic and higher-order elements are supported on a **best-effort** basis.
+  Some tools use only their corner nodes (effectively linearizing the geometry),
+  while others reject them. A tool that rejects a quadratic cell documents it
+  and raises an error rather than returning a silent approximation.
+- Concave cells are not generally supported. The overlay/intersection family
+  (`overlay`, `intersect_1d`) is the only intended producer of concave output;
+  passing that output to another tool may be rejected.
+
 ## The fields mapping
 
 `mesh.fields` behaves like a dict keyed by field name. Each entry returns a
