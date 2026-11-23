@@ -5,7 +5,7 @@ use std::{
 };
 
 use mefikit::{
-    mesh::{ElementType, FieldArcD},
+    mesh::{ElementLike, ElementType, FieldArcD},
     prelude as mf,
     tools::{
         Descendable, Measurable, NodeDuplicates, Overlayable, Reorientable, Transformable,
@@ -513,6 +513,27 @@ impl PyUMesh {
     fn overlay(&self, mesh2: &PyUMesh, operation: Option<PyOverlayOperation>) -> PyResult<PyUMesh> {
         let operation = operation.unwrap_or(PyOverlayOperation::Imprint).into();
         let result = self.inner.overlay(mesh2.inner.clone(), operation);
+        Ok(result.into())
+    }
+
+    /// Intersects this 2D mesh with a 1D mesh of `SEG2` or `PLINE` edges.
+    ///
+    /// The edges of `mesh2` refine the cells of `self`; the result keeps the same domain
+    /// (the IMPRINT operation for meshes of different dimensions). `PLINE` cells are split
+    /// into their consecutive `SEG2` edges. The 1D elements are assumed not to intersect
+    /// one another. Raises `ValueError` if `mesh2` contains other element types.
+    fn intersect_1d(&self, mesh2: &PyUMesh) -> PyResult<PyUMesh> {
+        if let Some(cell) = mesh2
+            .inner
+            .elements()
+            .find(|e| !matches!(e.element_type(), ElementType::SEG2 | ElementType::PLINE))
+        {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "intersect_1d expects a 1D mesh of SEG2 or PLINE elements, found {:?}",
+                cell.element_type()
+            )));
+        }
+        let result = self.inner.intersect_1d(mesh2.inner.clone());
         Ok(result.into())
     }
 

@@ -231,3 +231,77 @@ def test_overlay_surfaces_disjoint_verbatim():
     assert x1.max() == pytest.approx(1.0)
     assert x2.min() == pytest.approx(10.0)
     assert x2.max() == pytest.approx(11.0)
+
+
+def _cut_line_mesh(style):
+    coords = np.array(
+        [[-0.5, 0.5], [0.5, 0.5], [1.5, 0.5], [-0.5, 0.25], [0.5, 0.25], [1.5, 0.25]]
+    )
+    mesh = mf.UMesh(coords)
+    if style == "seg2":
+        mesh.add_regular_block("SEG2", np.array([[0, 1], [1, 2]], dtype=np.uintp))
+    elif style == "pline":
+        mesh.add_poly_block(
+            "PLINE",
+            np.array([0, 1, 2], dtype=np.uintp),
+            np.array([3], dtype=np.uintp),
+        )
+    else:
+        mesh.add_poly_block(
+            "PLINE",
+            np.array([0, 1, 2, 3, 4, 5], dtype=np.uintp),
+            np.array([3, 6], dtype=np.uintp),
+        )
+    return mesh
+
+
+def test_intersect_1d_seg2():
+    mesh1 = mf.build_cmesh([0.0, 1.0], [0.0, 1.0])
+    out = mesh1.intersect_1d(_cut_line_mesh("seg2"))
+    assert _num_cells(out) == 2
+    assert _measure_total(out) == pytest.approx(1.0)
+
+
+def test_intersect_1d_pline_matches_seg2():
+    mesh1 = mf.build_cmesh([0.0, 1.0], [0.0, 1.0])
+    seg2 = mesh1.intersect_1d(_cut_line_mesh("seg2"))
+    pline = mesh1.intersect_1d(_cut_line_mesh("pline"))
+    assert _num_cells(pline) == _num_cells(seg2)
+    assert _measure_total(pline) == pytest.approx(1.0)
+
+
+def test_intersect_1d_multiple_plines():
+    mesh1 = mf.build_cmesh([0.0, 1.0], [0.0, 1.0])
+    out = mesh1.intersect_1d(_cut_line_mesh("two_plines"))
+    assert _num_cells(out) == 3
+    assert _measure_total(out) == pytest.approx(1.0)
+
+
+def test_intersect_1d_quad8():
+    coords = np.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -0.15],
+            [1.15, 0.5],
+            [0.5, 1.15],
+            [-0.15, 0.5],
+        ]
+    )
+    mesh1 = mf.UMesh(coords)
+    mesh1.add_regular_block(
+        "QUAD8", np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.uintp)
+    )
+    before = _measure_total(mesh1)
+    out = mesh1.intersect_1d(_cut_line_mesh("pline"))
+    assert "QPOLY" in out.block_types()
+    assert _measure_total(out) == pytest.approx(before)
+
+
+def test_intersect_1d_rejects_2d_cutter():
+    with pytest.raises(ValueError, match="SEG2 or PLINE"):
+        mf.build_cmesh([0.0, 1.0], [0.0, 1.0]).intersect_1d(
+            mf.build_cmesh([0.0, 1.0], [0.0, 1.0])
+        )

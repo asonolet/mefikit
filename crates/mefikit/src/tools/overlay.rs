@@ -1,8 +1,8 @@
 //! Boolean-like overlay operations on 2D meshes.
 //!
 //! In this context, overlay operations can be separated in the following cases:
-//! - 2d + 1d: `intersect_2d1d` cuts a 2D mesh with a 1D mesh, producing a 2D mesh conformized
-//!   with the 1D mesh.
+//! - 2d + 1d: [`Overlayable::intersect_1d`] cuts a 2D mesh with a 1D mesh of `SEG2` or
+//!   `PLINE` edges, producing a 2D mesh conformized with the 1D mesh.
 //! - 2d + 2d: `Overlayable::overlay` with one of the [`OverlayOperation`]s:
 //!   - `Imprint`: refine `mesh1` with the edges of `mesh2` while keeping `mesh1`'s domain.
 //!   - `Union`: keep the domain covered by at least one of the two meshes.
@@ -120,7 +120,7 @@ pub enum OverlayOperation {
     SymmetricDifference,
 }
 
-/// Boolean overlay of two 2D meshes.
+/// Boolean overlay of two 2D meshes, and intersection of a 2D mesh with a 1D edge mesh.
 pub trait Overlayable {
     /// Computes the overlay of `self` (as mesh1) and `mesh2` for the given operation.
     ///
@@ -136,6 +136,24 @@ pub trait Overlayable {
     ///   [`OverlayOperation::Imprint`], and only in `self` (the subject mesh). Quadratic edges
     ///   are circular arcs through their mid-side node.
     fn overlay(&self, mesh2: UMesh, operation: OverlayOperation) -> UMesh;
+
+    /// Intersects this 2D mesh with a 1D mesh of edges (`SEG2` or `PLINE`).
+    ///
+    /// Refines the cells of `self` with the edges of `mesh2` and keeps every piece: this is
+    /// the [`OverlayOperation::Imprint`] operation for meshes of different dimensions.
+    /// `PLINE` cells are split into their consecutive `SEG2` edges before the cut, so both
+    /// input forms are handled by the same 2d/1d machinery.
+    ///
+    /// # Assumptions
+    /// - `mesh2` contains only `SEG2` or `PLINE` elements, and those elements do not
+    ///   intersect one another.
+    /// - Both meshes are valid, planar and share the same coordinate space.
+    /// - Quadratic cells are only supported in `self`, as for
+    ///   [`OverlayOperation::Imprint`].
+    ///
+    /// # Panics
+    /// Panics if `mesh2` contains an element type other than `SEG2` or `PLINE`.
+    fn intersect_1d(&self, mesh2: UMesh) -> UMesh;
 
     /// Imprints two surface meshes embedded in 3D space onto each other wherever they
     /// coincide.
@@ -188,6 +206,10 @@ impl Overlayable for UMesh {
         }
     }
 
+    fn intersect_1d(&self, mesh2: UMesh) -> UMesh {
+        intersect_2d1d(self, as_cutting_edges(mesh2))
+    }
+
     fn overlay_surfaces(
         &self,
         other: &UMeshView,
@@ -231,23 +253,43 @@ fn cut_2d_with_edges(mesh1: &UMesh, cutting_edges: UMesh) -> UMesh {
     cutted_mesh
 }
 
-/// Computes the geometric intersection (overlay) of two 2D meshes.
+/// Converts a 1D cutter mesh into a `SEG2`-only edge mesh.
 ///
-/// # Guarantees
-/// - Output mesh is planar, manifold, and watertight
-/// - No T-junctions or dangling edges
-/// - All intersections between mesh1 and mesh2 are explicitly represented
+/// `PLINE` cells are split into their consecutive `SEG2` edges so the cutter reaches
+/// `compute_overlay` in the only 1D form it understands. The coordinates are copied
+/// unchanged, so node ids stay valid.
+fn as_cutting_edges(mesh: UMesh) -> UMesh {
+    let mut edges: Vec<[usize; 2]> = Vec::new();
+    for cell in mesh.elements() {
+        match cell.element_type() {
+            ElementType::SEG2 => {
+                let co = cell.connectivity();
+                edges.push([co[0], co[1]]);
+            }
+            ElementType::PLINE => {
+                for w in cell.connectivity().windows(2) {
+                    edges.push([w[0], w[1]]);
+                }
+            }
+            et => panic!("intersect_1d expects a 1D mesh of SEG2 or PLINE elements, found {et:?}"),
+        }
+    }
+    let n = edges.len();
+    let mut out = UMesh::new(mesh.coords().to_shared());
+    if n > 0 {
+        let flat: Vec<usize> = edges.into_iter().flatten().collect();
+        let conn = nd::Array2::from_shape_vec((n, 2), flat).expect("two nodes per SEG2 edge");
+        out.add_regular_block(ElementType::SEG2, conn.into_shared(), None);
+    }
+    out
+}
+
+/// Refines the 2D cells of `mesh1` with the `SEG2` edges of `mesh2`, keeping all pieces.
 ///
-/// # Assumptions
-/// - Input meshes are valid (non-self-intersecting)
-/// - Coordinates are in the same plane
-pub fn intersect_2d1d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
-    assert!(
-        !mesh2
-            .elements()
-            .any(|e| matches!(e.element_type(), ElementType::SEG3)),
-        "quadratic 1D cutters are not supported"
-    );
+/// `mesh2` must already be a `SEG2`-only mesh (see [`as_cutting_edges`]); this is the
+/// shared core of [`Overlayable::intersect_1d`] and [`intersect_2d2d`] after its cutter
+/// has been descended from 2D to 1D.
+fn intersect_2d1d(mesh1: &UMesh, mesh2: UMesh) -> UMesh {
     let (mesh2, _) = merge_on_reference_coords(mesh2, mesh1.view(), WELD_EPS);
     cut_2d_with_edges(mesh1, mesh2)
 }
@@ -1464,7 +1506,7 @@ mod tests {
         let coords2 = nd::arr2(&[[-0.5, -0.05], [1.5, -0.05]]);
         let mut mesh2 = UMesh::new(coords2.into_shared());
         mesh2.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
-        let cutted = intersect_2d1d(&mesh1, mesh2);
+        let cutted = mesh1.intersect_1d(mesh2);
 
         assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
         let mut lens = false;
@@ -1521,7 +1563,7 @@ mod tests {
         let coords2 = nd::arr2(&[[0.3, -1.0], [0.3, 2.0]]);
         let mut mesh2 = UMesh::new(coords2.into_shared());
         mesh2.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
-        let cutted = intersect_2d1d(&mesh1, mesh2);
+        let cutted = mesh1.intersect_1d(mesh2);
         assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
         assert!(
             cutted
@@ -1641,7 +1683,7 @@ mod tests {
         let coords2 = nd::arr2(&[[0.5, -1.0], [0.5, 2.0]]);
         let mut mesh2 = UMesh::new(coords2.into_shared());
         mesh2.add_regular_block(ElementType::SEG2, nd::arr2(&[[0, 1]]).to_shared(), None);
-        let cutted = intersect_2d1d(&mesh1, mesh2);
+        let cutted = mesh1.intersect_1d(mesh2);
         assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
         // The parent mid node is now a corner; no piece may reuse it as a mid node.
         for cell in cutted.elements_of_dim(Dimension::D2) {
@@ -1947,6 +1989,103 @@ mod tests {
             .build();
         let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
         assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+    }
+
+    /// A horizontal chain of three points, given either as SEG2 edges or as PLINEs.
+    fn intersect_1d_cutter(style: usize) -> UMesh {
+        let coords = nd::arr2(&[
+            [-0.5, 0.5],
+            [0.5, 0.5],
+            [1.5, 0.5],
+            [-0.5, 0.25],
+            [0.5, 0.25],
+            [1.5, 0.25],
+        ]);
+        let mut mesh = UMesh::new(coords.into_shared());
+        match style {
+            // Two SEG2 edges.
+            0 => mesh.add_regular_block(
+                ElementType::SEG2,
+                nd::arr2(&[[0, 1], [1, 2]]).to_shared(),
+                None,
+            ),
+            // One PLINE with the same three points.
+            1 => mesh.add_poly_block(
+                ElementType::PLINE,
+                nd::arr1(&[0, 1, 2]).to_shared(),
+                nd::arr1(&[3]).to_shared(),
+                None,
+            ),
+            // Two PLINEs (four SEG2 edges in total).
+            _ => mesh.add_poly_block(
+                ElementType::PLINE,
+                nd::arr1(&[0, 1, 2, 3, 4, 5]).to_shared(),
+                nd::arr1(&[3, 6]).to_shared(),
+                None,
+            ),
+        }
+        mesh
+    }
+
+    #[test]
+    fn test_intersect_1d_seg2_and_pline() {
+        let mesh1 = RegularUMeshBuilder::new()
+            .add_axis(vec![0.0, 1.0])
+            .add_axis(vec![0.0, 1.0])
+            .build();
+        let before = exact_mesh_area(&mesh1);
+        let seg2 = mesh1.intersect_1d(intersect_1d_cutter(0));
+        let pline = mesh1.intersect_1d(intersect_1d_cutter(1));
+        let two_plines = mesh1.intersect_1d(intersect_1d_cutter(2));
+
+        for out in [&seg2, &pline, &two_plines] {
+            assert_abs_diff_eq!(exact_mesh_area(out), before, epsilon = 1e-12);
+            assert!(out.num_elements_of_dim(Dimension::D2) > 1, "not cut");
+        }
+        assert_eq!(
+            seg2.num_elements_of_dim(Dimension::D2),
+            pline.num_elements_of_dim(Dimension::D2),
+            "a PLINE must produce the same cut as its SEG2 chain"
+        );
+        assert!(
+            two_plines.num_elements_of_dim(Dimension::D2)
+                > pline.num_elements_of_dim(Dimension::D2)
+        );
+    }
+
+    #[test]
+    fn test_intersect_1d_quadratic_subject() {
+        let mesh1 = quad8_square(0.15);
+        let before = exact_mesh_area(&mesh1);
+        let out = mesh1.intersect_1d(intersect_1d_cutter(1));
+        assert_abs_diff_eq!(exact_mesh_area(&out), before, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_intersect_1d_empty_cutter_is_noop() {
+        let mesh1 = RegularUMeshBuilder::new()
+            .add_axis(vec![0.0, 1.0])
+            .add_axis(vec![0.0, 1.0])
+            .build();
+        let before = exact_mesh_area(&mesh1);
+        let empty = UMesh::new(mesh1.coords().to_shared());
+        let out = mesh1.intersect_1d(empty);
+        assert_abs_diff_eq!(exact_mesh_area(&out), before, epsilon = 1e-12);
+        assert_eq!(out.num_elements_of_dim(Dimension::D2), 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "expects a 1D mesh of SEG2 or PLINE")]
+    fn test_intersect_1d_rejects_2d_cutter() {
+        let mesh1 = RegularUMeshBuilder::new()
+            .add_axis(vec![0.0, 1.0])
+            .add_axis(vec![0.0, 1.0])
+            .build();
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![0.0, 1.0])
+            .add_axis(vec![0.0, 1.0])
+            .build();
+        let _ = mesh1.intersect_1d(mesh2);
     }
 
     #[test]
