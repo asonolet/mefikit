@@ -1581,12 +1581,7 @@ mod tests {
         let mut mesh = UMesh::new(coords.into_shared());
         mesh.add_regular_block(
             ElementType::QUAD8,
-            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7]]).to_shared(),
-            None,
-        );
-        mesh.add_regular_block(
-            ElementType::QUAD8,
-            nd::arr2(&[[1, 8, 9, 2, 10, 11, 12, 5]]).to_shared(),
+            nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7], [1, 8, 9, 2, 10, 11, 12, 5]]).to_shared(),
             None,
         );
         mesh

@@ -580,7 +580,7 @@ impl<'a> UMeshView<'a> {
     ) {
         let block = ElementBlockView::new_regular(et, connectivity, families);
         let (key, wrapped) = block.into_entry();
-        self.element_blocks.entry(key).or_insert(wrapped);
+        self.element_blocks.insert(key, wrapped);
     }
 
     /// Adds a poly element block to this view using caller-owned family data.
@@ -593,7 +593,7 @@ impl<'a> UMeshView<'a> {
     ) {
         let block = ElementBlockView::new_poly(et, conn, offsets, families);
         let (key, wrapped) = block.into_entry();
-        self.element_blocks.entry(key).or_insert(wrapped);
+        self.element_blocks.insert(key, wrapped);
     }
 }
 
@@ -796,7 +796,7 @@ impl UMesh {
         // TODO: optionnaly add families and fields
         let block = ElementBlock::new_regular(et, connectivity, None, fields);
         let (key, wrapped) = block.into_entry();
-        self.element_blocks.entry(key).or_insert(wrapped);
+        self.element_blocks.insert(key, wrapped);
     }
 
     /// Adds a poly (variable-size) element block to the mesh.
@@ -811,7 +811,7 @@ impl UMesh {
     ) {
         let block = ElementBlock::new_poly(et, conn, offsets, None, fields);
         let (key, wrapped) = block.into_entry();
-        self.element_blocks.entry(key).or_insert(wrapped);
+        self.element_blocks.insert(key, wrapped);
     }
 
     /// Inserts a fully-built element block into the mesh (crate-internal).
@@ -1178,6 +1178,43 @@ mod tests {
         assert_eq!(mesh.coords.shape(), &[3, 1]);
         assert_eq!(mesh.element_blocks.len(), 1);
         assert!(mesh.element_blocks.contains_key(&ElementType::SEG2));
+    }
+
+    /// `add_regular_block` / `add_poly_block` document a replacement of an existing
+    /// block of the same element type.
+    #[test]
+    fn test_add_block_replaces_existing_block() {
+        use ndarray as nd;
+
+        let mut mesh =
+            UMesh::new(nd::arr2(&[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]).into_shared());
+        mesh.add_regular_block(
+            ElementType::QUAD4,
+            nd::arr2(&[[0, 1, 2, 3]]).to_shared(),
+            None,
+        );
+        assert_eq!(mesh.num_elements_of_dim(Dimension::D2), 1);
+        mesh.add_regular_block(
+            ElementType::QUAD4,
+            nd::arr2(&[[0, 1, 2, 3], [1, 2, 3, 0]]).to_shared(),
+            None,
+        );
+        assert_eq!(mesh.num_elements_of_dim(Dimension::D2), 2);
+
+        let mut poly = UMesh::new(mesh.coords().to_shared());
+        poly.add_poly_block(
+            ElementType::PGON,
+            nd::arr1(&[0, 1, 2, 3]).to_shared(),
+            nd::arr1(&[4]).to_shared(),
+            None,
+        );
+        poly.add_poly_block(
+            ElementType::PGON,
+            nd::arr1(&[0, 1, 2, 3, 0]).to_shared(),
+            nd::arr1(&[5]).to_shared(),
+            None,
+        );
+        assert_eq!(poly.num_elements_of_dim(Dimension::D2), 1);
     }
     #[test]
     fn test_umesh_element_iteration() {
