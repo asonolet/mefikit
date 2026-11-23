@@ -459,7 +459,14 @@ fn cut_cells_all(
         // If the cell was cut, I add new polys from the cut
         if let Some(pieces) = reconstructed {
             for piece in pieces {
-                let id = emit_piece(out, &cell, &boundary_edges, &piece, &mut mid_store);
+                let id = emit_piece(
+                    out,
+                    &cell,
+                    &boundary_edges,
+                    cutting_edges,
+                    &piece,
+                    &mut mid_store,
+                );
                 piece_ids.push(id);
             }
         } else {
@@ -536,17 +543,57 @@ impl MidStore {
     }
 }
 
-fn boundary_arc(out: &UMesh, edge: &[usize]) -> Option<ArcEdge> {
+/// The curved edge described by `[start, end, mid]`, or `None` for a straight edge.
+/// Works for both boundary edges and cutter edges.
+fn edge_arc(coords: &nd::ArrayView2<'_, f64>, edge: &[usize]) -> Option<ArcEdge> {
     if edge.len() != 3 {
         return None;
     }
-    let coords = out.coords();
     let arc = ArcEdge::new(
-        point2(&coords, edge[0]),
-        point2(&coords, edge[2]),
-        point2(&coords, edge[1]),
+        point2(coords, edge[0]),
+        point2(coords, edge[2]),
+        point2(coords, edge[1]),
     );
     arc.is_curved().then_some(arc)
+}
+
+/// Mid-side node of a sub-edge of `edge`, preserving its curvature. Both boundary
+/// and cutter edges use this single path: a curved edge keeps its arc (reusing the
+/// parent mid-side node when it lies on the sub-arc, otherwise computing the arc
+/// midpoint); a straight edge uses the chord midpoint, or the parent mid node when
+/// it lies on the sub-segment.
+fn synthesize_mid(
+    out: &mut UMesh,
+    mid_store: &mut MidStore,
+    source: MidSource,
+    edge: &[usize],
+    a: usize,
+    b: usize,
+) -> usize {
+    let coords = out.coords();
+    let pa = point2(&coords, a);
+    let pb = point2(&coords, b);
+    if let Some(arc) = edge_arc(&coords, edge) {
+        let sa = arc.param(&pa);
+        let sb = arc.param(&pb);
+        let sm = arc.mid_param();
+        if let (Some(sa), Some(sb), Some(sm)) = (sa, sb, sm) {
+            let (lo, hi) = if sa <= sb { (sa, sb) } else { (sb, sa) };
+            let margin = 1e-12;
+            if sm > lo + margin && sm < hi - margin {
+                return edge[2];
+            }
+            let mid = arc
+                .sub_midpoint(&pa, &pb)
+                .expect("non-degenerate arc has a sub-arc midpoint");
+            return mid_store.get_or_create(out, source, a, b, mid);
+        }
+        return mid_store.get_or_create(out, source, a, b, chord_midpoint(pa, pb));
+    }
+    if edge.len() == 3 && point_on_segment2(pa, pb, point2(&coords, edge[2])) {
+        return edge[2];
+    }
+    mid_store.get_or_create(out, source, a, b, chord_midpoint(pa, pb))
 }
 
 /// True when the cut piece is exactly the original cell boundary, in the same order, using
@@ -584,7 +631,8 @@ fn is_verbatim(
     true
 }
 
-/// Appends one cut piece to `out`, restoring the curvature of the original boundary edges.
+/// Appends one cut piece to `out`, restoring the curvature of its boundary arcs,
+/// whether they come from the original cell boundary or from a quadratic cutter.
 ///
 /// A touched piece of a quadratic cell is always emitted as [`ElementType::QPOLY`]; pieces of
 /// linear cells stay [`ElementType::PGON`]. Untouched pieces are copied verbatim.
@@ -592,6 +640,7 @@ fn emit_piece(
     out: &mut UMesh,
     cell: &Element<'_>,
     boundary_edges: &[SmallVec<[usize; 3]>],
+    cutting_edges: &UMeshView,
     piece: &CutPiece,
     mid_store: &mut MidStore,
 ) -> ElementId {
@@ -612,56 +661,23 @@ fn emit_piece(
         let mid = match piece.edges[i] {
             CutEdgeSource::Boundary(j) => {
                 let edge = &boundary_edges[j];
-                let coords = out.coords();
-                let pa = point2(&coords, a);
-                let pb = point2(&coords, b);
-                if let Some(arc) = boundary_arc(out, edge) {
-                    let sa = arc.param(&pa);
-                    let sb = arc.param(&pb);
-                    let sm = arc.mid_param();
-                    if let (Some(sa), Some(sb), Some(sm)) = (sa, sb, sm) {
-                        let (lo, hi) = if sa <= sb { (sa, sb) } else { (sb, sa) };
-                        let margin = 1e-12;
-                        if sm > lo + margin && sm < hi - margin {
-                            edge[2]
-                        } else {
-                            let mid = arc
-                                .sub_midpoint(&pa, &pb)
-                                .expect("non-degenerate arc has a sub-arc midpoint");
-                            mid_store.get_or_create(
-                                out,
-                                MidSource::Boundary(edge_key(edge)),
-                                a,
-                                b,
-                                mid,
-                            )
-                        }
-                    } else {
-                        mid_store.get_or_create(
-                            out,
-                            MidSource::Boundary(edge_key(edge)),
-                            a,
-                            b,
-                            chord_midpoint(pa, pb),
-                        )
-                    }
-                } else if edge.len() == 3 && point_on_segment2(pa, pb, point2(&coords, edge[2])) {
-                    edge[2]
-                } else {
-                    mid_store.get_or_create(
-                        out,
-                        MidSource::Boundary(edge_key(edge)),
-                        a,
-                        b,
-                        chord_midpoint(pa, pb),
-                    )
-                }
+                synthesize_mid(
+                    out,
+                    mid_store,
+                    MidSource::Boundary(edge_key(edge)),
+                    edge,
+                    a,
+                    b,
+                )
             }
-            CutEdgeSource::Cutter(eid) => {
-                let coords = out.coords();
-                let mid = chord_midpoint(point2(&coords, a), point2(&coords, b));
-                mid_store.get_or_create(out, MidSource::Cutter(eid), a, b, mid)
-            }
+            CutEdgeSource::Cutter(eid) => synthesize_mid(
+                out,
+                mid_store,
+                MidSource::Cutter(eid),
+                cutting_edges.element(eid).connectivity(),
+                a,
+                b,
+            ),
         };
         mids.push(mid);
     }
@@ -700,7 +716,14 @@ fn cut_cells(
             for piece in pieces {
                 let inside = pgon_inside(&piece.ring, &out.coords(), cutter, &cutter_bvh);
                 if keep(inside) {
-                    emit_piece(out, &cell, &boundary_edges, &piece, &mut mid_store);
+                    emit_piece(
+                        out,
+                        &cell,
+                        &boundary_edges,
+                        cutting_edges,
+                        &piece,
+                        &mut mid_store,
+                    );
                 }
             }
         } else if keep(cell_inside(&cell, cutter, &cutter_bvh)) {
@@ -2191,6 +2214,56 @@ mod tests {
                 let out = quad.overlay(cutter, OverlayOperation::Imprint);
                 assert_abs_diff_eq!(exact_mesh_area(&out), before, epsilon = 1e-12);
                 assert_imprint_valid(&out, before);
+            }
+        }
+    }
+
+    /// A quadratic cutter's edges are circular arcs: the cut between two arc
+    /// crossings must follow the cutter arc, not its chord. Regression test for
+    /// `emit_piece` using `chord_midpoint` for `CutEdgeSource::Cutter`.
+    #[test]
+    fn test_overlay_quadratic_cutter_keeps_cut_edges_curved() {
+        let shifted = |bulge: f64, dx: f64, dy: f64| -> UMesh {
+            let coords = nd::arr2(&[
+                [dx, dy],
+                [1.0 + dx, dy],
+                [1.0 + dx, 1.0 + dy],
+                [dx, 1.0 + dy],
+                [0.5 + dx, -bulge + dy],
+                [1.0 + bulge + dx, 0.5 + dy],
+                [0.5 + dx, 1.0 + bulge + dy],
+                [-bulge + dx, 0.5 + dy],
+            ]);
+            let mut mesh = UMesh::new(coords.into_shared());
+            mesh.add_regular_block(
+                ElementType::QUAD8,
+                nd::arr2(&[[0, 1, 2, 3, 4, 5, 6, 7]]).to_shared(),
+                None,
+            );
+            mesh
+        };
+
+        // Both meshes are fully curved, so every output edge is a sub-arc of an
+        // input circle: no triple (start, mid, end) may be collinear.
+        let subject = shifted(0.20, 0.0, 0.0);
+        let cutter = shifted(0.10, 0.35, 0.30);
+        let before = exact_mesh_area(&subject);
+        let out = subject.overlay(cutter, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(exact_mesh_area(&out), before, epsilon = 1e-12);
+
+        let coords = out.coords();
+        for cell in out.elements_of_dim(Dimension::D2) {
+            assert_eq!(cell.element_type(), ElementType::QPOLY);
+            let conn = cell.connectivity();
+            let n = conn.len() / 2;
+            for i in 0..n {
+                let a = point2(&coords, conn[i]);
+                let b = point2(&coords, conn[(i + 1) % n]);
+                let mid = point2(&coords, conn[n + i]);
+                assert!(
+                    ArcEdge::new(a, mid, b).is_curved(),
+                    "edge {i} of {conn:?} is a straight chord"
+                );
             }
         }
     }
