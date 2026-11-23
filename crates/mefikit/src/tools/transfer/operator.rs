@@ -167,6 +167,7 @@ impl TransferOperator {
             .map(|(et, rows)| (*et, rows.target_measure.len()))
     }
 
+    #[cfg(feature = "io")]
     pub(crate) fn data(&self) -> &[(ElementType, RowSparse)] {
         &self.data
     }

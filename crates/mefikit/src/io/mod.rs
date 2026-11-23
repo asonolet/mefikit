@@ -41,11 +41,33 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
     }
 }
 
+/// Rejects fields that are only defined on part of the blocks of their dimension.
+///
+/// Writers flatten a field per dimension; a partially-defined field cannot be serialized
+/// unambiguously and used to make the exporters panic while formatting it.
+fn validate_field_coverage(mesh: &UMeshView) -> Result<(), MefikitIOError> {
+    let mut fields = std::collections::BTreeSet::new();
+    for (element_type, block) in mesh.blocks() {
+        for name in block.fields.keys() {
+            fields.insert((name.clone(), element_type.dimension()));
+        }
+    }
+    for (name, dim) in fields {
+        if mesh.field(&name, Some(dim)).is_none() {
+            return Err(MefikitIOError::InvalidMesh(format!(
+                "field {name:?} is not defined on every element block of dimension {dim:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Writes a mesh to the given file path.
 ///
 /// The file format is determined by the file extension.
 /// Supported formats: JSON, YAML, VTK, VTU, VTKHDF, CGNS (HDF5), MED.
 pub fn write(path: &Path, mesh: UMeshView) -> Result<(), MefikitIOError> {
+    validate_field_coverage(&mesh)?;
     match path
         .extension()
         .and_then(|e| e.to_str())

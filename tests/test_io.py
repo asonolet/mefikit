@@ -160,6 +160,29 @@ def test_vtkhdf_vector_field_roundtrip(tmp_path):
     assert np.allclose(np.asarray(m2.fields["velocity"].values()["QUAD4"]), values)
 
 
+def test_cgns_rejects_unrepresentable_group_name(tmp_path):
+    path = str(tmp_path / "bad-name.cgns")
+    m = _field_group_mesh()
+    m.groups["paroi_échauffée"] = {"QUAD4": np.array([0])}
+
+    with pytest.raises(ValueError, match="CGNS node name"):
+        m.write(path)
+
+
+def test_write_rejects_partially_defined_field(tmp_path):
+    path = str(tmp_path / "partial.vtkhdf")
+    m = mf.UMesh(np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]))
+    m.add_regular_block(
+        "TRI3",
+        np.array([[0, 1, 2]], dtype=np.uintp),
+        fields={"T": np.array([1.0])},
+    )
+    m.add_regular_block("QUAD4", np.array([[0, 1, 2, 3]], dtype=np.uintp))
+
+    with pytest.raises(ValueError, match="field"):
+        m.write(path)
+
+
 def test_cgns_boundary_field_and_group_roundtrip(tmp_path):
     path = str(tmp_path / "boundary.cgns")
     coords = np.array(

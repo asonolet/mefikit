@@ -1,3 +1,4 @@
+use pyo3::exceptions::{PyOSError, PyValueError};
 use pyo3::prelude::*;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -24,6 +25,13 @@ use crate::pyfields::PyFieldsMapping;
 use crate::pygroups::PyGroupsMapping;
 use crate::pytimeseries::PyTimeSeriesMapping;
 use crate::select::{PySelectionResult, extract_selector, selector_to_selection};
+
+fn map_io_err(err: mf::MefikitIOError) -> PyErr {
+    match err {
+        mf::MefikitIOError::Io(err) => PyOSError::new_err(err.to_string()),
+        other => PyValueError::new_err(other.to_string()),
+    }
+}
 
 #[pyclass(str)]
 #[pyo3(name = "UMesh")]
@@ -223,15 +231,13 @@ impl PyUMesh {
     }
 
     #[staticmethod]
-    fn read(path: &str) -> Self {
-        let path = Path::new(path);
-        mf::read(path).unwrap().into()
+    fn read(path: &str) -> PyResult<Self> {
+        let mesh = mf::read(Path::new(path)).map_err(map_io_err)?;
+        Ok(mesh.into())
     }
 
-    fn write(&self, path: &str) {
-        let path = Path::new(path);
-        let mesh = self.inner.view();
-        let _ = mf::write(path, mesh);
+    fn write(&self, path: &str) -> PyResult<()> {
+        mf::write(Path::new(path), self.inner.view()).map_err(map_io_err)
     }
 
     #[pyo3(signature = (src_dim=None, target_dim=None))]

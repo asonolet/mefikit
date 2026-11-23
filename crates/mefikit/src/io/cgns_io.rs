@@ -660,9 +660,11 @@ fn write_c1_data(group: &Group, value: &str) -> Result<(), MefikitIOError> {
 }
 
 fn validate_cgns_name(name: &str) -> Result<(), MefikitIOError> {
-    if name.is_empty() || name.contains('/') {
+    // CGNS node names are null-terminated ASCII, at most 32 bytes (`FixedAscii<33>` below).
+    // Reject before creating the node: HDF5 would otherwise leave a nameless node behind.
+    if name.is_empty() || !name.is_ascii() || name.len() > 32 || name.contains('/') {
         return Err(MefikitIOError::Encode(format!(
-            "name {name:?} is not a valid CGNS node name"
+            "name {name:?} is not a valid CGNS node name (ASCII, at most 32 bytes, no '/')"
         )));
     }
     Ok(())
