@@ -12,9 +12,8 @@
 //! Fields are not carried over: use the transfer operators to map source fields onto the
 //! produced mesh (see the slicing example in the Python documentation).
 //!
-//! Slicing assumes convex cells; concave 2D cells are rejected instead of returning a wrong
-//! section. Quadratic cells are handled on a best-effort basis: only their corner nodes are
-//! used, so the cut is a linearization of the curved geometry.
+//! Quadratic cells are handled on a best-effort basis: only their corner nodes are used, so
+//! the cut is a linearization of the curved geometry.
 
 use ndarray as nd;
 use rustc_hash::FxHashSet;
@@ -261,14 +260,6 @@ fn slice_2d(mesh: &UMeshView, origin: [f64; 2], normal: [f64; 2]) -> UMesh {
 
     for cell in mesh.elements_of_dim(Dimension::D2) {
         let polygon = cell_polygon(&cell);
-        if !crate::geometry::Polygon::unknown(polygon.iter().copied()).is_convex() {
-            panic!(
-                "Slicing does not support concave cells (got {:?}); only convex cells are supported. \
-                 Concave cells are produced by overlay operations and must be triangulated or \
-                 convexified before slicing.",
-                cell.id()
-            );
-        }
         for [a, b] in plane_section_segments(&polygon, &origin, &normal, tol) {
             let ia = coords.len();
             coords.push(a);
@@ -483,8 +474,8 @@ fn push_coord<const D: usize>(coords: &mut Vec<[f64; D]>, p: [f64; D], tol: f64)
 /// Intersection of a polygon with the hyperplane through `origin` with unit `normal`.
 ///
 /// The intersection is computed by clipping the polygon to one side of the hyperplane and
-/// keeping the boundary edges that lie on the hyperplane. This handles arbitrary (possibly
-/// concave) polygons and yields one segment per crossing interval.
+/// keeping the boundary edges that lie on the hyperplane. The polygon is assumed convex and
+/// yields one segment per crossing interval.
 fn plane_section_segments<const D: usize>(
     polygon: &[[f64; D]],
     origin: &[f64; D],
@@ -985,24 +976,6 @@ mod tests {
             sliced.element_types().copied().collect::<Vec<_>>(),
             vec![ElementType::PGON]
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "does not support concave")]
-    fn slice_rejects_concave_2d_cell() {
-        let coords = nd::array![
-            [0.0, 0.0],
-            [3.0, 0.0],
-            [3.0, 3.0],
-            [2.0, 3.0],
-            [2.0, 1.0],
-            [1.0, 1.0],
-            [1.0, 3.0],
-            [0.0, 3.0]
-        ];
-        let mut mesh = UMesh::new(coords.into_shared());
-        mesh.add_element(ElementType::PGON, &[0, 1, 2, 3, 4, 5, 6, 7], None);
-        let _ = mesh.slice(&[0.0, 2.0], &[0.0, 1.0]);
     }
 
     #[test]

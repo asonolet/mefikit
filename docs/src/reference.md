@@ -32,9 +32,11 @@ Unless a tool's own documentation says otherwise, mefikit algorithms assume
   Some tools use only their corner nodes (effectively linearizing the geometry),
   while others reject them. A tool that rejects a quadratic cell documents it
   and raises an error rather than returning a silent approximation.
-- Concave cells are not generally supported. The overlay/intersection family
-  (`overlay`, `intersect_1d`) is the only intended producer of concave output;
-  passing that output to another tool may be rejected.
+- Concave cells are not supported by most algorithms, and convexity is **not
+  checked**: these tools assume convex input and may silently return incorrect
+  results for concave cells. Concave input is untested. The overlay/intersection
+  family (`overlay`, `intersect_1d`) is the only intended producer of concave
+  output.
 
 ## The fields mapping
 

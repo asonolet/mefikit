@@ -9,6 +9,9 @@ best-effort quadratic/concave policy; they are follow-ups.
   heavily tested but not translation/scale invariant. It is intentionally left
   untouched for now; do not change it without adding the corresponding
   translation/scale regression tests.
+- **Concave input** is assumed convex and is not checked by most tools. This is
+  documented globally in `docs/src/reference.md`; do not add per-tool convexity
+  checks or reject concave cells.
 
 ## Correctness and edge cases
 
