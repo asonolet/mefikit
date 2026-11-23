@@ -400,11 +400,16 @@ pub trait ElementGeo<'a>: ElementLike<'a> + ElementTopo<'a> {
                 *self.coord2_ref(1),
             )),
             TRI6 | TRI7 | QUAD8 | QUAD9 | QPOLY => {
-                for edge in self.boundary_edges().iter().filter(|e| e.len() == 3) {
+                // `boundary_edges()` yields global node ids, but `coord2_ref` takes a
+                // local connectivity index. Quadratic connectivity is laid out as
+                // `[vertices..., mid-side nodes...]`, so build the arcs from local
+                // indices directly; the TRI7/QUAD9 centre node is not on the boundary.
+                let n = self.num_vertices();
+                for i in 0..n {
                     include_arc(ArcEdge::new(
-                        *self.coord2_ref(edge[0]),
-                        *self.coord2_ref(edge[2]),
-                        *self.coord2_ref(edge[1]),
+                        *self.coord2_ref(i),
+                        *self.coord2_ref(n + i),
+                        *self.coord2_ref((i + 1) % n),
                     ));
                 }
             }
@@ -986,5 +991,66 @@ mod tests {
         let [min, max] = elem.bounds2();
         assert!((min[1] + 0.2).abs() < 1e-12);
         assert!((max[1] - 0.0).abs() < 1e-12);
+    }
+
+    /// `boundary_edges()` returns global node ids, which must not be used as local
+    /// connectivity indices. Regression test for a QUAD8 whose nodes are 8..15.
+    #[test]
+    fn bounds2_uses_local_indices_for_global_node_ids() {
+        let family = 0;
+        let groups = crate::mesh::ArcGroups::new();
+        let local = nd::array![
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -0.2],
+            [1.2, 0.5],
+            [0.5, 1.2],
+            [-0.2, 0.5],
+        ];
+        // Eight unused nodes, then the cell's nodes with global ids 8..15.
+        let coords = nd::arr2(&[
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -0.2],
+            [1.2, 0.5],
+            [0.5, 1.2],
+            [-0.2, 0.5],
+        ]);
+
+        let global_conn = [8usize, 9, 10, 11, 12, 13, 14, 15];
+        let global_elem = Element::new(
+            0,
+            coords.view(),
+            &family,
+            &global_conn,
+            ElementType::QUAD8,
+            &groups,
+        );
+        let local_conn = [0usize, 1, 2, 3, 4, 5, 6, 7];
+        let local_elem = Element::new(
+            0,
+            local.view(),
+            &family,
+            &local_conn,
+            ElementType::QUAD8,
+            &groups,
+        );
+
+        assert_eq!(global_elem.bounds2(), local_elem.bounds2());
+        let [min, max] = global_elem.bounds2();
+        assert!(min[0] <= -0.2 && min[1] <= -0.2);
+        assert!(max[0] >= 1.2 && max[1] >= 1.2);
     }
 }

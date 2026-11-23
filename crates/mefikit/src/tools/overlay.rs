@@ -1917,6 +1917,43 @@ mod tests {
         );
     }
 
+    /// Quadratic cells whose node ids are not `0..n-1` must still be cut: `bounds2`
+    /// used to feed `boundary_edges()`' global ids into the local `coord2_ref`.
+    #[test]
+    fn test_overlay_quadratic_cell_with_global_node_ids() {
+        let coords = nd::arr2(&[
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [9.0, 9.0],
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [1.0, 1.0],
+            [0.0, 1.0],
+            [0.5, -0.15],
+            [1.15, 0.5],
+            [0.5, 1.15],
+            [-0.15, 0.5],
+        ]);
+        let mut mesh1 = UMesh::new(coords.into_shared());
+        mesh1.add_regular_block(
+            ElementType::QUAD8,
+            nd::arr2(&[[8usize, 9, 10, 11, 12, 13, 14, 15]]).to_shared(),
+            None,
+        );
+        let before = exact_mesh_area(&mesh1);
+        let mesh2 = RegularUMeshBuilder::new()
+            .add_axis(vec![-0.25, 0.5, 1.25])
+            .add_axis(vec![0.25, 0.75])
+            .build();
+        let cutted = mesh1.overlay(mesh2, OverlayOperation::Imprint);
+        assert_abs_diff_eq!(exact_mesh_area(&cutted), before, epsilon = 1e-12);
+    }
+
     #[test]
     #[should_panic(expected = "only implemented for OverlayOperation::Imprint")]
     fn test_overlay_quadratic_boolean_panics() {
