@@ -1,5 +1,53 @@
 # CHANGELOG
 
+## [0.7.0](https://github.com/asonolet/mefikit/compare/v0.6.2...v0.7.0) - 2026-11-24
+
+### Add
+
+- IMPRINT with quadratic cutters; keep booleans first-order only
+- arc-arc intersections and four quadratic-support fixes
+- add UMesh.intersect_1d for 2D meshes cut by a 1D mesh
+- quadratic 2d overlay
+- distributed conservative transfer ([#63](https://github.com/asonolet/mefikit/pull/63))
+- save and load transfer matrix
+- slicing 2d/3d meshes with lines/planes ([#62](https://github.com/asonolet/mefikit/pull/62))
+- trans-dimensional conservative transfer ([#61](https://github.com/asonolet/mefikit/pull/61))
+- [**breaking**] stabilize groups API ([#60](https://github.com/asonolet/mefikit/pull/60))
+- is_conform with butterfly cell detection ([#59](https://github.com/asonolet/mefikit/pull/59))
+
+### Documentation
+
+- *(conformance)* align merged-node wording with implementation
+- list intersect_1d and the quadratic overlay limitation in README
+- record why booleans on quadratic meshes are not supported
+- a closed cutter loop strictly inside a cell is ignored
+
+### Fix
+
+- document MPI collectives and reject non-full-dimensional slicing ([#67](https://github.com/asonolet/mefikit/pull/67))
+- *(quadratic)* handle QPOLY in conformance and slicing
+- *(mesh)* preserve PHED face separators when aggregating and validating
+- *(io)* validate CGNS names and surface read/write errors
+- *(slice)* reject non-finite and concave input and keep empty cuts typed
+- *(conformance)* diagnose quadratic surface cells without panicking
+- *(overlay)* keep cutter arcs curved in quadratic IMPRINT
+- make add_regular_block/add_poly_block replace existing blocks
+- build quadratic cell bounds from local connectivity indices
+- split pinched cells at the pinch node instead of emitting self-touching QPOLY
+- correct quadratic overlay on concave arcs and outside cutter segments
+- add non_exhaustive for future proof api
+- *(mpi)* reject higher-order cells with a clear error
+
+### Other
+
+- *(deps)* upgrade Rust and Python dependencies ([#69](https://github.com/asonolet/mefikit/pull/69))
+- *(windows)* build ARM64 wheels ([#68](https://github.com/asonolet/mefikit/pull/68))
+- *(slice)* remove convexity checks and document concave input globally
+
+### Test
+
+- *(conformance)* satisfy clippy in quadratic regression tests
+
 ## [0.6.2](https://github.com/asonolet/mefikit/compare/v0.6.1...v0.6.2) - 2026-11-05
 
 ### Add
