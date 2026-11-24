@@ -363,10 +363,15 @@ impl PyUMesh {
     /// `origin` normal to `normal`. A 3D mesh produces a 2D `PGON` mesh embedded in
     /// 3D, a 2D mesh produces a 1D `SEG2` mesh.
     ///
-    /// Quadratic cells are handled on a best-effort basis using their corner nodes only.
+    /// Quadratic cells are handled on a best-effort basis using their corner nodes only. The
+    /// mesh must be full-dimensional in its space; a 2D surface embedded in 3D is rejected.
     #[pyo3(signature = (origin, normal))]
     fn slice(&self, origin: Vec<f64>, normal: Vec<f64>) -> PyResult<Self> {
         check_slice_args(self.inner.space_dimension(), &origin, &normal, "normal")?;
+        check_slice_mesh_dimension(
+            self.inner.space_dimension(),
+            self.inner.topological_dimension(),
+        )?;
         Ok(mf::slice(&self.inner.view(), &origin, &normal).into())
     }
 
@@ -374,7 +379,8 @@ impl PyUMesh {
     ///
     /// A 3D mesh produces a 1D `SEG2` mesh embedded in 3D, and a 2D mesh produces a 1D
     /// `SEG2` mesh embedded in 2D. The direction does not need to be normalized. Quadratic cells
-    /// are handled using their corner nodes only.
+    /// are handled using their corner nodes only. The mesh must be full-dimensional in its space;
+    /// a 2D surface embedded in 3D is rejected.
     #[pyo3(signature = (origin, direction))]
     fn slice_line(&self, origin: Vec<f64>, direction: Vec<f64>) -> PyResult<Self> {
         check_slice_args(
@@ -382,6 +388,10 @@ impl PyUMesh {
             &origin,
             &direction,
             "direction",
+        )?;
+        check_slice_mesh_dimension(
+            self.inner.space_dimension(),
+            self.inner.topological_dimension(),
         )?;
         Ok(mf::slice_line(&self.inner.view(), &origin, &direction).into())
     }
@@ -594,6 +604,24 @@ impl PyUMesh {
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
         Ok(out.into())
     }
+}
+
+fn check_slice_mesh_dimension(space_dim: usize, top_dim: Option<mf::Dimension>) -> PyResult<()> {
+    let expected = if space_dim == 3 {
+        mf::Dimension::D3
+    } else {
+        mf::Dimension::D2
+    };
+    if let Some(top) = top_dim
+        && top != expected
+    {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Slicing requires full-dimensional cells: got topological dimension {top:?} in a \
+             {space_dim}D space. A 2D surface embedded in 3D cannot be sliced; project it to 2D \
+             or extrude it first."
+        )));
+    }
+    Ok(())
 }
 
 fn check_slice_args(

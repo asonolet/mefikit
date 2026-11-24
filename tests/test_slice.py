@@ -126,6 +126,25 @@ def test_slice_missing_mesh_keeps_typed_empty_block():
     assert sliced.measure()["PGON"].size == 0
 
 
+def test_slice_rejects_2d_surface_in_3d():
+    mesh = mf.UMesh(
+        np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ]
+        )
+    )
+    mesh.add_regular_block("QUAD4", np.array([[0, 1, 2, 3]], dtype=np.uintp))
+
+    with pytest.raises(ValueError, match="full-dimensional"):
+        mesh.slice([0.5, 0.0, 0.0], [1.0, 0.0, 0.0])
+    with pytest.raises(ValueError, match="full-dimensional"):
+        mesh.slice_line([0.5, 0.5, 0.0], [0.0, 0.0, 1.0])
+
+
 def test_slice_line_missing_mesh_keeps_typed_empty_block():
     mesh = mf.build_cmesh([0.0, 1.0], [0.0, 1.0])
     sliced = mesh.slice_line([10.0, 10.0], [1.0, 0.0])

@@ -273,6 +273,11 @@ class DistributedConservativeP0:
     local Rust ``ConservativeP0`` operator per target rank. The operator is
     then reused by :meth:`eval` / :meth:`apply_update`.
 
+    **Collective contract:** every rank in ``comm`` must call the constructor
+    and every field-evaluating method (:meth:`eval`, :meth:`__call__`,
+    :meth:`apply_update`, and :func:`distributed`). Calling them on a subset
+    of ranks deadlocks.
+
     Parameters
     ----------
     src_mesh:
@@ -740,6 +745,8 @@ class DistributedConservativeP0:
 
         Returns the per-element-type arrays of the local target field. Uncovered
         target cells keep ``def_val`` (the constructor value unless overridden).
+
+        Collective: every rank in the communicator must call this method.
         """
         return self._evaluate(
             self._src_mesh,
@@ -754,6 +761,7 @@ class DistributedConservativeP0:
         extensive: bool = False,
         def_val: float | None = None,
     ) -> dict[str, npt.NDArray[np.float64]]:
+        """Alias of :meth:`eval`; also collective on every rank."""
         return self.eval(expr, extensive=extensive, def_val=def_val)
 
     def apply_update(
@@ -770,6 +778,8 @@ class DistributedConservativeP0:
         ``src_mesh`` and ``tgt_mesh`` must describe the same local pieces as the
         constructor (they may be the same objects). Pass ``None`` on a rank that
         owns no cell on that side.
+
+        Collective: every rank in the communicator must call this method.
         """
         source = self._src_mesh if src_mesh is None else src_mesh
         target = self._tgt_mesh if tgt_mesh is None else tgt_mesh
@@ -803,6 +813,8 @@ def distributed(
     This is a convenience wrapper around
     :class:`DistributedConservativeP0`; build the class explicitly to reuse the
     prepared operator for several fields.
+
+    Collective: every rank in the communicator must call this function.
     """
     operator = DistributedConservativeP0(src_mesh, tgt_mesh, comm=comm, def_val=def_val)
     return operator.eval(expr, extensive=extensive)

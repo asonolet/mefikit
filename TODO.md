@@ -20,8 +20,6 @@ best-effort quadratic/concave policy; they are follow-ups.
 - `is_conform`: 1D/0D overlaps are not checked; `NoVolumeCells` is also returned
   for empty 2D meshes. Consider renaming and a conformance-specific error type
   instead of `StitchError`.
-- `slice`: a 2D surface embedded in 3D currently returns an empty slice; either
-  support the plane/line intersection or reject it explicitly.
 - `slice`: an empty slice can still panic in meshless transfers (empty target).
   Guard the callers or document the requirement.
 - `slice`: concave 3D/`PHED` faces are not checked; non-closed loops are
@@ -54,8 +52,6 @@ best-effort quadratic/concave policy; they are follow-ups.
   full-dimensionality.
 - `transfer`: `ElementType::name()` is documented as the serialized name but
   serde still uses variant names. Unify the representation or fix the doc.
-- `mpi`: document that `eval`, `__call__`, `apply_update`, and `distributed`
-  are collective operations.
 - `mpi`: 0D point ties are resolved in local owner-rank order, not global source
   order; preserve global order or document the distributed tie rule.
 - `mpi`: fixed tags 4101-4103 can collide with other traffic on the same
