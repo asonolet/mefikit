@@ -15,12 +15,12 @@ keywords = ["mesh", "cfd", "geometry", "hpc"]
 
 [dependencies]
 arrayvec = { workspace = true }
-bvh = "0.12.0"
+bvh = "0.13.0"
 derive-where = { workspace = true, features = ["serde"] }
-hdf5-metno = { version = "0.14.1", features = ["static"], optional = true }
+hdf5-metno = { version = "0.15.2", features = ["static"], optional = true }
 itertools = { workspace = true }
 kiddo = { version = "6.3.1", default-features = false, features = ["fixed"] }
-lstsq = "0.7.0"
+lstsq = "0.8.0"
 nalgebra = { workspace = true }
 ndarray = { workspace = true }
 npyz = { workspace = true, optional = true }
@@ -114,7 +114,7 @@ approx = "0.5.1"
 criterion = "0.8.2"
 gungraun = "0.20.0"
 proptest = "1.12.0"
-scaling = "0.10.0"
+scaling = "0.10.2"
 tempfile = "3"
 todo = "0.3.0"
 

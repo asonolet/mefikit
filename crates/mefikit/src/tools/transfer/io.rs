@@ -490,7 +490,10 @@ impl TransferOperator {
         let data: Vec<f64> = read_array(&mut zip, DATA, Some(&[nnz as u64]))?;
         let target_measure: Vec<f64> = read_array(&mut zip, TARGET_MEASURE, Some(&[n_tgt as u64]))?;
 
-        let default_value = if zip.file_names().any(|name| name == DEFAULT_VALUE) {
+        let default_value = if zip
+            .file_names()
+            .any(|name| name.is_ok_and(|name| name == DEFAULT_VALUE))
+        {
             let values: Vec<f64> = read_array(&mut zip, DEFAULT_VALUE, Some(&[1]))?;
             Some(values[0])
         } else {

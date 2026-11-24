@@ -738,7 +738,7 @@ fn write_field_nom_attr(
 ) -> Result<(), MefikitIOError> {
     let attr = grp
         .new_attr_builder()
-        .empty_as(&TypeDescriptor::FixedAscii(total_len))
+        .empty_as(TypeDescriptor::FixedAscii(total_len))
         .create(name)?;
 
     let value = FixedAscii::<MED_NOM_MAX>::from_ascii(nom_bytes)
