@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-d378b8e4.js";
+            window.path_to_searchindex_js = "searchindex-2c54550d.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-3dcbf833.js"></script>
@@ -904,7 +904,8 @@ normal <code>normal</code>, producing a 2D <code>PGON</code> mesh embedded in 3D
 hyperplane is the line through <code>origin</code> normal to <code>normal</code>, and the result is a
 1D <code>SEG2</code> mesh. <code>mesh.slice_line(origin, direction)</code> cuts a 2D or 3D mesh with
 the line through <code>origin</code> along <code>direction</code>; both produce a 1D <code>SEG2</code> mesh (in
-3D the line is embedded in 3D). Quadrangular sections are kept as <code>PGON</code> (they
+3D the line is embedded in 3D). The input must be full-dimensional in its space
+(a 2D surface embedded in 3D is rejected). Quadrangular sections are kept as <code>PGON</code> (they
 are not converted to <code>QUAD4</code>). Slicing does not copy fields; remap them with a
 transfer operator, for example
 <code>sliced.fields["T"] = mf.transfer.ConstantPiecewise(src, sliced)("T")</code> (see the
@@ -1011,7 +1012,9 @@ conservative P0 operator on each rank’s local pieces and performs the
 communication through <code>mpi4py</code>. Only the Python side requires MPI (install the
 optional <code>mpi</code> extra); the Rust library and its wheels stay MPI-independent.
 The operator is reused across fields with the same <code>eval</code> / <code>apply_update</code>
-calls, or use the one-shot <code>mf.transfer.distributed(src, expr, tgt, comm=...)</code>.</p>
+calls, or use the one-shot <code>mf.transfer.distributed(src, expr, tgt, comm=...)</code>.
+These operations are <strong>collective</strong>: every rank in the communicator must call
+the constructor and each <code>eval</code> / <code>apply_update</code> / <code>distributed</code> call.</p>
 <h2 id="field-gradients"><a class="header" href="#field-gradients">Field gradients</a></h2>
 <p><code>mf.Gradient</code> differentiates a <strong>scalar</strong> field with a moving least-squares
 (MLS) fit over the <code>k</code> nearest source cell centres. Like the transfers it has a
