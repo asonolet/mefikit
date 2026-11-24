@@ -49,6 +49,7 @@ pub fn slice(mesh: &UMeshView, origin: &[f64], normal: &[f64]) -> UMesh {
         space_dim,
         "The slice normal must have the same dimension as the mesh"
     );
+    check_full_dimensional(mesh, space_dim);
 
     match space_dim {
         2 => slice_2d(mesh, origin.try_into().unwrap(), normal.try_into().unwrap()),
@@ -83,6 +84,7 @@ pub fn slice_line(mesh: &UMeshView, origin: &[f64], direction: &[f64]) -> UMesh 
         space_dim,
         "The slice direction must have the same dimension as the mesh"
     );
+    check_full_dimensional(mesh, space_dim);
 
     match space_dim {
         2 => {
@@ -129,6 +131,27 @@ impl Sliceable for UMesh {
 
     fn slice_line(&self, origin: &[f64], direction: &[f64]) -> UMesh {
         slice_line(&self.view(), origin, direction)
+    }
+}
+
+/// Slicing only makes sense on a mesh that is full-dimensional in its space.
+///
+/// A 2D surface embedded in 3D (e.g. an overlay result) has a topological dimension of 2 and
+/// must be rejected explicitly instead of silently producing an empty slice.
+fn check_full_dimensional(mesh: &UMeshView, space_dim: usize) {
+    let expected = if space_dim == 3 {
+        Dimension::D3
+    } else {
+        Dimension::D2
+    };
+    if let Some(top) = mesh.topological_dimension()
+        && top != expected
+    {
+        panic!(
+            "Slicing requires full-dimensional cells: got topological dimension {top:?} in a \
+             {space_dim}D space. A 2D surface embedded in 3D cannot be sliced; project it to 2D \
+             or extrude it first."
+        );
     }
 }
 
@@ -965,6 +988,34 @@ mod tests {
             sliced.element_types().copied().collect::<Vec<_>>(),
             vec![ElementType::PGON]
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "full-dimensional")]
+    fn slice_rejects_2d_surface_in_3d() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0]
+        ];
+        let mut mesh = UMesh::new(coords.into_shared());
+        mesh.add_element(ElementType::QUAD4, &[0, 1, 2, 3], None);
+        let _ = mesh.slice(&[0.5, 0.0, 0.0], &[1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "full-dimensional")]
+    fn slice_line_rejects_2d_surface_in_3d() {
+        let coords = nd::array![
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0]
+        ];
+        let mut mesh = UMesh::new(coords.into_shared());
+        mesh.add_element(ElementType::QUAD4, &[0, 1, 2, 3], None);
+        let _ = mesh.slice_line(&[0.5, 0.5, 0.0], &[0.0, 0.0, 1.0]);
     }
 
     #[test]

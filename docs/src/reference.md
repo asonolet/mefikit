@@ -205,7 +205,8 @@ normal `normal`, producing a 2D `PGON` mesh embedded in 3D. On a 2D mesh the
 hyperplane is the line through `origin` normal to `normal`, and the result is a
 1D `SEG2` mesh. `mesh.slice_line(origin, direction)` cuts a 2D or 3D mesh with
 the line through `origin` along `direction`; both produce a 1D `SEG2` mesh (in
-3D the line is embedded in 3D). Quadrangular sections are kept as `PGON` (they
+3D the line is embedded in 3D). The input must be full-dimensional in its space
+(a 2D surface embedded in 3D is rejected). Quadrangular sections are kept as `PGON` (they
 are not converted to `QUAD4`). Slicing does not copy fields; remap them with a
 transfer operator, for example
 `sliced.fields["T"] = mf.transfer.ConstantPiecewise(src, sliced)("T")` (see the
@@ -306,6 +307,8 @@ communication through `mpi4py`. Only the Python side requires MPI (install the
 optional `mpi` extra); the Rust library and its wheels stay MPI-independent.
 The operator is reused across fields with the same `eval` / `apply_update`
 calls, or use the one-shot `mf.transfer.distributed(src, expr, tgt, comm=...)`.
+These operations are **collective**: every rank in the communicator must call
+the constructor and each `eval` / `apply_update` / `distributed` call.
 
 ## Field gradients
 
