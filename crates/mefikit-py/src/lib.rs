@@ -6,6 +6,7 @@ mod pyfield;
 mod pyfields;
 mod pygradient;
 mod pygroups;
+mod pymedfile;
 mod pytimeseries;
 mod pytransfer;
 mod pytransform;
@@ -55,6 +56,11 @@ mod mefipy {
 
     #[pymodule_export]
     use super::pytransfer::PyDistanceWeighting;
+
+    #[pymodule_export]
+    use super::pymedfile::{
+        PyMedFieldInfo, PyMedFile, PyMedFileStructure, PyMedMeshInfo, PyMedStepInfo,
+    };
 
     #[pymodule_export]
     use super::pyumesh::{PyOverlayOperation, PySurfaceOverlay, PyUMesh};

@@ -11,11 +11,16 @@ mod elements_mapping;
 mod error;
 mod hdf_utils;
 mod hdfvtk_io;
+mod med_file;
 mod med_io;
 mod serde_io;
 mod vtk_io;
 
 pub use error::MefikitIOError;
+pub use med_file::{
+    MedFieldInfo, MedFile, MedFileStructure, MedMeshInfo, MedSelection, MedStepInfo, MedWriteMode,
+    MeshSelection, StepSelection, write_named_meshes,
+};
 
 /// Reads a mesh from the given file path.
 ///
@@ -45,7 +50,7 @@ pub fn read(path: &Path) -> Result<UMesh, MefikitIOError> {
 ///
 /// Writers flatten a field per dimension; a partially-defined field cannot be serialized
 /// unambiguously and used to make the exporters panic while formatting it.
-fn validate_field_coverage(mesh: &UMeshView) -> Result<(), MefikitIOError> {
+pub(crate) fn validate_field_coverage(mesh: &UMeshView) -> Result<(), MefikitIOError> {
     let mut fields = std::collections::BTreeSet::new();
     for (element_type, block) in mesh.blocks() {
         for name in block.fields.keys() {

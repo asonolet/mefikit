@@ -51,6 +51,11 @@ __all__ = (
     "GroupsMapping",
     "InverseDistance",
     "M",
+    "MedFieldInfo",
+    "MedFile",
+    "MedFileStructure",
+    "MedMeshInfo",
+    "MedStepInfo",
     "MovingLeastSquares",
     "Normal",
     "Nx",
@@ -137,6 +142,18 @@ _FieldValue: TypeAlias = str | float | _ArrayDynF | dict[str, _ArrayDynF] | Fiel
 # as select-all wildcards.
 _Selector: TypeAlias = (
     Selection | dict[str, Sequence[int]] | str | EllipsisType | slice | None
+)
+
+# Step selection accepted by the MED container: all steps (`None`/`...`), one
+# index (negative counts from the end), a slice with Python semantics, or a
+# range/sequence of indices.
+_MedStepSelection: TypeAlias = int | slice | Sequence[int] | EllipsisType | None
+# Field selection for one mesh. An empty dict loads no field.
+_MedFieldSelection: TypeAlias = dict[str, _MedStepSelection]
+# Whole-file selection. An empty dict loads no mesh; a `None` value for a mesh
+# loads all of its fields and steps.
+_MedFileSelection: TypeAlias = (
+    dict[str, _MedFieldSelection | None] | EllipsisType | None
 )
 
 @final
@@ -381,6 +398,63 @@ class Transform:
     def inverse(self) -> Transform: ...
     def apply(self, mesh: UMesh) -> UMesh: ...
     def __matmul__(self, rhs: Transform, /) -> Transform: ...
+
+@final
+class MedStepInfo:
+    index: int
+    iteration: int
+    order: int
+    time: float
+
+@final
+class MedMeshInfo:
+    name: str
+    space_dimension: int
+    num_nodes: int
+    num_cells: int
+    element_types: dict[str, int]
+    unsupported_element_types: list[str]
+    groups: list[str]
+
+@final
+class MedFieldInfo:
+    name: str
+    mesh_name: str
+    dimension: int | None
+    components: int
+    steps: list[MedStepInfo]
+
+@final
+class MedFileStructure:
+    @property
+    def meshes(self) -> dict[str, MedMeshInfo]: ...
+    @property
+    def fields(self) -> dict[str, MedFieldInfo]: ...
+    def __len__(self) -> int: ...
+
+@final
+class MedFile:
+    def __new__(cls) -> MedFile: ...
+    @staticmethod
+    def read(path: str, selection: _MedFileSelection = ...) -> MedFile: ...
+    @staticmethod
+    def read_mesh(
+        path: str,
+        mesh: str,
+        selection: _MedFieldSelection | EllipsisType | None = ...,
+    ) -> UMesh: ...
+    @staticmethod
+    def inspect(path: str) -> MedFileStructure: ...
+    def write(self, path: str, mode: str = ...) -> None: ...
+    def keys(self) -> list[str]: ...
+    def values(self) -> list[UMesh]: ...
+    def items(self) -> list[tuple[str, UMesh]]: ...
+    def __len__(self) -> int: ...
+    def __contains__(self, name: str) -> bool: ...
+    def __iter__(self) -> Iterator[str]: ...
+    def __getitem__(self, name: str) -> UMesh: ...
+    def __setitem__(self, name: str, mesh: UMesh) -> None: ...
+    def __delitem__(self, name: str) -> None: ...
 
 @final
 class UMesh:

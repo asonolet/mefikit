@@ -136,3 +136,31 @@ for ext in ("vtk", "yaml", "json", "vtkhdf", "cgns", "med"):
         volumes != volumes_from_disk
     )  # this is a new instance, with a different memory adress
 ```
+
+### Multi-mesh MED containers
+
+A `.med` file can hold several named meshes with their own fields and time
+steps. Use `mf.MedFile` for those files; `UMesh.read`/`write` only handle
+single-mesh files.
+
+```python
+volumes.fields["pressure"] = np.linspace(0.0, 1.0, volumes.num_elements())
+volumes.time_series["T"].add(np.linspace(1.0, 2.0, volumes.num_elements()), time=0.0)
+volumes.time_series["T"].add(np.linspace(2.0, 3.0, volumes.num_elements()), time=1.0)
+surface = volumes.boundaries()
+
+container = mf.MedFile()
+container["fluid"] = volumes
+container["solid"] = surface
+container.write("data/case.med")
+
+structure = mf.MedFile.inspect("data/case.med")
+print(structure.meshes["fluid"].num_cells)
+print([(step.index, step.iteration, step.time) for step in structure.fields["T"].steps])
+
+# Load only one step of T, and no field of the solid mesh.
+partial = mf.MedFile.read("data/case.med", {"fluid": {"T": -1}, "solid": {}})
+partial.write("data/case.med", mode="update")  # other entries stay untouched
+
+one_mesh = mf.MedFile.read_mesh("data/case.med", "fluid", {"T": 0})
+```

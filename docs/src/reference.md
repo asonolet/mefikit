@@ -262,6 +262,60 @@ has no quadratic polygon type and raises `ValueError` for it. See the
 [Input/Output](./python_examples/input_output.md) notebook and the `.med`
 round-trip in [mefikit vs. medcoupling](./python_examples/compare_medcoupling.md).
 
+### Multi-mesh MED files
+
+`mf.MedFile` handles a complete `.med` file: named meshes, the fields of each
+mesh, time steps and element groups. A field belongs to one mesh and one
+topological dimension; field names are file-global, so the same name cannot be
+used on two meshes. `UMesh.read`/`write` remain the single-mesh convenience
+path and expect `.med` files with exactly one mesh.
+
+| Operation | Call |
+|---|---|
+| read the whole file | `container = mf.MedFile.read(path)` |
+| read one mesh directly | `mesh = mf.MedFile.read_mesh(path, "fluid")` |
+| metadata only | `structure = mf.MedFile.inspect(path)` |
+| write a new file | `container.write(path, mode="create")` |
+| replace a file | `container.write(path, mode="overwrite")` |
+| partial update | `container.write(path, mode="update")` |
+| add / replace a mesh | `container["fluid"] = mesh` |
+| list / index meshes | `container.keys()`, `container["fluid"]` |
+
+`inspect` returns `MedFileStructure` without loading coordinates or field
+arrays. `structure.meshes` maps mesh names to `MedMeshInfo`
+(`space_dimension`, `num_nodes`, `num_cells`, `element_types`,
+`unsupported_element_types`, `groups`); `structure.fields` maps field names to
+`MedFieldInfo` (`mesh_name`, `dimension`, `components`, `steps`). Each
+`MedStepInfo` carries the MED `iteration`, `order` and physical `time`.
+Unsupported MED element types (for example pyramids) are listed in
+`unsupported_element_types`; `read` skips them with a warning instead of
+failing.
+
+The `selection` argument of `read` is a dict keyed by mesh name:
+
+```python
+container = mf.MedFile.read(
+    "case.med",
+    {
+        "fluid": {  # load this mesh ...
+            "T": -1,  # ... only the last step of T
+            "pressure": None,  # ... every step of pressure
+        },
+        "solid": {},  # geometry and groups only
+    },
+)
+```
+
+An empty outer dict loads no mesh. A mesh value of `None` loads every field and
+step; an empty dict loads only the mesh geometry and groups. Step selectors
+accept `None`/`...` (all steps), an integer (negative counts from the end), a
+Python `slice`, or a range/sequence of step indices. `read_mesh` takes the
+inner field dict directly: `mf.MedFile.read_mesh(path, "fluid", {"T": 0})`.
+
+Update mode opens an existing file and replaces only the meshes present in the
+container; unloaded meshes and fields keep their on-disk data. Field names must
+be unique across the whole file.
+
 ## Field transfers
 
 Remapping a field from a **source** mesh onto a **target** mesh is done with
