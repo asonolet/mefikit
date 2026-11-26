@@ -225,6 +225,15 @@ def test_med_groups_nom_is_int8_array_dataset(tmp_path):
         assert bytes(d[0]) == b"mygroup" + b" " * 73
 
 
+def test_med_rejects_changing_component_count_across_steps(tmp_path):
+    mesh = mf.build_cmesh([0.0, 1.0], [0.0, 1.0], [0.0, 1.0])
+    mesh.time_series["T"].add(np.array([1.0]), time=0.0)
+    mesh.time_series["T"].add(np.array([[2.0, 3.0]]), time=1.0)
+
+    with pytest.raises(ValueError, match="component"):
+        mesh.write(str(tmp_path / "mixed_components.med"))
+
+
 def test_med_unsupported_element_type_returns_error(tmp_path):
     mesh = mf.UMesh(
         np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]])

@@ -733,6 +733,7 @@ pub(crate) fn write_fields_named(
     };
 
     for ((_base, _dim), group) in groups {
+        validate_field_components(&group)?;
         write_field_group(&cha, mesh_name, &group)?;
     }
 
@@ -769,6 +770,22 @@ fn make_field_step(
         types,
         n_components: n_components.unwrap_or(1),
     })
+}
+
+fn validate_field_components(group: &FieldWriteGroup) -> Result<(), MefikitIOError> {
+    let expected = group.steps[0].n_components;
+    if let Some(step) = group
+        .steps
+        .iter()
+        .find(|step| step.n_components != expected)
+    {
+        return Err(MefikitIOError::InvalidMesh(format!(
+            "field {:?} has {expected} components in its first step but {} in step {}; \
+             MED requires one component count per field",
+            group.name, step.n_components, step.step
+        )));
+    }
+    Ok(())
 }
 
 fn write_field_group(
