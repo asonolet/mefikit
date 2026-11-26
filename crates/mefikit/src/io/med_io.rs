@@ -1518,6 +1518,61 @@ pub(crate) fn read_mesh_base(file: &File, mesh_name: &str) -> Result<UMesh, Mefi
     Ok(mesh)
 }
 
+struct FieldStepSupport {
+    types: BTreeSet<ElementType>,
+    has_non_cell: bool,
+}
+
+/// Returns the cell supports that can be represented by `UMesh`.
+///
+/// Profiles, unsupported element types, and partial per-dimension supports
+/// cannot be mapped safely: inserting them would leave a field defined on only
+/// some blocks, which breaks the `UMesh` field invariants.
+fn field_step_support(step_grp: &Group, mesh: &UMesh) -> Result<FieldStepSupport, String> {
+    let mut types = BTreeSet::new();
+    let mut has_non_cell = false;
+
+    for member in step_grp.member_names().unwrap_or_default() {
+        let Some(med_type) = member.strip_prefix("MAI.") else {
+            has_non_cell = true;
+            continue;
+        };
+        let et = med_name_to_element_type(med_type)
+            .ok_or_else(|| format!("unsupported MED element type {med_type:?}"))?;
+        let mai_grp = step_grp
+            .group(&member)
+            .map_err(|_| format!("missing support group {member:?}"))?;
+        if mai_grp.group("MED_NO_PROFILE_INTERNAL").is_err() {
+            return Err(format!("support {member:?} uses a profile"));
+        }
+        if !mesh.element_blocks.contains_key(&et) {
+            return Err(format!("support {member:?} has no matching mesh block"));
+        }
+        types.insert(et);
+    }
+
+    if types.is_empty() {
+        return Err("no cell support".to_string());
+    }
+
+    let dimensions: BTreeSet<Dimension> = types.iter().map(|et| et.dimension()).collect();
+    for dimension in dimensions {
+        for et in mesh
+            .element_types()
+            .filter(|et| et.dimension() == dimension)
+        {
+            if !types.contains(et) {
+                return Err(format!("partial support at dimension {dimension:?}"));
+            }
+        }
+    }
+
+    Ok(FieldStepSupport {
+        types,
+        has_non_cell,
+    })
+}
+
 /// Read element-centered fields from the CHA group into a named mesh.
 ///
 /// `selected_steps` is an optional set of zero-based step indices in the
@@ -1604,6 +1659,43 @@ pub(crate) fn read_fields_named(
         };
         if chosen.is_empty() {
             continue;
+        }
+
+        let mut expected_types: Option<BTreeSet<ElementType>> = None;
+        let mut has_non_cell = false;
+        let mut skip_reason = None;
+        for (file_index, _iteration, _time, step_grp) in &steps {
+            if !chosen.contains(file_index) {
+                continue;
+            }
+            match field_step_support(step_grp, mesh) {
+                Ok(support) => {
+                    if let Some(expected) = &expected_types {
+                        if expected != &support.types {
+                            skip_reason =
+                                Some("cell support changes between selected steps".to_string());
+                            break;
+                        }
+                    } else {
+                        expected_types = Some(support.types);
+                    }
+                    has_non_cell |= support.has_non_cell;
+                }
+                Err(reason) => {
+                    skip_reason = Some(reason);
+                    break;
+                }
+            }
+        }
+        if let Some(reason) = skip_reason {
+            eprintln!("warning: skipping field {field_name:?} on mesh {mesh_name:?}: {reason}");
+            continue;
+        }
+        if has_non_cell {
+            eprintln!(
+                "warning: loading only cell values of MED field {field_name:?} on mesh \
+                 {mesh_name:?}; non-cell supports are not supported"
+            );
         }
 
         for (file_index, iteration, time, step_grp) in steps {
