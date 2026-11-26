@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-2c54550d.js";
+            window.path_to_searchindex_js = "../searchindex-bd4413e3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-3dcbf833.js"></script>
@@ -275,6 +275,30 @@ for ext in ("vtk", "yaml", "json", "vtkhdf", "cgns", "med"):
     assert (
         volumes != volumes_from_disk
     )  # this is a new instance, with a different memory adress
+</code></pre>
+<h3 id="multi-mesh-med-containers"><a class="header" href="#multi-mesh-med-containers">Multi-mesh MED containers</a></h3>
+<p>A <code>.med</code> file can hold several named meshes with their own fields and time
+steps. Use <code>mf.MedFile</code> for those files; <code>UMesh.read</code>/<code>write</code> only handle
+single-mesh files.</p>
+<pre><code class="language-python">volumes.fields["pressure"] = np.linspace(0.0, 1.0, volumes.num_elements())
+volumes.time_series["T"].add(np.linspace(1.0, 2.0, volumes.num_elements()), time=0.0)
+volumes.time_series["T"].add(np.linspace(2.0, 3.0, volumes.num_elements()), time=1.0)
+surface = volumes.boundaries()
+
+container = mf.MedFile()
+container["fluid"] = volumes
+container["solid"] = surface
+container.write("data/case.med")
+
+structure = mf.MedFile.inspect("data/case.med")
+print(structure.meshes["fluid"].num_cells)
+print([(step.index, step.iteration, step.time) for step in structure.fields["T"].steps])
+
+# Load only one step of T, and no field of the solid mesh.
+partial = mf.MedFile.read("data/case.med", {"fluid": {"T": -1}, "solid": {}})
+partial.write("data/case.med", mode="update")  # other entries stay untouched
+
+one_mesh = mf.MedFile.read_mesh("data/case.med", "fluid", {"T": 0})
 </code></pre>
 
                     </main>

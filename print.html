@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-2c54550d.js";
+            window.path_to_searchindex_js = "searchindex-bd4413e3.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-3dcbf833.js"></script>
@@ -966,6 +966,58 @@ to PyVista’s quadratic polygon and to MEDCoupling’s <code>QPOLYG</code> cell
 has no quadratic polygon type and raises <code>ValueError</code> for it. See the
 <a href="#input--output-1">Input/Output</a> notebook and the <code>.med</code>
 round-trip in <a href="#mefikit-vs-medcoupling">mefikit vs. medcoupling</a>.</p>
+<h3 id="multi-mesh-med-files"><a class="header" href="#multi-mesh-med-files">Multi-mesh MED files</a></h3>
+<p><code>mf.MedFile</code> handles a complete <code>.med</code> file: named meshes, the fields of each
+mesh, time steps and element groups. A field belongs to one mesh and one
+topological dimension; field names are file-global, so the same name cannot be
+used on two meshes. <code>UMesh.read</code>/<code>write</code> remain the single-mesh convenience
+path and expect <code>.med</code> files with exactly one mesh.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operation</th><th>Call</th></tr>
+</thead>
+<tbody>
+<tr><td>read the whole file</td><td><code>container = mf.MedFile.read(path)</code></td></tr>
+<tr><td>read one mesh directly</td><td><code>mesh = mf.MedFile.read_mesh(path, "fluid")</code></td></tr>
+<tr><td>metadata only</td><td><code>structure = mf.MedFile.inspect(path)</code></td></tr>
+<tr><td>write a new file</td><td><code>container.write(path, mode="create")</code></td></tr>
+<tr><td>replace a file</td><td><code>container.write(path, mode="overwrite")</code></td></tr>
+<tr><td>partial update</td><td><code>container.write(path, mode="update")</code></td></tr>
+<tr><td>add / replace a mesh</td><td><code>container["fluid"] = mesh</code></td></tr>
+<tr><td>list / index meshes</td><td><code>container.keys()</code>, <code>container["fluid"]</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>inspect</code> returns <code>MedFileStructure</code> without loading coordinates or field
+arrays. <code>structure.meshes</code> maps mesh names to <code>MedMeshInfo</code>
+(<code>space_dimension</code>, <code>num_nodes</code>, <code>num_cells</code>, <code>element_types</code>,
+<code>unsupported_element_types</code>, <code>groups</code>); <code>structure.fields</code> maps field names to
+<code>MedFieldInfo</code> (<code>mesh_name</code>, <code>dimension</code>, <code>components</code>, <code>steps</code>). Each
+<code>MedStepInfo</code> carries the MED <code>iteration</code>, <code>order</code> and physical <code>time</code>.
+Unsupported MED element types (for example pyramids) are listed in
+<code>unsupported_element_types</code>; <code>read</code> skips them with a warning instead of
+failing.</p>
+<p>The <code>selection</code> argument of <code>read</code> is a dict keyed by mesh name:</p>
+<pre><code class="language-python">container = mf.MedFile.read(
+    "case.med",
+    {
+        "fluid": {  # load this mesh ...
+            "T": -1,  # ... only the last step of T
+            "pressure": None,  # ... every step of pressure
+        },
+        "solid": {},  # geometry and groups only
+    },
+)
+</code></pre>
+<p>An empty outer dict loads no mesh. A mesh value of <code>None</code> loads every field and
+step; an empty dict loads only the mesh geometry and groups. Step selectors
+accept <code>None</code>/<code>...</code> (all steps), an integer (negative counts from the end), a
+Python <code>slice</code>, or a range/sequence of step indices. <code>read_mesh</code> takes the
+inner field dict directly: <code>mf.MedFile.read_mesh(path, "fluid", {"T": 0})</code>.</p>
+<p>Update mode opens an existing file and replaces only the meshes present in the
+container; unloaded meshes and fields keep their on-disk data. Field names must
+be unique across the whole file.</p>
 <h2 id="field-transfers"><a class="header" href="#field-transfers">Field transfers</a></h2>
 <p>Remapping a field from a <strong>source</strong> mesh onto a <strong>target</strong> mesh is done with
 the <code>mf.transfer</code> operators. All of them share the same prepare / apply split:
@@ -1276,6 +1328,30 @@ for ext in ("vtk", "yaml", "json", "vtkhdf", "cgns", "med"):
     assert (
         volumes != volumes_from_disk
     )  # this is a new instance, with a different memory adress
+</code></pre>
+<h3 id="multi-mesh-med-containers"><a class="header" href="#multi-mesh-med-containers">Multi-mesh MED containers</a></h3>
+<p>A <code>.med</code> file can hold several named meshes with their own fields and time
+steps. Use <code>mf.MedFile</code> for those files; <code>UMesh.read</code>/<code>write</code> only handle
+single-mesh files.</p>
+<pre><code class="language-python">volumes.fields["pressure"] = np.linspace(0.0, 1.0, volumes.num_elements())
+volumes.time_series["T"].add(np.linspace(1.0, 2.0, volumes.num_elements()), time=0.0)
+volumes.time_series["T"].add(np.linspace(2.0, 3.0, volumes.num_elements()), time=1.0)
+surface = volumes.boundaries()
+
+container = mf.MedFile()
+container["fluid"] = volumes
+container["solid"] = surface
+container.write("data/case.med")
+
+structure = mf.MedFile.inspect("data/case.med")
+print(structure.meshes["fluid"].num_cells)
+print([(step.index, step.iteration, step.time) for step in structure.fields["T"].steps])
+
+# Load only one step of T, and no field of the solid mesh.
+partial = mf.MedFile.read("data/case.med", {"fluid": {"T": -1}, "solid": {}})
+partial.write("data/case.med", mode="update")  # other entries stay untouched
+
+one_mesh = mf.MedFile.read_mesh("data/case.med", "fluid", {"T": 0})
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mesh-extrusions"><a class="header" href="#mesh-extrusions">Mesh extrusions</a></h1>
