@@ -1,6 +1,5 @@
 use criterion::{BatchSize, BenchmarkId, Criterion};
 use ndarray as nd;
-use scaling::bench_scaling_gen;
 use std::hint::black_box;
 
 use mefikit::mesh::{ElementType, UMesh};
@@ -76,19 +75,18 @@ fn surface_overlay(c: &mut Criterion) {
     group.finish();
 }
 
-fn main() {
+fn make_surface_overlay_input(n: usize) -> (UMesh, UMesh) {
+    let m = (n as f64).sqrt() as usize;
+    (quad_surface(m), tri_surface(m))
+}
+
+#[scaling::bench_scaling(nmin = 10000, make_input = make_surface_overlay_input)]
+fn surface_overlay_scaling(input: &mut (UMesh, UMesh)) {
+    overlay_surfaces(&input.0.view(), &input.1.view(), 1e-9).unwrap();
+}
+
+fn main() -> Result<(), scaling::RegistrationError> {
     let mut c = Criterion::default();
     surface_overlay(&mut c);
-
-    let benched = bench_scaling_gen(
-        |n| {
-            let m = (n as f64).sqrt() as usize;
-            (quad_surface(m), tri_surface(m))
-        },
-        |(s1, s2)| {
-            overlay_surfaces(&s1.view(), &s2.view(), 1e-9).unwrap();
-        },
-        10000,
-    );
-    println!("surface overlay scaling bench: {benched}");
+    scaling::Config::default().run_and_print()
 }

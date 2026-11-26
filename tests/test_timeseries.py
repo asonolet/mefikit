@@ -177,7 +177,7 @@ def test_items(ts):
 def test_iteration(ts):
     pairs = list(ts)
     assert len(pairs) == 3
-    assert pairs[0][0] == 0.0  # noqa: RUF069
+    assert pairs[0][0] == pytest.approx(0.0)
     assert np.allclose(pairs[0][1].numpy().ravel(), 10.0)
 
 
