@@ -781,6 +781,17 @@ fn write_field_group(
         Err(_) => cha.create_group(&group.name)?,
     };
 
+    if let Ok(existing_mesh) = read_group_attr(&field_grp, "MAI") {
+        let existing_mesh = existing_mesh.trim();
+        if !existing_mesh.is_empty() && existing_mesh != mesh_name {
+            return Err(MefikitIOError::InvalidMesh(format!(
+                "field {:?} belongs to mesh {existing_mesh:?} in the target file and cannot \
+                 be written on mesh {mesh_name:?}; MED field names are file-global",
+                group.name
+            )));
+        }
+    }
+
     if let Ok(attr) = field_grp.attr("NCO") {
         let existing = attr.read_scalar::<i64>().unwrap_or(0) as usize;
         if existing != group.steps[0].n_components {

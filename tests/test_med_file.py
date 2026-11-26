@@ -235,6 +235,29 @@ def test_write_modes(tmp_path):
         container.write(str(path), mode="bogus")
 
 
+def test_update_rejects_field_owned_by_another_mesh(tmp_path):
+    def mesh_with(value):
+        mesh = mf.build_cmesh([0.0, 1.0], [0.0, 1.0], [0.0, 1.0])
+        mesh.fields["shared"] = np.array([value])
+        return mesh
+
+    path = tmp_path / "update_collision.med"
+    first = mf.MedFile()
+    first["mesh_a"] = mesh_with(1.0)
+    first.write(str(path))
+
+    second = mf.MedFile()
+    second["mesh_b"] = mesh_with(2.0)
+    with pytest.raises(ValueError, match="file-global"):
+        second.write(str(path), mode="update")
+
+    loaded = mf.MedFile.read(str(path))
+    assert loaded.keys() == ["mesh_a"]
+    np.testing.assert_array_equal(
+        loaded["mesh_a"].fields["shared"].values()["HEX8"], [1.0]
+    )
+
+
 def test_duplicate_field_names_are_rejected(tmp_path):
     fluid = _make_fluid()
     solid = _make_solid()

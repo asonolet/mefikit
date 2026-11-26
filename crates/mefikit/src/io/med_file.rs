@@ -204,13 +204,18 @@ pub fn write_named_meshes(
             write_meshes(&file, meshes)
         }
         MedWriteMode::Update => {
-            let file = if path.exists() {
+            let existed = path.exists();
+            let file = if existed {
                 File::open_rw(path)?
             } else {
                 File::create(path)?
             };
             if file.group("INFOS_GENERALES").is_err() {
                 med_io::write_general_info(&file)?;
+            }
+            if existed && file.group("ENS_MAA").is_ok() {
+                let structure = inspect_file(&file)?;
+                validate_update_field_names(meshes, &structure)?;
             }
             write_meshes(&file, meshes)
         }
@@ -271,6 +276,36 @@ fn write_meshes(file: &File, meshes: &[(&str, &UMesh)]) -> Result<(), MefikitIOE
         }
         med_io::write_mesh_named(file, mesh_name, &mesh.view())?;
         med_io::write_fields_named(file, mesh_name, &mesh.view())?;
+    }
+    Ok(())
+}
+
+/// Rejects field names already owned by another mesh in the target file.
+fn validate_update_field_names(
+    meshes: &[(&str, &UMesh)],
+    structure: &MedFileStructure,
+) -> Result<(), MefikitIOError> {
+    for &(mesh_name, mesh) in meshes {
+        for (field_name, dimension) in mesh_field_names(mesh) {
+            let Some(info) = structure.fields.get(&field_name) else {
+                continue;
+            };
+            if info.mesh_name != mesh_name {
+                return Err(MefikitIOError::InvalidMesh(format!(
+                    "field name {field_name:?} belongs to mesh {:?} in the target file and \
+                     cannot be written on mesh {mesh_name:?}; MED field names are file-global",
+                    info.mesh_name
+                )));
+            }
+            if let Some(file_dimension) = info.dimension
+                && file_dimension != dimension
+            {
+                return Err(MefikitIOError::InvalidMesh(format!(
+                    "field name {field_name:?} has dimension {file_dimension:?} in the target \
+                     file but {dimension:?} on mesh {mesh_name:?}"
+                )));
+            }
+        }
     }
     Ok(())
 }
