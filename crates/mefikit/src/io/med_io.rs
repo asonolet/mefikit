@@ -56,7 +56,7 @@
 //! ```text
 //! NOE/
 //!   attrs: CGT=1, CGS=1, PFL="MED_NO_PROFILE_INTERNAL"
-//!   COO/       dataset   f64, shape [n_coords×n_nodes] in Fortran order
+//!   COO/       dataset   f64, shape [n_coords×n_nodes]; SoA unless ILC=0
 //!              attrs: CGT=1, NBR=n_nodes
 //! ```
 //!
@@ -72,7 +72,7 @@
 //!   attrs: CGT=1
 //!   └── <MED_type>/            one subgroup per element type
 //!         attrs: CGT=1, CGS=1, GEO=<geo-code>, PFL="MED_NO_PROFILE_INTERNAL"
-//!         NOD/   dataset   u64, shape [n_nodes_per_elem × n_cells], Fortran order
+//!         NOD/   dataset   i64, shape [n_nodes_per_elem × n_cells]; SoA unless ILC=0
 //!                attrs: CGT=1, NBR=n_cells
 //!         FAM/   dataset   int64, shape [n_cells]  (only if any family id ≠ 0)
 //!                attrs: CGT=1, NBR=n_cells
@@ -160,7 +160,7 @@
 //!               └── MED_NO_PROFILE_INTERNAL/
 //!                     attrs: NBR=<n_cells>, NGA=1, GAU=""
 //!                     CO /  dataset  f64, shape [n_cells × n_components],
-//!                           Fortran order
+//!                           SoA unless ILC=0
 //!                           attrs: CGT=1
 //! ```
 //!
@@ -174,6 +174,15 @@
 //! * The `CO` dataset stores `n_cells × n_components` in **Fortran order**
 //!   (component-major: all cells of component 1, then all cells of component
 //!   2, …). mefikit transposes its row-major in-memory layout on write.
+//!
+//! ## Interlace modes
+//!
+//! MED 5.1+ stores the on-disk interlace mode of each dataset in its `ILC`
+//! attribute: `0` is `MED_FULL_INTERLACE` (entity-major / AoS, for example
+//! `x0,y0,z0,x1,y1,z1,…`) and `1` is `MED_NO_INTERLACE` (component-major /
+//! SoA). Files without `ILC` use the legacy MED 3.0 SoA layout. mefikit reads
+//! all three forms for coordinates, regular connectivity and `CO` fields, and
+//! writes explicit `ILC=1` datasets.
 //!
 //! ## Byte-format conventions
 //!
@@ -201,7 +210,7 @@ use crate::tools::timeseries::FieldKey;
 use hdf5_metno::types::FixedAscii;
 use hdf5_metno::types::TypeDescriptor;
 use hdf5_metno::types::VarLenAscii;
-use hdf5_metno::{File, Group};
+use hdf5_metno::{Dataset, File, Group};
 use ndarray as nd;
 use ndarray::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
@@ -426,6 +435,7 @@ fn write_nodes(timestep: &Group, coords: &ArrayView2<f64>) -> hdf5_metno::Result
 
     write_scalar_attr(&coo, "CGT", 1i64)?;
     write_scalar_attr(&coo, "NBR", coords.nrows() as i64)?;
+    write_scalar_attr(&coo, "ILC", 1i64)?;
 
     Ok(())
 }
@@ -477,6 +487,7 @@ fn write_fam_dataset(
         .create("FAM")?;
     write_scalar_attr(&ds, "CGT", 1i64)?;
     write_scalar_attr(&ds, "NBR", n)?;
+    write_scalar_attr(&ds, "ILC", 1i64)?;
     Ok(())
 }
 
@@ -541,6 +552,7 @@ fn write_regular(
 
     write_scalar_attr(&nod, "CGT", 1i64)?;
     write_scalar_attr(&nod, "NBR", med_conn.nrows() as i64)?;
+    write_scalar_attr(&nod, "ILC", 1i64)?;
 
     write_fam_dataset(&group, fam_numbers.view())?;
 
@@ -586,7 +598,8 @@ fn write_families_named(
         // exact layout.
         let slots: Vec<[i8; MED_GROUPE_NAME_SIZE]> =
             names.iter().map(|n| encode_group_name(n)).collect();
-        gro.new_dataset_builder().with_data(&slots).create("NOM")?;
+        let nom = gro.new_dataset_builder().with_data(&slots).create("NOM")?;
+        write_scalar_attr(&nom, "ILC", 1i64)?;
     }
 
     Ok(())
@@ -818,6 +831,7 @@ fn write_field_group(
                 .with_data(&co_data)
                 .create("CO")?;
             write_scalar_attr(&co_ds, "CGT", 1i64)?;
+            write_scalar_attr(&co_ds, "ILC", 1i64)?;
         }
     }
 
@@ -923,6 +937,7 @@ fn write_polygon(
 
     write_scalar_attr(&nod_ds, "CGT", 1i64)?;
     write_scalar_attr(&nod_ds, "NBR", nod.len() as i64)?;
+    write_scalar_attr(&nod_ds, "ILC", 1i64)?;
 
     // Mefikit:
     //
@@ -944,6 +959,7 @@ fn write_polygon(
 
     write_scalar_attr(&inn_ds, "CGT", 1i64)?;
     write_scalar_attr(&inn_ds, "NBR", inn.len() as i64)?;
+    write_scalar_attr(&inn_ds, "ILC", 1i64)?;
 
     write_fam_dataset(&group, fam_numbers.view())?;
 
@@ -1000,14 +1016,17 @@ fn write_polyhedron(
     let nod_ds = group.new_dataset_builder().with_data(&nod).create("NOD")?;
     write_scalar_attr(&nod_ds, "CGT", 1i64)?;
     write_scalar_attr(&nod_ds, "NBR", nod.len() as i64)?;
+    write_scalar_attr(&nod_ds, "ILC", 1i64)?;
 
     let inn_ds = group.new_dataset_builder().with_data(&inn).create("INN")?;
     write_scalar_attr(&inn_ds, "CGT", 1i64)?;
     write_scalar_attr(&inn_ds, "NBR", inn.len() as i64)?;
+    write_scalar_attr(&inn_ds, "ILC", 1i64)?;
 
     let ifn_ds = group.new_dataset_builder().with_data(&ifn).create("IFN")?;
     write_scalar_attr(&ifn_ds, "CGT", 1i64)?;
     write_scalar_attr(&ifn_ds, "NBR", ifn.len() as i64)?;
+    write_scalar_attr(&ifn_ds, "ILC", 1i64)?;
 
     write_fam_dataset(&group, fam_numbers.view())?;
 
@@ -1155,14 +1174,48 @@ fn read_group_names(ds: &hdf5_metno::Dataset) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// On-disk array interlace mode used by MED 5.1 and later.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DiskInterlace {
+    /// `MED_FULL_INTERLACE`: values grouped per entity (AoS).
+    Full,
+    /// `MED_NO_INTERLACE`: values grouped per component (SoA).
+    No,
+}
+
+/// Reads the optional `ILC` dataset attribute.
+///
+/// MED 3.0/4.x files have no `ILC` attribute and always use the
+/// non-interlaced (component-major) disk layout. MED 5.1+ writes `ILC=0`
+/// for full interlace and `ILC=1` for no interlace.
+fn disk_interlace(dataset: &Dataset) -> DiskInterlace {
+    let Ok(attr) = dataset.attr("ILC") else {
+        return DiskInterlace::No;
+    };
+    let value = attr
+        .read_scalar::<i64>()
+        .or_else(|_| attr.read_scalar::<i32>().map(i64::from));
+    match value {
+        Ok(0) => DiskInterlace::Full,
+        _ => DiskInterlace::No,
+    }
+}
+
 fn read_nodal_data(timestep: &Group, dim: usize) -> Result<(usize, Array2<f64>), MefikitIOError> {
     let noe = timestep.group("NOE")?;
-    let coo: Array1<f64> = noe.dataset("COO")?.read()?;
+    let coo_dataset = noe.dataset("COO")?;
+    let interlace = disk_interlace(&coo_dataset);
+    let coo: Array1<f64> = coo_dataset.read()?;
     let n_points = coo.len() / dim;
-    // MED stores COO column-major: [x0,x1,...,xN, y0,y1,...,yN, ...]
-    // Reshape as (dim, n_points) then transpose to get (n_points, dim).
-    let raw = Array2::from_shape_vec((dim, n_points), coo.to_vec())?;
-    let coords = raw.reversed_axes().as_standard_layout().to_owned();
+    let coords = match interlace {
+        // AoS: [x0,y0,z0, x1,y1,z1, ...]
+        DiskInterlace::Full => Array2::from_shape_vec((n_points, dim), coo.to_vec())?,
+        // SoA: [x0,x1,...,xN, y0,y1,...,yN, ...]
+        DiskInterlace::No => {
+            let raw = Array2::from_shape_vec((dim, n_points), coo.to_vec())?;
+            raw.reversed_axes().as_standard_layout().to_owned()
+        }
+    };
     Ok((n_points, coords))
 }
 
@@ -1174,17 +1227,25 @@ fn read_regular_block(
     et: ElementType,
 ) -> Result<RegBlock, MefikitIOError> {
     let grp = mai.group(med_type_name)?;
-    let nod: Array1<i64> = grp.dataset("NOD")?.read()?;
+    let nod_dataset = grp.dataset("NOD")?;
+    let interlace = disk_interlace(&nod_dataset);
+    let nod: Array1<i64> = nod_dataset.read()?;
     let n_nodes = et.num_nodes().ok_or_else(|| {
         MefikitIOError::MalformedFile("element type has variable node count".into())
     })?;
     let n_cells = nod.len() / n_nodes;
 
-    // Column-major reshape, then 1-based → 0-based.
+    // 1-based → 0-based.
     let flat: Vec<usize> = nod.iter().map(|&x| (x - 1) as usize).collect();
-    // MED stores (n_cells, n_nodes) in column-major: reshape as (n_nodes, n_cells) then transpose.
-    let conn = Array2::from_shape_vec((n_nodes, n_cells), flat)?;
-    let conn = conn.reversed_axes().as_standard_layout().to_owned();
+    let conn = match interlace {
+        // AoS: [cell0 nodes..., cell1 nodes..., ...]
+        DiskInterlace::Full => Array2::from_shape_vec((n_cells, n_nodes), flat)?,
+        // SoA: reshape as (n_nodes, n_cells) then transpose.
+        DiskInterlace::No => {
+            let conn = Array2::from_shape_vec((n_nodes, n_cells), flat)?;
+            conn.reversed_axes().as_standard_layout().to_owned()
+        }
+    };
 
     // Apply inverse MED node permutation.
     let conn = match et.med_permutation() {
@@ -1546,18 +1607,31 @@ pub(crate) fn read_fields_named(
                     .ok()
                     .and_then(|a| a.read_scalar::<i64>().ok())
                     .unwrap_or(0) as usize;
-                let co: Array1<f64> = match prof.dataset("CO") {
-                    Ok(ds) => ds.read().unwrap_or_default(),
+                let Ok(co_dataset) = prof.dataset("CO") else {
+                    continue;
+                };
+                let interlace = disk_interlace(&co_dataset);
+                let co: Array1<f64> = match co_dataset.read() {
+                    Ok(co) => co,
                     Err(_) => continue,
                 };
                 let arr = if n_co == 1 {
                     co.into_dyn()
                 } else {
-                    let raw = Array2::from_shape_vec((n_co, n_cells), co.to_vec())?;
-                    raw.reversed_axes()
-                        .as_standard_layout()
-                        .to_owned()
-                        .into_dyn()
+                    match interlace {
+                        // AoS: [c0_comp0, c0_comp1, c1_comp0, c1_comp1, ...]
+                        DiskInterlace::Full => {
+                            Array2::from_shape_vec((n_cells, n_co), co.to_vec())?.into_dyn()
+                        }
+                        // SoA: [c0_comp0, c1_comp0, ..., c0_comp1, c1_comp1, ...]
+                        DiskInterlace::No => {
+                            let raw = Array2::from_shape_vec((n_co, n_cells), co.to_vec())?;
+                            raw.reversed_axes()
+                                .as_standard_layout()
+                                .to_owned()
+                                .into_dyn()
+                        }
+                    }
                 };
                 if let Some(block) = mesh.element_blocks.get_mut(&et) {
                     block.fields.insert(field_key.clone(), arr.into_shared());

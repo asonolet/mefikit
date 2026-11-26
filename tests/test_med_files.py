@@ -225,6 +225,78 @@ def test_med_groups_nom_is_int8_array_dataset(tmp_path):
         assert bytes(d[0]) == b"mygroup" + b" " * 73
 
 
+def _convert_arrays_to_full_interlace(path):
+    """Convert mefikit's legacy SoA file to the MED 5.1+ AoS layout.
+
+    MED 5.1+ records the on-disk interlace mode in an ``ILC`` dataset
+    attribute: 0 is full interlace (AoS) and 1 is no interlace (SoA).
+    Files without ``ILC`` use the legacy MED 3.0 SoA layout.
+    """
+    import h5py
+
+    with h5py.File(path, "r+") as h:
+        for mesh_name in h["ENS_MAA"]:
+            mesh = h["ENS_MAA"][mesh_name]
+            dim = int(mesh.attrs["ESP"])
+            for step_name in mesh:
+                step = mesh[step_name]
+                coo = step["NOE"]["COO"]
+                coo[...] = coo[:].reshape(dim, -1).T.reshape(-1)
+                coo.attrs["ILC"] = 0
+
+                for et in step["MAI"]:
+                    grp = step["MAI"][et]
+                    nod = grp["NOD"]
+                    # Regular connectivity is per-cell AoS; polygon and
+                    # polyhedron connectivities are flat scalar arrays.
+                    if "INN" not in grp and "IFN" not in grp:
+                        n_cells = int(nod.attrs["NBR"])
+                        n_nodes = nod.size // n_cells
+                        nod[...] = nod[:].reshape(n_nodes, n_cells).T.reshape(-1)
+                    nod.attrs["ILC"] = 0
+
+        for field_name in h["CHA"]:
+            field = h["CHA"][field_name]
+            n_components = int(field.attrs["NCO"])
+            for step_name in field:
+                for member in field[step_name]:
+                    if not member.startswith("MAI."):
+                        continue
+                    profile = field[step_name][member]["MED_NO_PROFILE_INTERNAL"]
+                    co = profile["CO"]
+                    n_cells = int(profile.attrs["NBR"])
+                    if n_components > 1:
+                        co[...] = co[:].reshape(n_components, n_cells).T.reshape(-1)
+                    co.attrs["ILC"] = 0
+
+
+def test_med_reads_full_interlace_arrays(tmp_path):
+    """MED 5.1+/6.x may store coordinates, connectivity and fields AoS."""
+    path = str(tmp_path / "full_interlace.med")
+    m = mf.build_cmesh([0.0, 1.0, 2.0], [0.0, 1.0], [0.0, 1.0])
+    m.fields["p"] = np.array([10.0, 20.0])
+    m.fields["v"] = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    for i, time in enumerate([0.0, 0.5]):
+        m.time_series["T"].add(np.array([10.0 + i, 20.0 + i]), time=time)
+    m.groups["wall"] = {"HEX8": [0]}
+    m.write(path)
+
+    _convert_arrays_to_full_interlace(path)
+
+    m2 = mf.UMesh.read(path)
+    np.testing.assert_array_equal(m2.coords(), m.coords())
+    np.testing.assert_array_equal(m2.blocks()["HEX8"], m.blocks()["HEX8"])
+    np.testing.assert_array_equal(m2.fields["p"].values()["HEX8"], [10.0, 20.0])
+    np.testing.assert_array_equal(
+        m2.fields["v"].values()["HEX8"], [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+    )
+    np.testing.assert_array_equal(
+        [ref.values()["HEX8"] for _step, _time, ref in m2.time_series["T"].items()],
+        [[10.0, 20.0], [11.0, 21.0]],
+    )
+    np.testing.assert_array_equal(m2.groups["wall"].ids()["HEX8"], [0])
+
+
 def test_med_groups_multi_block_global_families(tmp_path):
     """Element family numbers are one global, negative namespace.
 
