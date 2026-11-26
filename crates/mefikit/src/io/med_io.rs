@@ -217,8 +217,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 impl ElementType {
-    pub fn med_name(self) -> &'static str {
-        match self {
+    fn med_name(self) -> Option<&'static str> {
+        Some(match self {
             ElementType::VERTEX => "PO1",
             ElementType::SEG2 => "SE2",
             ElementType::SEG3 => "SE3",
@@ -235,17 +235,14 @@ impl ElementType {
             ElementType::TET10 => "T10",
 
             ElementType::HEX8 => "HE8",
-            // ElementType::HEX21     => "H20",
-            // ElementType::Hexa27     => "H27",
-
-            // ElementType::Pyramid5   => "PY5",
-            // ElementType::Pyramid13  => "P13",
+            // MED names for HEX20/HEX27 are H20/H27 but mefikit has no
+            // matching element type yet.
             ElementType::WEDGE6 => "PE6",
             ElementType::WEDGE15 => "P15",
             ElementType::PGON => "POG",
             ElementType::PHED => "POE",
-            _ => todo!(),
-        }
+            _ => return None,
+        })
     }
 }
 
@@ -277,7 +274,7 @@ pub(crate) fn write_scalar_attr<T: hdf5_metno::H5Type>(
     obj.new_attr::<T>().create(name)?.write_scalar(&value)
 }
 
-fn write_mesh(file: &File, mesh: &UMeshView) -> hdf5_metno::Result<()> {
+fn write_mesh(file: &File, mesh: &UMeshView) -> Result<(), MefikitIOError> {
     write_mesh_named(file, "mesh", mesh)
 }
 
@@ -285,7 +282,7 @@ pub(crate) fn write_mesh_named(
     file: &File,
     mesh_name: &str,
     mesh: &UMeshView,
-) -> hdf5_metno::Result<()> {
+) -> Result<(), MefikitIOError> {
     let ensemble = match file.group("ENS_MAA") {
         Ok(group) => group,
         Err(_) => file.create_group("ENS_MAA")?,
@@ -496,8 +493,8 @@ impl ElementType {
     /// cell group. Some MED tools reject a cell group without it. Codes follow
     /// MED's convention: dim*100 + n_nodes (point = 1); polygons/polyhedra use
     /// 400/500. Same values as the reference meshio `med_geo_code` map.
-    fn med_geo_code(self) -> i64 {
-        match self {
+    fn med_geo_code(self) -> Option<i64> {
+        Some(match self {
             ElementType::VERTEX => 1,
             ElementType::SEG2 => 102,
             ElementType::SEG3 => 103,
@@ -514,8 +511,8 @@ impl ElementType {
             ElementType::HEX8 => 308,
             ElementType::PGON => 400,
             ElementType::PHED => 500,
-            _ => todo!(),
-        }
+            _ => return None,
+        })
     }
 }
 
@@ -524,18 +521,29 @@ fn write_regular(
     element_type: ElementType,
     regular: &ElementBlockView,
     fam_numbers: &Array1<i64>,
-) -> hdf5_metno::Result<()> {
+) -> Result<(), MefikitIOError> {
     let conn = match &regular.connectivity {
         ConnectivityView::Regular(pc) => pc,
         _ => panic!("A Regular block must contain a regular connectivity."),
     };
-    let med_type = element_type.med_name();
+    let med_type = element_type.med_name().ok_or_else(|| {
+        MefikitIOError::InvalidMesh(format!(
+            "MED does not support element type {:?}",
+            element_type
+        ))
+    })?;
+    let geo_code = element_type.med_geo_code().ok_or_else(|| {
+        MefikitIOError::InvalidMesh(format!(
+            "MED does not support element type {:?}",
+            element_type
+        ))
+    })?;
 
     let group = mai.create_group(med_type)?;
 
     write_scalar_attr(&group, "CGT", 1i64)?;
     write_scalar_attr(&group, "CGS", 1i64)?;
-    write_scalar_attr(&group, "GEO", element_type.med_geo_code())?;
+    write_scalar_attr(&group, "GEO", geo_code)?;
     write_fixed_bytes_attr::<23>(&group, "PFL", b"MED_NO_PROFILE_INTERNAL")?;
     let med_conn = reorder_connectivity(conn, element_type.med_permutation());
 
@@ -806,7 +814,11 @@ fn write_field_group(
 
         for (&et, data) in &step.types {
             let n_cells = data.shape()[0];
-            let med_type = et.med_name();
+            let med_type = et.med_name().ok_or_else(|| {
+                MefikitIOError::InvalidMesh(format!(
+                    "MED does not support fields on element type {et:?}"
+                ))
+            })?;
             let mai_type_name = format!("MAI.{med_type}");
             let mai_type_grp = step_grp.create_group(&mai_type_name)?;
             write_fixed_bytes_attr::<1>(&mai_type_grp, "GAU", b"")?;
@@ -918,7 +930,7 @@ fn write_polygon(
     mai: &Group,
     poly: &ElementBlockView,
     fam_numbers: &Array1<i64>,
-) -> hdf5_metno::Result<()> {
+) -> Result<(), MefikitIOError> {
     let poly_conn = match &poly.connectivity {
         ConnectivityView::Poly(pc) => pc,
         _ => panic!("A PGON block must contain a poly connectivity."),
@@ -970,7 +982,7 @@ fn write_polyhedron(
     mai: &Group,
     block: &ElementBlockView,
     fam_numbers: &Array1<i64>,
-) -> hdf5_metno::Result<()> {
+) -> Result<(), MefikitIOError> {
     let poly_conn = match &block.connectivity {
         ConnectivityView::Poly(pc) => pc,
         _ => panic!("A PHED block must contain a poly connectivity."),
@@ -1038,7 +1050,7 @@ fn write_block(
     et: &ElementType,
     block: &ElementBlockView,
     fam_numbers: &Array1<i64>,
-) -> hdf5_metno::Result<()> {
+) -> Result<(), MefikitIOError> {
     match et.regularity() {
         Regularity::Regular => {
             write_regular(mai, *et, block, fam_numbers)?;
@@ -1054,10 +1066,8 @@ fn write_block(
             }
 
             _ => {
-                return Err(hdf5_metno::Error::Internal(format!(
-                    "PolyConnectivity is not supported \
-                                for {:?}",
-                    et
+                return Err(MefikitIOError::InvalidMesh(format!(
+                    "MED does not support element type {et:?}"
                 )));
             }
         },

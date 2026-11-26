@@ -225,6 +225,16 @@ def test_med_groups_nom_is_int8_array_dataset(tmp_path):
         assert bytes(d[0]) == b"mygroup" + b" " * 73
 
 
+def test_med_unsupported_element_type_returns_error(tmp_path):
+    mesh = mf.UMesh(
+        np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 0.0, 0.0]])
+    )
+    mesh.add_regular_block("SEG4", np.array([[0, 1, 2, 3]], dtype=np.uintp))
+
+    with pytest.raises(ValueError, match="does not support element type"):
+        mesh.write(str(tmp_path / "seg4.med"))
+
+
 def _convert_arrays_to_full_interlace(path):
     """Convert mefikit's legacy SoA file to the MED 5.1+ AoS layout.
 
