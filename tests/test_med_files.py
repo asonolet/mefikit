@@ -252,6 +252,32 @@ def test_med_skips_partially_profiled_field(tmp_path):
     assert list(loaded.fields) == []
 
 
+def test_med_skips_partial_field_support(tmp_path):
+    import h5py
+
+    path = str(tmp_path / "partial_support.med")
+    coords = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [2.0, 0.5]])
+    mesh = mf.UMesh(coords)
+    mesh.add_regular_block(
+        "TRI3", np.array([[0, 1, 4]], dtype=np.uintp), fields={"T": np.array([1.0])}
+    )
+    mesh.add_regular_block(
+        "QUAD4",
+        np.array([[0, 1, 2, 3]], dtype=np.uintp),
+        fields={"T": np.array([2.0])},
+    )
+    mesh.write(path)
+
+    # A field defined on only one of two same-dimensional blocks cannot be
+    # represented by UMesh, which requires a field on every block of its dim.
+    with h5py.File(path, "r+") as h:
+        step = next(iter(h["CHA/T"]))
+        del h[f"CHA/T/{step}/MAI.TR3"]
+
+    loaded = mf.UMesh.read(path)
+    assert list(loaded.fields) == []
+
+
 def test_med_rejects_changing_component_count_across_steps(tmp_path):
     mesh = mf.build_cmesh([0.0, 1.0], [0.0, 1.0], [0.0, 1.0])
     mesh.time_series["T"].add(np.array([1.0]), time=0.0)
