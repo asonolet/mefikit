@@ -80,6 +80,29 @@ def test_umesh_read_rejects_multi_mesh_file(tmp_path):
         mf.UMesh.read(str(path))
 
 
+def test_padded_fixed_width_mai_is_trimmed(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    path = _write_container(tmp_path)
+
+    with h5py.File(path, "r+") as handle:
+        attrs = handle["CHA/T"].attrs
+        del attrs["MAI"]
+        attrs.create("MAI", np.bytes_(b"fluid".ljust(64)), dtype="S64")
+
+    structure = mf.MedFile.inspect(str(path))
+    assert structure.fields["T"].mesh_name == "fluid"
+
+    container = mf.MedFile.read(str(path), {"fluid": {"T": None}})
+    assert container.keys() == ["fluid"]
+    np.testing.assert_array_equal(
+        [
+            ref.values()["HEX8"]
+            for _step, _time, ref in container["fluid"].time_series["T"].items()
+        ],
+        [[1.0], [2.0], [4.0]],
+    )
+
+
 def test_roundtrip_multi_mesh_container(tmp_path):
     path = _write_container(tmp_path)
     container = mf.MedFile.read(str(path))

@@ -403,7 +403,10 @@ fn inspect_file(file: &File) -> Result<MedFileStructure, MefikitIOError> {
 
     for field_name in cha.member_names().unwrap_or_default() {
         let field_grp = cha.group(&field_name)?;
-        let mesh_name = read_group_attr(&field_grp, "MAI").unwrap_or_default();
+        let mesh_name = read_group_attr(&field_grp, "MAI")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         let components = field_grp
             .attr("NCO")
             .ok()

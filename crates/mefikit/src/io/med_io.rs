@@ -1517,6 +1517,7 @@ pub(crate) fn read_fields_named(
         };
 
         let field_mesh = read_group_attr(&field_grp, "MAI").unwrap_or_default();
+        let field_mesh = field_mesh.trim();
         if !field_mesh.is_empty() && field_mesh != mesh_name {
             continue;
         }
