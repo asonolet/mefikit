@@ -442,32 +442,16 @@ fn inspect_file(file: &File) -> Result<MedFileStructure, MefikitIOError> {
             .unwrap_or_default()
             .trim()
             .to_string();
-        let components = field_grp
-            .attr("NCO")
-            .ok()
-            .and_then(|attr| attr.read_scalar::<i64>().ok())
-            .unwrap_or(1) as usize;
+        let components = med_io::read_optional_attr::<i64>(&field_grp, "NCO").unwrap_or(1) as usize;
 
         let mut steps = Vec::new();
         for step_name in field_grp.member_names().unwrap_or_default() {
             let Ok(step_grp) = field_grp.group(&step_name) else {
                 continue;
             };
-            let iteration = step_grp
-                .attr("NDT")
-                .ok()
-                .and_then(|attr| attr.read_scalar::<i64>().ok())
-                .unwrap_or(-1);
-            let order = step_grp
-                .attr("NOR")
-                .ok()
-                .and_then(|attr| attr.read_scalar::<i64>().ok())
-                .unwrap_or(-1);
-            let time = step_grp
-                .attr("PDT")
-                .ok()
-                .and_then(|attr| attr.read_scalar::<f64>().ok())
-                .unwrap_or(0.0);
+            let iteration = med_io::read_optional_attr::<i64>(&step_grp, "NDT").unwrap_or(-1);
+            let order = med_io::read_optional_attr::<i64>(&step_grp, "NOR").unwrap_or(-1);
+            let time = med_io::read_optional_attr::<f64>(&step_grp, "PDT").unwrap_or(0.0);
             steps.push((iteration, order, time));
         }
         steps.sort_by_key(|(iteration, order, _)| (*iteration, *order));
