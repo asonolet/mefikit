@@ -236,7 +236,12 @@ use std::path::Path;
 const MED_NO_PROFILE: &str = "MED_NO_PROFILE_INTERNAL";
 
 impl ElementType {
-    fn med_name(self) -> Option<&'static str> {
+    pub fn med_name(self) -> &'static str {
+        self.med_name_opt()
+            .unwrap_or_else(|| panic!("MED does not support element type {self:?}"))
+    }
+
+    fn med_name_opt(self) -> Option<&'static str> {
         Some(match self {
             ElementType::VERTEX => "PO1",
             ElementType::SEG2 => "SE2",
@@ -560,7 +565,7 @@ fn write_regular(
         ConnectivityView::Regular(pc) => pc,
         _ => panic!("A Regular block must contain a regular connectivity."),
     };
-    let med_type = element_type.med_name().ok_or_else(|| {
+    let med_type = element_type.med_name_opt().ok_or_else(|| {
         MefikitIOError::InvalidMesh(format!(
             "MED does not support element type {:?}",
             element_type
@@ -861,7 +866,7 @@ fn write_field_group(
 
         for (&et, data) in &step.types {
             let n_cells = data.shape()[0];
-            let med_type = et.med_name().ok_or_else(|| {
+            let med_type = et.med_name_opt().ok_or_else(|| {
                 MefikitIOError::InvalidMesh(format!(
                     "MED does not support fields on element type {et:?}"
                 ))
