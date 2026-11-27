@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## [0.7.1](https://github.com/asonolet/mefikit/compare/v0.7.0...v0.7.1) - 2026-11-27
+
+### Add
+
+- *(io)* add multi-mesh MED file container ([#71](https://github.com/asonolet/mefikit/pull/71))
+
+### Fix
+
+- *(io)* restore ElementType::med_name public signature
+- *(io)* honor MED interlace mode and harden MED I/O ([#73](https://github.com/asonolet/mefikit/pull/73))
+- *(bench)* migrate scaling benches to 0.10 API ([#72](https://github.com/asonolet/mefikit/pull/72))
+
 ## [0.7.0](https://github.com/asonolet/mefikit/compare/v0.6.2...v0.7.0) - 2026-11-24
 
 ### Add
