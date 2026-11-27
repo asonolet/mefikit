@@ -11,7 +11,7 @@
 //! ```text
 //! <file>
 //! ├── INFOS_GENERALES/          group  — MED library version
-//! │     attrs: MAJ=3, MIN=0, REL=0
+//! │     attrs: MAJ=3, MIN=0, REL=8
 //! ├── ENS_MAA/                  group  — "ensembles" (all meshes)
 //! │   └── <mesh_name>/          group  — one subgroup per mesh
 //! │         attrs: DIM, ESP, REP, UNT, UNI, SRT, NOM, DES, TYP
@@ -56,7 +56,7 @@
 //! ```text
 //! NOE/
 //!   attrs: CGT=1, CGS=1, PFL="MED_NO_PROFILE_INTERNAL"
-//!   COO/       dataset   f64, shape [n_coords×n_nodes] in Fortran order
+//!   COO/       dataset   f64, shape [n_coords×n_nodes]; SoA unless ILC=0
 //!              attrs: CGT=1, NBR=n_nodes
 //! ```
 //!
@@ -72,7 +72,7 @@
 //!   attrs: CGT=1
 //!   └── <MED_type>/            one subgroup per element type
 //!         attrs: CGT=1, CGS=1, GEO=<geo-code>, PFL="MED_NO_PROFILE_INTERNAL"
-//!         NOD/   dataset   u64, shape [n_nodes_per_elem × n_cells], Fortran order
+//!         NOD/   dataset   i64, shape [n_nodes_per_elem × n_cells]; SoA unless ILC=0
 //!                attrs: CGT=1, NBR=n_cells
 //!         FAM/   dataset   int64, shape [n_cells]  (only if any family id ≠ 0)
 //!                attrs: CGT=1, NBR=n_cells
@@ -160,7 +160,7 @@
 //!               └── MED_NO_PROFILE_INTERNAL/
 //!                     attrs: NBR=<n_cells>, NGA=1, GAU=""
 //!                     CO /  dataset  f64, shape [n_cells × n_components],
-//!                           Fortran order
+//!                           SoA unless ILC=0
 //!                           attrs: CGT=1
 //! ```
 //!
@@ -174,6 +174,30 @@
 //! * The `CO` dataset stores `n_cells × n_components` in **Fortran order**
 //!   (component-major: all cells of component 1, then all cells of component
 //!   2, …). mefikit transposes its row-major in-memory layout on write.
+//!
+//! ## File version
+//!
+//! mefikit declares MED **3.0.8**, the last release of the 3.0 format. The
+//! mesh, field and group layouts above are the 3.0 layouts, so files remain
+//! readable by MED 4.1.1 through 6.0.x, as well as by 3.x libraries.
+//!
+//! MED 4.1+ requires two extra field attributes (`LEN` and `LGC`) to expose a
+//! field's support through the modern `MEDfieldnEntityType` /
+//! `MEDfieldGeometryType` APIs. Both are HDF5 **bitfield** attributes, which
+//! the safe `hdf5-metno` API cannot write. Declaring a 4.1+ version without
+//! them is worse than declaring 3.0.8: some 4.1+ readers (MEDCoupling 4.2,
+//! for example) trust the declared version, call the modern API, and fail or
+//! crash when the attributes are absent. With a 3.0.8 version they use the
+//! legacy field API, which reads mefikit's fields correctly.
+//!
+//! ## Interlace modes
+//!
+//! MED 5.1+ stores the on-disk interlace mode of each dataset in its `ILC`
+//! attribute: `0` is `MED_FULL_INTERLACE` (entity-major / AoS, for example
+//! `x0,y0,z0,x1,y1,z1,…`) and `1` is `MED_NO_INTERLACE` (component-major /
+//! SoA). Files without `ILC` use the legacy MED 3.0 SoA layout. mefikit reads
+//! all three forms for coordinates, regular connectivity and `CO` fields, and
+//! writes explicit `ILC=1` datasets.
 //!
 //! ## Byte-format conventions
 //!
@@ -201,15 +225,19 @@ use crate::tools::timeseries::FieldKey;
 use hdf5_metno::types::FixedAscii;
 use hdf5_metno::types::TypeDescriptor;
 use hdf5_metno::types::VarLenAscii;
-use hdf5_metno::{File, Group};
+use hdf5_metno::{Dataset, File, Group};
 use ndarray as nd;
 use ndarray::prelude::*;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
+/// Default MED profile name, used both as the `PFL` attribute value and as the
+/// profile subgroup name.
+const MED_NO_PROFILE: &str = "MED_NO_PROFILE_INTERNAL";
+
 impl ElementType {
-    pub fn med_name(self) -> &'static str {
-        match self {
+    fn med_name(self) -> Option<&'static str> {
+        Some(match self {
             ElementType::VERTEX => "PO1",
             ElementType::SEG2 => "SE2",
             ElementType::SEG3 => "SE3",
@@ -226,17 +254,14 @@ impl ElementType {
             ElementType::TET10 => "T10",
 
             ElementType::HEX8 => "HE8",
-            // ElementType::HEX21     => "H20",
-            // ElementType::Hexa27     => "H27",
-
-            // ElementType::Pyramid5   => "PY5",
-            // ElementType::Pyramid13  => "P13",
+            // MED names for HEX20/HEX27 are H20/H27 but mefikit has no
+            // matching element type yet.
             ElementType::WEDGE6 => "PE6",
             ElementType::WEDGE15 => "P15",
             ElementType::PGON => "POG",
             ElementType::PHED => "POE",
-            _ => todo!(),
-        }
+            _ => return None,
+        })
     }
 }
 
@@ -253,9 +278,12 @@ pub fn write(path: impl AsRef<std::path::Path>, mesh: &UMeshView) -> Result<(), 
 pub(crate) fn write_general_info(file: &File) -> hdf5_metno::Result<()> {
     let info = file.create_group("INFOS_GENERALES")?;
 
+    // 3.0.8 keeps every reader in the legacy field API. A 4.1+ declaration
+    // would require the bitfield `LEN`/`LGC` field attributes, which safe
+    // `hdf5-metno` cannot write; see the module documentation.
     write_scalar_attr(&info, "MAJ", 3i64)?;
     write_scalar_attr(&info, "MIN", 0i64)?;
-    write_scalar_attr(&info, "REL", 0i64)?;
+    write_scalar_attr(&info, "REL", 8i64)?;
 
     Ok(())
 }
@@ -268,7 +296,28 @@ pub(crate) fn write_scalar_attr<T: hdf5_metno::H5Type>(
     obj.new_attr::<T>().create(name)?.write_scalar(&value)
 }
 
-fn write_mesh(file: &File, mesh: &UMeshView) -> hdf5_metno::Result<()> {
+fn group_or_create(parent: &Group, name: &str) -> hdf5_metno::Result<Group> {
+    parent.group(name).or_else(|_| parent.create_group(name))
+}
+
+/// Writes a flat dataset with MED's standard `CGT`, `NBR` and `ILC` attributes.
+///
+/// `n_entities` is MED's `NBR` value: the number of cells, points or offsets,
+/// which is not necessarily the number of stored scalar values.
+fn write_flat_dataset<T: hdf5_metno::H5Type>(
+    parent: &Group,
+    name: &str,
+    data: &[T],
+    n_entities: usize,
+) -> hdf5_metno::Result<()> {
+    let dataset = parent.new_dataset_builder().with_data(data).create(name)?;
+    write_scalar_attr(&dataset, "CGT", 1i64)?;
+    write_scalar_attr(&dataset, "NBR", n_entities as i64)?;
+    write_scalar_attr(&dataset, "ILC", 1i64)?;
+    Ok(())
+}
+
+fn write_mesh(file: &File, mesh: &UMeshView) -> Result<(), MefikitIOError> {
     write_mesh_named(file, "mesh", mesh)
 }
 
@@ -276,11 +325,8 @@ pub(crate) fn write_mesh_named(
     file: &File,
     mesh_name: &str,
     mesh: &UMeshView,
-) -> hdf5_metno::Result<()> {
-    let ensemble = match file.group("ENS_MAA") {
-        Ok(group) => group,
-        Err(_) => file.create_group("ENS_MAA")?,
-    };
+) -> Result<(), MefikitIOError> {
+    let ensemble = group_or_create(file, "ENS_MAA")?;
     let med_mesh = ensemble.create_group(mesh_name)?;
 
     let dim = mesh.coords().shape()[1];
@@ -404,7 +450,7 @@ fn write_nodes(timestep: &Group, coords: &ArrayView2<f64>) -> hdf5_metno::Result
     write_scalar_attr(&noe, "CGT", 1i64)?;
     write_scalar_attr(&noe, "CGS", 1i64)?;
 
-    write_fixed_bytes_attr::<23>(&noe, "PFL", b"MED_NO_PROFILE_INTERNAL")?;
+    write_fixed_bytes_attr::<23>(&noe, "PFL", MED_NO_PROFILE.as_bytes())?;
 
     let coo_data: Vec<f64> = {
         let (n, dim) = coords.dim();
@@ -419,13 +465,7 @@ fn write_nodes(timestep: &Group, coords: &ArrayView2<f64>) -> hdf5_metno::Result
         out
     };
 
-    let coo = noe
-        .new_dataset_builder()
-        .with_data(&coo_data)
-        .create("COO")?;
-
-    write_scalar_attr(&coo, "CGT", 1i64)?;
-    write_scalar_attr(&coo, "NBR", coords.nrows() as i64)?;
+    write_flat_dataset(&noe, "COO", &coo_data, coords.nrows())?;
 
     Ok(())
 }
@@ -447,16 +487,15 @@ impl ElementType {
     }
 }
 
-fn reorder_connectivity(conn: &ArrayView2<usize>, permutation: Option<&[usize]>) -> Array2<u64> {
+fn reorder_connectivity(conn: &ArrayView2<usize>, permutation: Option<&[usize]>) -> Array2<usize> {
     let Some(p) = permutation else {
-        return conn.mapv(|x| x as u64);
+        return conn.to_owned();
     };
 
-    let mut out = Array2::<u64>::zeros((conn.nrows(), p.len()));
+    let mut out = Array2::<usize>::zeros((conn.nrows(), p.len()));
 
     for (new_j, &old_j) in p.iter().enumerate() {
-        out.column_mut(new_j)
-            .assign(&conn.column(old_j).mapv(|x| x as u64));
+        out.column_mut(new_j).assign(&conn.column(old_j));
     }
 
     out
@@ -470,13 +509,7 @@ fn write_fam_dataset(
         return Ok(());
     }
     let fam_data: Vec<i64> = families.to_vec();
-    let n = fam_data.len() as i64;
-    let ds = parent
-        .new_dataset_builder()
-        .with_data(&fam_data)
-        .create("FAM")?;
-    write_scalar_attr(&ds, "CGT", 1i64)?;
-    write_scalar_attr(&ds, "NBR", n)?;
+    write_flat_dataset(parent, "FAM", &fam_data, fam_data.len())?;
     Ok(())
 }
 
@@ -485,8 +518,8 @@ impl ElementType {
     /// cell group. Some MED tools reject a cell group without it. Codes follow
     /// MED's convention: dim*100 + n_nodes (point = 1); polygons/polyhedra use
     /// 400/500. Same values as the reference meshio `med_geo_code` map.
-    fn med_geo_code(self) -> i64 {
-        match self {
+    fn med_geo_code(self) -> Option<i64> {
+        Some(match self {
             ElementType::VERTEX => 1,
             ElementType::SEG2 => 102,
             ElementType::SEG3 => 103,
@@ -503,9 +536,18 @@ impl ElementType {
             ElementType::HEX8 => 308,
             ElementType::PGON => 400,
             ElementType::PHED => 500,
-            _ => todo!(),
-        }
+            _ => return None,
+        })
     }
+}
+
+fn write_block_group(mai: &Group, med_type: &str, geo_code: i64) -> hdf5_metno::Result<Group> {
+    let group = mai.create_group(med_type)?;
+    write_scalar_attr(&group, "CGT", 1i64)?;
+    write_scalar_attr(&group, "CGS", 1i64)?;
+    write_scalar_attr(&group, "GEO", geo_code)?;
+    write_fixed_bytes_attr::<23>(&group, "PFL", MED_NO_PROFILE.as_bytes())?;
+    Ok(group)
 }
 
 fn write_regular(
@@ -513,19 +555,25 @@ fn write_regular(
     element_type: ElementType,
     regular: &ElementBlockView,
     fam_numbers: &Array1<i64>,
-) -> hdf5_metno::Result<()> {
+) -> Result<(), MefikitIOError> {
     let conn = match &regular.connectivity {
         ConnectivityView::Regular(pc) => pc,
         _ => panic!("A Regular block must contain a regular connectivity."),
     };
-    let med_type = element_type.med_name();
+    let med_type = element_type.med_name().ok_or_else(|| {
+        MefikitIOError::InvalidMesh(format!(
+            "MED does not support element type {:?}",
+            element_type
+        ))
+    })?;
+    let geo_code = element_type.med_geo_code().ok_or_else(|| {
+        MefikitIOError::InvalidMesh(format!(
+            "MED does not support element type {:?}",
+            element_type
+        ))
+    })?;
 
-    let group = mai.create_group(med_type)?;
-
-    write_scalar_attr(&group, "CGT", 1i64)?;
-    write_scalar_attr(&group, "CGS", 1i64)?;
-    write_scalar_attr(&group, "GEO", element_type.med_geo_code())?;
-    write_fixed_bytes_attr::<23>(&group, "PFL", b"MED_NO_PROFILE_INTERNAL")?;
+    let group = write_block_group(mai, med_type, geo_code)?;
     let med_conn = reorder_connectivity(conn, element_type.med_permutation());
 
     let mut flat: Vec<i64> = Vec::with_capacity(med_conn.len());
@@ -537,10 +585,7 @@ fn write_regular(
         }
     }
 
-    let nod = group.new_dataset_builder().with_data(&flat).create("NOD")?;
-
-    write_scalar_attr(&nod, "CGT", 1i64)?;
-    write_scalar_attr(&nod, "NBR", med_conn.nrows() as i64)?;
+    write_flat_dataset(&group, "NOD", &flat, med_conn.nrows())?;
 
     write_fam_dataset(&group, fam_numbers.view())?;
 
@@ -552,10 +597,7 @@ fn write_families_named(
     mesh_name: &str,
     num_to_names: &BTreeMap<i64, Vec<String>>,
 ) -> hdf5_metno::Result<()> {
-    let fas = match file.group("FAS") {
-        Ok(group) => group,
-        Err(_) => file.create_group("FAS")?,
-    };
+    let fas = group_or_create(file, "FAS")?;
     let families = fas.create_group(mesh_name)?;
 
     let family_zero = families.create_group("FAMILLE_ZERO")?;
@@ -586,7 +628,8 @@ fn write_families_named(
         // exact layout.
         let slots: Vec<[i8; MED_GROUPE_NAME_SIZE]> =
             names.iter().map(|n| encode_group_name(n)).collect();
-        gro.new_dataset_builder().with_data(&slots).create("NOM")?;
+        let nom = gro.new_dataset_builder().with_data(&slots).create("NOM")?;
+        write_scalar_attr(&nom, "ILC", 1i64)?;
     }
 
     Ok(())
@@ -706,12 +749,10 @@ pub(crate) fn write_fields_named(
         return Ok(());
     }
 
-    let cha = match file.group("CHA") {
-        Ok(group) => group,
-        Err(_) => file.create_group("CHA")?,
-    };
+    let cha = group_or_create(file, "CHA")?;
 
     for ((_base, _dim), group) in groups {
+        validate_field_components(&group)?;
         write_field_group(&cha, mesh_name, &group)?;
     }
 
@@ -750,6 +791,22 @@ fn make_field_step(
     })
 }
 
+fn validate_field_components(group: &FieldWriteGroup) -> Result<(), MefikitIOError> {
+    let expected = group.steps[0].n_components;
+    if let Some(step) = group
+        .steps
+        .iter()
+        .find(|step| step.n_components != expected)
+    {
+        return Err(MefikitIOError::InvalidMesh(format!(
+            "field {:?} has {expected} components in its first step but {} in step {}; \
+             MED requires one component count per field",
+            group.name, step.n_components, step.step
+        )));
+    }
+    Ok(())
+}
+
 fn write_field_group(
     cha: &Group,
     mesh_name: &str,
@@ -759,6 +816,17 @@ fn write_field_group(
         Ok(existing) => existing,
         Err(_) => cha.create_group(&group.name)?,
     };
+
+    if let Ok(existing_mesh) = read_group_attr(&field_grp, "MAI") {
+        let existing_mesh = existing_mesh.trim();
+        if !existing_mesh.is_empty() && existing_mesh != mesh_name {
+            return Err(MefikitIOError::InvalidMesh(format!(
+                "field {:?} belongs to mesh {existing_mesh:?} in the target file and cannot \
+                 be written on mesh {mesh_name:?}; MED field names are file-global",
+                group.name
+            )));
+        }
+    }
 
     if let Ok(attr) = field_grp.attr("NCO") {
         let existing = attr.read_scalar::<i64>().unwrap_or(0) as usize;
@@ -793,13 +861,17 @@ fn write_field_group(
 
         for (&et, data) in &step.types {
             let n_cells = data.shape()[0];
-            let med_type = et.med_name();
+            let med_type = et.med_name().ok_or_else(|| {
+                MefikitIOError::InvalidMesh(format!(
+                    "MED does not support fields on element type {et:?}"
+                ))
+            })?;
             let mai_type_name = format!("MAI.{med_type}");
             let mai_type_grp = step_grp.create_group(&mai_type_name)?;
             write_fixed_bytes_attr::<1>(&mai_type_grp, "GAU", b"")?;
-            write_fixed_bytes_attr::<23>(&mai_type_grp, "PFL", b"MED_NO_PROFILE_INTERNAL")?;
+            write_fixed_bytes_attr::<23>(&mai_type_grp, "PFL", MED_NO_PROFILE.as_bytes())?;
 
-            let prof_grp = mai_type_grp.create_group("MED_NO_PROFILE_INTERNAL")?;
+            let prof_grp = mai_type_grp.create_group(MED_NO_PROFILE)?;
             write_scalar_attr(&prof_grp, "NBR", n_cells as i64)?;
             write_scalar_attr(&prof_grp, "NGA", 1i64)?;
             write_fixed_bytes_attr::<1>(&prof_grp, "GAU", b"")?;
@@ -813,11 +885,7 @@ fn write_field_group(
                 )?;
                 arr.reversed_axes().iter().copied().collect()
             };
-            let co_ds = prof_grp
-                .new_dataset_builder()
-                .with_data(&co_data)
-                .create("CO")?;
-            write_scalar_attr(&co_ds, "CGT", 1i64)?;
+            write_flat_dataset(&prof_grp, "CO", &co_data, n_cells)?;
         }
     }
 
@@ -904,25 +972,16 @@ fn write_polygon(
     mai: &Group,
     poly: &ElementBlockView,
     fam_numbers: &Array1<i64>,
-) -> hdf5_metno::Result<()> {
+) -> Result<(), MefikitIOError> {
     let poly_conn = match &poly.connectivity {
         ConnectivityView::Poly(pc) => pc,
         _ => panic!("A PGON block must contain a poly connectivity."),
     };
-    let group = mai.create_group("POG")?;
-
-    write_scalar_attr(&group, "CGT", 1i64)?;
-    write_scalar_attr(&group, "CGS", 1i64)?;
-    write_scalar_attr(&group, "GEO", 400i64)?;
-    write_fixed_bytes_attr::<23>(&group, "PFL", b"MED_NO_PROFILE_INTERNAL")?;
+    let group = write_block_group(mai, "POG", 400)?;
 
     // MED NOD is 1-based and uses signed 64-bit indices.
     let nod: Vec<i64> = poly_conn.data.iter().map(|&x| x as i64 + 1).collect();
-
-    let nod_ds = group.new_dataset_builder().with_data(&nod).create("NOD")?;
-
-    write_scalar_attr(&nod_ds, "CGT", 1i64)?;
-    write_scalar_attr(&nod_ds, "NBR", nod.len() as i64)?;
+    write_flat_dataset(&group, "NOD", &nod, nod.len())?;
 
     // Mefikit:
     //
@@ -940,10 +999,7 @@ fn write_polygon(
         inn.push(end as i64 + 1);
     }
 
-    let inn_ds = group.new_dataset_builder().with_data(&inn).create("INN")?;
-
-    write_scalar_attr(&inn_ds, "CGT", 1i64)?;
-    write_scalar_attr(&inn_ds, "NBR", inn.len() as i64)?;
+    write_flat_dataset(&group, "INN", &inn, inn.len())?;
 
     write_fam_dataset(&group, fam_numbers.view())?;
 
@@ -954,17 +1010,12 @@ fn write_polyhedron(
     mai: &Group,
     block: &ElementBlockView,
     fam_numbers: &Array1<i64>,
-) -> hdf5_metno::Result<()> {
+) -> Result<(), MefikitIOError> {
     let poly_conn = match &block.connectivity {
         ConnectivityView::Poly(pc) => pc,
         _ => panic!("A PHED block must contain a poly connectivity."),
     };
-    let group = mai.create_group("POE")?;
-
-    write_scalar_attr(&group, "CGT", 1i64)?;
-    write_scalar_attr(&group, "CGS", 1i64)?;
-    write_scalar_attr(&group, "GEO", 500i64)?;
-    write_fixed_bytes_attr::<23>(&group, "PFL", b"MED_NO_PROFILE_INTERNAL")?;
+    let group = write_block_group(mai, "POE", 500)?;
 
     // Mefikit data layout (per element):
     //   [face0_n0, face0_n1, ..., usize::MAX, face1_n0, ..., usize::MAX, ...]
@@ -997,17 +1048,9 @@ fn write_polyhedron(
         ifn.push(ifn.last().unwrap() + face_count as i64);
     }
 
-    let nod_ds = group.new_dataset_builder().with_data(&nod).create("NOD")?;
-    write_scalar_attr(&nod_ds, "CGT", 1i64)?;
-    write_scalar_attr(&nod_ds, "NBR", nod.len() as i64)?;
-
-    let inn_ds = group.new_dataset_builder().with_data(&inn).create("INN")?;
-    write_scalar_attr(&inn_ds, "CGT", 1i64)?;
-    write_scalar_attr(&inn_ds, "NBR", inn.len() as i64)?;
-
-    let ifn_ds = group.new_dataset_builder().with_data(&ifn).create("IFN")?;
-    write_scalar_attr(&ifn_ds, "CGT", 1i64)?;
-    write_scalar_attr(&ifn_ds, "NBR", ifn.len() as i64)?;
+    write_flat_dataset(&group, "NOD", &nod, nod.len())?;
+    write_flat_dataset(&group, "INN", &inn, inn.len())?;
+    write_flat_dataset(&group, "IFN", &ifn, ifn.len())?;
 
     write_fam_dataset(&group, fam_numbers.view())?;
 
@@ -1019,7 +1062,7 @@ fn write_block(
     et: &ElementType,
     block: &ElementBlockView,
     fam_numbers: &Array1<i64>,
-) -> hdf5_metno::Result<()> {
+) -> Result<(), MefikitIOError> {
     match et.regularity() {
         Regularity::Regular => {
             write_regular(mai, *et, block, fam_numbers)?;
@@ -1035,10 +1078,8 @@ fn write_block(
             }
 
             _ => {
-                return Err(hdf5_metno::Error::Internal(format!(
-                    "PolyConnectivity is not supported \
-                                for {:?}",
-                    et
+                return Err(MefikitIOError::InvalidMesh(format!(
+                    "MED does not support element type {et:?}"
                 )));
             }
         },
@@ -1081,6 +1122,13 @@ pub(crate) fn read_scalar_attr_i64(
     Ok(val)
 }
 
+pub(crate) fn read_optional_attr<T: hdf5_metno::H5Type>(
+    loc: &hdf5_metno::Location,
+    name: &str,
+) -> Option<T> {
+    loc.attr(name).ok()?.read_scalar::<T>().ok()
+}
+
 pub(crate) type Fas = (BTreeMap<i64, Vec<String>>, BTreeMap<i64, Vec<String>>);
 
 /// Parse FAS/<mesh_name>/NOEUD and FAS/<mesh_name>/ELEME into
@@ -1111,9 +1159,8 @@ pub(crate) fn read_fas_subgroup(parent: &Group, name: &str) -> BTreeMap<i64, Vec
             Err(_) => continue,
         };
 
-        let num = match fam_group.attr("NUM") {
-            Ok(a) => a.read_scalar::<i64>().unwrap_or(0),
-            Err(_) => continue,
+        let Some(num) = read_optional_attr::<i64>(&fam_group, "NUM") else {
+            continue;
         };
 
         let mut names = Vec::new();
@@ -1155,14 +1202,56 @@ fn read_group_names(ds: &hdf5_metno::Dataset) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// On-disk array interlace mode used by MED 5.1 and later.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DiskInterlace {
+    /// `MED_FULL_INTERLACE`: values grouped per entity (AoS).
+    Full,
+    /// `MED_NO_INTERLACE`: values grouped per component (SoA).
+    No,
+}
+
+/// Reads the optional `ILC` dataset attribute.
+///
+/// MED 3.0/4.x files have no `ILC` attribute and always use the
+/// non-interlaced (component-major) disk layout. MED 5.1+ writes `ILC=0`
+/// for full interlace and `ILC=1` for no interlace.
+fn disk_interlace(dataset: &Dataset) -> DiskInterlace {
+    let Ok(attr) = dataset.attr("ILC") else {
+        return DiskInterlace::No;
+    };
+    let value = attr
+        .read_scalar::<i64>()
+        .or_else(|_| attr.read_scalar::<i32>().map(i64::from));
+    match value {
+        Ok(0) => DiskInterlace::Full,
+        _ => DiskInterlace::No,
+    }
+}
+
+/// Reshapes a flat on-disk array into `rows × cols` logical order.
+fn disk_matrix<T: Clone>(
+    flat: Vec<T>,
+    rows: usize,
+    cols: usize,
+    interlace: DiskInterlace,
+) -> Result<Array2<T>, ndarray::ShapeError> {
+    match interlace {
+        DiskInterlace::Full => Array2::from_shape_vec((rows, cols), flat),
+        DiskInterlace::No => {
+            let raw = Array2::from_shape_vec((cols, rows), flat)?;
+            Ok(raw.reversed_axes().as_standard_layout().to_owned())
+        }
+    }
+}
+
 fn read_nodal_data(timestep: &Group, dim: usize) -> Result<(usize, Array2<f64>), MefikitIOError> {
     let noe = timestep.group("NOE")?;
-    let coo: Array1<f64> = noe.dataset("COO")?.read()?;
+    let coo_dataset = noe.dataset("COO")?;
+    let interlace = disk_interlace(&coo_dataset);
+    let coo: Array1<f64> = coo_dataset.read()?;
     let n_points = coo.len() / dim;
-    // MED stores COO column-major: [x0,x1,...,xN, y0,y1,...,yN, ...]
-    // Reshape as (dim, n_points) then transpose to get (n_points, dim).
-    let raw = Array2::from_shape_vec((dim, n_points), coo.to_vec())?;
-    let coords = raw.reversed_axes().as_standard_layout().to_owned();
+    let coords = disk_matrix(coo.to_vec(), n_points, dim, interlace)?;
     Ok((n_points, coords))
 }
 
@@ -1174,29 +1263,19 @@ fn read_regular_block(
     et: ElementType,
 ) -> Result<RegBlock, MefikitIOError> {
     let grp = mai.group(med_type_name)?;
-    let nod: Array1<i64> = grp.dataset("NOD")?.read()?;
+    let nod_dataset = grp.dataset("NOD")?;
+    let interlace = disk_interlace(&nod_dataset);
+    let nod: Array1<i64> = nod_dataset.read()?;
     let n_nodes = et.num_nodes().ok_or_else(|| {
         MefikitIOError::MalformedFile("element type has variable node count".into())
     })?;
     let n_cells = nod.len() / n_nodes;
 
-    // Column-major reshape, then 1-based → 0-based.
+    // 1-based → 0-based.
     let flat: Vec<usize> = nod.iter().map(|&x| (x - 1) as usize).collect();
-    // MED stores (n_cells, n_nodes) in column-major: reshape as (n_nodes, n_cells) then transpose.
-    let conn = Array2::from_shape_vec((n_nodes, n_cells), flat)?;
-    let conn = conn.reversed_axes().as_standard_layout().to_owned();
-
-    // Apply inverse MED node permutation.
-    let conn = match et.med_permutation() {
-        Some(perm) => {
-            let mut out = Array2::zeros((conn.nrows(), perm.len()));
-            for (new_j, &old_j) in perm.iter().enumerate() {
-                out.column_mut(new_j).assign(&conn.column(old_j));
-            }
-            out
-        }
-        None => conn,
-    };
+    let conn = disk_matrix(flat, n_cells, n_nodes, interlace)?;
+    // The VTK→MED permutation is self-inverse.
+    let conn = reorder_connectivity(&conn.view(), et.med_permutation());
 
     let fam = read_fam_array(&grp)?;
 
@@ -1385,7 +1464,7 @@ pub(crate) fn read_mesh_base(file: &File, mesh_name: &str) -> Result<UMesh, Mefi
             }
         };
 
-        match et {
+        let (block, fam) = match et {
             ElementType::PGON => {
                 let (data, offsets, fam) = read_polygon_block(&mai, &med_type_name)?;
                 let block = ElementBlock::new_poly(
@@ -1395,7 +1474,7 @@ pub(crate) fn read_mesh_base(file: &File, mesh_name: &str) -> Result<UMesh, Mefi
                     None,
                     None,
                 );
-                insert_block(&mut mesh, block, &fam, &elem_fam_map);
+                (block, fam)
             }
             ElementType::PHED => {
                 let (data, offsets, fam) = read_polyhedron_block(&mai)?;
@@ -1406,17 +1485,97 @@ pub(crate) fn read_mesh_base(file: &File, mesh_name: &str) -> Result<UMesh, Mefi
                     None,
                     None,
                 );
-                insert_block(&mut mesh, block, &fam, &elem_fam_map);
+                (block, fam)
             }
             _ => {
                 let (conn, fam) = read_regular_block(&mai, &med_type_name, et)?;
                 let block = ElementBlock::new_regular(et, conn.into_shared(), None, None);
-                insert_block(&mut mesh, block, &fam, &elem_fam_map);
+                (block, fam)
+            }
+        };
+        insert_block(&mut mesh, block, &fam, &elem_fam_map);
+    }
+
+    Ok(mesh)
+}
+
+struct FieldStepSupport {
+    types: BTreeSet<ElementType>,
+    has_non_cell: bool,
+}
+
+/// Returns the cell supports that can be represented by `UMesh`.
+///
+/// Profiles, unsupported element types, and partial per-dimension supports
+/// cannot be mapped safely: inserting them would leave a field defined on only
+/// some blocks, which breaks the `UMesh` field invariants.
+fn field_step_support(step_grp: &Group, mesh: &UMesh) -> Result<FieldStepSupport, String> {
+    let mut types = BTreeSet::new();
+    let mut has_non_cell = false;
+
+    for member in step_grp.member_names().unwrap_or_default() {
+        let Some(med_type) = member.strip_prefix("MAI.") else {
+            has_non_cell = true;
+            continue;
+        };
+        let et = med_name_to_element_type(med_type)
+            .ok_or_else(|| format!("unsupported MED element type {med_type:?}"))?;
+        let mai_grp = step_grp
+            .group(&member)
+            .map_err(|_| format!("missing support group {member:?}"))?;
+        if mai_grp.group(MED_NO_PROFILE).is_err() {
+            return Err(format!("support {member:?} uses a profile"));
+        }
+        if !mesh.element_blocks.contains_key(&et) {
+            return Err(format!("support {member:?} has no matching mesh block"));
+        }
+        types.insert(et);
+    }
+
+    if types.is_empty() {
+        return Err("no cell support".to_string());
+    }
+
+    let dimensions: BTreeSet<Dimension> = types.iter().map(|et| et.dimension()).collect();
+    for dimension in dimensions {
+        for et in mesh
+            .element_types()
+            .filter(|et| et.dimension() == dimension)
+        {
+            if !types.contains(et) {
+                return Err(format!("partial support at dimension {dimension:?}"));
             }
         }
     }
 
-    Ok(mesh)
+    Ok(FieldStepSupport {
+        types,
+        has_non_cell,
+    })
+}
+
+/// One computation step found in a MED field group.
+struct FieldStep {
+    file_index: usize,
+    iteration: i64,
+    time: f64,
+    group: Group,
+}
+
+/// Reads one `CO` support, or `None` when it is missing or malformed.
+fn read_field_values(prof: &Group, n_components: usize) -> Option<nd::ArrayD<f64>> {
+    let n_cells = read_optional_attr::<i64>(prof, "NBR").unwrap_or(0) as usize;
+    let co_dataset = prof.dataset("CO").ok()?;
+    let interlace = disk_interlace(&co_dataset);
+    let co: Array1<f64> = co_dataset.read().ok()?;
+
+    Some(if n_components == 1 {
+        co.into_dyn()
+    } else {
+        disk_matrix(co.to_vec(), n_cells, n_components, interlace)
+            .ok()?
+            .into_dyn()
+    })
 }
 
 /// Read element-centered fields from the CHA group into a named mesh.
@@ -1446,15 +1605,12 @@ pub(crate) fn read_fields_named(
         };
 
         let field_mesh = read_group_attr(&field_grp, "MAI").unwrap_or_default();
+        let field_mesh = field_mesh.trim();
         if !field_mesh.is_empty() && field_mesh != mesh_name {
             continue;
         }
 
-        let n_co = field_grp
-            .attr("NCO")
-            .ok()
-            .and_then(|a| a.read_scalar::<i64>().ok())
-            .unwrap_or(1) as usize;
+        let n_co = read_optional_attr::<i64>(&field_grp, "NCO").unwrap_or(1) as usize;
 
         let mut steps: Vec<(usize, i64, i64, f64, Group)> = Vec::new();
         for (index, step_name) in field_grp
@@ -1466,35 +1622,30 @@ pub(crate) fn read_fields_named(
             let Ok(step_grp) = field_grp.group(&step_name) else {
                 continue;
             };
-            let iteration = step_grp
-                .attr("NDT")
-                .ok()
-                .and_then(|a| a.read_scalar::<i64>().ok())
-                .unwrap_or(index as i64);
-            let order = step_grp
-                .attr("NOR")
-                .ok()
-                .and_then(|a| a.read_scalar::<i64>().ok())
-                .unwrap_or(index as i64);
-            let time = step_grp
-                .attr("PDT")
-                .ok()
-                .and_then(|a| a.read_scalar::<f64>().ok())
-                .unwrap_or(0.0);
+            let iteration = read_optional_attr::<i64>(&step_grp, "NDT").unwrap_or(index as i64);
+            let order = read_optional_attr::<i64>(&step_grp, "NOR").unwrap_or(index as i64);
+            let time = read_optional_attr::<f64>(&step_grp, "PDT").unwrap_or(0.0);
             steps.push((index, iteration, order, time, step_grp));
         }
         steps.sort_by_key(|(index, iteration, order, _, _)| (*iteration, *order, *index));
-        let steps: Vec<(usize, i64, f64, Group)> = steps
+        let steps: Vec<FieldStep> = steps
             .into_iter()
             .enumerate()
-            .map(|(index, (_, iteration, _order, time, group))| (index, iteration, time, group))
+            .map(
+                |(file_index, (_, iteration, _order, time, group))| FieldStep {
+                    file_index,
+                    iteration,
+                    time,
+                    group,
+                },
+            )
             .collect();
 
         let total_steps = steps.len();
         if total_steps == 0 {
             continue;
         }
-        let chosen: Vec<usize> = match field_steps.and_then(|fields| fields.get(&field_name)) {
+        let chosen: BTreeSet<usize> = match field_steps.and_then(|fields| fields.get(&field_name)) {
             Some(set) => set
                 .iter()
                 .copied()
@@ -1505,59 +1656,75 @@ pub(crate) fn read_fields_named(
         if chosen.is_empty() {
             continue;
         }
+        let steps: Vec<FieldStep> = steps
+            .into_iter()
+            .filter(|step| chosen.contains(&step.file_index))
+            .collect();
 
-        for (file_index, iteration, time, step_grp) in steps {
-            if !chosen.contains(&file_index) {
-                continue;
+        let mut expected_types: Option<BTreeSet<ElementType>> = None;
+        let mut has_non_cell = false;
+        let mut skip_reason = None;
+        for step in &steps {
+            match field_step_support(&step.group, mesh) {
+                Ok(support) => {
+                    if let Some(expected) = &expected_types {
+                        if expected != &support.types {
+                            skip_reason =
+                                Some("cell support changes between selected steps".to_string());
+                            break;
+                        }
+                    } else {
+                        expected_types = Some(support.types);
+                    }
+                    has_non_cell |= support.has_non_cell;
+                }
+                Err(reason) => {
+                    skip_reason = Some(reason);
+                    break;
+                }
             }
-            let step_number = if iteration >= 0 {
-                iteration as u64
+        }
+        if let Some(reason) = skip_reason {
+            eprintln!("warning: skipping field {field_name:?} on mesh {mesh_name:?}: {reason}");
+            continue;
+        }
+        if has_non_cell {
+            eprintln!(
+                "warning: loading only cell values of MED field {field_name:?} on mesh \
+                 {mesh_name:?}; non-cell supports are not supported"
+            );
+        }
+
+        for step in steps {
+            let step_number = if step.iteration >= 0 {
+                step.iteration as u64
             } else {
-                file_index as u64
+                step.file_index as u64
             };
             let field_key = if total_steps == 1 {
                 field_name.clone()
             } else {
-                FieldKey::new(field_name.clone(), step_number, time).name()
+                FieldKey::new(field_name.clone(), step_number, step.time).name()
             };
 
-            for member in step_grp.member_names().unwrap_or_default() {
-                if !member.starts_with("MAI.") {
-                    continue;
-                }
-                let med_type = &member[4..];
-                let et = match med_name_to_element_type(med_type) {
-                    Some(et) => et,
-                    None => {
-                        eprintln!(
-                            "warning: skipping field {field_name:?} on unsupported MED element type {med_type:?}"
-                        );
-                        continue;
-                    }
-                };
-                let Ok(mai_grp) = step_grp.group(&member) else {
+            for member in step.group.member_names().unwrap_or_default() {
+                let Some(med_type) = member.strip_prefix("MAI.") else {
                     continue;
                 };
-                let Ok(prof) = mai_grp.group("MED_NO_PROFILE_INTERNAL") else {
+                let Some(et) = med_name_to_element_type(med_type) else {
+                    eprintln!(
+                        "warning: skipping field {field_name:?} on unsupported MED element type {med_type:?}"
+                    );
                     continue;
                 };
-                let n_cells = prof
-                    .attr("NBR")
-                    .ok()
-                    .and_then(|a| a.read_scalar::<i64>().ok())
-                    .unwrap_or(0) as usize;
-                let co: Array1<f64> = match prof.dataset("CO") {
-                    Ok(ds) => ds.read().unwrap_or_default(),
-                    Err(_) => continue,
+                let Ok(mai_grp) = step.group.group(&member) else {
+                    continue;
                 };
-                let arr = if n_co == 1 {
-                    co.into_dyn()
-                } else {
-                    let raw = Array2::from_shape_vec((n_co, n_cells), co.to_vec())?;
-                    raw.reversed_axes()
-                        .as_standard_layout()
-                        .to_owned()
-                        .into_dyn()
+                let Ok(prof) = mai_grp.group(MED_NO_PROFILE) else {
+                    continue;
+                };
+                let Some(arr) = read_field_values(&prof, n_co) else {
+                    continue;
                 };
                 if let Some(block) = mesh.element_blocks.get_mut(&et) {
                     block.fields.insert(field_key.clone(), arr.into_shared());
@@ -1809,6 +1976,74 @@ mod tests {
         let mesh2 = read(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_med_file_declares_3_0_8() {
+        // A 4.1+ declaration makes readers call the modern field API, which
+        // needs bitfield LEN/LGC attributes that safe hdf5-metno cannot write.
+        // Stay on the latest 3.0 release so readers use the legacy field API.
+        let path = PathBuf::from("test_med_file_declares_3_0_8.med");
+        let mesh = me::make_mesh_2d_quad();
+        write(&path, &mesh.view()).unwrap();
+
+        let file = File::open(&path).unwrap();
+        let info = file.group("INFOS_GENERALES").unwrap();
+        let version = |name| info.attr(name).unwrap().read_scalar::<i64>().unwrap();
+        assert_eq!(
+            (version("MAJ"), version("MIN"), version("REL")),
+            (3, 0, 8),
+            "writer must declare MED 3.0.8 until 4.1 support metadata can be written"
+        );
+
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn test_med_dataset_entity_counts() {
+        // NBR is the entity count, not the number of stored values: COO has
+        // dim values per point and NOD/CO have one value per cell per node or
+        // component.
+        let path = PathBuf::from("test_med_dataset_entity_counts.med");
+        let mut mesh = me::make_mesh_2d_quad();
+        let n_cells = mesh.block(ElementType::QUAD4).unwrap().len();
+        let n_points = mesh.coords().nrows();
+        let values = Array1::from_elem(n_cells, 1.0).into_dyn().into_shared();
+        mesh.update_field(
+            "p",
+            crate::mesh::FieldArcD::new(BTreeMap::from([(ElementType::QUAD4, values)])),
+        );
+
+        write(&path, &mesh.view()).unwrap();
+        let file = File::open(&path).unwrap();
+        let med_mesh = file.group("ENS_MAA").unwrap().group("mesh").unwrap();
+        let step_name = med_mesh.member_names().unwrap()[0].clone();
+        let step = med_mesh.group(&step_name).unwrap();
+
+        let nbr = |ds: &Dataset| ds.attr("NBR").unwrap().read_scalar::<i64>().unwrap();
+        let noe = step.group("NOE").unwrap();
+        assert_eq!(nbr(&noe.dataset("COO").unwrap()), n_points as i64);
+
+        let mai = step.group("MAI").unwrap();
+        assert_eq!(
+            nbr(&mai.group("QU4").unwrap().dataset("NOD").unwrap()),
+            n_cells as i64
+        );
+
+        let field_grp = file.group("CHA").unwrap().group("p").unwrap();
+        let field_step_name = field_grp.member_names().unwrap()[0].clone();
+        let co = field_grp
+            .group(&field_step_name)
+            .unwrap()
+            .group("MAI.QU4")
+            .unwrap()
+            .group(MED_NO_PROFILE)
+            .unwrap()
+            .dataset("CO")
+            .unwrap();
+        assert_eq!(nbr(&co), n_cells as i64);
+
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]

@@ -204,13 +204,18 @@ pub fn write_named_meshes(
             write_meshes(&file, meshes)
         }
         MedWriteMode::Update => {
-            let file = if path.exists() {
+            let existed = path.exists();
+            let file = if existed {
                 File::open_rw(path)?
             } else {
                 File::create(path)?
             };
             if file.group("INFOS_GENERALES").is_err() {
                 med_io::write_general_info(&file)?;
+            }
+            if existed && file.group("ENS_MAA").is_ok() {
+                let structure = inspect_file(&file)?;
+                validate_update_field_names(meshes, &structure)?;
             }
             write_meshes(&file, meshes)
         }
@@ -271,6 +276,36 @@ fn write_meshes(file: &File, meshes: &[(&str, &UMesh)]) -> Result<(), MefikitIOE
         }
         med_io::write_mesh_named(file, mesh_name, &mesh.view())?;
         med_io::write_fields_named(file, mesh_name, &mesh.view())?;
+    }
+    Ok(())
+}
+
+/// Rejects field names already owned by another mesh in the target file.
+fn validate_update_field_names(
+    meshes: &[(&str, &UMesh)],
+    structure: &MedFileStructure,
+) -> Result<(), MefikitIOError> {
+    for &(mesh_name, mesh) in meshes {
+        for (field_name, dimension) in mesh_field_names(mesh) {
+            let Some(info) = structure.fields.get(&field_name) else {
+                continue;
+            };
+            if info.mesh_name != mesh_name {
+                return Err(MefikitIOError::InvalidMesh(format!(
+                    "field name {field_name:?} belongs to mesh {:?} in the target file and \
+                     cannot be written on mesh {mesh_name:?}; MED field names are file-global",
+                    info.mesh_name
+                )));
+            }
+            if let Some(file_dimension) = info.dimension
+                && file_dimension != dimension
+            {
+                return Err(MefikitIOError::InvalidMesh(format!(
+                    "field name {field_name:?} has dimension {file_dimension:?} in the target \
+                     file but {dimension:?} on mesh {mesh_name:?}"
+                )));
+            }
+        }
     }
     Ok(())
 }
@@ -403,33 +438,20 @@ fn inspect_file(file: &File) -> Result<MedFileStructure, MefikitIOError> {
 
     for field_name in cha.member_names().unwrap_or_default() {
         let field_grp = cha.group(&field_name)?;
-        let mesh_name = read_group_attr(&field_grp, "MAI").unwrap_or_default();
-        let components = field_grp
-            .attr("NCO")
-            .ok()
-            .and_then(|attr| attr.read_scalar::<i64>().ok())
-            .unwrap_or(1) as usize;
+        let mesh_name = read_group_attr(&field_grp, "MAI")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let components = med_io::read_optional_attr::<i64>(&field_grp, "NCO").unwrap_or(1) as usize;
 
         let mut steps = Vec::new();
         for step_name in field_grp.member_names().unwrap_or_default() {
             let Ok(step_grp) = field_grp.group(&step_name) else {
                 continue;
             };
-            let iteration = step_grp
-                .attr("NDT")
-                .ok()
-                .and_then(|attr| attr.read_scalar::<i64>().ok())
-                .unwrap_or(-1);
-            let order = step_grp
-                .attr("NOR")
-                .ok()
-                .and_then(|attr| attr.read_scalar::<i64>().ok())
-                .unwrap_or(-1);
-            let time = step_grp
-                .attr("PDT")
-                .ok()
-                .and_then(|attr| attr.read_scalar::<f64>().ok())
-                .unwrap_or(0.0);
+            let iteration = med_io::read_optional_attr::<i64>(&step_grp, "NDT").unwrap_or(-1);
+            let order = med_io::read_optional_attr::<i64>(&step_grp, "NOR").unwrap_or(-1);
+            let time = med_io::read_optional_attr::<f64>(&step_grp, "PDT").unwrap_or(0.0);
             steps.push((iteration, order, time));
         }
         steps.sort_by_key(|(iteration, order, _)| (*iteration, *order));

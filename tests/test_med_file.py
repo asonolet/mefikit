@@ -80,6 +80,29 @@ def test_umesh_read_rejects_multi_mesh_file(tmp_path):
         mf.UMesh.read(str(path))
 
 
+def test_padded_fixed_width_mai_is_trimmed(tmp_path):
+    h5py = pytest.importorskip("h5py")
+    path = _write_container(tmp_path)
+
+    with h5py.File(path, "r+") as handle:
+        attrs = handle["CHA/T"].attrs
+        del attrs["MAI"]
+        attrs.create("MAI", np.bytes_(b"fluid".ljust(64)), dtype="S64")
+
+    structure = mf.MedFile.inspect(str(path))
+    assert structure.fields["T"].mesh_name == "fluid"
+
+    container = mf.MedFile.read(str(path), {"fluid": {"T": None}})
+    assert container.keys() == ["fluid"]
+    np.testing.assert_array_equal(
+        [
+            ref.values()["HEX8"]
+            for _step, _time, ref in container["fluid"].time_series["T"].items()
+        ],
+        [[1.0], [2.0], [4.0]],
+    )
+
+
 def test_roundtrip_multi_mesh_container(tmp_path):
     path = _write_container(tmp_path)
     container = mf.MedFile.read(str(path))
@@ -210,6 +233,29 @@ def test_write_modes(tmp_path):
 
     with pytest.raises(ValueError, match="unknown MED write mode"):
         container.write(str(path), mode="bogus")
+
+
+def test_update_rejects_field_owned_by_another_mesh(tmp_path):
+    def mesh_with(value):
+        mesh = mf.build_cmesh([0.0, 1.0], [0.0, 1.0], [0.0, 1.0])
+        mesh.fields["shared"] = np.array([value])
+        return mesh
+
+    path = tmp_path / "update_collision.med"
+    first = mf.MedFile()
+    first["mesh_a"] = mesh_with(1.0)
+    first.write(str(path))
+
+    second = mf.MedFile()
+    second["mesh_b"] = mesh_with(2.0)
+    with pytest.raises(ValueError, match="file-global"):
+        second.write(str(path), mode="update")
+
+    loaded = mf.MedFile.read(str(path))
+    assert loaded.keys() == ["mesh_a"]
+    np.testing.assert_array_equal(
+        loaded["mesh_a"].fields["shared"].values()["HEX8"], [1.0]
+    )
 
 
 def test_duplicate_field_names_are_rejected(tmp_path):
