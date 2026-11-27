@@ -1,3 +1,3 @@
-add_executable(mefikit_cpp_tests test_conservative.cpp)
+add_executable(mefikit_cpp_tests test_transfers.cpp)
 target_link_libraries(mefikit_cpp_tests PRIVATE mefikit::mefikit)
 add_test(NAME mefikit_cpp_tests COMMAND mefikit_cpp_tests)

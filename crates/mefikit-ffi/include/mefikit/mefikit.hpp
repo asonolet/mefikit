@@ -1,6 +1,6 @@
 // Minimal C++ API for mefikit.
 //
-// Only the mesh initialization and the conservative P0 transfer are exposed:
+// Exposes mesh initialization and all four transfer methods:
 //
 //     #include <mefikit/mefikit.hpp>
 //
@@ -9,9 +9,12 @@
 //     src->set_field("T", mefikit::ElementType::QUAD4, 1, values);
 //
 //     auto tgt = ...;
-//     auto transfer = mefikit::ConservativeTransfer::prepare(*src, *tgt, 0.0);
+//     auto transfer = mefikit::Transfer::prepare_conservative_p0(*src, *tgt, 0.0);
 //     transfer->apply_update(*src, "T", *tgt, "T", mefikit::FieldNature::Intensive);
 //     std::vector<double> result = tgt->field_values("T", mefikit::ElementType::QUAD4);
+//
+// Other constructors are `prepare_constant_piecewise`,
+// `prepare_inverse_distance` and `prepare_moving_least_squares`.
 //
 // Every fallible call throws `rust::Error`; catch it as `const rust::Error &`.
 #pragma once

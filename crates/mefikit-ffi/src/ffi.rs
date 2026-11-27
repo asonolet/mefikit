@@ -1,8 +1,8 @@
 //! The cxx bridge: the complete C++ API surface.
 //!
-//! The bridge only declares the two concepts requested for the wrapper: a mesh
-//! (`UMesh`) and a conservative P0 transfer (`ConservativeTransfer`). Method
-//! bodies live in [`crate::mesh`] and [`crate::transfer`].
+//! The bridge declares two concepts: a mesh (`UMesh`) and a transfer (`Transfer`)
+//! that can be built with any of mefikit's transfer methods. Method bodies live
+//! in [`crate::mesh`] and [`crate::transfer`].
 
 use std::collections::BTreeMap;
 use std::fmt::{Display, Formatter};
@@ -14,7 +14,7 @@ use mefikit::prelude as mf;
 /// An error crossing the C++ boundary as a `rust::Error`.
 #[derive(Debug)]
 pub enum Error {
-    /// Invalid input or a precondition of the conservative transfer.
+    /// Invalid input or a precondition of the requested transfer.
     InvalidArgument(String),
 }
 
@@ -42,8 +42,11 @@ pub struct UMesh {
         BTreeMap<String, BTreeMap<mf::ElementType, nd::ArcArray<f64, nd::IxDyn>>>,
 }
 
-/// The conservative P0 operator, prepared once and applied many times.
-pub struct ConservativeTransfer {
+/// A transfer operator prepared once and applied many times.
+///
+/// The same type is returned by every `prepare_*` constructor, so the target
+/// update logic is shared by all transfer methods.
+pub struct Transfer {
     pub(crate) operator: mf::TransferOperator,
     pub(crate) default_value: f64,
     pub(crate) src_dim: mf::Dimension,
@@ -118,10 +121,20 @@ pub mod bridge {
         PHED,
     }
 
-    /// How a field behaves under the conservative transfer.
+    /// How a field behaves under the transfer.
     enum FieldNature {
         Intensive,
         Extensive,
+    }
+
+    /// Weighting kernel used by the moving least-squares transfer.
+    ///
+    /// `exponent` is only used by `InverseDistance` and `CompactSupport`.
+    enum DistanceWeighting {
+        Constant,
+        InverseDistance,
+        CompactSupport,
+        Gaussian,
     }
 
     extern "Rust" {
@@ -129,8 +142,9 @@ pub mod bridge {
         /// regular or poly element blocks.
         type UMesh;
 
-        /// A conservative P0 transfer prepared for a source and a target mesh.
-        type ConservativeTransfer;
+        /// A prepared transfer operator. Build it with one of the `prepare_*`
+        /// methods, then apply it to any number of source fields.
+        type Transfer;
 
         /// Creates an empty mesh from a row-major `(n_nodes, space_dim)` array.
         #[Self = "UMesh"]
@@ -180,23 +194,58 @@ pub mod bridge {
         /// Number of cells carried by one element type, or 0 if the block is absent.
         fn num_elements(self: &UMesh, element_type: ElementType) -> usize;
 
-        /// Prepares a conservative P0 transfer from `src` to `tgt`.
+        /// Prepares a measure-weighted conservative P0 transfer.
         ///
-        /// This is the expensive step. The returned operator can be applied to
-        /// any number of source fields as long as the meshes do not change.
-        #[Self = "ConservativeTransfer"]
-        fn prepare(
+        /// Supports same-dimensional transfers and downcasts from higher- to
+        /// lower-dimensional cells. Uncovered target cells keep `default_value`.
+        #[Self = "Transfer"]
+        fn prepare_conservative_p0(
             src: &UMesh,
             tgt: &UMesh,
             default_value: f64,
-        ) -> Result<Box<ConservativeTransfer>>;
+        ) -> Result<Box<Transfer>>;
+
+        /// Prepares a piecewise-constant transfer (source cell containing each
+        /// target cell centroid).
+        #[Self = "Transfer"]
+        fn prepare_constant_piecewise(
+            src: &UMesh,
+            tgt: &UMesh,
+            default_value: f64,
+        ) -> Result<Box<Transfer>>;
+
+        /// Prepares an inverse-distance (`k`-nearest-neighbours Shepard)
+        /// transfer.
+        #[Self = "Transfer"]
+        fn prepare_inverse_distance(
+            src: &UMesh,
+            tgt: &UMesh,
+            k: usize,
+            exponent: f64,
+            default_value: f64,
+        ) -> Result<Box<Transfer>>;
+
+        /// Prepares a moving least-squares transfer.
+        ///
+        /// `exponent` is used by `DistanceWeighting::InverseDistance` and
+        /// `DistanceWeighting::CompactSupport`, and ignored by the other
+        /// weightings.
+        #[Self = "Transfer"]
+        fn prepare_moving_least_squares(
+            src: &UMesh,
+            tgt: &UMesh,
+            k: usize,
+            weighting: DistanceWeighting,
+            exponent: f64,
+            default_value: f64,
+        ) -> Result<Box<Transfer>>;
 
         /// Transfers `field_name` from `src` onto `tgt` under `tgt_field_name`.
         ///
-        /// Target cells not covered by the source keep the `default_value` passed
-        /// to `prepare`.
+        /// Target cells not covered by the source keep the `default_value`
+        /// passed to the `prepare_*` method.
         fn apply_update(
-            self: &ConservativeTransfer,
+            self: &Transfer,
             src: &UMesh,
             field_name: &str,
             tgt: &mut UMesh,

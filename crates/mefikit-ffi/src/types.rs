@@ -4,9 +4,10 @@ use std::fmt::{self, Debug, Formatter};
 
 use mefikit::mesh::ElementType as CoreElementType;
 use mefikit::tools::FieldNature as CoreFieldNature;
+use mefikit::tools::meshless::DistanceWeighting as CoreDistanceWeighting;
 
 use crate::ffi::Error;
-use crate::ffi::bridge::{ElementType, FieldNature};
+use crate::ffi::bridge::{DistanceWeighting, ElementType, FieldNature};
 
 macro_rules! mirrored_enum {
     (
@@ -67,5 +68,37 @@ mirrored_enum! {
     variants {
         Intensive => Intensive,
         Extensive => Extensive,
+    }
+}
+
+impl DistanceWeighting {
+    /// Converts a C++ weighting choice and its optional exponent.
+    ///
+    /// `exponent` is ignored by the constant and Gaussian kernels.
+    pub fn to_core(self, exponent: f64) -> Result<CoreDistanceWeighting, Error> {
+        let positive_exponent = |name: &str| {
+            if exponent.is_finite() && exponent > 0.0 {
+                Ok(exponent)
+            } else {
+                Err(Error::InvalidArgument(format!(
+                    "{name} weighting needs a finite, positive exponent, got {exponent}"
+                )))
+            }
+        };
+
+        match self {
+            Self::Constant => Ok(CoreDistanceWeighting::Constant),
+            Self::InverseDistance => Ok(CoreDistanceWeighting::InverseDistance {
+                exponent: positive_exponent("inverse-distance")?,
+            }),
+            Self::CompactSupport => Ok(CoreDistanceWeighting::CompactSupport {
+                exponent: positive_exponent("compact-support")?,
+            }),
+            Self::Gaussian => Ok(CoreDistanceWeighting::Gaussian),
+            other => Err(Error::InvalidArgument(format!(
+                "DistanceWeighting discriminant {} is unknown",
+                other.repr
+            ))),
+        }
     }
 }

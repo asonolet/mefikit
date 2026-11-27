@@ -48,18 +48,34 @@ void check_close(double actual, double expected, const char *what) {
   }
 }
 
+void check_uniform_transfer(const char *name, mefikit::Transfer &transfer,
+                            mefikit::UMesh &src, mefikit::UMesh &tgt) {
+  transfer.apply_update(src, "T", tgt, "T_target",
+                        mefikit::FieldNature::Intensive);
+  const std::vector<double> result =
+      mefikit::field_values(tgt, "T_target", mefikit::ElementType::QUAD4);
+  if (result.size() != 16 * 2) {
+    throw std::runtime_error(std::string(name) +
+                             ": unexpected target field length");
+  }
+  for (std::size_t cell = 0; cell < 16; ++cell) {
+    check_close(result[2 * cell], 7.0, name);
+    check_close(result[2 * cell + 1], 3.0, name);
+  }
+}
+
 } // namespace
 
 int main() {
   try {
     auto src = make_grid(2, 0.0, 1.0);
-    auto tgt = make_grid(3, 0.05, 0.95);
+    auto tgt = make_grid(4, 0.05, 0.95);
 
     if (src->num_elements(mefikit::ElementType::QUAD4) != 4) {
       throw std::runtime_error("source should have four QUAD4 cells");
     }
-    if (tgt->num_elements(mefikit::ElementType::QUAD4) != 9) {
-      throw std::runtime_error("target should have nine QUAD4 cells");
+    if (tgt->num_elements(mefikit::ElementType::QUAD4) != 16) {
+      throw std::runtime_error("target should have sixteen QUAD4 cells");
     }
 
     // Two components per cell, constant over the source mesh.
@@ -70,18 +86,46 @@ int main() {
     }
     src->set_field("T", mefikit::ElementType::QUAD4, 2, values);
 
-    auto transfer = mefikit::ConservativeTransfer::prepare(*src, *tgt, 0.0);
-    transfer->apply_update(*src, "T", *tgt, "T_target",
-                           mefikit::FieldNature::Intensive);
+    // Conservative P0.
+    auto conservative =
+        mefikit::Transfer::prepare_conservative_p0(*src, *tgt, 0.0);
+    check_uniform_transfer("conservative P0", *conservative, *src, *tgt);
 
-    const std::vector<double> result =
-        mefikit::field_values(*tgt, "T_target", mefikit::ElementType::QUAD4);
-    if (result.size() != 9 * 2) {
-      throw std::runtime_error("unexpected target field length");
+    // Piecewise-constant.
+    auto constant =
+        mefikit::Transfer::prepare_constant_piecewise(*src, *tgt, 0.0);
+    check_uniform_transfer("constant piecewise", *constant, *src, *tgt);
+
+    // Inverse distance.
+    auto inverse =
+        mefikit::Transfer::prepare_inverse_distance(*src, *tgt, 4, 2.0, 0.0);
+    check_uniform_transfer("inverse distance", *inverse, *src, *tgt);
+
+    // Moving least-squares with every weighting kernel.
+    auto mls_constant = mefikit::Transfer::prepare_moving_least_squares(
+        *src, *tgt, 4, mefikit::DistanceWeighting::Constant, 0.0, 0.0);
+    check_uniform_transfer("MLS constant", *mls_constant, *src, *tgt);
+    auto mls_inverse = mefikit::Transfer::prepare_moving_least_squares(
+        *src, *tgt, 4, mefikit::DistanceWeighting::InverseDistance, 2.0, 0.0);
+    check_uniform_transfer("MLS inverse distance", *mls_inverse, *src, *tgt);
+    auto mls_compact = mefikit::Transfer::prepare_moving_least_squares(
+        *src, *tgt, 4, mefikit::DistanceWeighting::CompactSupport, 2.0, 0.0);
+    check_uniform_transfer("MLS compact support", *mls_compact, *src, *tgt);
+    auto mls_gaussian = mefikit::Transfer::prepare_moving_least_squares(
+        *src, *tgt, 4, mefikit::DistanceWeighting::Gaussian, 0.0, 0.0);
+    check_uniform_transfer("MLS Gaussian", *mls_gaussian, *src, *tgt);
+
+    // Invalid parameters become rust::Error instead of crossing the FFI as a
+    // panic.
+    bool rejected = false;
+    try {
+      auto invalid =
+          mefikit::Transfer::prepare_inverse_distance(*src, *tgt, 0, 2.0, 0.0);
+    } catch (const rust::Error &error) {
+      rejected = std::string(error.what()).find("k = 0") != std::string::npos;
     }
-    for (std::size_t cell = 0; cell < 9; ++cell) {
-      check_close(result[2 * cell], 7.0, "component 0");
-      check_close(result[2 * cell + 1], 3.0, "component 1");
+    if (!rejected) {
+      throw std::runtime_error("k = 0 should be rejected with rust::Error");
     }
 
     // Poly block initialization and field round-trip.
@@ -120,7 +164,7 @@ int main() {
     check_close(mixed_tri[0], 20.0, "mixed TRI3 value 0");
     check_close(mixed_tri[1], 30.0, "mixed TRI3 value 1");
 
-    std::cout << "conservative P0 C++ wrapper: OK\n";
+    std::cout << "C++ transfer wrappers: OK\n";
     return 0;
   } catch (const rust::Error &error) {
     std::cerr << "rust::Error: " << error.what() << '\n';

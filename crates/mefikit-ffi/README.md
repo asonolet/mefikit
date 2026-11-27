@@ -1,14 +1,16 @@
 # mefikit C++ bindings
 
 Minimal C++ access to mefikit, generated with [`cxx`](https://cxx.rs).
-The wrapper exposes only:
+The wrapper exposes:
 
 - `mefikit::UMesh`: construction from coordinates and regular/poly blocks, plus
   reading and writing one element type's field values;
-- `mefikit::ConservativeTransfer`: preparation and application of the P0
-  conservative transfer.
-
-No other transfer method or tool is exposed.
+- `mefikit::Transfer`: preparation and application of any of mefikit's four
+  transfer methods:
+  - conservative P0 (`prepare_conservative_p0`),
+  - piecewise-constant (`prepare_constant_piecewise`),
+  - inverse-distance (`prepare_inverse_distance`),
+  - moving least-squares (`prepare_moving_least_squares`).
 
 ```cpp
 #include <mefikit/mefikit.hpp>
@@ -20,14 +22,24 @@ src->set_field("T", mefikit::ElementType::QUAD4, 1, values);
 auto tgt = mefikit::UMesh::from_coords(tgt_coords, tgt_n_nodes, 2);
 tgt->add_regular_block(mefikit::ElementType::QUAD4, tgt_conn, tgt_n_cells);
 
-auto transfer = mefikit::ConservativeTransfer::prepare(*src, *tgt, 0.0);
+auto transfer = mefikit::Transfer::prepare_conservative_p0(*src, *tgt, 0.0);
 transfer->apply_update(*src, "T", *tgt, "T_target",
                        mefikit::FieldNature::Intensive);
 std::vector<double> result =
     mefikit::field_values(*tgt, "T_target", mefikit::ElementType::QUAD4);
 ```
 
-All fallible calls throw `rust::Error`.
+The other methods use the same `Transfer` type:
+
+```cpp
+auto cpw = mefikit::Transfer::prepare_constant_piecewise(*src, *tgt, 0.0);
+auto idw = mefikit::Transfer::prepare_inverse_distance(*src, *tgt, 4, 2.0, 0.0);
+auto mls = mefikit::Transfer::prepare_moving_least_squares(
+    *src, *tgt, 10, mefikit::DistanceWeighting::Gaussian, 0.0, 0.0);
+```
+
+`exponent` is only used by the `InverseDistance` and `CompactSupport`
+weightings. All fallible calls throw `rust::Error`.
 
 ## Build and test
 
