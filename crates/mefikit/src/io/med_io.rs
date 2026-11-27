@@ -11,7 +11,7 @@
 //! ```text
 //! <file>
 //! ├── INFOS_GENERALES/          group  — MED library version
-//! │     attrs: MAJ=3, MIN=0, REL=0
+//! │     attrs: MAJ=3, MIN=0, REL=8
 //! ├── ENS_MAA/                  group  — "ensembles" (all meshes)
 //! │   └── <mesh_name>/          group  — one subgroup per mesh
 //! │         attrs: DIM, ESP, REP, UNT, UNI, SRT, NOM, DES, TYP
@@ -175,6 +175,21 @@
 //!   (component-major: all cells of component 1, then all cells of component
 //!   2, …). mefikit transposes its row-major in-memory layout on write.
 //!
+//! ## File version
+//!
+//! mefikit declares MED **3.0.8**, the last release of the 3.0 format. The
+//! mesh, field and group layouts above are the 3.0 layouts, so files remain
+//! readable by MED 4.1.1 through 6.0.x, as well as by 3.x libraries.
+//!
+//! MED 4.1+ requires two extra field attributes (`LEN` and `LGC`) to expose a
+//! field's support through the modern `MEDfieldnEntityType` /
+//! `MEDfieldGeometryType` APIs. Both are HDF5 **bitfield** attributes, which
+//! the safe `hdf5-metno` API cannot write. Declaring a 4.1+ version without
+//! them is worse than declaring 3.0.8: some 4.1+ readers (MEDCoupling 4.2,
+//! for example) trust the declared version, call the modern API, and fail or
+//! crash when the attributes are absent. With a 3.0.8 version they use the
+//! legacy field API, which reads mefikit's fields correctly.
+//!
 //! ## Interlace modes
 //!
 //! MED 5.1+ stores the on-disk interlace mode of each dataset in its `ILC`
@@ -259,9 +274,12 @@ pub fn write(path: impl AsRef<std::path::Path>, mesh: &UMeshView) -> Result<(), 
 pub(crate) fn write_general_info(file: &File) -> hdf5_metno::Result<()> {
     let info = file.create_group("INFOS_GENERALES")?;
 
+    // 3.0.8 keeps every reader in the legacy field API. A 4.1+ declaration
+    // would require the bitfield `LEN`/`LGC` field attributes, which safe
+    // `hdf5-metno` cannot write; see the module documentation.
     write_scalar_attr(&info, "MAJ", 3i64)?;
     write_scalar_attr(&info, "MIN", 0i64)?;
-    write_scalar_attr(&info, "REL", 0i64)?;
+    write_scalar_attr(&info, "REL", 8i64)?;
 
     Ok(())
 }
@@ -2014,6 +2032,27 @@ mod tests {
         let mesh2 = read(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
         assert_mesh_eq(&mesh, &mesh2);
+    }
+
+    #[test]
+    fn test_med_file_declares_3_0_8() {
+        // A 4.1+ declaration makes readers call the modern field API, which
+        // needs bitfield LEN/LGC attributes that safe hdf5-metno cannot write.
+        // Stay on the latest 3.0 release so readers use the legacy field API.
+        let path = PathBuf::from("test_med_file_declares_3_0_8.med");
+        let mesh = me::make_mesh_2d_quad();
+        write(&path, &mesh.view()).unwrap();
+
+        let file = File::open(&path).unwrap();
+        let info = file.group("INFOS_GENERALES").unwrap();
+        let version = |name| info.attr(name).unwrap().read_scalar::<i64>().unwrap();
+        assert_eq!(
+            (version("MAJ"), version("MIN"), version("REL")),
+            (3, 0, 8),
+            "writer must declare MED 3.0.8 until 4.1 support metadata can be written"
+        );
+
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]
